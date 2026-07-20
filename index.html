@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script src="p5.js"></script>
+    <script src="p5.sound.min.js"></script>
+
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <meta charset="utf-8" />
+    <title>Avian Age: Te Manawa</title>
+  </head>
+  <body>
+    <main></main>
+
+    <!-- ==================================================================
+         Avian Age: TE MANAWA — standalone museum installation
+         A renamed fork of the Mauri engine (mauri_*.js -> TeManawa_*.js).
+
+         Deliberately NOT forked: tutorial, menu_art, progress, benchmark.
+         TeManawa_sketch.js (an exact copy) still calls into those four,
+         so TeManawa_shims.js below provides inert no-op stand-ins and the
+         fork BOOTS into the scaffold scene. Phase 1 of TEMANAWA_PLAN.md
+         rebuilds the HUD, removes those call-sites, and deletes the shim.
+         ================================================================== -->
+
+    <!-- TEMPORARY boot shims (delete in Phase 1) — must load first -->
+    <script src="TeManawa_shims.js"></script>
+
+    <!-- Ambience and effects -->
+    <script src="TeManawa_audio.js"></script>
+
+    <!-- Core systems -->
+    <script src="TeManawa_registry.js"></script>
+    <script src="TeManawa_spatial.js"></script>
+    <script src="TeManawa_simulation.js"></script>
+
+    <!-- Data definitions -->
+    <script src="TeManawa_species_data.js"></script>
+    <script src="TeManawa_entity_sprites.js"></script>
+
+    <!-- Terrain and seasons/climate -->
+    <script src="TeManawa_terrain.js"></script>
+    <script src="TeManawa_seasons.js"></script>
+
+    <!-- Base classes -->
+    <script src="TeManawa_boid.js"></script>
+
+    <!-- Entities -->
+    <script src="TeManawa_moa.js"></script>
+    <script src="TeManawa_eagle.js"></script>
+    <script src="TeManawa_egg.js"></script>
+    <script src="TeManawa_plant.js"></script>
+    <script src="TeManawa_placeable.js"></script>
+
+    <!-- UI -->
+    <script src="TeManawa_UI.js"></script>
+
+    <!-- Level system -->
+    <script src="TeManawa_level_format.js"></script>
+
+    <!-- Level definition — scaffold scene for the boot check.
+         The real Manawatū scene is authored per TEMANAWA_PLAN.md. -->
+    <script src="levels/level_temanawa_scaffold.js"></script>
+
+    <!-- Main game (owns setup()/draw()) -->
+    <script src="TeManawa_sketch.js"></script>
+
+    <!-- Installation layer: patches Game/GameUI into the ambient museum
+         piece (deep-time timeline + 4 buttons). MUST load after sketch. -->
+    <script src="TeManawa_install.js"></script>
+  </body>
+</html>
