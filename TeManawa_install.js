@@ -26,6 +26,32 @@
     return;
   }
 
+  // ---- responsive full-bleed layout ------------------------
+  // The engine's recalculateLayout is landscape-only (aspect clamped to
+  // [4:3, 21:9]) and reserves space for the sidebar/top/bottom panels.
+  // The installation is full-bleed at ANY aspect (portrait included), so
+  // override it: the SHORT side of the canvas is fixed at referenceHeight
+  // (1080) and the long side follows the window; the game area is the
+  // whole canvas, so terrain generates at the exact canvas aspect and
+  // _updateViewTransform() fills it edge to edge (HUD overlays on top).
+  // Runs before p5 calls setup(), so the very first layout uses this.
+  CONFIG.recalculateLayout = function (windowW, windowH) {
+    const s = this.referenceHeight;
+    let aspect = windowW / Math.max(1, windowH);
+    aspect = Math.max(1 / 3, Math.min(3, aspect));   // sanity clamp only
+    const w = aspect >= 1 ? Math.round(s * aspect) : s;
+    const h = aspect >= 1 ? s : Math.round(s / aspect);
+    this.canvasWidth = w;
+    this.canvasHeight = h;
+    this.gameAreaX = 0;
+    this.gameAreaY = 0;
+    this.gameAreaWidth = w;
+    this.gameAreaHeight = h;
+    this.rightSidebarWidth = 0;
+    this.rightSidebarX = w;
+  };
+  CONFIG.fullscreen = true;
+
   // ---- time / sequence model -------------------------------
   const TM = {
     yearsStart: 345000,   // run opens just after the Whakamaru eruption
@@ -202,6 +228,29 @@
 
     // Ambient installation: never sit in a paused / won / lost state.
     if (this.state !== GAME_STATE.PLAYING) this.state = GAME_STATE.PLAYING;
+  };
+
+  // ==========================================================
+  // RESIZE WRAP — the engine's windowResized() resizes/rescales the
+  // canvas, but the already-generated map keeps its old aspect (it would
+  // sit letterboxed in the new canvas). Once the resize settles, reload
+  // the level so terrain regenerates at the new aspect and fills it.
+  // p5 looks up window.windowResized at event time, so rewrapping works.
+  // ==========================================================
+  let _tmResizeTimer = null;
+  const _origWinResized = window.windowResized;
+  window.windowResized = function () {
+    if (_origWinResized) _origWinResized();
+    clearTimeout(_tmResizeTimer);
+    _tmResizeTimer = setTimeout(() => {
+      const g = window.game;
+      if (!g || !g.terrain || !g.currentLevel) return;
+      const mapAspect = g.terrain.mapWidth / g.terrain.mapHeight;
+      const canvasAspect = CONFIG.canvasWidth / CONFIG.canvasHeight;
+      if (Math.abs(mapAspect - canvasAspect) > 0.02) {
+        g.loadLevel(g.currentLevel.id);   // regen at new aspect (playTime -> 0)
+      }
+    }, 400);
   };
 
   // ==========================================================
