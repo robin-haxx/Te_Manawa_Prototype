@@ -14,19 +14,60 @@ let fpsHistory = [];
 const FPS_HISTORY_SIZE = 30;
 let currentFPS = 60;
 
+// ============================================
+// PLANT SPRITE SETS
+// ============================================
+// Maps an ecology key (the string used everywhere in the sim) to the artwork
+// that represents it. Keeping the two separate means art can be swapped for
+// prototyping without touching species data, level scaffolds or seasons.
+//
+//   prefix        filename stem, e.g. 'Totara' -> Totara_Mature.png
+//   folder        optional subfolder under sprites/ (include trailing slash)
+//   growingFrames if set, loads <prefix>_Growing_01..NN.png as a growth sequence
+//   anchor        'center' (default) or 'base' — 'base' plants the sprite's
+//                 bottom edge on the ground point, for art taller than it is wide
+//   scale         multiplier on the drawn footprint width
+const PLANT_SPRITE_SETS = {
+  tussock:   { prefix: 'Tussock' },
+  flax:      { prefix: 'Flax' },
+  fern:      { prefix: 'Fern' },
+  // PROTOTYPE: rimu renders with Tōtara art. Art swap only — the 'rimu' key
+  // still drives nutrition, seasonality, forest banding and level data.
+  rimu:      { prefix: 'Totara', folder: 'Totara/', growingFrames: 4,
+               anchor: 'base', scale: 1.0 },
+  beech:     { prefix: 'Beech' },
+  patotara:  { prefix: 'Patotara' },
+  lancewood: { prefix: 'Lancewood' }
+};
+
+const PLANT_SPRITE_STATES = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
+
 function preload(){
   OpenDyslexic = loadFont('typefaces/OpenDyslexic.ttf');
   GroceryRounded = loadFont('typefaces/GroceryRounded.ttf');
-  
-  const spritePlants = ['Tussock', 'Flax', 'Fern', 'Rimu', 'Beech', 'Patotara', 'Lancewood'];
-  const states = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
-  
-  for (const plant of spritePlants) {
-    const key = plant.toLowerCase();
-    plantSprites[key] = {};
-    for (const state of states) {
-      plantSprites[key][state.toLowerCase()] = loadImage(`sprites/${plant}_${state}.png`);
+
+  for (const [key, def] of Object.entries(PLANT_SPRITE_SETS)) {
+    const dir = `sprites/${def.folder || ''}`;
+    const set = {};
+
+    for (const state of PLANT_SPRITE_STATES) {
+      set[state.toLowerCase()] = loadImage(`${dir}${def.prefix}_${state}.png`);
     }
+
+    if (def.growingFrames) {
+      set.growing = [];
+      for (let i = 1; i <= def.growingFrames; i++) {
+        const n = String(i).padStart(2, '0');
+        set.growing.push(loadImage(
+          `${dir}${def.prefix}_Growing_${n}.png`,
+          () => {},
+          () => console.warn(`Could not load ${def.prefix}_Growing_${n}.png`)
+        ));
+      }
+    }
+
+    set.meta = { anchor: def.anchor || 'center', scale: def.scale || 1.0 };
+    plantSprites[key] = set;
   }
 
   splashScreenMoa = loadImage('sprites/moa_idle.png')
@@ -1718,9 +1759,14 @@ class Game {
     
     push();
     
-    if (sprite) {
+    if (sprite && sprite.width) {
+      // Contain within the size box rather than stretching to it, so tall art
+      // (e.g. the Tōtara set) keeps its proportions in the picker.
+      const aspect = sprite.width / sprite.height;
+      const w = aspect >= 1 ? size : size * aspect;
+      const h = aspect >= 1 ? size / aspect : size;
       imageMode(CENTER);
-      image(sprite, x, y, size, size);
+      image(sprite, x, y, w, h);
     } else if (plantKey === 'kawakawa') {
       this._renderMenuKawakawa(x, y, size);
     } else {

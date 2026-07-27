@@ -703,14 +703,25 @@ class HaastsEagle extends Boid {
       fill(0, 0, 0, isActiveHunt ? 35 : 25);
       ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5, this.wingspan * 0.6);
       
+      // Step 1: orient a frame whose local "up" is the direction of travel.
       const targetAngle = this.vel.heading() + HALF_PI;
       this._displayAngle = SpriteAngle.snapWithHysteresis(this._displayAngle, targetAngle);
       rotate(this._displayAngle);
-      
-      if (SpriteAngle.shouldMirror(this._displayAngle)) scale(-1, 1);
-      
+
+      // Step 2: flip across the travel axis, so the bird keeps facing forward
+      // and only the side shown to the camera swaps. Decided from the snapped
+      // heading, so the flip lands on the same frame as the angle snap.
+      if (SpriteAngle.shouldMirrorHeading(this._displayAngle - HALF_PI)) scale(-1, 1);
+
+      // Step 3: correct for the artwork not being drawn pointing "up".
+      const artAngle = (EntitySprites.eagle && EntitySprites.eagle.artAngle) || 0;
+      rotate(-HALF_PI - artAngle);
+
       imageMode(CENTER);
-      image(sprite, 0, 0, this.wingspan * 2.8, this.wingspan * 2.1);
+      // Preserve the source aspect ratio (the eagle art is square, 256x256).
+      const drawW = this.wingspan * 2.8;
+      const drawH = sprite.width > 0 ? drawW * (sprite.height / sprite.width) : this.wingspan * 2.1;
+      image(sprite, 0, 0, drawW, drawH);
       
       pop();
     }
