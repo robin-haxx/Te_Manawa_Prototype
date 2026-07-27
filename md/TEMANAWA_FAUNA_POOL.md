@@ -20,6 +20,13 @@ was the wrong test, and it wrongly excluded some of the best animals on the list
 2. **Does it do a job?** — habitat marker, era marker, predator, prey, or ambient
    colour.
 
+**A third question was added later** (`TEMANAWA_PLAN_V2.md` §0.1), and it applies to
+every note in this document: **does it read from directly overhead?** The visual hooks
+below were written from a field-guide viewpoint, and a few of them — narrow upright
+silhouettes especially — are much weaker seen from above than from the side. Where a
+hook depends on a profile, the illustrator should find the bird's-eye equivalent:
+wing shape, crown pattern, back markings, and the shape a bird makes when it moves.
+
 **One hard filter remains: Span.** Anything that arrived in the last ~1,000 years is
 out on factual grounds, not aesthetic ones. That list is at §5 and it is
 non-negotiable — the swamp harrier and pūkeko would both be wrong in a way visitors
@@ -28,6 +35,11 @@ would assume was right.
 ---
 
 ## 1. The core set — seven
+
+> ✅ **Adopted.** These seven are the built cast — see `TEMANAWA_PLAN_V2.md` §5.1. The
+> *Dinornis* **male** is built as a second sprite (the dimorphism pair), and **coastal
+> moa** *Euryapteryx* is the conditional eighth. This section supersedes
+> `TEMANAWA_ECOLOGY_FAUNA.md` §8 on the cast.
 
 | # | Animal | Visual hook | Job |
 |---|---|---|---|

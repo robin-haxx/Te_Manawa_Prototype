@@ -37,10 +37,10 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  walkable:true,  canHavePlants:true, plantTypes:['fern','rimu'], canPlace:true },
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740',
-                 walkable:true,  canHavePlants:true, plantTypes:['beech','fern','patotara'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['beech','fern'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
                  colors:['#a8a060','#b5ad6d','#c2ba7a'], contourColor:'#7a7445',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','patotara'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
                  colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c',
                  walkable:false, canHavePlants:false, canPlace:false },
@@ -57,31 +57,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
 
   initialEntityCounts: { moa: 12, eagle: 2 },
 
+  // Timings only — the economy is gone (Phase 1.5). startingMauri and
+  // the placeable toolbar no longer exist.
   economy: {
-    startingMauri: 60, seasonDuration: 2100, eggIncubationTime: 600,
-    securityTimeToLay: 900, securityTimeVariation: 300, layingHungerThreshold: 28,
-    eagleSpawnMilestones: [], maxPopulation: 60
+    seasonDuration: 2100, eggIncubationTime: 600,
+    securityTimeToLay: 900, securityTimeVariation: 300,
+    layingHungerThreshold: 28, eagleSpawnMilestones: [], maxPopulation: 60
   },
 
-  // No toolbar in the final piece. One valid entry keeps the resolver/UI happy
-  // for the boot check; the whole toolbar is removed when the HUD is rebuilt.
-  availablePlaceables: { Storm: { cost: 0 } },
 
-  // No win state: a single never-true goal keeps the run in PLAYING forever.
-  goals: [
-    { name: "Ambient — the ecosystem simply runs", condition: () => false, reward: 0 }
-  ],
 
-  menu: {
-    title: "Avian Age: Te Manawa",
-    subtitle: "Manawatū — deep time (scaffold)",
-    areaLabel: "Te Manawa (systems check)",
-    areaSubtitle: "placeholder scene",
-    featuredSpecies: { key:'upland_moa', displayName:'Moa', localName:'', spriteKey:'moa_idle', spriteScale:2 },
-    flavorText: [""],
-    displayPlants: ['tussock','flax','fern','rimu','beech'],
-    art: { coreWidth:1600, coreHeight:1080, bgColor:[25,35,30] }
-  }
 };
 
 LEVEL_REGISTRY.register(LEVEL_TEMANAWA_SCAFFOLD);

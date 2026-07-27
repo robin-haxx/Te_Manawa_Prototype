@@ -265,7 +265,7 @@ class Moa extends Boid {
   // MAIN BEHAVIOR
   // ============================================
 
-  behave(simulation, mauri, seasonManager, dt = 1) {
+  behave(simulation, seasonManager, dt = 1) {
     this.updateAge(dt);
     this.animTime += dt;
     this._updateSeasonCache(seasonManager);
@@ -341,11 +341,11 @@ class Moa extends Boid {
     
     // Mating takes priority
     if (this.matingPartner || this.matingTimer > 0) {
-      this.executeMating(simulation, mauri, dt);
+      this.executeMating(simulation, dt);
       return;
     }
     
-    if (this.isPregnant) this.executePregnancy(simulation, mauri, placeables, dt);
+    if (this.isPregnant) this.executePregnancy(simulation, placeables, dt);
 
     // Density-dependent breeding gate (recomputed here so determineState can
     // read it without threading simulation through its signature).
@@ -353,7 +353,7 @@ class Moa extends Boid {
 
     // Determine and execute state
     this.currentState = this.determineState(placeables, sc, moas);
-    this.executeState(simulation, mauri, sc, moas, placeables, dt);
+    this.executeState(simulation, sc, moas, placeables, dt);
     
     // Common behaviors
     this.applySeparation(moas);
@@ -457,7 +457,7 @@ class Moa extends Boid {
     return MOA_STATE.IDLE;
   }
 
-  executeState(simulation, mauri, seasonCache, moas, placeables, dt) {
+  executeState(simulation, seasonCache, moas, placeables, dt) {
     this.panicLevel = 0;
     const starving = this.hunger > this.criticalHunger;
     const speedMod = starving ? 0.6 : 1;
@@ -487,12 +487,12 @@ class Moa extends Boid {
         this.targetMate = null;
         this.maxSpeed = this.baseSpeed * speedMod;
         this.executeMigration(simulation, seasonCache, dt);
-        if (this.hunger > this.hungerThreshold) this.forage(simulation, mauri);
+        if (this.hunger > this.hungerThreshold) this.forage(simulation);
         break;
         
       case MOA_STATE.FORAGING:
         this.maxSpeed = this.baseSpeed * speedMod;
-        if (!this.seekAttractions(placeables)) this.forage(simulation, mauri);
+        if (!this.seekAttractions(placeables)) this.forage(simulation);
         break;
         
       case MOA_STATE.FEEDING:
@@ -634,7 +634,7 @@ class Moa extends Boid {
     moa.targetMate = null;
   }
 
-  executeMating(simulation, mauri, dt) {
+  executeMating(simulation, dt) {
     this.matingTimer -= dt;
     this.maxSpeed = this.baseSpeed * 0.15;
     
@@ -655,10 +655,10 @@ class Moa extends Boid {
       this.matingTimer = 0;
     }
     
-    if (this.matingTimer <= 0) this.completeMating(simulation, mauri);
+    if (this.matingTimer <= 0) this.completeMating(simulation);
   }
 
-  completeMating(simulation, mauri) {
+  completeMating(simulation) {
     const partner = this.matingPartner;
     
     // The female becomes pregnant
@@ -692,7 +692,7 @@ class Moa extends Boid {
     moa.hunger += 10;
   }
 
-  executePregnancy(simulation, mauri, placeables, dt) {
+  executePregnancy(simulation, placeables, dt) {
     this.pregnancyTimer -= dt;
     
     for (let i = 0; i < placeables.length; i++) {
@@ -703,10 +703,10 @@ class Moa extends Boid {
       }
     }
     
-    if (this.pregnancyTimer <= 0) this.layEgg(simulation, mauri);
+    if (this.pregnancyTimer <= 0) this.layEgg(simulation);
   }
 
-  layEgg(simulation, mauri) {
+  layEgg(simulation) {
     const _cap = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.maxPerSpecies) || Infinity;
     if (simulation.getMoaPopulation() >= this.config.maxMoaPopulation ||
         (this.speciesKey && simulation.getSpeciesCount(this.speciesKey) >= _cap)) {
@@ -720,11 +720,6 @@ class Moa extends Boid {
     egg.speedBonus = this.eggSpeedBonus;
     if (this.speciesKey) egg.parentSpecies = this.speciesKey;
     
-    if (aliveEggs.length === 0 && simulation.game?.tutorial) {
-      simulation.game.tutorial.fireEvent(TUTORIAL_EVENTS.FIRST_EGG, { egg });
-    }
-    
-    mauri.earn(mauri.onEggLaid, this.pos.x, this.pos.y, 'egg');
     
     this.isPregnant = false;
     this.pregnancyTimer = 0;
@@ -892,7 +887,7 @@ class Moa extends Boid {
     return false;
   }
 
-  forage(simulation, mauri) {
+  forage(simulation) {
     if (!this.targetPlant?.alive || this.targetPlant.growth < 0.5) {
       this.targetPlant = this.findPlant(simulation);
     }
@@ -942,7 +937,6 @@ class Moa extends Boid {
         }
 
         this.hunger = Math.max(0, this.hunger - gain);
-        mauri.earnFromEating(mauri.onMoaEat, this.pos.x, this.pos.y);
         this.targetPlant = null;
         this.vel.mult(0.3);
       } else {

@@ -1,5 +1,21 @@
 # Te Manawa — Terrain Implementation Plan
 
+> ⛔ **Largely superseded. Read `TEMANAWA_PLAN_V2.md` §7 and `TEMANAWA_BUILD_V3.md` §6
+> first.**
+>
+> The keyframe pipeline below — **§3 (manifest and layer format), §4 (the six-step
+> morph) and most of §5 (noise guardrails)** — is **not being built.** Across the
+> installation's window the ranges gain a few hundred metres on a range already
+> 1,500 m high while the vegetation turns over three times, so the topography does not
+> earn a general morph system. It is replaced by **two authored heightmaps blended by
+> `yearsBP`, with a second curve for gorge incision so the river visibly outpaces the
+> uplift**, plus parametric sea level.
+>
+> **Still live and still correct:** §1 (what the engine gives us), §2's split of
+> tectonics from climate, §6 on the biome classifier, **§7 on rendering, the square
+> play area and the interval re-bake** — which is the load-bearing performance section
+> for the whole project — and §8 on plant distribution.
+
 How the deep-time landscape morphs: **author a few vector "snapshots," let the
 sim interpolate between them, and let bounded procedural noise fill the detail** —
 so the big moves are art-directed but every run is a little different, with

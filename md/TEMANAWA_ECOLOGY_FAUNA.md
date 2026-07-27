@@ -225,6 +225,12 @@ Scored on your four criteria — **Known / Wonder / Local / Span** — with the 
 research applied. Given one screen with the land as the main narrative, the fauna
 budget is realistically **six**.
 
+> ⛔ **Superseded on the cast.** `TEMANAWA_FAUNA_POOL.md` §1 sets the built cast at
+> **seven** (this six plus **huia**), and `TEMANAWA_PLAN_V2.md` §5.1 adopts it, adding
+> the *Dinornis* male as the dimorphism pair. **Coastal moa** is the conditional
+> eighth and its condition — a distinct coastal band — is met by parametric sea level.
+> The scoring below still stands and is why those seven were chosen.
+
 ### Build these six
 
 | # | Animal | K | W | L | S | The one-line case |
@@ -255,6 +261,14 @@ highway.
 > illustrator.
 
 ### Scores highest, fits worst — the honest note on huia
+
+> ⛔ **Resolved: huia is in the sim.** The recommendation below was withdrawn by
+> `TEMANAWA_FAUNA_POOL.md` §0 and the decision is recorded in `TEMANAWA_PLAN_V2.md`
+> §5.1 and §10.3. The argument below rests on "it will not read at sprite scale," and
+> that premise is wrong: the sim is a **stylised bird's-eye cartoon**, so a huia sprite
+> stands for huia in an area, not for an individual bird at literal scale. Its bill
+> dimorphism gives the same free-second-sprite payoff as *Dinornis*. **The text below is
+> kept as a record of the reasoning, not as live guidance.**
 
 **Huia scores 5/5/5/5 — the only animal on the longlist that does.** 646 skins taken
 from the forest between the Manawatū Gorge and Akitio in 1883; a rāhui placed on the

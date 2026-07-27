@@ -509,7 +509,7 @@ class Simulation {
     return null;
   }
 
-  handleEagleCatch(eagle, moa, mauri) {
+  handleEagleCatch(eagle, moa) {
     // Protected floor species (e.g. the last Dinornis) can't be taken — the
     // eagle's strike fails and it breaks off.
     if (this.isSpeciesProtected(moa.speciesKey)) {
@@ -545,16 +545,8 @@ class Simulation {
     
     const moaCount = this.getMoaPopulation();
     
-    if (moaCount > this.eagles.length * 2) {
-      const balanceReward = 5;
-      mauri.earn(balanceReward, moa.pos.x, moa.pos.y, 'ecosystem_balance');
-      this.game.addNotification(`Balanced ecosystem! Eagle fed. +${balanceReward} mauri`, 'info');
-    } else {
+    if (moaCount <= this.eagles.length * 2) {
       this.game.addNotification('Eagle caught a moa - population low!', 'error');
-    }
-
-    if (this.game.tutorial) {
-      this.game.tutorial.fireEvent(TUTORIAL_EVENTS.MOA_KILLED, { moa, eagle });
     }
     
     this.stats.deaths++;
@@ -746,7 +738,7 @@ class Simulation {
   // MAIN UPDATE LOOP
   // ============================================
   
-  update(mauri, dt = 1) {
+  update(dt = 1) {
     this.updateSpatialGrids();
     this.updatePlantsBatched(dt);
     
@@ -758,10 +750,10 @@ class Simulation {
       this.updatePlaceables(dt);
     }
     
-    this.updateEggs(mauri, dt);
+    this.updateEggs(dt);
     
     const aliveBeforeUpdate = this.getMoaPopulation();
-    this.updateMoas(mauri, dt);
+    this.updateMoas(dt);
     
     this._invalidateCache();
     const aliveAfterUpdate = this.getMoaPopulation();
@@ -771,10 +763,10 @@ class Simulation {
       this.stats.deaths += newDeaths;
     }
     
-    this.updateEagles(mauri, dt);
+    this.updateEagles(dt);
     
     // Update other entity types
-    this._updateOtherEntities(mauri, dt);
+    this._updateOtherEntities(dt);
     
     this._updateSpeciesStability(dt);
 
@@ -799,7 +791,7 @@ class Simulation {
     }
   }
 
-  _updateOtherEntities(mauri, dt) {
+  _updateOtherEntities(dt) {
     for (const [type, list] of Object.entries(this.otherEntities)) {
       for (let i = 0; i < list.length; i++) {
         const entity = list[i];
@@ -807,7 +799,7 @@ class Simulation {
         
         // Each entity type must implement behave() and update()
         // just like moa and eagle do
-        if (entity.behave) entity.behave(this, mauri, this.seasonManager, dt);
+        if (entity.behave) entity.behave(this, this.seasonManager, dt);
         if (entity.update) entity.update(dt);
         this.constrainToBounds(entity.pos);
       }
@@ -898,7 +890,7 @@ class Simulation {
     }
   }
 
-  updateEggs(mauri, dt = 1) {
+  updateEggs(dt = 1) {
     const eggs = this.eggs;
     if (eggs.length === 0) return;
     
@@ -964,16 +956,6 @@ class Simulation {
             }
             this._invalidateCache();
             // Diminishing hatch reward: based on the parent species' population
-            // (excluding the new hatchling) — 0.5x above 10, nothing above 15.
-            const _parentPop = this.getSpeciesCount(newMoa.speciesKey) - 1;
-            const _hatchReward = _parentPop > 15 ? 0
-                               : _parentPop > 10 ? mauri.onEggHatch * 0.5
-                               : mauri.onEggHatch;
-            if (_hatchReward > 0) mauri.earn(_hatchReward, egg.pos.x, egg.pos.y, 'hatch');
-
-            if (this.game.tutorial) {
-              this.game.tutorial.fireEvent(TUTORIAL_EVENTS.EGG_HATCHED, { egg, moa: newMoa });
-            }
             
             const speciesName = newMoa.species?.displayName || 'moa';
             this.game.addNotification(`A ${speciesName} has hatched!`, 'success');
@@ -989,26 +971,26 @@ class Simulation {
     eggs.length = writeIdx;
   }
 
-  updateMoas(mauri, dt = 1) {
+  updateMoas(dt = 1) {
     const moas = this.moas;
     const seasonManager = this.seasonManager;
     
     for (let i = 0, len = moas.length; i < len; i++) {
       const moa = moas[i];
       if (moa.alive) {
-        moa.behave(this, mauri, seasonManager, dt);
+        moa.behave(this, seasonManager, dt);
         moa.update(dt);
         this.constrainToBounds(moa.pos);
       }
     }
   }
 
-  updateEagles(mauri, dt = 1) {
+  updateEagles(dt = 1) {
     const eagles = this.eagles;
     for (let i = 0, len = eagles.length; i < len; i++) {
       const eagle = eagles[i];
       if (!eagle.alive) continue;   // starved emergent birds await cleanup()
-      eagle.behave(this, mauri, dt);
+      eagle.behave(this, dt);
       eagle.update(dt);
       this.constrainToBounds(eagle.pos);
     }
@@ -1095,9 +1077,6 @@ class Simulation {
   }
 
   onEagleStartHunt(eagle, target) {
-    if (this.game.tutorial) {
-      this.game.tutorial.fireEvent(TUTORIAL_EVENTS.EAGLE_HUNTING, { eagle, target });
-    }
   }
   
   onSeasonChange() {

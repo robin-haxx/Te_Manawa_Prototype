@@ -354,6 +354,12 @@ nothing did here for sixty million years.**
 
 ## 9. `[BUILD]` Flora shortlist — lowland forest group
 
+> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V2.md` §2.
+> Tawa, tōtara, kahikatea, mamaku, nīkau, kōwhai, mānuka and tī kōuka are built;
+> **rimu, kawakawa and rewarewa are cut** (§2.3 gives the reasons, all of which are
+> about the bird's-eye read rather than the ecology); bracken is ground palette; mātai
+> and tutu are not built. This shortlist remains the reference for composition.
+
 Ten new assets; four shared from the coast and wetland groups. Kahikatea and pukatea
 are already built (Dive 2) and belong on the wet end of this gradient too.
 

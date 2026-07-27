@@ -348,6 +348,12 @@ as the sim cools, and stabilise and green over as it warms. **Direction never ch
 
 ## 11. `[BUILD]` Flora shortlist — coast group
 
+> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V2.md` §2 — ten
+> drawn species plus seven ground-palette entries. From a bird's-eye view most of the
+> plants below are **colour, not sprites**: spinifex and pīngao are washes, not
+> entities. This shortlist remains the reference for what those colours should be, and
+> for what the coast is actually made of.
+
 Target 2–4 per habitat, chosen for **silhouette contrast at screen scale** as much as
 for ecological correctness. Ten distinct assets for the whole coastal group, three of
 them shared with other habitats.

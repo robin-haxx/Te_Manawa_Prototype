@@ -135,7 +135,7 @@ const EntitySprites = {
   moa: {
     walk: [],
     idle: null,
-    juvenile: null
+    juvenileWalk: []
   },
   // Dedicated per-species sprite sets. A species whose registry config sets
   // e.g. `spriteSet: 'bush'` renders from here instead of the generic moa art.
@@ -187,11 +187,16 @@ const EntitySprites = {
       () => console.warn('Could not load moa_idle.png')
     );
     
-    this.moa.juvenile = loadImage(
-      `${spritePath}moa_juvenile.png`,
-      () => console.log('Loaded moa_juvenile.png'),
-      () => {}
-    );
+    // There is no moa_juvenile.png — the art is a 4-frame walk cycle. This used
+    // to load a non-existent file with an empty failure callback, so it failed
+    // silently and juveniles rendered as adults (TEMANAWA_BUILD_V3.md §2.4).
+    for (let i = 1; i <= 4; i++) {
+      this.moa.juvenileWalk.push(loadImage(
+        `${spritePath}moa_juvenile_walk_${i}.png`,
+        () => {},
+        () => console.warn(`Could not load moa_juvenile_walk_${i}.png`)
+      ));
+    }
     
     // Bush moa (Anomalopteryx) — its own art, 5-frame walk + idle
     for (let i = 1; i <= 5; i++) {
@@ -237,6 +242,12 @@ const EntitySprites = {
 
   getMoaSprite(animTime, isMoving, isJuvenile = false, variant = null) {
     const set = (variant && this.moaVariants[variant]) || this.moa;
+
+    // Juveniles have their own walk cycle and no idle frame of their own.
+    if (isJuvenile && this.moa.juvenileWalk.length > 0) {
+      const jf = Math.floor(animTime * this.animation.moaWalkSpeed) % this.moa.juvenileWalk.length;
+      if (this.isValid(this.moa.juvenileWalk[jf])) return this.moa.juvenileWalk[jf];
+    }
 
     if (isMoving && set.walk.length > 0) {
       const frameIndex = Math.floor(animTime * this.animation.moaWalkSpeed) % set.walk.length;

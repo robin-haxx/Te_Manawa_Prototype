@@ -1,29 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Avian Age: Te Manawa</title>
+
+    <!-- TODO (TEMANAWA_BUILD_V3.md §5.3): swap to p5.min.js.
+         p5.js is 5.4 MB unminified and is the single largest item in the
+         cold-boot budget, which the watchdog pays on every hard reload. -->
     <script src="p5.js"></script>
     <script src="p5.sound.min.js"></script>
 
     <link rel="stylesheet" type="text/css" href="style.css">
-    <meta charset="utf-8" />
-    <title>Avian Age: Te Manawa</title>
   </head>
   <body>
     <main></main>
 
     <!-- ==================================================================
          Avian Age: TE MANAWA — standalone museum installation
-         A renamed fork of the Mauri engine (mauri_*.js -> TeManawa_*.js).
+         A fork of the Mauri engine, stripped to an ambient diorama.
 
-         Deliberately NOT forked: tutorial, menu_art, progress, benchmark.
-         TeManawa_sketch.js (an exact copy) still calls into those four,
-         so TeManawa_shims.js below provides inert no-op stand-ins and the
-         fork BOOTS into the scaffold scene. Phase 1 of TEMANAWA_PLAN.md
-         rebuilds the HUD, removes those call-sites, and deletes the shim.
+         PHASE 1.5 (cleanup) is in:
+           · TeManawa_shims.js and TeManawa_install.js are gone — the four
+             dropped subsystems (tutorial, menu_art, progress, benchmark)
+             no longer have call-sites, and the install layer is now
+             normal modules instead of runtime monkey-patches.
+           · The economy is gone: no mauri, no toolbar, no placement
+             costs, no goals, no phases, no win/lose, no level select.
+           · The play area is a fixed SQUARE grid (CONFIG.mapGrid),
+             letterboxed into the portrait screen.
+
+         See md/TEMANAWA_PLAN_V2.md §8 for the phase plan and
+         md/TEMANAWA_BUILD_V3.md for architecture and budgets.
          ================================================================== -->
 
-    <!-- TEMPORARY boot shims (delete in Phase 1) — must load first -->
-    <script src="TeManawa_shims.js"></script>
+    <!-- Kiosk layer: watchdog, idle/attract, soft reset, error capture.
+         Loads first so its error handlers are armed before anything else. -->
+    <script src="TeManawa_kiosk.js"></script>
 
     <!-- Ambience and effects -->
     <script src="TeManawa_audio.js"></script>
@@ -51,21 +64,23 @@
     <script src="TeManawa_plant.js"></script>
     <script src="TeManawa_placeable.js"></script>
 
-    <!-- UI -->
+    <!-- Installation HUD: deep-time timeline, four buttons, storm/ash FX.
+         Must load before TeManawa_UI.js, which reads InstallHUD.TOP_H. -->
+    <script src="TeManawa_hud.js"></script>
+
+    <!-- Debug overlay (press D) -->
+    <script src="TeManawa_debug.js"></script>
+
+    <!-- UI host: notification strip, delegates the HUD to InstallHUD -->
     <script src="TeManawa_UI.js"></script>
 
     <!-- Level system -->
     <script src="TeManawa_level_format.js"></script>
 
-    <!-- Level definition — scaffold scene for the boot check.
-         The real Manawatū scene is authored per TEMANAWA_PLAN.md. -->
+    <!-- Level definition — the Manawatū scene -->
     <script src="levels/level_temanawa_scaffold.js"></script>
 
-    <!-- Main game (owns setup()/draw()) -->
+    <!-- Main game (owns setup()/draw()) — must load last -->
     <script src="TeManawa_sketch.js"></script>
-
-    <!-- Installation layer: patches Game/GameUI into the ambient museum
-         piece (deep-time timeline + 4 buttons). MUST load after sketch. -->
-    <script src="TeManawa_install.js"></script>
   </body>
 </html>

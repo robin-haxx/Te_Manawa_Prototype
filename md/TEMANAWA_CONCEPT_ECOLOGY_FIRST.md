@@ -3,6 +3,7 @@
 **What this is:** a design derived *only* from the four ecology deep dives, written
 without reference to `TEMANAWA_PLAN.md`, then compared against it at the end. A
 counterfactual, not a replacement. §7 is the merge that probably wins.
+The actual installation will have a heavily refined scope and not follow from this document. These are speculative notes to provide an alternative angle for details.
 
 ---
 

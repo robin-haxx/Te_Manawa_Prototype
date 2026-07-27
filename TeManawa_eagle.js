@@ -130,7 +130,7 @@ class HaastsEagle extends Boid {
   // BEHAVIOR
   // ============================================
   
-  behave(simulation, mauri, dt = 1) {
+  behave(simulation, dt = 1) {
     this.animTime += dt;
     this.hunger = Math.min(this.hunger + this.hungerRate * dt, this.maxHunger);
 
@@ -215,7 +215,7 @@ class HaastsEagle extends Boid {
     }
 
     if (this.hunger > _huntThresh) {
-      this.hunt(simulation, mauri, dt);
+      this.hunt(simulation, dt);
     } else {
       this.state = 'patrol';
       this.hunting = false;
@@ -383,7 +383,7 @@ class HaastsEagle extends Boid {
   // HUNTING
   // ============================================
   
-  hunt(simulation, mauri, dt = 1) {
+  hunt(simulation, dt = 1) {
     this.maxSpeed = this.huntSpeed;
     
     const nearbyMoas = simulation.getNearbyMoas(this.pos.x, this.pos.y, this.huntRadius);
@@ -451,7 +451,7 @@ class HaastsEagle extends Boid {
       this.applyForce(this.seek(this._targetVec, 1.4));
       
       if (nearestDistSq < this.catchRadiusSq) {
-        simulation.handleEagleCatch(this, nearestMoa, mauri);
+        simulation.handleEagleCatch(this, nearestMoa);
       }
     } else {
       this.huntSearchTimer += dt;

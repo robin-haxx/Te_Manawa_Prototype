@@ -38,15 +38,19 @@ class TerrainGenerator {
     // Season manager reference
     this.seasonManager = null;
     
-    // Dimensions
-    const gameWidth = config.gameAreaWidth || config.width;
-    const gameHeight = config.gameAreaHeight || config.height;
+    // Dimensions — SQUARE play area (Phase 1.5).
+    // The installation authors its terrain on a square canvas and letterboxes it
+    // into the portrait screen via CONFIG.viewX/viewY/viewZoom, so the map grid is
+    // a fixed square and no longer derived from the window aspect. CONFIG.mapGrid
+    // is the one number that governs simulation cost — see TEMANAWA_BUILD_V3.md §5.2
+    // (hard limit: 256).
     const zoom = config.zoom || 1;
-    
-    this.mapWidth = Math.ceil(gameWidth / zoom);
-    this.mapHeight = Math.ceil(gameHeight / zoom);
-    this.worldWidth = gameWidth;
-    this.worldHeight = gameHeight;
+    const grid = config.mapGrid || 256;
+
+    this.mapWidth = grid;
+    this.mapHeight = grid;
+    this.worldWidth = grid * zoom;
+    this.worldHeight = grid * zoom;
     this.zoom = zoom;
     
     this.scale = config.pixelScale;
