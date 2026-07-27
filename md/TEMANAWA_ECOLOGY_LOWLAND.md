@@ -306,6 +306,12 @@ So even in a remnant where the trees are alive, the **seed shadow is a fraction 
 what it was**, and kererū numbers are declining. The forest may be standing and still
 not be reproducing.
 
+> **Refined in Deep Dive 5.** Moa never filled this role either — their gizzards
+> destroyed every seed larger than ~3.3 mm, so they were large-seed *destroyers*, not
+> dispersers. Kererū has **always** been the sole large-seed disperser. That makes this
+> a kererū problem rather than a moa-shaped hole, and it makes the modern decline
+> sharper, not softer. See `TEMANAWA_ECOLOGY_FAUNA.md` §3.3.
+
 ### 8.8 The floor has been replaced
 
 Esler documents the sequence: cattle enter, gaps fill with broad-leaved species, then
