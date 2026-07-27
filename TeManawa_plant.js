@@ -355,7 +355,7 @@ class Plant {
   // SPRITE STATE DETERMINATION
   // ============================================
   
-  _getSpriteState() {
+  _getSpriteState(sprites) {
     // Trees suppressed by forest contraction show as wilted
     if (this.suppressed) {
       return 'wilting';
@@ -364,16 +364,30 @@ class Plant {
     if (this.dormant) {
       return 'dormant';
     }
-    
+
     if (this.seasonalModifier < 0.5) {
       return 'wilting';
     }
-    
+
+    // Immature plants play their growth sequence, where one exists. Checked
+    // after the distress states so wilting/dormancy still reads through.
+    if (this.growth < 1.0 && sprites && sprites.growing && sprites.growing.length) {
+      return 'growing';
+    }
+
     if (this.seasonalModifier > 1.1 && this.growth > 0.7) {
       return 'thriving';
     }
-    
+
     return 'mature';
+  }
+
+  // Picks the growth frame for the current progress. growth runs 0..1, so with
+  // four frames each covers a quarter of the plant's development.
+  _getGrowingFrame(frames) {
+    const i = Math.floor(this.growth * frames.length);
+    const clamped = i < 0 ? 0 : (i >= frames.length ? frames.length - 1 : i);
+    return frames[clamped];
   }
   
   // ============================================
@@ -406,44 +420,66 @@ class Plant {
   // ============================================
   
   _renderSprite(px, py, displaySize, dormant) {
-    const spriteState = this._getSpriteState();
     const sprites = PLANT_SPRITES[this.type];
-    const sprite = sprites ? sprites[spriteState] : null;
-    
-    if (!sprite) {
+    const spriteState = this._getSpriteState(sprites);
+
+    let sprite = sprites ? sprites[spriteState] : null;
+    if (spriteState === 'growing') {
+      sprite = this._getGrowingFrame(sprites.growing);
+    }
+
+    if (!sprite || !sprite.width) {
       this._renderGenericPlant(px, py, displaySize, dormant);
       return;
     }
-    
+
+    const meta = (sprites && sprites.meta) || null;
+    const anchorBase = meta ? meta.anchor === 'base' : false;
+    const setScale = meta ? meta.scale : 1.0;
+
     // Shadow - draw directly without transform
     noStroke();
     fill(0, 0, 0, dormant ? 10 : 20);
     ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
-    
-    // Calculate sprite size for growing plants
-    let spriteSize = displaySize;
-    if (this.growth < 0.5) {
+
+    // Footprint width. Where a dedicated growth sequence exists the artwork
+    // already carries the size progression, so compounding it with `growth`
+    // shrinks saplings to a few pixels — ease over a narrower range instead.
+    let spriteSize;
+    if (spriteState === 'growing') {
+      spriteSize = this.size * (0.55 + 0.45 * this.growth) * (dormant ? 0.5 : 1);
+    } else if (this.growth < 0.5) {
       spriteSize = displaySize * (0.5 + this.growth);
+    } else {
+      spriteSize = displaySize;
     }
-    
-    const halfSize = spriteSize * 0.5;
-    
+    spriteSize *= setScale;
+
+    // Preserve the artwork's aspect ratio: width drives the footprint, height
+    // follows. Square art is unaffected (drawH === drawW, as before).
+    const drawW = spriteSize;
+    const drawH = spriteSize * (sprite.height / sprite.width);
+    const halfW = drawW * 0.5;
+
+    // 'base' art stands on the ground point; centred art straddles it.
+    const offsetY = anchorBase ? -drawH : -drawH * 0.5;
+
     // Only use push/pop if we need rotation (sway)
     if (!dormant && this.seasonalModifier > 0.1) {
       const sway = PlantStatics.getSway(frameCount, this.swayPhase, this.seasonalModifier);
       push();
       translate(px, py);
       rotate(sway);
-      image(sprite, -halfSize, -halfSize, spriteSize, spriteSize);
+      image(sprite, -halfW, offsetY, drawW, drawH);
       pop();
     } else {
       // No rotation needed - direct draw (faster)
-      image(sprite, px - halfSize, py - halfSize, spriteSize, spriteSize);
+      image(sprite, px - halfW, py + offsetY, drawW, drawH);
     }
-    
+
     // Dormant indicator
     if (dormant) {
-      this._drawDormantIndicator(px, py - displaySize * 0.5);
+      this._drawDormantIndicator(px, py + offsetY - 4);
     }
   }
   
