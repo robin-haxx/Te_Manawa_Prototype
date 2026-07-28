@@ -156,7 +156,17 @@ const CONFIG = {
   contourInterval: 0.045,
   showLabels: false,
   showDebug: false,
-  showHungerBars: true,
+  // The whole per-entity UI layer: hunger and breeding bars, heart and
+  // pregnancy indicators, low-population rings, state glyphs, egg progress.
+  // OFF by default — it is the strongest "this is a video game" signal on
+  // screen and it distracts from the diorama. Breeding is meant to be read as
+  // behaviour (two moa together, then an egg on the ground), not as a floating
+  // heart. Debug.applyVisibility() turns it on with the debug overlay.
+  //
+  // Named showEntityUI rather than showHungerBars because bars were only ever
+  // part of what it gates — the hearts, rings and glyphs were not gated at all
+  // and stayed on screen permanently.
+  showEntityUI: false,
 
   // ===== LEVEL-VARIABLE PARAMS (written by loadLevel) =====
   noiseScale: 0.005,
@@ -693,6 +703,7 @@ class Game {
 
     this.playTime = 0;
     this.timeScale = 1;
+    if (typeof DeepTime !== 'undefined') DeepTime.reset();
     SPECIES_HIGHLIGHT.clear();
     this.state = GAME_STATE.PLAYING;
     this._tempVec = createVector(0, 0);
@@ -769,6 +780,14 @@ class Game {
     this.updateCachedCounts();
     this.updateNotifications(sdt);
     if (this.ui) this.ui.update(dt);
+
+    // End of the window is not a fail state and not a pause — it is the
+    // attract loop's cue. Without this the kiosk sits frozen at Oruanui
+    // until somebody touches it, which unattended means most of the day.
+    if (typeof DeepTime !== 'undefined' && DeepTime.hasEnded() &&
+        typeof Kiosk !== 'undefined') {
+      Kiosk.resetToAttract(this, 'end-of-window');
+    }
   }
 
   updateNotifications(dt = 1) {
@@ -918,6 +937,7 @@ function setup() {
   game.loadLevel('temanawa_scaffold');
 
   if (typeof Kiosk !== 'undefined') { Kiosk.attach(game); Kiosk.install(); }
+  if (typeof Debug !== 'undefined') Debug.applyVisibility();
 }
 
 function windowResized() {

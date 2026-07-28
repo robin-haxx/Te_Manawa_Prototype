@@ -15,16 +15,19 @@
 // Time model tunables live on window.TM_TIME.
 // ============================================================
 
+// The clock lives in TeManawa_time.js (DeepTime). What is left here is the
+// timing of the transient button effects.
 const TM_TIME = {
-  yearsStart:   345000,   // the run opens just after the Whakamaru eruption
-  yearsEnd:     25000,    // ...and closes near Oruanui
-  yrPerSec:     500,      // baseline sim-years per real second (timeScale 1)
-  deepMult:     10,       // Deep-time button multiplier
-  deepSeconds:  10,       // ...held for this many real seconds (10x10s = 50 ky)
-  stormSeconds: 20,
-  growthSeconds: 8,
-  ashMillis:    1600,     // ramped ash flash — seizure-safe, see below
-  fps:          60
+  stormSeconds:  20,
+  growthSeconds:  8,
+  ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
+  // read-through to DeepTime so older references keep working
+  get yearsStart() { return DeepTime.yearsStart; },
+  get yearsEnd()   { return DeepTime.yearsEnd; },
+  get yrPerSec()   { return DeepTime.yrPerSec; },
+  get deepMult()   { return DeepTime.deepMult; },
+  get deepSeconds(){ return DeepTime.deepSeconds; },
+  get fps()        { return DeepTime.fps; }
 };
 window.TM_TIME = TM_TIME;
 
@@ -34,23 +37,14 @@ const InstallHUD = {
   STORM_CLOUDS: 14,
 
   // ---- time ------------------------------------------------
-  yearsBP(g) {
-    const secs = (g.playTime || 0) / TM_TIME.fps;
-    return Math.max(
-      TM_TIME.yearsEnd,
-      Math.min(TM_TIME.yearsStart, TM_TIME.yearsStart - secs * TM_TIME.yrPerSec)
-    );
-  },
-
-  yearToX(yr, x0, w) {
-    return x0 + ((TM_TIME.yearsStart - yr) / (TM_TIME.yearsStart - TM_TIME.yearsEnd)) * w;
-  },
+  yearsBP(g)          { return DeepTime.yearsBP; },
+  yearToX(yr, x0, w)  { return DeepTime.yearToX(yr, x0, w); },
 
   // ---- buttons ---------------------------------------------
   BUTTONS: [
     { id: 'deep',   key: '1', label: '50,000 YEARS',
-      action: (g) => { g._tmDeepUntil   = millis() + TM_TIME.deepSeconds   * 1000; },
-      isActive: (g) => g._tmDeepUntil   && millis() < g._tmDeepUntil },
+      action: () => DeepTime.pressDeep(),
+      isActive: () => DeepTime.isDeep() },
     { id: 'growth', key: '2', label: 'GROWTH',
       action: (g) => { g._tmGrowthUntil = millis() + TM_TIME.growthSeconds * 1000; },
       isActive: (g) => g._tmGrowthUntil && millis() < g._tmGrowthUntil },
@@ -96,9 +90,9 @@ const InstallHUD = {
   // PER-FRAME UPDATE — called from Game.update()
   // ==========================================================
   update(g, dt) {
-    // Deep-time fast-forward.
-    const deep = g._tmDeepUntil && millis() < g._tmDeepUntil;
-    g.timeScale = deep ? TM_TIME.deepMult : 1;
+    // DeepTime owns the clock and the eased multiplier; advance it and take
+    // back the scale the rest of the frame should run at.
+    g.timeScale = DeepTime.update(dt);
 
     // Growth pulse: nudge living plants toward full while active.
     // Phase 6 repoints this at a per-cell growthPulse weighted by `wet`, so it
@@ -256,39 +250,75 @@ const InstallHUD = {
     }
     pop();
   },
-
+  // ==========================================================
+  // TIMELINE — visitor-facing, deliberately sparse
+  // ----------------------------------------------------------
+  // A visitor gets forty seconds. They need three things: what year it is,
+  // where that sits in the span, and the two events that bookend the run.
+  // Nothing else.
+  //
+  // The climate wave, the cold shading, the stage/MIS readout and the
+  // glacial markers were all here and have moved to the debug overlay
+  // (Debug.renderClimateStrip). They are instrumentation, not
+  // interpretation — a visitor cannot read a temperature curve at arm's
+  // length in forty seconds, and while it was on screen it was the busiest
+  // thing in the frame.
+  //
+  // What the climate DOES is still fully visible; it is meant to be read off
+  // the land and the cast — tree ferns vanishing, tussock spreading, the moa
+  // changing — not off a graph. That is finding #2 and finding #3, and a
+  // chart on the wall undercuts both.
+  //
+  // The uplift wedge stays: uplift is the takeaway (the river is older than
+  // the mountains) and it is monotonic, so it needs no reading.
+  // ==========================================================
   renderTimeline(ui, g, W, H) {
-    const yr = this.yearsBP(g);
+    const yr = DeepTime.yearsBP;
+    const x0 = 48, w = W - 96;
+    const ay = this.TOP_H - 30;
     push();
     noStroke(); fill(14, 21, 19, 205); rect(0, 0, W, this.TOP_H);
-
+    // ---- the year ------------------------------------------
     fill(232, 240, 236); textAlign(CENTER, TOP);
-    push(); textFont(GroceryRounded); textSize(24);
-    text('~ ' + (Math.round(yr / 1000) * 1000).toLocaleString() + ' years ago', W / 2, 8); pop();
-
-    const x0 = 48, w = W - 96, ay = this.TOP_H - 22;
-    stroke(120, 140, 130); strokeWeight(2); line(x0, ay, x0 + w, ay);
-
-    const marks = [
-      { yr: 345000, t: 'Whakamaru' },
-      { yr: 125000, t: 'MIS 5e' },
-      { yr: 25000,  t: 'Oruanui' }
-    ];
-    textAlign(CENTER, BOTTOM); textSize(11);
-    for (const m of marks) {
-      const mx = this.yearToX(m.yr, x0, w);
-      stroke(120, 140, 130); strokeWeight(2); line(mx, ay - 5, mx, ay + 5);
-      noStroke(); fill(150, 170, 160);
-      push(); textFont(OpenDyslexic); text(m.t, mx, ay - 7); pop();
+    push(); textFont(GroceryRounded); textSize(26);
+    text(DeepTime.label(), W / 2, 10); pop();
+    // ---- axis ----------------------------------------------
+    stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    // ---- uplift: monotonic, no reading required ------------
+    const upY = ay + 7, upH = 6;
+    noStroke(); fill(74, 66, 52, 160); rect(x0, upY, w, upH, 3);
+    const upNow = DeepTime.yearToX(yr, x0, w);
+    fill(168, 140, 96, 235);
+    beginShape();
+    vertex(x0, upY + upH);
+    vertex(upNow, upY + upH);
+    vertex(upNow, upY + upH - upH * DeepTime.progress());
+    endShape(CLOSE);
+    // ---- the two eruptions ---------------------------------
+    // The run opens and closes on the same kind of event. Glacial markers are
+    // climate instrumentation and live in the debug overlay now — and LGM at
+    // 30 ka sat ~13 px from Oruanui at 25.5 ka, so they overlapped permanently.
+    textSize(11);
+    for (const m of DEEP_TIME_MARKERS) {
+      if (m.kind !== 'eruption') continue;
+      const mx = DeepTime.yearToX(m.yearsBP, x0, w);
+      stroke(224, 138, 92, 210); strokeWeight(2);
+      line(mx, ay - 5, mx, ay + 5);
+      noStroke(); fill(224, 138, 92, 225);
+      // Anchor the end labels inward so they don't clip off the strip.
+      const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
+      textAlign(atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM);
+      push(); textFont(OpenDyslexic); text(m.label, mx, ay - 8); pop();
     }
-
-    const px = this.yearToX(yr, x0, w);
-    stroke(255, 210, 120); strokeWeight(2); line(px, 30, px, ay + 8);
-    noStroke(); fill(255, 210, 120); circle(px, ay, 12);
-
-    if (g._tmDeepUntil && millis() < g._tmDeepUntil) {
-      noStroke(); fill(255, 210, 120); textAlign(RIGHT, TOP); textSize(16);
-      push(); textFont(GroceryRounded); text('>> x' + TM_TIME.deepMult, W - 16, 12); pop();
+    // ---- playhead ------------------------------------------
+    const px = DeepTime.yearToX(yr, x0, w);
+    stroke(255, 210, 120, 130); strokeWeight(1); line(px, ay - 14, px, upY + upH + 2);
+    noStroke(); fill(255, 210, 120); circle(px, ay, 9);
+    // ---- fast-forward --------------------------------------
+    if (DeepTime.isDeep()) {
+      noStroke(); fill(255, 210, 120); textAlign(RIGHT, TOP); textSize(15);
+      push(); textFont(GroceryRounded);
+      text('>> x' + DeepTime.timeScale.toFixed(1), x0 + w, 12); pop();
     }
     pop();
   },

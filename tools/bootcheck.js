@@ -34,7 +34,7 @@ const ctx={console:{log(){},warn(){},error(...a){_errors.push('console.error: '+
 ctx.window=ctx; ctx.globalThis=ctx;
 ctx.window.addEventListener=()=>{};
 // p5 surface
-let _t=0;
+let _t=0; const FRAME=(f)=>{_t+=16; f();};
 Object.assign(ctx,{
   createCanvas:()=>({style(){},elt:{}}), resizeCanvas(){}, pixelDensity:()=>1, frameRate(){},
   loadImage:img, loadFont:()=>({}), loadSound:()=>({isLoaded:()=>false,play(){},stop(){},setVolume(){},loop(){}}),
@@ -52,7 +52,7 @@ Object.assign(ctx,{
   noise:()=>Math.random(), noiseSeed(){}, randomSeed(){},
   map:(v,a,b,c,d)=>c+(d-c)*((v-a)/((b-a)||1)),
   constrain:(v,a,b)=>Math.min(b,Math.max(a,v)), lerp:(a,b,t)=>a+(b-a)*t,
-  dist:(x1,y1,x2,y2)=>Math.hypot(x2-x1,y2-y1), millis:()=>(_t+=16),
+  dist:(x1,y1,x2,y2)=>Math.hypot(x2-x1,y2-y1), millis:()=>_t,
   color:(...a)=>({levels:a,toString:()=>'c'}), red:()=>0,green:()=>0,blue:()=>0,alpha:()=>255,
   textWidth:()=>10, windowWidth:1080, windowHeight:1920, mouseX:0, mouseY:0, key:'', keyCode:0,
   frameCount:0, deltaTime:16, drawingContext:{save(){},restore(){},beginPath(){},rect(){},clip(){},
@@ -79,6 +79,7 @@ Object.assign(ctx,{
   saveTable(){},save(){},createWriter:()=>({write(){},close(){}}),
 });
 for(const k of DRAW) if(!ctx[k]) ctx[k]=()=>{};
+ctx.__tick=(n=1)=>{_t+=16*n;};
 vm.createContext(ctx);
 
 for(const f of files){
@@ -91,23 +92,90 @@ catch(e){ console.log('PRELOAD FAIL:', e.message,'\n',e.stack.split('\n')[1]); p
 try{ ctx.setup(); console.log('setup() ok'); }
 catch(e){ console.log('SETUP FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 let frames=0;
-try{ for(;frames<120;frames++) ctx.draw(); }
+try{ for(;frames<120;frames++) FRAME(ctx.draw); }
 catch(e){ console.log(`DRAW FAIL at frame ${frames}:`, e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 console.log('draw() x'+frames+' ok');
 // exercise the buttons and the debug overlay
 try{
   for(const k of ['1','2','3','d','d','4']) vm.runInContext('game',ctx).handleKey(k);
-  for(let i=0;i<30;i++) ctx.draw();
+  for(let i=0;i<30;i++) FRAME(ctx.draw);
   console.log('buttons 1-4 + debug modes ok');
 }catch(e){ console.log('INPUT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 try{
   const K=vm.runInContext('Kiosk',ctx);
-  const t=[]; for(let n=0;n<6;n++){ const a=Date.now(); K.resetToAttract(K.game,'test'); t.push(Date.now()-a); for(let i=0;i<5;i++) ctx.draw(); }
+  const t=[]; for(let n=0;n<6;n++){ const a=Date.now(); K.resetToAttract(K.game,'test'); t.push(Date.now()-a); for(let i=0;i<5;i++) FRAME(ctx.draw); }
   console.log('soft resets (ms, harness):', t.join(', '));
   const a=Date.now(); K.game.init(); const full=Date.now()-a;
   console.log('full init() for comparison:', full+'ms  -> soft is ~'+(full/Math.max(1,t[t.length-1])).toFixed(0)+'x cheaper');
 }catch(e){ console.log('RESET FAIL:', e.message, e.stack.split('\n')[1]); process.exit(1); }
 const g=vm.runInContext('game',ctx);
+// ---- visitor-facing render must be clean -----------------------------
+{
+  const D=vm.runInContext('Debug',ctx), C=vm.runInContext('CONFIG',ctx);
+  const G=vm.runInContext('game',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  D.mode='off'; D.applyVisibility();
+  chk(C.showEntityUI===false,'entity UI (bars/hearts/rings/glyphs) must be OFF for visitors');
+  chk(D.enabled===false,'Debug.enabled must be false when mode is off');
+  G.addNotification('test message','info');
+  chk(G.ui.messages.length>0,'notifications should still be QUEUED (useful in debug)');
+  FRAME(ctx.draw);   // must not throw with debug off
+
+  D.mode='full'; D.applyVisibility();
+  chk(C.showEntityUI===true,'entity UI must come back ON with the debug overlay');
+  FRAME(ctx.draw);   // exercises the climate strip + all six panels
+  D.mode='off'; D.applyVisibility(); FRAME(ctx.draw);
+
+  console.log(fail? `visitor render: ${fail} FAILURES` : 'visitor render: clean (no entity UI, no messages, no climate chart)');
+}
+
+// ---- Phase 2: deep-time model ----------------------------------------
+{
+  const DT=vm.runInContext('DeepTime',ctx), CL=vm.runInContext('Climate',ctx);
+  const G=vm.runInContext('game',ctx);
+  let fail=0;
+  const chk=(cond,msg)=>{ if(!cond){ console.log('  FAIL',msg); fail++; } };
+
+  // real-record checks: the curve must put these where they actually happened
+  chk(CL.at(122000).glacialIndex<0.35,'MIS 5e (122ka) should be interglacial');
+  chk(CL.at(21000).glacialIndex>0.85, 'LGM (21ka) should be full glacial');
+  chk(CL.at(140000).glacialIndex>0.85,'MIS 6 (140ka) should be full glacial');
+  chk(CL.at(335000).glacialIndex<0.35,'MIS 9e (335ka) should be interglacial');
+  chk(CL.at(270000).glacialIndex>0.75,'MIS 8 (270ka) should be glacial');
+
+  // clock runs the right direction at the right rate
+  DT.reset();
+  const y0=DT.yearsBP; for(let i=0;i<60;i++){ ctx.__tick(); DT.update(1); }
+  const perSec=y0-DT.yearsBP;
+  chk(perSec>450&&perSec<550,`baseline should be ~500 yr/sec, got ${perSec.toFixed(0)}`);
+
+  // deep-time ramp: eased, never exceeds deepMult, returns to 1
+  DT.reset(); DT.pressDeep();
+  let peak=0, samples=[];
+  for(let i=0;i<Math.ceil(DT.deepSeconds*60);i++){ ctx.__tick(); const sc=DT.update(1); peak=Math.max(peak,sc); if(i<6) samples.push(sc.toFixed(1)); }
+  chk(peak<=DT.deepMult+0.01,`ramp must not exceed x${DT.deepMult}, peaked ${peak.toFixed(2)}`);
+  chk(peak>DT.deepMult*0.95,`ramp should reach ~x${DT.deepMult}, peaked ${peak.toFixed(2)}`);
+  ctx.__tick(120); chk(DT.update(1)===1,'scale must return to 1 after the window closes');
+  chk(Number(samples[1])<DT.deepMult*0.6,'ramp must ease in, not step (early samples '+samples.slice(0,4).join('/')+')');
+
+  // ~50 ky per press
+  DT.reset(); const b=DT.yearsBP; DT.pressDeep();
+  for(let i=0;i<DT.deepSeconds*60;i++){ ctx.__tick(); DT.update(1); }
+  const covered=b-DT.yearsBP;
+  chk(covered>38000&&covered<52000,`one press should cover ~50 ky, got ${Math.round(covered)}`);
+
+  // end of window hands off rather than stalling
+  DT.reset(); DT.yearsBP=DT.yearsEnd+1; DT.update(1);
+  chk(DT.hasEnded(),'hasEnded() must fire at the end of the window');
+  const before=vm.runInContext('Kiosk',ctx).resetCount;
+  DT.yearsBP=DT.yearsEnd+1; G.update(1);
+  chk(vm.runInContext('Kiosk',ctx).resetCount>before,'end of window must trigger the attract reset');
+
+  console.log(fail? `deep time: ${fail} FAILURES` : 'deep time: all checks pass'
+    + ` (window ${(DT.windowSeconds()/60).toFixed(1)} min, press covers ${Math.round(covered/1000)} ky)`);
+}
+
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);
 console.log('--- state ---');
 console.log('  Kiosk.game attached', !!K.game, ' resets', K.resetCount);
@@ -116,6 +184,8 @@ console.log('  debug fauna  ', JSON.stringify(snap.fauna.bySpecies));
 console.log('  debug flora  ', JSON.stringify(snap.flora.byType));
 console.log('  debug terrain', snap.terrain.grid, 'biomes', Object.keys(snap.terrain.biomeArea).length);
 console.log('  debug time   ', Math.round(snap.time.yearsBP), 'BP  season', snap.time.season);
+console.log('  debug climate', snap.climate.stage, 'g='+snap.climate.glacialIndex.toFixed(2),
+            snap.climate.mis, 'sea', snap.climate.seaLevel.toFixed(0)+'m');
 console.log('  grid      ', g.terrain.mapWidth+'x'+g.terrain.mapHeight);
 console.log('  moa/eagle ', g.simulation.moas.length+'/'+g.simulation.eagles.length);
 console.log('  plants    ', g.simulation.plants.length);

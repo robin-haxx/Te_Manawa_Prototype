@@ -726,6 +726,8 @@ class HaastsEagle extends Boid {
       pop();
     }
     
+    if (!CONFIG.showEntityUI) return;
+
     if (this.state === 'distracted') {
       fill(255, 200, 100);
       noStroke();
@@ -740,7 +742,7 @@ class HaastsEagle extends Boid {
       text("→", this.pos.x, this.pos.y - this.wingspan - 2);
     }
     
-    if (CONFIG.showHungerBars) this.renderHungerBar();
+    this.renderHungerBar();
   }
   
   renderHungerBar() {

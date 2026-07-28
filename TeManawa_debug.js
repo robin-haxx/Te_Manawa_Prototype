@@ -26,6 +26,32 @@ const Debug = {
 
   get enabled() { return this.mode !== 'off'; },
 
+  // ==========================================================
+  // WHAT DEBUG MODE OWNS ON SCREEN
+  // ----------------------------------------------------------
+  // Three things used to be visible to visitors and are now debug-only,
+  // because each was instrumentation wearing the costume of interpretation:
+  //
+  //   · the climate wave      a temperature graph. Nobody reads a curve at
+  //                           arm's length in forty seconds, and it was the
+  //                           busiest object in the frame. The climate is
+  //                           supposed to be read off the LAND and the CAST
+  //                           (findings #2 and #3) — a chart undercuts both
+  //   · notification messages "A moa has hatched!" — engine chatter from the
+  //                           game this used to be. An ambient diorama does
+  //                           not narrate itself
+  //   · the entity UI layer   hunger and breeding bars, hearts, pregnancy
+  //                           dots, low-population rings, state glyphs. The
+  //                           single strongest "this is a video game" signal
+  //                           on screen, and most of it was never gated
+  //
+  // applyVisibility() is called whenever the mode changes and drives the
+  // engine flags the renderers already check.
+  // ==========================================================
+  applyVisibility() {
+    if (typeof CONFIG !== 'undefined') CONFIG.showEntityUI = this.enabled;
+  },
+
   // Hard limits from TEMANAWA_BUILD_V3.md §5.2
   CAPS: {
     livePlants: 1000,
@@ -56,6 +82,7 @@ const Debug = {
     if (k === 'D') { this.dump(); return true; }   // shift+d
     const i = this.MODES.indexOf(this.mode);
     this.mode = this.MODES[(i + 1) % this.MODES.length];
+    this.applyVisibility();
     console.log('[Debug] mode:', this.mode);
     return true;
   },
@@ -77,23 +104,32 @@ const Debug = {
 
     const sim = g.simulation, sm = g.seasonManager, t = g.terrain;
     const s = {
-      time: {}, fauna: {}, flora: {}, terrain: {}, perf: {}, kiosk: {}
+      time: {}, climate: {}, fauna: {}, flora: {}, terrain: {}, perf: {}, kiosk: {}
     };
 
-    // ---- TIME ----------------------------------------------
-    const yr = (typeof InstallHUD !== 'undefined') ? InstallHUD.yearsBP(g) : 0;
-    const span = TM_TIME.yearsStart - TM_TIME.yearsEnd;
+    // ---- TIME + CLIMATE ------------------------------------
+    const yr = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
+    const cl = (typeof Climate !== 'undefined') ? Climate.at(yr) : {};
     s.time = {
       yearsBP: yr,
-      progress: (TM_TIME.yearsStart - yr) / span,
+      progress: DeepTime.progress(),
       playTime: g.playTime,
       timeScale: g.timeScale || 1,
-      yrPerSec: (g.timeScale || 1) * TM_TIME.yrPerSec,
+      yrPerSec: (g.timeScale || 1) * DeepTime.yrPerSec,
+      deep: DeepTime.isDeep(),
+      windowSecs: DeepTime.windowSeconds(),
       season: sm ? (sm.currentKey || '?') : '?',
-      snowLine: sm && sm.getSnowLineElevation ? sm.getSnowLineElevation() : null,
+      snowLineSeason: sm && sm.getSnowLineElevation ? sm.getSnowLineElevation() : null,
       winterness: sm && sm.getWinterness ? sm.getWinterness() : 0,
-      forestBand: sm && sm.getForestBand ? sm.getForestBand() : null,
       hungerMod: sm && sm.getHungerModifier ? sm.getHungerModifier() : 1
+    };
+    s.climate = {
+      glacialIndex: cl.glacialIndex,
+      stage: cl.stageName,
+      mis: cl.mis,
+      seaLevel: cl.seaLevel,
+      snowLine: cl.snowLine,
+      tempBias: cl.tempBias
     };
 
     // ---- FAUNA ---------------------------------------------
@@ -250,11 +286,74 @@ const Debug = {
   render(g, W, H) {
     if (!g || !g.simulation) return;
     const s = this.stats(g);
+    this.renderClimateStrip(W);
     push();
     textFont('monospace');
     textAlign(LEFT, TOP);
     if (this.mode === 'compact') this._renderCompact(s, W, H);
     else this._renderFull(s, W, H);
+    pop();
+  },
+
+  // ---- the climate wave, formerly on the visitor timeline ----
+  // Drawn as a thin band just under the HUD strip so it lines up with the
+  // timeline's x-axis and can be read against the playhead.
+  // The curve is fixed for the life of the page, so it is sampled once.
+  _wave: null,
+
+  _waveCache(x0, w) {
+    if (this._wave && this._wave.x0 === x0 && this._wave.w === w) return this._wave;
+    const n = Math.max(64, Math.min(320, Math.round(w / 3)));
+    this._wave = { x0, w, pts: Climate.sample(DeepTime.yearsStart, DeepTime.yearsEnd, n) };
+    return this._wave;
+  },
+
+  renderClimateStrip(W) {
+    const x0 = 48, w = W - 96;
+    const top = InstallHUD.TOP_H + 4, h = 34;
+    const wave = this._waveCache(x0, w);
+    const yOf = (gi) => top + h - gi * h;
+    const c = DeepTime.climate();
+
+    push();
+    noStroke(); fill(8, 14, 12, 210); rect(x0 - 8, top - 6, w + 16, h + 22, 5);
+
+    // cold shading under the curve
+    for (let i = 0; i < wave.pts.length - 1; i++) {
+      const p = wave.pts[i];
+      if (p.g < 0.5) continue;
+      const a = (p.g - 0.5) * 2;
+      const px1 = DeepTime.yearToX(p.yearsBP, x0, w);
+      const px2 = DeepTime.yearToX(wave.pts[i + 1].yearsBP, x0, w);
+      fill(120, 165, 210, 60 * a);
+      rect(px1, yOf(p.g), Math.max(1, px2 - px1), top + h - yOf(p.g));
+    }
+
+    noFill(); stroke(150, 185, 205, 220); strokeWeight(1.5);
+    beginShape();
+    for (const p of wave.pts) vertex(DeepTime.yearToX(p.yearsBP, x0, w), yOf(p.g));
+    endShape();
+
+    // glacial markers — climate instrumentation, so they live here now
+    textFont('monospace'); textSize(9); textAlign(CENTER, TOP);
+    for (const m of DEEP_TIME_MARKERS) {
+      if (m.kind === 'eruption') continue;
+      const mx = DeepTime.yearToX(m.yearsBP, x0, w);
+      stroke(130, 175, 215, 150); strokeWeight(1); line(mx, top, mx, top + h);
+      noStroke(); fill(130, 175, 215, 190); text(m.label, mx, top + h + 2);
+    }
+
+    // playhead riding the curve, plus the stage readout
+    const px = DeepTime.yearToX(DeepTime.yearsBP, x0, w);
+    stroke(255, 210, 120, 150); strokeWeight(1); line(px, top, px, top + h);
+    noStroke(); fill(255, 210, 120); circle(px, yOf(c.glacialIndex), 5);
+
+    const col = this._climateColour(c.glacialIndex);
+    fill(col[0], col[1], col[2]); textAlign(LEFT, TOP); textSize(10);
+    text(c.stageName + (c.mis ? '  ' + c.mis : '') + '   g=' + c.glacialIndex.toFixed(2),
+         x0, top + h + 2);
+    fill(110, 135, 125); textAlign(RIGHT, TOP);
+    text('sea ' + c.seaLevel.toFixed(0) + 'm', x0 + w, top + h + 2);
     pop();
   },
 
@@ -267,7 +366,7 @@ const Debug = {
   },
 
   _renderCompact(s, W, H) {
-    const w = 300, h = 132, x = 12, y = InstallHUD.TOP_H + 12;
+    const w = 300, h = 146, x = 12, y = InstallHUD.TOP_H + 68;  // under the climate strip
     this._panel(x, y, w, h);
     let ty = y + 8;
     const line = (label, val, col) => {
@@ -279,7 +378,9 @@ const Debug = {
     fill(255, 210, 120); textSize(11);
     text('DEBUG — compact   [D] more', x + 10, ty); ty += 18;
     line('yearsBP', Math.round(s.time.yearsBP).toLocaleString());
-    line('season / scale', `${s.time.season}  x${s.time.timeScale}`);
+    line('climate', `${s.climate.stage}  ${s.climate.glacialIndex.toFixed(2)}`,
+         this._climateColour(s.climate.glacialIndex));
+    line('season / scale', `${s.time.season}  x${s.time.timeScale.toFixed(1)}`);
     line('moa / eagles', `${s.fauna.moa} / ${s.fauna.eagles}`);
     line('plants alive', `${s.flora.alive}`, this._capColour(s.flora.alive, this.CAPS.livePlants));
     line('fps / frame', `${s.perf.fps.toFixed(0)} / ${s.perf.totalMs.toFixed(1)}ms`,
@@ -289,18 +390,28 @@ const Debug = {
   _renderFull(s, W, H) {
     const colW = Math.min(330, (W - 48) / 2);
     const x1 = 12, x2 = W - colW - 12;
-    const top = InstallHUD.TOP_H + 12;
+    const top = InstallHUD.TOP_H + 68;   // under the climate strip
 
-    this._section(x1, top, colW, 'TIME', [
+    const y1 = this._section(x1, top, colW, 'TIME', [
       ['yearsBP',      Math.round(s.time.yearsBP).toLocaleString()],
       ['progress',     (s.time.progress * 100).toFixed(1) + '%'],
-      ['playTime',     s.time.playTime.toFixed(0) + 'f'],
-      ['timeScale',    'x' + s.time.timeScale],
+      ['timeScale',    'x' + s.time.timeScale.toFixed(2),
+                       s.time.deep ? [255, 210, 120] : null],
       ['sim yr/sec',   Math.round(s.time.yrPerSec).toLocaleString()],
+      ['window',       (s.time.windowSecs / 60).toFixed(1) + ' min'],
       ['season',       s.time.season],
       ['winterness',   s.time.winterness.toFixed(2)],
-      ['snowLine',     s.time.snowLine == null ? '-' : s.time.snowLine.toFixed(3)],
       ['hungerMod',    s.time.hungerMod.toFixed(2)]
+    ]);
+
+    this._section(x1, y1 + 10, colW, 'CLIMATE', [
+      ['glacialIndex', s.climate.glacialIndex.toFixed(3),
+                       this._climateColour(s.climate.glacialIndex)],
+      ['stage',        s.climate.stage, this._climateColour(s.climate.glacialIndex)],
+      ['MIS',          s.climate.mis || '-'],
+      ['sea level',    s.climate.seaLevel.toFixed(0) + ' m'],
+      ['snow line',    s.climate.snowLine.toFixed(3)],
+      ['temp bias',    s.climate.tempBias.toFixed(1) + ' C']
     ]);
 
     const faunaRows = [
@@ -319,7 +430,7 @@ const Debug = {
       const r = s.fauna.bySpecies[k];
       faunaRows.push(['· ' + this._short(k), `${r.n}  j${r.juv} f${r.f}  h${r.hunger.toFixed(0)}`]);
     }
-    const y2 = this._section(x1, top + 158, colW, 'FAUNA', faunaRows);
+    const y2 = this._section(x1, top + 262, colW, 'FAUNA', faunaRows);
 
     const floraRows = [
       ['alive / total',  `${s.flora.alive} / ${s.flora.total}`],
@@ -407,6 +518,15 @@ const Debug = {
     if (r > 1)   return [255, 110, 100];
     if (r > 0.7) return [255, 200, 110];
     return [150, 230, 170];
+  },
+
+  // warm -> cold. Lightness carries it as well as hue, so it survives
+  // colourblindness — same rule the timeline uses.
+  _climateColour(gi) {
+    if (gi < 0.25) return [170, 215, 160];
+    if (gi < 0.50) return [215, 215, 165];
+    if (gi < 0.75) return [155, 195, 225];
+    return [125, 180, 240];
   },
 
   _short(k) {

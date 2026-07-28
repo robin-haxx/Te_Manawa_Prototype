@@ -27,7 +27,8 @@ class GameUI {
     this.seasonManager = seasonManager;
 
     // Ecological events narrated by the simulation ("A Pouākai eaglet
-    // hatches"). Ambient colour, never a fail state.
+    // hatches"). Kept because they are useful while tuning, but only drawn
+    // in debug mode — see renderFullscreenOverlay.
     this.messages = [];
     this.maxMessages = 4;
     this.messageLife = 300;       // frames
@@ -68,7 +69,10 @@ class GameUI {
     InstallHUD.renderWorldLayer(g, W, H);   // storm cells — under the strips
     InstallHUD.renderTimeline(this, g, W, H);
     InstallHUD.renderButtons(this, g, W, H);
-    this.renderMessages(W, H);
+    // Notifications are debug-only. "A moa has hatched!" is engine chatter
+    // from the game this used to be; an ambient diorama does not narrate
+    // itself, and the strip sat directly over the play area.
+    if (typeof Debug !== 'undefined' && Debug.enabled) this.renderMessages(W, H);
     InstallHUD.renderAshFlash(g, W, H);     // over everything
 
     if (typeof Debug !== 'undefined' && Debug.enabled) Debug.render(g, W, H);
@@ -76,7 +80,8 @@ class GameUI {
 
   renderMessages(W, H) {
     if (!this.messages.length) return;
-    const y0 = InstallHUD.TOP_H + 14;
+    // Sits below the debug climate strip so the two don't overlap.
+    const y0 = InstallHUD.TOP_H + 62;
     const tw = 460;
     push();
     textAlign(CENTER, TOP);

@@ -408,7 +408,7 @@ Phases 0 and 1 are done.
 | Phase | Work | Notes |
 |---|---|---|
 | **1.5 — Cleanup** | Delete shims, strip economy/toolbar/goals, **square play area**, split into modules, clean the asset directory | ✅ **Done** — see §8.1 |
-| **2 — Deep time** | `timeScale` + `yearsBP` mapping, Button 1, timeline playhead and era bands. **Watchdog and `resetToAttract()` land here** | Reset is load-bearing, not polish |
+| **2 — Deep time** | `timeScale` + `yearsBP` mapping, Button 1, timeline playhead and era bands | ✅ **Done** — see §8.2 |
 | **3 — Terrain (minimal)** | Two authored heights + two curves + parametric `seaLevel(t)`; one base buffer + live snow tint | Much smaller than v2's Phase 3 |
 | **4 — The four fields** | `wet`, `open`, `bare`, `warp`; `glacialIndex` oscillator; hook to sea level and snowline | Mostly coefficients on `SeasonManager` |
 | **5 — Flora** | The §2.4 table; plants read fields not biomes; **sprite/palette split**; atlas pipeline | **Start the art in parallel with Phase 2** |
@@ -452,6 +452,96 @@ buttons, cycles the debug overlay and times six soft resets against a full `init
 Both bugs above were found by it rather than by looking. Run it before every commit —
 `node tools/bootcheck.js`.
 
+### 8.2 Phase 2 — what landed
+
+**Two new modules, both pure and both p5-free**, which means the harness can test them
+directly and Phase 4 becomes wiring rather than invention.
+
+**`TeManawa_climate.js` — `Climate.at(yearsBP)`.** Scheduled for Phase 4, brought
+forward because the timeline cannot draw era bands without knowing where the glacials
+are. Returns `glacialIndex`, `seaLevel`, `snowLine`, `tempBias`, `stage` and `MIS`.
+
+> **It is a table of anchor points, not a sine wave, and that was a correction.** The
+> first version was a generic ~100 kyr oscillator. It produced three tidy cycles and got
+> two checkable facts wrong: it put **MIS 5e (~125 ka) — the last interglacial, and
+> already a marker on our own timeline — in the middle of a glacial**, and it never
+> reached a maximum at the end of the run, so **the LGM went missing entirely**.
+> Extending the window to 25.5 ka was done precisely to capture the LGM, so a curve that
+> misses it defeats the decision.
+>
+> Real cycles are ~100 kyr but strongly asymmetric and genuinely irregular — MIS 7 has
+> three warm peaks, MIS 5 has four substages, terminations are abrupt. No closed form
+> gets that right and there is no reason to guess. The curve now interpolates 24 anchor
+> points taken from the broad shape of the LR04 benthic stack. The run opens in MIS 10
+> just after Whakamaru, breathes three times, and closes at **g ≈ 0.90 heading into the
+> LGM as Ōruanui erupts** — cold, on an eruption. `tools/bootcheck.js` asserts five
+> dated facts against the curve on every run.
+
+**`TeManawa_time.js` — `DeepTime`.** `yearsBP` is now the authoritative clock rather
+than something derived from `playTime`, so geology and climate land correctly at any
+speed. Three things beyond the v1 behaviour:
+
+- **The Deep-time button eases.** It was a hard step to ×10, which changes the terrain
+  cross-fade, the season lerp and every boid's speed on a single frame — it reads as a
+  glitch. Now smoothsteps in and out over 1.2 s *inside* the 10 s window. One press
+  covers **~46 ky**, measured.
+- **End of window hands off.** The run reaching Ōruanui is the attract loop's cue, not a
+  pause. Without this the kiosk sits frozen at 25.5 ka until somebody touches it, which
+  unattended means most of the day.
+- **Markers are dated and typed** (eruption / glacial / warm) so the timeline can colour
+  them without a legend.
+
+**The timeline now answers §10.1 rather than waiting on it.** The question was whether it
+reads as an arrow or a wave. Both are true — uplift accumulates, climate oscillates — so
+it draws both: **a monotonic uplift bar underneath an oscillating climate wave**, with
+cold intervals shaded, the playhead riding the curve, and a stage/MIS readout. It is a
+first pass built so the question can be *looked at* instead of argued. The decision is
+still yours; what changed is that there's now something to decide against.
+
+**Debug overlay** gained a CLIMATE panel: glacialIndex, stage, MIS, sea level, snow line,
+temperature offset — all colour-coded warm-to-cold on lightness as well as hue, so the
+read survives colourblindness.
+
+### 8.3 The visitor screen is now clean
+
+Seeing the first build running made the problem obvious: three separate layers of
+**instrumentation wearing the costume of interpretation** were sitting on top of the
+diorama. All three are now debug-only.
+
+| Was on screen | Why it went |
+|---|---|
+| **The climate wave** | A temperature graph. Nobody reads a curve at arm's length in forty seconds, and it was the busiest object in the frame. Moved to `Debug.renderClimateStrip`, along with the glacial markers and the stage/MIS readout |
+| **Notification messages** | *"A moa has hatched!"* — engine chatter left over from the game this used to be. An ambient diorama does not narrate itself, and the strip sat directly over the play area. Still queued, drawn only in debug |
+| **The entity UI layer** | Hunger and breeding bars, hearts, pregnancy dots, low-population rings, state glyphs (♀ ♂ ♥ ↗ !), egg progress. The strongest "this is a video game" signal on screen |
+
+`[NOTE]` **Only the bars were ever gated.** `CONFIG.showHungerBars` covered the bars and
+the state glyphs; the hearts, pregnancy dots and low-population rings had no gate at all
+and were on screen permanently. The flag is now `CONFIG.showEntityUI` and it gates the
+whole `renderIndicators` pass — renamed because the old name described about half of what
+it controlled, which is how the rest stayed visible unnoticed.
+
+**The argument, not just the tidy-up.** The climate is *supposed* to be read off the land
+and the cast — tree ferns vanishing, tussock spreading, the moa changing over (findings #2
+and #3). A chart in the corner undercuts both: it answers the question the vegetation is
+there to ask. Same for breeding, which should read as two moa together and then an egg on
+the ground, not as a floating heart.
+
+**What the visitor timeline keeps:** the year, the two eruptions that bookend the run,
+the monotonic uplift wedge, and the playhead. That is the whole thing. It also fixes two
+collisions visible in the build — `LGM` at 30 ka sat ~13 px from `Ōruanui` at 25.5 ka and
+overlapped permanently, and the end labels clipped off the strip; end markers now anchor
+inward.
+
+`tools/bootcheck.js` asserts the visitor render stays clean: entity UI off with debug off,
+back on with it, notifications queued but not drawn, and a frame rendered in both states.
+
+**Harness** now asserts the five dated climate facts, the baseline rate (~500 yr/s), that
+the ramp eases rather than steps, that it never exceeds ×10, that one press covers ~50 ky,
+and that the end of the window actually triggers the attract reset. Three of those
+initially failed and all three were faults in the harness rather than the code —
+`millis()` was advancing per call instead of per frame, which closed the deep-time window
+at double rate.
+
 ---
 
 ## 9. What we are deliberately not building
@@ -477,8 +567,9 @@ All of it is preserved in the deep dives.
 ## 10. Open decisions
 
 1. **Does the timeline read as an arrow or a wave?** Uplift accumulates; climate
-   oscillates about three times. **This now blocks UI art** (`..._BUILD_V3.md` §4.6), so
-   it needs deciding before that work starts.
+   oscillates about three times. **A first pass is now built showing both** — a monotonic
+   uplift bar under an oscillating climate wave (§8.2). Look at it and decide; it still
+   blocks the UI art (`..._BUILD_V3.md` §4.6), but there is now something to judge.
 2. ~~Window end — 50 ka or 25 ka?~~ **Decided: ~25.5 ka, ending on Ōruanui.**
 3. ~~Huia — in the sim or in the interpretation?~~ **Decided: in the sim** (§5.1).
 4. ~~Kererū and the *Dinornis* pair?~~ **Decided: both in** (§5.1).

@@ -1153,6 +1153,11 @@ class Moa extends Boid {
   }
 
   renderIndicators() {
+    // The entire indicator layer is debug-only (CONFIG.showEntityUI). Hearts,
+    // pregnancy dots, low-population rings, bars and state glyphs are all
+    // instrumentation; none of them belong in an ambient diorama.
+    if (!CONFIG.showEntityUI) return;
+
     const px = this.pos.x, py = this.pos.y, s = this.size;
     const yOff = -s * 0.8 - 4;
 
@@ -1183,7 +1188,6 @@ class Moa extends Boid {
       ellipse(px, py - s - 3, 4 * (0.5 + prog * 0.5), 5 * (0.5 + prog * 0.5));
     }
     
-    if (!CONFIG.showHungerBars) return;
     
     noStroke();
     

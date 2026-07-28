@@ -149,7 +149,7 @@ class Egg {
     }
     
     // Progress indicator
-    if (CONFIG.showHungerBars) {
+    if (CONFIG.showEntityUI) {
       this._renderProgressBar(px, py, progress);
     }
   }

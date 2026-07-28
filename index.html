@@ -64,6 +64,11 @@
     <script src="TeManawa_plant.js"></script>
     <script src="TeManawa_placeable.js"></script>
 
+    <!-- Deep time + parametric climate. Pure modules, no p5 dependency;
+         must load before the HUD, which renders from them. -->
+    <script src="TeManawa_climate.js"></script>
+    <script src="TeManawa_time.js"></script>
+
     <!-- Installation HUD: deep-time timeline, four buttons, storm/ash FX.
          Must load before TeManawa_UI.js, which reads InstallHUD.TOP_H. -->
     <script src="TeManawa_hud.js"></script>
