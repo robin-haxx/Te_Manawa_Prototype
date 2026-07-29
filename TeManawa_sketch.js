@@ -149,7 +149,7 @@ const CONFIG = {
   // Switching costs a full terrain rebuild (~1 s), so it is a startup/authoring
   // decision, not something to toggle mid-run. `?terrain=fit` on the URL and
   // SHIFT+F both go through Game.setTerrainFit().
-  terrainFit: 'square',
+  terrainFit: 'fit',
 
   // Past this aspect ratio 'fit' stops stretching the world and letterboxes the
   // remainder. The coastline banding in getIslandFalloff() runs along X and stops
@@ -554,54 +554,21 @@ function initPlaceableColors() {
 }
 
 // ============================================
-// BIOME DEFINITIONS
+// BIOME DEFINITIONS — deleted, deliberately.
 // ============================================
-const BIOMES = {
-  sea: {
-    key: 'sea', name: "Sea", minElevation: 0, maxElevation: 0.1,
-    colors: ['#1a3a52', '#1e4d6b', '#236384'], contourColor: '#0f2533',
-    walkable: false, canHavePlants: false, canPlace: false
-  },
-  coastal: {
-    key: 'coastal', name: "Coastal/Beach", minElevation: 0.1, maxElevation: 0.15,
-    colors: ['#c2b280', '#d4c794', '#e6dca8'], contourColor: '#8a7d5a',
-    walkable: true, canHavePlants: false, canPlace: true
-  },
-  grassland: {
-    key: 'grassland', name: "Lowland Grassland", minElevation: 0.15, maxElevation: 0.3,
-    colors: ['#7fb069', '#8fbc79', '#9fc889'], contourColor: '#5a7d4a',
-    walkable: true, canHavePlants: true, plantTypes: ['tussock', 'flax'], canPlace: true
-  },
-  podocarp: {
-    key: 'podocarp', name: "Podocarp Forest", minElevation: 0.3, maxElevation: 0.4,
-    colors: ['#2d5a3d', '#346644', '#3b724b'], contourColor: '#1e3d29',
-    walkable: true, canHavePlants: true, plantTypes: ['fern', 'rimu'], canPlace: true
-  },
-  montane: {
-    key: 'montane', name: "Montane Forest", minElevation: 0.4, maxElevation: 0.60,
-    colors: ['#4a7c59', '#528764', '#5a926f'], contourColor: '#335740',
-    walkable: true, canHavePlants: true, 
-    plantTypes: ['beech', 'fern', 'patotara'],
-    canPlace: true
-  },
-  subalpine: {
-    key: 'subalpine', name: "Subalpine Tussock", minElevation: 0.60, maxElevation: 0.80,
-    colors: ['#a8a060', '#b5ad6d', '#c2ba7a'], contourColor: '#7a7445',
-    walkable: true, canHavePlants: true, 
-    plantTypes: ['tussock', 'patotara'],
-    canPlace: true
-  },
-  alpine: {
-    key: 'alpine', name: "Alpine Rock", minElevation: 0.77, maxElevation: 0.9,
-    colors: ['#8b8b8b', '#9a9a9a', '#a9a9a9'], contourColor: '#5c5c5c',
-    walkable: false, canHavePlants: false, canPlace: false
-  },
-  snow: {
-    key: 'snow', name: "Permanent Snow", minElevation: 0.9, maxElevation: 1.0,
-    colors: ['#e8e8e8', '#f0f0f0', '#ffffff'], contourColor: '#b0b0b0',
-    walkable: false, canHavePlants: false, canPlace: false
-  }
-};
+// There used to be a `const BIOMES = {...}` here: a full second copy of the
+// biome table, elevation bands and ground colours included.
+//
+// It never reached the screen. TerrainGenerator is constructed with
+// `Game.activeBiomes`, which is `levelDef.biomes` — so the table that renders
+// is the one in levels/, and this one was only ever handed to
+// REGISTRY.registerBiome(). Editing a colour here changed nothing, silently,
+// while looking exactly like the canonical definition: it sat in the engine
+// file, it was registered, and level_format.js validated against it.
+//
+// The single source of truth is now `levelDef.biomes`. Registration moved into
+// Game.loadLevel() so the registry can only ever hold the biomes actually in
+// play. See md/TEMANAWA_REORG.md §4.2.
 
 // ============================================
 // PLANT DEFINITIONS
@@ -686,9 +653,17 @@ class Game {
     this.activePlaceables = levelDef._resolvedPlaceables;
     this.activeSpecies = levelDef.species;
 
+    // Register the biomes that are actually about to render, so REGISTRY and
+    // TerrainGenerator cannot disagree. Then check the bands, because an
+    // unreachable band is the other way a colour edit does nothing.
+    for (const [key, def] of Object.entries(this.activeBiomes)) {
+      REGISTRY.registerBiome(key, def);
+    }
+    validateBiomeBands(this.activeBiomes);
+
     this.init();
   }
-  
+
   // Full build: new terrain (noise + season bakes) AND a new ecosystem.
   // Expensive — hundreds of milliseconds at mapGrid 512, because
   // TerrainGenerator.generate() runs the noise over every cell and then bakes
@@ -1109,8 +1084,11 @@ function initializeRegistry() {
   for (const [key, config] of Object.entries(EAGLE_SPECIES)) REGISTRY.registerSpecies(key, 'eagle', config);
   for (const [key, config] of Object.entries(PLANT_TYPES)) REGISTRY.registerPlant(key, config);
   for (const [key, config] of Object.entries(PLACEABLES)) REGISTRY.registerPlaceable(key, config);
-  for (const [key, config] of Object.entries(BIOMES)) REGISTRY.registerBiome(key, config);
-  
+
+  // Biomes are NOT registered here. They are level data, and registering an
+  // engine-side copy is what let the registry and the renderer disagree.
+  // Game.loadLevel() registers levelDef.biomes instead.
+
   const issues = REGISTRY.validate();
   if (issues.length > 0) console.warn('Registry validation found issues:', issues);
   if (CONFIG.debugMode) console.log('Registry initialized:', REGISTRY.getSummary());

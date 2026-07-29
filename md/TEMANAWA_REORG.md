@@ -178,9 +178,15 @@ in a browser.
 
 ### 4.2 `BIOMES` and `PLACEABLES` are data, not engine
 
-`BIOMES` (~50 lines) is the Manawatū scaffold's biome table sitting in engine code. It is
-per-level by definition — Phase 3 swaps it for the real Manawatū set. It belongs in
-`levels/`, next to `level_temanawa_scaffold.js`, as `levels/biomes_manawatu.js`.
+**`BIOMES` — done, and it was worse than "misplaced".** It was a full *second copy* of the
+biome table, elevation bands and ground colours included, and it never reached the screen:
+`TerrainGenerator` is constructed with `Game.activeBiomes`, which is `levelDef.biomes`. The
+engine-side copy was only ever handed to `REGISTRY.registerBiome()`. See §7.3.
+
+Deleted. `levelDef.biomes` is the single source of truth, registration moved into
+`Game.loadLevel()` so the registry cannot hold anything the terrain isn't rendering, and
+the table in `levels/level_temanawa_scaffold.js` now carries a header documenting what each
+field controls visually — since it is now the one place the ground look is authored.
 
 `PLACEABLES` (~215 lines, nine entries) is the awkward one. The economy is gone, so
 `cost` and `icon` are dead, but the *effects* are the Button 2–4 substrate for Phase 6 —
@@ -258,7 +264,7 @@ the wrong thing. `md/README.md` now states the spine (`PLAN_V2` → `BUILD_V3` �
 
 ---
 
-## 7. Two live bugs
+## 7. Three live bugs
 
 ### 7.1 The `createGraphics` leak — fixed
 
@@ -290,6 +296,57 @@ it to the resize. The effective value now lives on the generator instance
 same trap exists for every other level parameter Phase 4 wants to modulate: **modulate on
 the instance, never write back to `CONFIG`.**
 
+### 7.3 Editing a biome's colours did nothing — fixed
+
+Reported symptom: changing `colors` in a biome definition had no effect on screen.
+
+Two independent causes, and the first is the interesting one.
+
+**A duplicate biome table.** `const BIOMES` in `sketch.js` and `levelDef.biomes` in
+`levels/level_temanawa_scaffold.js` were near-identical copies. `TerrainGenerator` is
+constructed with `Game.activeBiomes` = `levelDef.biomes`, so **the level's table is the one
+that renders** and the engine-side one drew nothing.
+
+What made it costly rather than merely untidy is that the dead copy looked *more*
+canonical than the live one: it sat in the engine file next to `PLANT_TYPES` and
+`PLACEABLES`, it was registered into `REGISTRY`, and `level_format.js`'s `validate()`
+checked against it. Editing it produced no error, no warning, and no change. The two had
+already drifted — the dead copy's `montane` and `subalpine` listed `patotara`, retired in
+Phase 1.5.
+
+Deleted, with a comment in its place explaining why there is no engine-side biome table.
+`Game.loadLevel()` now registers `levelDef.biomes`, so the registry cannot disagree with
+the renderer again, and `tools/bootcheck.js` asserts both that no global `BIOMES` exists
+and that `terrain.biomes === currentLevel.biomes` by identity.
+
+**Unreachable elevation bands.** The second, quieter cause. `getBiomeFromElevation` scans
+bands in ascending `minElevation` order and takes the **first** match, so overlapping bands
+do not blend — the lower one shadows the higher one, and a fully shadowed band never draws
+at all. Nothing in the data looks wrong; each band reads fine on its own.
+
+The scaffold has a live instance: `alpine` declares `0.77–0.90`, but `subalpine` runs to
+`0.80`, so alpine only ever renders `0.80–0.90`. Edit alpine's lowest ramp colour and about
+a quarter of the band you were aiming at belongs to something else.
+
+`validateBiomeBands()` in `level_format.js` now runs at level load and reports declared
+versus effective range per biome, plus fully shadowed bands, uncovered gaps, and bands too
+narrow to see. It sweeps the elevation range using the renderer's own first-match rule
+rather than deriving intervals by hand, so it cannot drift from the behaviour it describes.
+It warns; it does not correct. Band boundaries are an art-direction decision.
+
+**Not changed:** the alpine/subalpine overlap itself, and the near-black `subalpine` ramp
+found in the dead table — that read as a probe to see whether *anything* would change
+rather than an intended palette. Both are yours to set, now that setting them works.
+
+**Still worth knowing when retuning the ground:** colours are baked into four season
+buffers at `generate()` time, not read per frame, so a change needs a page reload. Three
+things are also not authored per biome — snow blends in from the snow biome's ramp above
+`TerrainGenerator.seasonSnowLines`, winter frost is a hardcoded live tint in
+`Game.render()`, and contour lines hard-replace the ramp on `CONFIG.contourInterval`
+multiples rather than blending. All three are documented in the level file's new header,
+and all three are candidates for the palette split in §8 step 6 if the current model
+starts to fight you.
+
 ---
 
 ## 8. Suggested order
@@ -302,23 +359,44 @@ unblocked first.
 | 1 | **Asset manifest + naming convention** (§3) | Low — mechanical, harness-checkable | The 113 new assets, and the atlas |
 | 2 | **Economy residue strip** (§5) | Low, with one caveat on `isInGameArea` | Reading `CONFIG` without archaeology |
 | 3 | **Split `sketch.js`** (§4.1) | Low — pure file moves | Phase 4 landing in small files |
-| 4 | **`BIOMES` → `levels/`, `PLACEABLES` → `placeable.js`** (§4.2) | Low | Phase 3's biome swap |
+| 4 | **`PLACEABLES` → `placeable.js`**, dead fields stripped (§4.2) | Low | Reading the file without guessing which half is live |
 | 5 | **One base terrain buffer instead of four** (`TERRAIN_PLAN.md` §7) | Medium — real rendering change | Phase 3's interval re-bake, at 4× less bake cost |
+| 6 | **Ground palette split from biome mechanics** — *only if the current model fights you* | Medium | Retuning the whole ground look from one place |
 
-Steps 1–4 are structure and should land before Phase 3. Step 5 is already specified in
+Steps 1–3 are structure and should land before Phase 3. Step 5 is already specified in
 `TERRAIN_PLAN.md` §7 and `BUILD_V3.md` §2.3 and is listed here only because the adaptive
 terrain mode makes its cost visible: a refit currently re-bakes four buffers where one
 would do.
+
+**Step 6 is deliberately conditional.** It was considered and declined as premature (§7.3):
+lift `colors` / `contourColor` / the season snow lines / the frost tint out of the biome
+definitions into one palette table, so biome defs keep only mechanics — which is also
+`BUILD_V3.md` §2.2's decoupling (*"`getBiomeAt` survives as a rendering concern only"*)
+arriving early. The argument for waiting is that the current model has exactly one problem
+and it was the duplicate table, now fixed. The signals that would make it worth doing:
+
+- retuning the ground means editing more than a handful of hex values in more than one file
+- two biomes want to share a ramp, or one biome wants to change ramp by climate state
+- the four-buffer bake becomes the reason you can't iterate (step 5 fixes that more cheaply)
+
+The natural time is alongside step 5, since both touch `_bakeSeasonBuffer`. A useful
+companion either way is a **re-bake path that skips noise regeneration** — colours only
+affect `_computeBaseCellColors` and the season bakes, not `heightMap` or `biomeIndexMap`, so
+re-colouring is ~15 ms rather than the ~1 s of a full `init()`. That turns palette work into
+a live loop instead of a page reload per attempt.
 
 ### Already done in this pass
 
 - Adaptive terrain footprint mode — `CONFIG.terrainFit`, see §9
 - The `createGraphics` leak (§7.1)
+- The duplicate biome table deleted, and biome band validation added (§7.3, §4.2)
 - `CLAUDE.md`, `md/README.md`, `.gitignore` (§6)
 - `tools_bootcheck.js` and the committed FUSE artifact deleted (§6.3)
-- `tools/bootcheck.js` gained a terrain-footprint section: an aspect sweep against the
-  §5.2 cell budget, a feature-size invariance check, a live refit round-trip, and the
-  buffer-disposal assertion
+- `tools/bootcheck.js` gained two sections: **terrain footprint** (aspect sweep against the
+  §5.2 cell budget, feature-size invariance, a live refit round-trip, buffer disposal) and
+  **biomes** (no global `BIOMES`, registry/renderer identity, shadowed bands, gaps, clean
+  partitions). It also takes `TERRAIN=fit|square` and `ART=low|high` so a whole boot can be
+  exercised in either mode
 
 ### Explicitly not proposed
 

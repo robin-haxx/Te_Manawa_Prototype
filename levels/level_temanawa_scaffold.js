@@ -22,6 +22,44 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     plantDensity: 0.006, useLakes: false
   },
 
+  // ==========================================================
+  // BIOMES — the single source of truth for the ground look.
+  // ----------------------------------------------------------
+  // TerrainGenerator is constructed with this table. It is the ONLY place
+  // ground colour is authored; there is no engine-side copy to keep in sync
+  // (there used to be one in sketch.js, and it silently won nothing).
+  //
+  //   minElevation / maxElevation
+  //       The band, over normalised elevation 0-1. Bands are scanned lowest
+  //       first and the FIRST match wins, so an overlap is not a blend — the
+  //       lower band shadows the higher one. validateBiomeBands() reports what
+  //       each biome effectively gets at load; check the console after editing.
+  //
+  //   colors: [lowest, ..., highest]
+  //       The ramp drawn across the band, lerped by position WITHIN the band.
+  //       Two or more entries; three is the current convention. A band that is
+  //       0.05 wide gets the whole ramp compressed into 5% of the elevation
+  //       range, which is why narrow bands read as one flat colour.
+  //
+  //   contourColor
+  //       Drawn on elevation multiples of CONFIG.contourInterval (0.045) when
+  //       CONFIG.showContours is on. It is a hard replacement of the ramp
+  //       colour on those cells, not a blend — a contour that reads as noise is
+  //       usually one too close in value to its ramp.
+  //
+  //   walkable / canHavePlants / canPlace / plantTypes
+  //       Simulation, not look. plantTypes must exist in PLANT_TYPES.
+  //
+  // Two colours here are NOT authored per biome:
+  //   · Snow blends over any band above the season's snow line, from the snow
+  //     biome's ramp — TerrainGenerator.seasonSnowLines (summer 0.92, autumn
+  //     0.85, winter 0.77, spring 0.82).
+  //   · Winter frost is a single live tint over the whole map, hardcoded in
+  //     Game.render() as fill(216,232,245, 72 × winterness).
+  //
+  // Colours are baked into four season buffers at generate() time, so a change
+  // needs a page reload to show up — it is not read per frame.
+  // ==========================================================
   biomes: {
     sea:       { key:'sea',       name:"Sea",             minElevation:0,    maxElevation:0.10,
                  colors:['#1a3a52','#1e4d6b','#236384'], contourColor:'#0f2533',

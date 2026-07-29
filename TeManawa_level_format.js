@@ -91,6 +91,93 @@ const LEVEL_REGISTRY = {
   }
 };
 
+// ============================================
+// BIOME BAND VALIDATION
+// ============================================
+// Mirrors TerrainGenerator.getBiomeFromElevation exactly: bands are scanned in
+// ascending minElevation order and the FIRST band containing the elevation wins.
+//
+// So overlapping bands do not blend — the lower band shadows the higher one, and
+// a fully shadowed band never draws at all. That is the second way an edit to a
+// biome's colours can appear to do nothing (the first was a duplicate BIOMES
+// table in sketch.js, now deleted), and it is invisible in the data: the bands
+// look fine read one at a time.
+//
+// Runs at level load and reports the EFFECTIVE range each biome actually gets
+// alongside the declared one. Warnings only — the renderer is happy either way,
+// and a deliberate overlap is a legitimate authoring choice.
+function validateBiomeBands(biomes) {
+  const list = Object.values(biomes || {})
+    .filter(b => b && typeof b.minElevation === 'number')
+    .sort((a, b) => a.minElevation - b.minElevation);
+  if (!list.length) return [];
+
+  // Sweep the elevation range and record who actually wins each sample. Cheap
+  // (2000 iterations, once per level load) and it cannot drift from the
+  // renderer's behaviour the way a hand-derived interval calculation would.
+  const STEPS = 2000;
+  const eff = new Map();          // key -> { n, lo, hi }
+  let unclaimed = 0;
+
+  for (let i = 0; i < STEPS; i++) {
+    const e = i / STEPS;
+    let hit = null;
+    for (let j = 0; j < list.length; j++) {
+      const b = list[j];
+      if (e >= b.minElevation && e < b.maxElevation) { hit = b; break; }
+    }
+    if (!hit) { unclaimed++; continue; }
+    const rec = eff.get(hit.key) || { n: 0, lo: e, hi: e };
+    rec.n++;
+    rec.hi = e;
+    eff.set(hit.key, rec);
+  }
+
+  const issues = [];
+  const EPS = 1.5 / STEPS;
+
+  for (const b of list) {
+    const rec = eff.get(b.key);
+    const declared = `${b.minElevation}-${b.maxElevation}`;
+
+    if (!rec) {
+      const shadow = list.find(o => o !== b &&
+        o.minElevation <= b.minElevation && o.maxElevation >= b.maxElevation);
+      issues.push(`'${b.key}' (${declared}) NEVER renders` +
+        (shadow ? ` — fully shadowed by '${shadow.key}' (${shadow.minElevation}-${shadow.maxElevation})` : '') +
+        `. Editing its colours will do nothing.`);
+      continue;
+    }
+
+    // Partially shadowed: it draws, but not over the band as written, so only
+    // part of a colour edit shows up.
+    if (rec.lo > b.minElevation + EPS) {
+      const shadow = list.find(o => o !== b &&
+        o.minElevation < b.minElevation && o.maxElevation > b.minElevation);
+      issues.push(`'${b.key}' declares ${declared} but only renders ` +
+        `${rec.lo.toFixed(3)}-${b.maxElevation}` +
+        (shadow ? ` — '${shadow.key}' overlaps its lower edge (ends ${shadow.maxElevation})` : ''));
+    }
+
+    const share = rec.n / STEPS;
+    if (share < 0.02) {
+      issues.push(`'${b.key}' holds ${(share * 100).toFixed(1)}% of the elevation ` +
+        `range — its colours will be hard to find on screen.`);
+    }
+  }
+
+  if (unclaimed > 0) {
+    issues.push(`${(unclaimed / STEPS * 100).toFixed(1)}% of elevation 0-1 is in no band; ` +
+      `those cells fall through to '${list[list.length - 1].key}'.`);
+  }
+
+  if (issues.length > 0) {
+    console.warn('[Biomes] band issues — see TeManawa_level_format.js ' +
+                 'validateBiomeBands:\n  · ' + issues.join('\n  · '));
+  }
+  return issues;
+}
+
 // FINAL SCORE — removed in Phase 1.5. There is no score, no win state and
 // no mauri to total, so defaultLevelScore/computeLevelScore are gone.
 

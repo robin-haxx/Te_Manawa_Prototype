@@ -180,6 +180,48 @@ const g=vm.runInContext('game',ctx);
     + ` (window ${(DT.windowSeconds()/60).toFixed(1)} min, press covers ${Math.round(covered/1000)} ky)`);
 }
 
+// ---- biomes: one table, and the bands actually reachable --------------
+// There were two biome tables: levelDef.biomes (which renders) and a BIOMES
+// const in sketch.js (which was registered, validated, and drew nothing). A
+// colour edited in the wrong one changed nothing, silently. Assert the
+// duplicate cannot come back, and that band shadowing gets reported.
+{
+  const G=vm.runInContext('game',ctx), R=vm.runInContext('REGISTRY',ctx);
+  const vbb=vm.runInContext('validateBiomeBands',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  chk(vm.runInContext("typeof BIOMES==='undefined'",ctx),
+      'a global BIOMES table must not exist — levelDef.biomes is the only source');
+  chk(G.terrain.biomes===G.currentLevel.biomes,
+      'TerrainGenerator must render the level definition\'s biomes, not a copy');
+
+  const keys=Object.keys(G.currentLevel.biomes);
+  chk(keys.every(k=>R.getBiome(k)===G.currentLevel.biomes[k]),
+      'REGISTRY must hold the same biome objects the terrain renders');
+
+  // every registered biome must actually reach the screen
+  const bm=G.terrain.biomeIndexMap, seen=new Set();
+  for(let i=0;i<bm.length;i+=97) seen.add(G.terrain.biomeArray[bm[i]].key);
+  chk(seen.size>=4,`only ${seen.size} biomes present in the baked map`);
+
+  // shadowing detection: a band fully covered by a lower one must be reported
+  const broken=vbb({a:{key:'a',minElevation:0,maxElevation:0.9},
+                    b:{key:'b',minElevation:0.3,maxElevation:0.6}});
+  chk(broken.some(s=>s.includes("'b'")&&s.includes('NEVER renders')),
+      'a fully shadowed band must be reported as never rendering');
+  const gap=vbb({a:{key:'a',minElevation:0,maxElevation:0.4},
+                 b:{key:'b',minElevation:0.7,maxElevation:1.0}});
+  chk(gap.some(s=>s.includes('in no band')),'an uncovered elevation gap must be reported');
+  chk(vbb({a:{key:'a',minElevation:0,maxElevation:0.5},
+           b:{key:'b',minElevation:0.5,maxElevation:1.0}}).length===0,
+      'a clean partition must report nothing');
+
+  const live=vbb(G.currentLevel.biomes);
+  console.log(fail? `biomes: ${fail} FAILURES`
+    : `biomes: one table, ${keys.length} bands, ${seen.size} on screen` +
+      (live.length? ` (${live.length} band warning${live.length>1?'s':''} — see console.warn)` : ''));
+}
+
 // ---- terrain footprint modes -----------------------------------------
 // gridFor() is pure and static, so the aspect sweep needs no rebuild. The
 // point of the sweep is the cell budget: a fill mode that grew the grid with

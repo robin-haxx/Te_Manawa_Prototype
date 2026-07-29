@@ -111,6 +111,23 @@ Retired art goes to `sprites/_retired/`, it is not deleted.
 are authored values. A per-run or per-screen adjustment that writes back to `CONFIG`
 compounds across regenerations — `TerrainGenerator.noiseScale` is the worked example.
 
+**The ground look is authored in exactly one place: `levelDef.biomes`**, in
+`levels/level_temanawa_scaffold.js`, which carries a header explaining what each field
+draws. There is no engine-side biome table — there was, it rendered nothing, and editing it
+silently did nothing for as long as anyone tried. Do not add a second one; `Game.loadLevel()`
+registers the level's biomes so `REGISTRY` and `TerrainGenerator` cannot diverge, and the
+harness asserts it.
+
+**Biome elevation bands are first-match, not blended.** `getBiomeFromElevation` scans
+ascending by `minElevation` and takes the first hit, so a lower band shadows an overlapping
+higher one and a fully shadowed band never draws. `validateBiomeBands()` reports declared
+versus effective range at load — **check the console after editing bands.** The scaffold has
+a live example: `alpine` declares 0.77–0.90 and renders 0.80–0.90.
+
+**Terrain colours are baked, not read per frame.** Four season buffers, built in
+`generate()`. A colour change needs a page reload. Snow, winter frost and contour lines are
+not authored per biome — see the level file header.
+
 **`createGraphics` buffers must be `remove()`d when replaced.** This has already leaked
 once, ~4 MB per terrain reseed. See `md/TEMANAWA_BUILD_V3.md` §2.3.
 
