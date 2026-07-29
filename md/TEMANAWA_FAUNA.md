@@ -53,7 +53,7 @@ distribution you get for free from the terrain, not from scripting.
 | **Whēkau / laughing owl** *Sceloglaux albifacies* | 2 | 5 | 3 | 5 | Extinct ~1914. **Its pellet and roost deposits are a major source of the subfossil bone record** — a bird that is part of *why we know any of this*. |
 | **Kārearea / NZ falcon** | 4 | 2 | 3 | 5 | Extant. Good fast secondary predator. |
 | **Ruru / morepork** | 5 | 1 | 3 | 5 | Extant. Cheap, and an outstanding audio asset. |
-| ~~Haast's eagle~~ | 5 | 5 | **1** | **1** | **South Island only.** High recognition, wrong island — the plan already knows this. |
+
 
 ### 1.3 Extinct flightless ground birds
 
