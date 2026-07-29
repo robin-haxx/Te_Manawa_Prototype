@@ -1,2 +1,14 @@
-
 node_modules/
+
+# FUSE leaves these behind when a file is deleted while still open.
+# One was committed by accident (an old copy of TeManawa_sketch.js).
+.fuse_hidden*
+
+# Art working files — export the PNG, don't commit the source
+*.pxo
+*.psd
+*.aseprite
+
+# Editor / OS
+.DS_Store
+Thumbs.db

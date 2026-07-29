@@ -238,7 +238,16 @@ const Debug = {
       elevMin, elevMax,
       elevMean: elevSum / sampled,
       biomeArea,
-      viewZoom: CONFIG.viewZoom
+      viewZoom: CONFIG.viewZoom,
+      // Footprint mode, and the share of the canvas the world actually covers.
+      // 'square' on a 9:16 panel reads ~56% — that number is the whole argument
+      // for 'fit'.
+      fit: (t && t.fitMode) || CONFIG.terrainFit || 'square',
+      noiseScale: t ? t.noiseScale : CONFIG.noiseScale,
+      screenFill: (t && CONFIG.canvasWidth && CONFIG.canvasHeight)
+        ? (t.mapWidth * CONFIG.viewZoom * t.mapHeight * CONFIG.viewZoom) /
+          (CONFIG.canvasWidth * CONFIG.canvasHeight)
+        : 1
     };
 
     // ---- PERF ----------------------------------------------
@@ -447,8 +456,12 @@ const Debug = {
     this._section(x2, top, colW, 'FLORA', floraRows);
 
     const terrRows = [
+      ['fit mode',    s.terrain.fit + '  (SHIFT+F)'],
       ['grid',        s.terrain.grid],
-      ['cells',       s.terrain.cells.toLocaleString()],
+      ['cells',       s.terrain.cells.toLocaleString(),
+                      this._capColour(s.terrain.cells, this.CAPS.gridCells)],
+      ['screen fill', (s.terrain.screenFill * 100).toFixed(0) + '%'],
+      ['noiseScale',  s.terrain.noiseScale.toFixed(5)],
       ['elev min/max', `${s.terrain.elevMin.toFixed(2)} / ${s.terrain.elevMax.toFixed(2)}`],
       ['elev mean',   s.terrain.elevMean.toFixed(3)],
       ['viewZoom',    s.terrain.viewZoom ? s.terrain.viewZoom.toFixed(3) : '-']

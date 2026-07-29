@@ -33,6 +33,10 @@ const ctx={console:{log(){},warn(){},error(...a){_errors.push('console.error: '+
 };
 ctx.window=ctx; ctx.globalThis=ctx;
 ctx.window.addEventListener=()=>{};
+// Startup URL flags, so a whole boot can be exercised in either mode:
+//   TERRAIN=fit node tools/bootcheck.js     ART=low node tools/bootcheck.js
+if(process.env.TERRAIN) ctx.location.search='?terrain='+process.env.TERRAIN;
+if(process.env.ART) ctx.location.search+=(ctx.location.search?'&':'?')+'art='+process.env.ART;
 // p5 surface
 let _t=0; const FRAME=(f)=>{_t+=16; f();};
 Object.assign(ctx,{
@@ -174,6 +178,75 @@ const g=vm.runInContext('game',ctx);
 
   console.log(fail? `deep time: ${fail} FAILURES` : 'deep time: all checks pass'
     + ` (window ${(DT.windowSeconds()/60).toFixed(1)} min, press covers ${Math.round(covered/1000)} ky)`);
+}
+
+// ---- terrain footprint modes -----------------------------------------
+// gridFor() is pure and static, so the aspect sweep needs no rebuild. The
+// point of the sweep is the cell budget: a fill mode that grew the grid with
+// the aspect would blow TEMANAWA_BUILD_V3.md §5.2 on a tall panel, and that
+// would not show up on a landscape dev monitor.
+{
+  const TG=vm.runInContext('TerrainGenerator',ctx), C=vm.runInContext('CONFIG',ctx);
+  const G=vm.runInContext('game',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  const base={mapGrid:512, noiseScale:0.005, terrainFitMaxStretch:2.0};
+  const budget=512*512;
+
+  const sq=TG.gridFor({...base, terrainFit:'square', canvasWidth:1080, canvasHeight:1920});
+  chk(sq.cols===512&&sq.rows===512,`square must stay 512x512, got ${sq.cols}x${sq.rows}`);
+  chk(sq.noiseScale===0.005,'square must not touch noiseScale');
+
+  const aspects=[[1080,1920],[1920,1080],[1080,1080],[2520,1080],[1080,2520],[1440,1080]];
+  let worst=0, rows=[];
+  for(const [w,h] of aspects){
+    const f=TG.gridFor({...base, terrainFit:'fit', canvasWidth:w, canvasHeight:h});
+    const cells=f.cols*f.rows;
+    worst=Math.max(worst, cells/budget);
+    rows.push(`${w}x${h} -> ${f.cols}x${f.rows}`);
+    chk(cells<=budget*1.02, `${w}x${h}: ${cells} cells exceeds the ${budget} budget`);
+    chk(cells>=budget*0.98, `${w}x${h}: ${cells} cells wastes the ${budget} budget`);
+    chk(f.cols%2===0&&f.rows%2===0, `${w}x${h}: dimensions must be even`);
+    // apparent landform size must survive the reshape
+    const zFit=Math.min(w/f.cols, h/f.rows), zSq=Math.min(w,h)/512;
+    chk(Math.abs((1/f.noiseScale)*zFit - (1/0.005)*zSq) < 1,
+        `${w}x${h}: feature size not preserved (ns ${f.noiseScale.toFixed(5)})`);
+  }
+
+  // past maxStretch the world stops stretching rather than becoming a ribbon
+  const wide=TG.gridFor({...base, terrainFit:'fit', canvasWidth:5400, canvasHeight:1080});
+  chk(wide.cols/wide.rows <= 2.05, `3:1 panel must clamp to 2:1, got ${(wide.cols/wide.rows).toFixed(2)}`);
+
+  // and the real thing: a live refit rebuilds and the sim follows the new dims.
+  // Start from a known footprint — TERRAIN=fit may already have booted us there.
+  const bootedAs=G.terrain.fitMode;
+  C.terrainFit='square'; G.refitTerrain();
+  C.terrainFit='fit';
+  const rebuilt=G.refitTerrain();
+  const t=G.terrain;
+  chk(rebuilt===true,'refitTerrain() must rebuild when the footprint changes');
+  chk(t.mapWidth!==t.mapHeight,'fit terrain on a 9:16 canvas must not be square');
+  chk(G.simulation.worldWidth===t.mapWidth&&G.simulation.worldHeight===t.mapHeight,
+      'simulation world must follow the refitted terrain');
+  chk(G.refitTerrain()===false,'a second refit at the same size must be a no-op');
+  FRAME(ctx.draw);   // must render clean at a non-square footprint
+
+  // buffer hygiene: re-baking must free the outgoing canvases, or the kiosk
+  // leaks ~4MB per reseed (TEMANAWA_BUILD_V3.md §2.3)
+  let removed=0;
+  for(const k in t.seasonBuffers){ const b=t.seasonBuffers[k]; if(b) b.remove=()=>{removed++;}; }
+  t.regenerate();
+  chk(removed===4,`regenerate() must remove() all 4 old season buffers, freed ${removed}`);
+
+  // back to whatever the boot flags asked for, so later sections see a sane world
+  C.terrainFit=bootedAs; G.refitTerrain();
+  chk(G.terrain.fitMode===bootedAs,`must restore the booted footprint (${bootedAs})`);
+  if(bootedAs==='square') chk(G.terrain.mapWidth===G.terrain.mapHeight,'square grid must be square');
+  FRAME(ctx.draw);
+
+  console.log(fail? `terrain fit: ${fail} FAILURES`
+    : `terrain fit: all checks pass (booted ${bootedAs}; ${rows.join(', ')}; ` +
+      `peak ${(worst*100).toFixed(1)}% of budget)`);
 }
 
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);

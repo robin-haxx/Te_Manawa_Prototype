@@ -280,7 +280,7 @@ const InstallHUD = {
     noStroke(); fill(14, 21, 19, 205); rect(0, 0, W, this.TOP_H);
     // ---- the year ------------------------------------------
     fill(232, 240, 236); textAlign(CENTER, TOP);
-    push(); textFont(GroceryRounded); textSize(26);
+    push(); textFont(FreckleFace); textSize(26);
     text(DeepTime.label(), W / 2, 10); pop();
     // ---- axis ----------------------------------------------
     stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
@@ -317,7 +317,7 @@ const InstallHUD = {
     // ---- fast-forward --------------------------------------
     if (DeepTime.isDeep()) {
       noStroke(); fill(255, 210, 120); textAlign(RIGHT, TOP); textSize(15);
-      push(); textFont(GroceryRounded);
+      push(); textFont(FreckleFace);
       text('>> x' + DeepTime.timeScale.toFixed(1), x0 + w, 12); pop();
     }
     pop();
@@ -339,7 +339,7 @@ const InstallHUD = {
       this.drawIcon(b.id, bx + bw / 2, by + 30, on);
       noStroke(); fill(on ? color(255, 226, 160) : color(220, 235, 225));
       textAlign(CENTER, CENTER);
-      push(); textFont(GroceryRounded); textSize(20);
+      push(); textFont(FreckleFace); textSize(20);
       text(b.label, bx + bw / 2, by + bh - 24); pop();
       fill(120, 140, 130); textAlign(LEFT, TOP); textSize(12);
       push(); textFont(OpenDyslexic); text(b.key, bx + 8, by + 6); pop();

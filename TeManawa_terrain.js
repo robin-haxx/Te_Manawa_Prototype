@@ -38,21 +38,29 @@ class TerrainGenerator {
     // Season manager reference
     this.seasonManager = null;
     
-    // Dimensions — SQUARE play area (Phase 1.5).
-    // The installation authors its terrain on a square canvas and letterboxes it
-    // into the portrait screen via CONFIG.viewX/viewY/viewZoom, so the map grid is
-    // a fixed square and no longer derived from the window aspect. CONFIG.mapGrid
-    // is the one number that governs simulation cost — see TEMANAWA_BUILD_V3.md §5.2
-    // (hard limit: 256).
+    // Dimensions — see TerrainGenerator.gridFor(). Two modes:
+    //   'square'  Phase 1.5 behaviour. A fixed CONFIG.mapGrid square, letterboxed
+    //             into the screen via CONFIG.viewX/viewY/viewZoom.
+    //   'fit'     the grid takes the screen's aspect at a constant cell COUNT, so
+    //             it fills the panel edge to edge and costs the same either way.
+    // CONFIG.mapGrid is the one number that governs simulation cost — see
+    // TEMANAWA_BUILD_V3.md §5.2 (hard limit: 256).
     const zoom = config.zoom || 1;
-    const grid = config.mapGrid || 256;
+    const fit = TerrainGenerator.gridFor(config);
 
-    this.mapWidth = grid;
-    this.mapHeight = grid;
-    this.worldWidth = grid * zoom;
-    this.worldHeight = grid * zoom;
+    this.mapWidth = fit.cols;
+    this.mapHeight = fit.rows;
+    this.worldWidth = fit.cols * zoom;
+    this.worldHeight = fit.rows * zoom;
     this.zoom = zoom;
-    
+
+    // Effective noise frequency. Held on the instance rather than written back
+    // to CONFIG so the authored value never drifts across regenerations — 'fit'
+    // rescales it so a landform keeps the same apparent size on screen.
+    this.noiseScale = fit.noiseScale;
+    this.fitMode = fit.mode;
+    this.fitAspect = fit.aspect;
+
     this.scale = config.pixelScale;
     this.invScale = 1 / config.pixelScale;
     this.gridCols = Math.ceil(this.mapWidth * this.invScale);
@@ -65,7 +73,68 @@ class TerrainGenerator {
     // Base cell colors (computed once, reused for all seasons)
     this._baseCellColors = null;
   }
-  
+
+  // ============================================
+  // GRID FOOTPRINT — 'square' | 'fit'
+  // ============================================
+  // Pure, static and p5-free, so tools/bootcheck.js can assert against it
+  // directly without booting the sketch.
+  //
+  // 'square' is the Phase 1.5 behaviour: a CONFIG.mapGrid square letterboxed
+  // into whatever the panel happens to be. On the 9:16 kiosk that throws away
+  // ~44% of the screen.
+  //
+  // 'fit' keeps the CELL COUNT constant and spends it on the screen's aspect
+  // instead:
+  //
+  //     cols = grid·√a     rows = grid/√a      a = canvasWidth / canvasHeight
+  //
+  // so cols·rows ≈ grid² at every aspect. On 1080×1920 that is 384×682 =
+  // 261,888 cells against 512² = 262,144 — the same simulation cost, no
+  // letterbox. This matters because mapGrid is the number every per-cell
+  // system scales on (the pixel bake now, Phase 4's four Float32Array fields
+  // next), so a fill mode that grew the grid with the aspect would silently
+  // blow the §5.2 budget on a tall panel.
+  //
+  // Two consequences worth knowing:
+  //   · Cells are smaller in screen terms on the short axis, so noiseScale is
+  //     rescaled by the zoom ratio to hold apparent landform size constant.
+  //     Without this, 'fit' looks like a different level rather than the same
+  //     level shaped to the screen.
+  //   · Beyond terrainFitMaxStretch the aspect is clamped and the remainder
+  //     letterboxes again. A 3:1 video wall should not get a 3:1 world — the
+  //     coastline banding in getIslandFalloff() runs along the X axis and
+  //     stops reading past about 2:1.
+  static gridFor(config) {
+    const grid = config.mapGrid || 256;
+    const ns = config.noiseScale;
+
+    if (config.terrainFit !== 'fit') {
+      return { cols: grid, rows: grid, noiseScale: ns, aspect: 1, mode: 'square' };
+    }
+
+    const cw = config.canvasWidth || grid;
+    const ch = config.canvasHeight || grid;
+    const maxStretch = config.terrainFitMaxStretch || 2.0;
+
+    let aspect = cw / Math.max(1, ch);
+    aspect = Math.max(1 / maxStretch, Math.min(maxStretch, aspect));
+
+    // Even dimensions keep the pixel bake's row strides tidy.
+    const r = Math.sqrt(aspect);
+    const cols = Math.max(64, Math.round(grid * r / 2) * 2);
+    const rows = Math.max(64, Math.round(grid / r / 2) * 2);
+
+    // Hold apparent feature size on screen constant against the square
+    // reference: featurePx = (1/noiseScale) · viewZoom, so noiseScale scales
+    // by the ratio of the two view zooms.
+    const zFit = Math.min(cw / cols, ch / rows);
+    const zSquare = Math.min(cw, ch) / grid;
+    const noiseScale = (zSquare > 0) ? ns * (zFit / zSquare) : ns;
+
+    return { cols, rows, noiseScale, aspect, mode: 'fit' };
+  }
+
   _initBiomeIndex() {
     this.biomeArray = this.biomeList.slice();
     this.biomeIndexByKey = {};
@@ -187,7 +256,8 @@ class TerrainGenerator {
     let amplitude = 1;
     let maxValue = 0;
     
-    const noiseScale = this.config.noiseScale;
+    // Instance value, not this.config.noiseScale — 'fit' mode rescales it.
+    const noiseScale = this.noiseScale;
     const seed = this.seed;
     const persistence = this.config.persistence;
     const lacunarity = this.config.lacunarity;
@@ -489,11 +559,21 @@ class TerrainGenerator {
    */
   _bakeAllSeasonBuffers() {
     const seasons = ['summer', 'autumn', 'winter', 'spring'];
-    
+
+    // Free the previous bake FIRST. A createGraphics buffer is a real canvas
+    // element with GPU-backed storage; dropping the reference does not release
+    // it, so re-baking without remove() leaks ~4 MB at 512² every time.
+    //
+    // This is not theoretical: Kiosk.reseedEvery fires a full Game.init() every
+    // 12th attract reset, and 'fit' mode adds one per screen resize. An
+    // installation that runs for months will find it — TEMANAWA_BUILD_V3.md
+    // §2.3 flags exactly this failure and it was live.
+    this.disposeBuffers();
+
     for (const season of seasons) {
       this.seasonBuffers[season] = this._bakeSeasonBuffer(season);
     }
-    
+
     if (CONFIG.debugMode) {
       console.log('Pre-baked all 4 seasonal terrain buffers');
     }
@@ -616,6 +696,17 @@ class TerrainGenerator {
     this.seed = random(10000);
     this._colorCache.clear();
     this.generate();
+  }
+
+  // Release every GPU-backed buffer this generator owns. Safe to call twice.
+  // _bakeAllSeasonBuffers() calls it before re-baking; Game.refitTerrain()
+  // calls it before throwing the whole generator away.
+  disposeBuffers() {
+    for (const key in this.seasonBuffers) {
+      const buf = this.seasonBuffers[key];
+      if (buf && typeof buf.remove === 'function') buf.remove();
+      this.seasonBuffers[key] = null;
+    }
   }
   
   /**

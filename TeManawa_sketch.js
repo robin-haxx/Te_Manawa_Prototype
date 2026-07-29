@@ -4,7 +4,7 @@
 // declaration), which works only in sloppy mode and breaks the moment anything
 // here is loaded as a module. Declared properly so the HUD and UI can rely on them.
 let OpenDyslexic = null;
-let GroceryRounded = null;
+let FreckleFace = null;
 
 let plantSprites = {};
 // Delta time management
@@ -46,7 +46,7 @@ const PLANT_SPRITE_STATES = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
 
 function preload(){
   OpenDyslexic = loadFont('typefaces/OpenDyslexic.ttf');
-  GroceryRounded = loadFont('typefaces/GroceryRounded.ttf');
+  FreckleFace = loadFont('typefaces/FreckleFace-Regular.ttf');
 
   for (const [key, def] of Object.entries(PLANT_SPRITE_SETS)) {
     const dir = `sprites/${def.folder || ''}`;
@@ -125,11 +125,11 @@ const CONFIG = {
   zoom: 2.5,
   debugMode: false,
 
-  // ===== SQUARE PLAY AREA (Phase 1.5) =====
-  // The terrain grid is now a fixed square instead of being derived from the
-  // window aspect. This is the single most expensive number in the project: the
-  // terrain bake is one pixel per cell, and Phase 4's four ecology fields are one
-  // float per cell each.
+  // ===== PLAY AREA =====
+  // mapGrid is the CELL BUDGET, not the width: the grid holds mapGrid² cells in
+  // both terrain modes. This is the single most expensive number in the project —
+  // the terrain bake is one pixel per cell, and Phase 4's four ecology fields are
+  // one float per cell each.
   //
   // 512 is chosen to preserve the existing plant/moa density tuning (the old
   // portrait map was ~432x768 = 332k cells; 512^2 = 262k). TEMANAWA_BUILD_V3.md
@@ -137,6 +137,28 @@ const CONFIG = {
   // interval re-bake lands, and retune plantDensity and spawn counts at the same
   // time. Until then there is no per-interval bake, so 512 costs nothing per frame.
   mapGrid: 512,
+
+  // ===== TERRAIN FOOTPRINT MODE =====
+  //   'square'  Phase 1.5 behaviour: a mapGrid × mapGrid world, letterboxed into
+  //             the panel. Predictable and matches square authored art, but on
+  //             the 9:16 kiosk it leaves ~44% of the screen as background.
+  //   'fit'     the world takes the screen's aspect at the SAME cell count, so it
+  //             fills the panel edge to edge for the same simulation cost.
+  //             1080×1920 -> 384×682 cells. See TerrainGenerator.gridFor().
+  //
+  // Switching costs a full terrain rebuild (~1 s), so it is a startup/authoring
+  // decision, not something to toggle mid-run. `?terrain=fit` on the URL and
+  // SHIFT+F both go through Game.setTerrainFit().
+  terrainFit: 'square',
+
+  // Past this aspect ratio 'fit' stops stretching the world and letterboxes the
+  // remainder. The coastline banding in getIslandFalloff() runs along X and stops
+  // reading much past 2:1.
+  terrainFitMaxStretch: 2.0,
+
+  // Debounce on resize-triggered refits, ms. A refit is a full init(), so this
+  // must outlast a drag-resize; the kiosk never resizes at all.
+  terrainFitResizeDelay: 400,
 
   // ===== VIEW TRANSFORM =====
   // The transform the world actually renders through. Normal mode mirrors
@@ -248,6 +270,12 @@ function applyLevelToConfig(levelDef) {
   // View & calendar (per-level, with engine defaults for levels that omit them)
   CONFIG.zoom = (levelDef.zoom != null) ? levelDef.zoom : 2.5;
   CONFIG.mapGrid = (levelDef.mapGrid != null) ? levelDef.mapGrid : 512;
+  // A level may prefer one footprint mode (authored square heightmaps will want
+  // 'square' once Phase 3 lands), but a mode already chosen by URL or by hand
+  // wins — otherwise loadLevel would silently undo it.
+  if (levelDef.terrainFit != null && !CONFIG._terrainFitPinned) {
+    CONFIG.terrainFit = levelDef.terrainFit;
+  }
   const _seasonOrder = ['summer', 'autumn', 'winter', 'spring'];
   CONFIG.startSeasonIndex = levelDef.startSeason ? Math.max(0, _seasonOrder.indexOf(levelDef.startSeason)) : 0;
 
@@ -669,6 +697,10 @@ class Game {
   init() {
     if (!this.currentLevel) return;
 
+    // Free the outgoing generator's season buffers. Without this every reseed
+    // and every refit leaks four canvases — see TerrainGenerator.disposeBuffers.
+    if (this.terrain && this.terrain.disposeBuffers) this.terrain.disposeBuffers();
+
     this.terrain = new TerrainGenerator(CONFIG, this.activeBiomes);
     this.seasonManager = new SeasonManager(CONFIG);
     this.terrain.setSeasonManager(this.seasonManager);
@@ -678,6 +710,56 @@ class Game {
     this._buildSimulation();
 
     if (audioManager) audioManager.playBackground();
+  }
+
+  // ============================================
+  // TERRAIN FOOTPRINT
+  // ============================================
+  // Switch between 'square' and 'fit' (see CONFIG.terrainFit). Pinned, so a
+  // later loadLevel() cannot quietly override a mode chosen by hand.
+  setTerrainFit(mode, pin = true) {
+    if (mode !== 'square' && mode !== 'fit') return false;
+    if (pin) CONFIG._terrainFitPinned = true;
+    if (CONFIG.terrainFit === mode) return false;
+    CONFIG.terrainFit = mode;
+    return this.refitTerrain(true);
+  }
+
+  // Re-derive the grid from the current canvas and rebuild if it has moved.
+  //
+  // This is a full init(): new noise over every cell, four fresh season bakes,
+  // and a new Simulation, because the spatial grids are sized from the terrain
+  // dimensions. ~1 s, and the current ecosystem does not survive it. That is
+  // acceptable precisely because the kiosk panel never changes size — this path
+  // exists for authoring on a desktop window and for the startup derivation.
+  // It must never be reachable from the attract loop.
+  //
+  // Returns true if it rebuilt.
+  refitTerrain(force = false) {
+    if (!this.currentLevel) return false;
+
+    const want = TerrainGenerator.gridFor(CONFIG);
+    const t = this.terrain;
+    if (!force && t && t.mapWidth === want.cols && t.mapHeight === want.rows) {
+      return false;               // same footprint — the view transform is enough
+    }
+
+    const from = t ? `${t.mapWidth}x${t.mapHeight}` : 'none';
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+
+    this.init();
+
+    const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
+    console.log(`[Terrain] refit ${CONFIG.terrainFit}: ${from} -> ` +
+                `${want.cols}x${want.rows} (${(want.cols * want.rows).toLocaleString()} cells, ` +
+                `noiseScale ${want.noiseScale.toFixed(5)}) in ${ms.toFixed(0)}ms`);
+
+    // Borrow the kiosk crossfade so the rebuild reads as a transition rather
+    // than a hitch.
+    if (typeof Kiosk !== 'undefined' && typeof millis === 'function') {
+      Kiosk._fadeUntil = millis() + Kiosk.crossfadeMillis;
+    }
+    return true;
   }
 
   // Cheap rebuild: keep the terrain and its baked buffers, replace the living
@@ -898,6 +980,14 @@ class Game {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
     if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
+
+    // SHIFT+F toggles the terrain footprint. An authoring key, not a visitor
+    // one — the kiosk lockdown limits input to 1-4, so it cannot be reached on
+    // the wall. Costs a full rebuild, same as ?terrain=.
+    if (k === 'F') {
+      this.setTerrainFit(CONFIG.terrainFit === 'fit' ? 'square' : 'fit');
+      return;
+    }
   }
 
 }
@@ -932,6 +1022,11 @@ function setup() {
   initPlantSprites(plantSprites);
   initializeRegistry();
 
+  // ?terrain=fit | ?terrain=square overrides the CONFIG default without editing
+  // this file. Read BEFORE loadLevel so the first terrain is built at the right
+  // footprint rather than built square and then rebuilt.
+  applyTerrainFitFromURL();
+
   game = new Game();
   // Te Manawa: standalone installation - autoload scene, skip menu/level-select
   game.loadLevel('temanawa_scaffold');
@@ -955,6 +1050,36 @@ function windowResized() {
     game.ui.recalculate();
     game._updateViewTransform();
   }
+
+  // In 'fit' mode the terrain footprint itself follows the screen, so a resize
+  // may need a rebuild. Debounced, because a drag-resize fires this dozens of
+  // times and each rebuild is ~1 s. The view transform above already keeps the
+  // frame correct in the meantime; the refit only sharpens the footprint.
+  scheduleTerrainRefit();
+}
+
+// Startup override, same pattern as ArtMode's ?art= flag in entity_sprites.js.
+function applyTerrainFitFromURL() {
+  if (typeof window === 'undefined' || !window.location) return;
+  const q = new URLSearchParams(window.location.search).get('terrain');
+  if (q === 'fit' || q === 'square') {
+    CONFIG.terrainFit = q;
+    CONFIG._terrainFitPinned = true;
+    console.log(`[Terrain] footprint mode '${q}' from URL`);
+  }
+}
+
+// ---- resize-triggered refit (fit mode only) ----------------------
+let _refitTimer = null;
+
+function scheduleTerrainRefit() {
+  if (CONFIG.terrainFit !== 'fit') return;
+  if (typeof setTimeout !== 'function') return;
+  if (_refitTimer) clearTimeout(_refitTimer);
+  _refitTimer = setTimeout(() => {
+    _refitTimer = null;
+    if (game) game.refitTerrain();
+  }, CONFIG.terrainFitResizeDelay);
 }
 
 function scaleCanvasToFit() {
