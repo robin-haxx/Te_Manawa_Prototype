@@ -25,7 +25,19 @@ class Boid {
     this.wanderTime = random() * 1000; // For delta-time compatible wander
     this._wanderHeading = Math.atan2(this.vel.y, this.vel.x); // last real heading, for relative wander
     this._speedCap = null; // smoothed effective max speed (ramps toward maxSpeed)
-    
+
+    // ---- Smoothed facing (see updateFacing) --------------------------------
+    // The direction the SPRITE points, eased toward the direction of travel so
+    // rotation glides instead of snapping to a division, ramps up from rest,
+    // and shrugs off a heading that flickers for a frame or two (state chatter)
+    // rather than whipping around. Scalars only — never allocates, so it is
+    // safe in update() and across a soft reset (CLAUDE.md).
+    this._facing = undefined;   // radians, 0 = +x; undefined until the first update
+    this._turnRate = 0;         // current angular velocity, radians per frame-unit
+    this._faceGateSq = 0.0025;  // below this speed² the heading is noise → hold facing
+    this._turnMax = 0.15;       // hard cap on turn per frame-unit (~8.6°/frame)
+    this._turnEase = 0.12;      // how fast the turn rate ramps in/out (the "ramp-up")
+
     // Reusable vectors
     this._steeringVec = createVector();
     this._tempVec1 = createVector();
@@ -350,5 +362,65 @@ class Boid {
     
     if (this.pos.y < 5) this.pos.y = 5;
     else if (this.pos.y > h) this.pos.y = h;
+
+    // Velocity is final for the frame here (behave() set the forces, the lines
+    // above integrated and clamped them), so ease the sprite's facing now,
+    // using the same dt — which carries the deep-time multiplier — so the turn
+    // keeps pace when the clock fast-forwards.
+    this.updateFacing(dt);
+  }
+
+  // Ease the sprite's facing toward the direction of travel. Three problems,
+  // one mechanism:
+  //   • snapping — the renderer used to set the angle straight from velocity
+  //     every frame. A rate-limited turn glides between headings instead.
+  //   • no ramp-up — the turn RATE itself is eased toward its target, so a turn
+  //     accelerates in from rest rather than starting at full speed.
+  //   • rubber-banding — when state chatter flips the velocity for a frame or
+  //     two, the eased rate cannot reverse instantly, so a brief flicker barely
+  //     moves the sprite instead of whipping it around.
+  //
+  // Scalar-only and allocation-free (CLAUDE.md: never allocate in update()).
+  updateFacing(dt = 1) {
+    const TAU = Math.PI * 2;
+    const vx = this.vel.x, vy = this.vel.y;
+    const moving = (vx * vx + vy * vy) > this._faceGateSq;
+
+    // First call for this boid: adopt the current heading with no turn, so a
+    // freshly spawned or soft-reset bird does not spin to face its start vector.
+    if (this._facing === undefined) {
+      this._facing = moving ? Math.atan2(vy, vx) : 0;
+      this._turnRate = 0;
+      return;
+    }
+
+    // Shortest signed arc to the target heading, wrapped into (-PI, PI]. No trig.
+    let d = 0;
+    if (moving) {
+      d = Math.atan2(vy, vx) - this._facing;
+      d -= TAU * Math.floor((d + Math.PI) / TAU);
+    }
+
+    // Desired turn rate: proportional to the error but capped. Proportional
+    // eases the turn OUT as the heading is reached; the cap stops a 180° flip
+    // resolving in one frame. Stopped → 0, so an in-progress turn coasts to a
+    // halt rather than freezing mid-swing.
+    const m = this._turnMax;
+    const desired = d > m ? m : (d < -m ? -m : d);
+
+    // Ease the actual rate toward the desired rate — the ramp-up, and the
+    // inertia that averages out flicker.
+    const k = this._turnEase * dt;
+    this._turnRate += (desired - this._turnRate) * (k > 1 ? 1 : k);
+
+    // Integrate, but never rotate past the target in a single step — guards a
+    // large deep-time dt against overshooting into a wobble.
+    let step = this._turnRate * dt;
+    if (moving && ((d >= 0 && step > d) || (d <= 0 && step < d))) step = d;
+    this._facing += step;
+
+    // Keep the angle bounded so it cannot drift over a day-long kiosk run.
+    if (this._facing > Math.PI) this._facing -= TAU;
+    else if (this._facing < -Math.PI) this._facing += TAU;
   }
 }

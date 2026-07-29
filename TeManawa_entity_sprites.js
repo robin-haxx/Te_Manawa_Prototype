@@ -172,21 +172,28 @@ const EntitySprites = {
     
     const spritePath = 'sprites/';
     
-    // Moa walk cycle (4 frames)
-    for (let i = 1; i <= 4; i++) {
+    // PROTOTYPE ART SWAP: the generic moa set renders with little bush moa art.
+    // The original moa_walk_1..4 / moa_idle are still in sprites/ and unreferenced
+    // — swap the two blocks back to restore them. Art only: every species key,
+    // its nutrition, size, tint and behaviour are untouched.
+    //
+    // The LB set is a 5-frame cycle, not 4. Nothing needs adjusting for that —
+    // getMoaSprite() takes the frame count from set.walk.length.
+    for (let i = 1; i <= 5; i++) {
+      const n = String(i).padStart(2, '0');
       this.moa.walk.push(loadImage(
-        `${spritePath}moa_walk_${i}.png`,
-        () => console.log(`Loaded moa_walk_${i}.png`),
-        () => console.warn(`Could not load moa_walk_${i}.png`)
+        `${spritePath}LB_moa_walk_${n}.png`,
+        () => {},
+        () => console.warn(`Could not load LB_moa_walk_${n}.png`)
       ));
     }
-    
+
     this.moa.idle = loadImage(
-      `${spritePath}moa_idle.png`,
-      () => console.log('Loaded moa_idle.png'),
-      () => console.warn('Could not load moa_idle.png')
+      `${spritePath}LB_moa_idle.png`,
+      () => {},
+      () => console.warn('Could not load LB_moa_idle.png')
     );
-    
+
     // There is no moa_juvenile.png — the art is a 4-frame walk cycle. This used
     // to load a non-existent file with an empty failure callback, so it failed
     // silently and juveniles rendered as adults (TEMANAWA_BUILD_V3.md §2.4).
@@ -198,20 +205,13 @@ const EntitySprites = {
       ));
     }
     
-    // Bush moa (Anomalopteryx) — its own art, 5-frame walk + idle
-    for (let i = 1; i <= 5; i++) {
-      const n = String(i).padStart(2, '0');
-      this.moaVariants.bush.walk.push(loadImage(
-        `${spritePath}LB_moa_walk_${n}.png`,
-        () => console.log(`Loaded LB_moa_walk_${n}.png`),
-        () => console.warn(`Could not load LB_moa_walk_${n}.png`)
-      ));
-    }
-    this.moaVariants.bush.idle = loadImage(
-      `${spritePath}LB_moa_idle.png`,
-      () => console.log('Loaded LB_moa_idle.png'),
-      () => console.warn('Could not load LB_moa_idle.png')
-    );
+    // Bush moa (Anomalopteryx) — 5-frame walk + idle. While the generic set is
+    // swapped to this same art (above), the variant ALIASES it rather than
+    // loading the six files a second time: p5 does not dedupe loadImage, and
+    // every duplicate request blocks the first frame. `spriteSet: 'bush'` keeps
+    // working unchanged. Restore the loop when the generic art comes back.
+    this.moaVariants.bush.walk = this.moa.walk;
+    this.moaVariants.bush.idle = this.moa.idle;
 
     // Haast's eagle (Pouākai) — harrier wingbeat, frame count and resolution
     // depend on the active art mode.

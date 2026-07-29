@@ -291,6 +291,63 @@ const g=vm.runInContext('game',ctx);
       `peak ${(worst*100).toFixed(1)}% of budget)`);
 }
 
+// ---- facing smoothing: glide, ramp-up, no whip on flicker -------------
+// The renderer used to set each sprite's angle straight from velocity every
+// frame (SpriteAngle.snap), so a heading that flipped for a frame or two —
+// state chatter — whipped the sprite around. Boid.updateFacing() now eases a
+// rate-limited turn toward the heading. Assert the properties that buys, since
+// they are exactly the kind of thing that reads fine in code and looks wrong on
+// screen.
+{
+  const Boid=vm.runInContext('Boid',ctx);
+  const terr={mapWidth:512,mapHeight:512};
+  const TAU=Math.PI*2, arc=a=>a-TAU*Math.floor((a+Math.PI)/TAU);
+  const mk=(vx,vy)=>{const b=new Boid(100,100,terr); b.vel.set(vx,vy); b.updateFacing(1); return b;};
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // ease-in: a turn starts gently and speeds up (turn rate ramps from zero) —
+  // it must not jump to full rate on frame one.
+  const b=mk(1,0);                 // settled facing east
+  b.vel.set(0,-1);                 // now ask it to face north
+  const d=[]; let prev=b._facing;
+  for(let i=0;i<6;i++){ b.updateFacing(1); d.push(Math.abs(arc(b._facing-prev))); prev=b._facing; }
+  chk(d[0]<d[3], `turn must ramp up, not snap (per-frame ${d.map(x=>x.toFixed(3)).join('/')})`);
+  chk(d[0]<=b._turnMax*1.01, 'first-frame turn must respect the rate cap');
+
+  // convergence + no overshoot: with the target held, facing reaches it and
+  // never rotates past it (past-target is what reads as a wobble).
+  const target=Math.atan2(-1,0); let past=false;
+  for(let i=0;i<400;i++){ b.updateFacing(1); if(b._facing<target-0.02) past=true; }
+  chk(Math.abs(arc(b._facing-target))<0.01, 'facing must converge onto the heading');
+  chk(!past, 'facing must not overshoot the heading (no wobble)');
+
+  // flicker damping: a heading that alternates every frame must not whip the
+  // sprite — every frame's rotation stays inside the turn cap and the facing
+  // stays between the two headings instead of snapping across each frame.
+  const c=mk(1,0);                 // east
+  let maxStep=0, lo=Infinity, hi=-Infinity, pf=c._facing;
+  for(let i=0;i<40;i++){
+    c.vel.set(i%2?1:0, i%2?0:1);   // alternate east / south each frame
+    c.updateFacing(1);
+    maxStep=Math.max(maxStep,Math.abs(arc(c._facing-pf))); pf=c._facing;
+    lo=Math.min(lo,c._facing); hi=Math.max(hi,c._facing);
+  }
+  chk(maxStep<=c._turnMax*1.01, `flicker must stay within the turn cap, got ${maxStep.toFixed(3)}`);
+  chk(lo>-0.1 && hi<Math.PI/2+0.1, 'facing must stay between the flickering headings, not snap across');
+
+  // dt-aware: from the same state a larger dt advances the turn further, so the
+  // smoothing tracks a deep-time fast-forward instead of lagging behind it.
+  const prog=dt=>{ const x=mk(1,0); x.vel.set(0,-1); x.updateFacing(dt); return Math.abs(arc(x._facing)); };
+  chk(prog(2)>prog(1), 'a larger dt must advance the turn further (deep-time aware)');
+
+  // a soft reset makes fresh boids: facing must re-initialise, not spin from 0.
+  const e=mk(-1,0);                // facing west from birth
+  chk(Math.abs(arc(e._facing-Math.PI))<1e-9, 'a new boid adopts its heading with no initial spin');
+
+  console.log(fail? `facing smoothing: ${fail} FAILURES`
+    : 'facing smoothing: glide + ramp-up + flicker-damped, no overshoot, dt-aware');
+}
+
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);
 console.log('--- state ---');
 console.log('  Kiosk.game attached', !!K.game, ' resets', K.resetCount);

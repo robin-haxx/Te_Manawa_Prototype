@@ -175,7 +175,7 @@ const CONFIG = {
   col_panelHeader: [45, 75, 55],
 
   showContours: true,
-  contourInterval: 0.045,
+  contourInterval: 0.1,
   showLabels: false,
   showDebug: false,
   // The whole per-entity UI layer: hunger and breeding bars, heart and
@@ -981,7 +981,7 @@ function setup() {
 
   CONFIG.recalculateLayout(windowWidth, windowHeight);
 
-  pixelDensity(1); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size
+  pixelDensity(2); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size
   let cnv = createCanvas(CONFIG.canvasWidth, CONFIG.canvasHeight);
   cnv.style('display', 'block');
   document.body.style.margin = '0';

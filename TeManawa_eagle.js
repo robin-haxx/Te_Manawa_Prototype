@@ -17,6 +17,9 @@ class HaastsEagle extends Boid {
     this.separationDist = 100;
     this.separationDistSq = 10000;
     this.wanderStrength = 1.2;
+    // An eagle banks quickly: facing eases faster than a moa's (Boid.updateFacing).
+    this._turnMax = 0.22;
+    this._turnEase = 0.16;
     
     // Hunting
     // UPDATE SQUARED VALUES WITH RADIUS VALUES
@@ -704,14 +707,16 @@ class HaastsEagle extends Boid {
       ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5, this.wingspan * 0.6);
       
       // Step 1: orient a frame whose local "up" is the direction of travel.
-      const targetAngle = this.vel.heading() + HALF_PI;
-      this._displayAngle = SpriteAngle.snapWithHysteresis(this._displayAngle, targetAngle);
-      rotate(this._displayAngle);
+      // _facing is the smoothed travel heading (eased in updateFacing()), so
+      // the bird banks between headings instead of snapping.
+      const facing = (this._facing !== undefined) ? this._facing : Math.atan2(this.vel.y, this.vel.x);
+      rotate(facing + HALF_PI);
 
       // Step 2: flip across the travel axis, so the bird keeps facing forward
-      // and only the side shown to the camera swaps. Decided from the snapped
-      // heading, so the flip lands on the same frame as the angle snap.
-      if (SpriteAngle.shouldMirrorHeading(this._displayAngle - HALF_PI)) scale(-1, 1);
+      // and only the side shown to the camera swaps. Fed the smoothed heading,
+      // so the (now rare) flip lands as the bird passes straight up or down —
+      // edge-on, where the swap is invisible.
+      if (SpriteAngle.shouldMirrorHeading(facing)) scale(-1, 1);
 
       // Step 3: correct for the artwork not being drawn pointing "up".
       const artAngle = (EntitySprites.eagle && EntitySprites.eagle.artAngle) || 0;

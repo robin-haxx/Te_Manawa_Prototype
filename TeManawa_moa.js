@@ -71,6 +71,9 @@ class Moa extends Boid {
     this.fleeSpeed = s.fleeSpeed;
     this.maxSpeed = this.baseSpeed;
     this.maxForce = s.maxForce;
+    // A ground bird pivots deliberately: facing eases slowly (Boid.updateFacing).
+    this._turnMax = 0.12;
+    this._turnEase = 0.10;
     this.flockTendency = s.flockTendency;
     this.flightiness = s.flightiness;
     
@@ -1119,16 +1122,14 @@ class Moa extends Boid {
     fill(0, 0, 0, 25);
     ellipse(1.5, 1.5, this.size * 1.0, this.size * 0.5);
     
-    // Only update facing while actually moving: heading() of a near-zero
-    // velocity is pure noise and made stationary moa spin on the spot
-    // (mating, feeding, uphill crawls). Below the gate, keep the last facing.
-    if (this.vel.magSq() > 0.0025) {
-      this._displayAngle = SpriteAngle.snapWithHysteresis(this._displayAngle, this.vel.heading());
-    }
-    if (this._displayAngle === undefined) this._displayAngle = SpriteAngle.snap(this.vel.heading());
-    rotate(this._displayAngle);
-    
-    if (SpriteAngle.shouldMirror(this._displayAngle)) scale(1, -1);
+    // Facing is eased toward the direction of travel in updateFacing() (Boid):
+    // it glides between headings, ramps up from rest, and holds steady when
+    // near-stationary instead of spinning on velocity noise (mating, feeding,
+    // uphill crawls). Just read the smoothed angle here.
+    const facing = (this._facing !== undefined) ? this._facing : Math.atan2(this.vel.y, this.vel.x);
+    rotate(facing);
+
+    if (SpriteAngle.shouldMirror(facing)) scale(1, -1);
     
     // Per-species tint (by genus), but skip it for species with their own
     // dedicated sprite set (e.g. bush moa) so their art shows unaltered.

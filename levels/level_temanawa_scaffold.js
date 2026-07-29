@@ -77,7 +77,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740',
                  walkable:true,  canHavePlants:true, plantTypes:['beech','fern'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
-                 colors:['#a8a060','#b5ad6d','#c2ba7a'], contourColor:'#7a7445',
+                 colors:['#86a860','#a4b56d','#9ec27a'], contourColor:'#cfdbbb',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
                  colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c',
@@ -93,7 +93,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   },
   startingSpecies: 'upland_moa',
 
-  initialEntityCounts: { moa: 12, eagle: 2 },
+  initialEntityCounts: { moa: 10, eagle: 2 },
 
   // Timings only — the economy is gone (Phase 1.5). startingMauri and
   // the placeable toolbar no longer exist.
