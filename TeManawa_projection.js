@@ -48,6 +48,12 @@ const Projection = {
   mapWidth: 512,
   mapHeight: 512,
 
+  // Whether elevation currently lifts things off the flat plane. FALSE until the
+  // relief bake (step 2) exists — while the ground bake is flat, lifting entities
+  // by elevation would float them above a ground that has not risen to meet them.
+  // The relief step sets this true; groundY() and the bake then agree.
+  relief: false,
+
   _clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); },
 
   // Called once per terrain build (Game.init), AFTER the terrain exists so the
@@ -72,6 +78,15 @@ const Projection = {
   // before the view zoom). elev defaults to 0 → the flat squash plane, which is
   // what step 1's global squash uses.
   projY(worldY, elev) { return worldY * this.K - (elev || 0) * this.LIFT; },
+
+  // The render-facing vertical mapping every entity and the terrain share: where
+  // a thing standing on the ground at (·, worldY) of elevation `elev` is drawn.
+  // While relief is off it is the flat squash plane (worldY·K) and elevation is
+  // ignored, so undistorted sprites sit exactly on the squashed ground. When the
+  // relief bake turns `relief` on, the same call starts lifting with the terrain.
+  groundY(worldY, elev) {
+    return this.relief ? this.projY(worldY, elev) : worldY * this.K;
+  },
 
   // The world's on-screen vertical extent, in world units. squashedHeight() is
   // the flat plane (what step 1 uses for fit + centering); projectedWorldHeight()
@@ -104,6 +119,7 @@ const Projection = {
     this.mapWidth = 512;
     this.mapHeight = 512;
     this.LIFT = 0.14 * 512;
+    this.relief = false;
     return this;
   }
 };

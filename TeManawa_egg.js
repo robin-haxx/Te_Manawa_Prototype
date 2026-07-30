@@ -127,7 +127,8 @@ class Egg {
     if (!this.alive) return;
     
     const px = this.pos.x;
-    const py = this.pos.y;
+    // Sit on the squashed 3/4 ground; sprite drawn undistorted (§5).
+    const py = Projection.groundY(this.pos.y);
     const progress = this.currentTime / this.incubationTime;
     
     // Calculate wobble

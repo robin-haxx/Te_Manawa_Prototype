@@ -381,6 +381,15 @@ const g=vm.runInContext('game',ctx);
   chk(P.squashedHeight()===600*0.8, 'squashedHeight must be mapHeight x K');
   chk(P.projectedWorldHeight()>P.squashedHeight(), 'projected height must reserve relief headroom');
 
+  // groundY is the shared render mapping (terrain + every entity). Relief is OFF
+  // until the relief bake, so it must be the flat squashed plane and ignore
+  // elevation — otherwise sprites float above a ground that has not risen yet.
+  chk(P.relief===false, 'relief must default OFF until the relief bake lands');
+  chk(P.groundY(100,0)===80 && P.groundY(100,1)===80, 'groundY must ignore elevation while relief is off (flat squash)');
+  P.relief=true;
+  chk(Math.abs(P.groundY(100,1) - (80 - P.LIFT))<1e-9, 'with relief on, groundY must lift by elev x LIFT');
+  P.relief=false;
+
   // screen -> world round-trip (the authoring inverse). Flat sampler is exact;
   // a sloped sampler must still iterate back onto the source point.
   const flat=()=>0.5;

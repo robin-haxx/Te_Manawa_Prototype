@@ -1102,7 +1102,11 @@ class Moa extends Boid {
     if (!sprite) return;
     
     push();
-    translate(this.pos.x, this.pos.y);
+    // Sit on the squashed 3/4 ground: only the ground-line y is projected
+    // (Projection.groundY), so the sprite itself stays undistorted. x is
+    // unchanged. Kept centre-anchored for now — foot-anchoring is a later pass.
+    // (elevation is added here when the relief bake lands — §3.)
+    translate(this.pos.x, Projection.groundY(this.pos.y));
 
     // Species highlight: a soft pulsing halo under the moa, driven purely by
     // the player toggle (population panel / fullscreen focus buttons; focus

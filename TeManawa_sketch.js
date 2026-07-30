@@ -935,10 +935,12 @@ class Game {
 
     translate(CONFIG.viewX, CONFIG.viewY);
     scale(CONFIG.viewZoom);
-    // Squash terrain AND entities together so they share one plane. This is
-    // projY() with elevation 0; the relief bake and unsquashed billboards that
-    // use elevation come next (§3, §5). Everything below draws in world coords
-    // and is squashed by this single transform.
+
+    // 3/4 view: squash the GROUND ONLY. Sprites must NOT be distorted, so the
+    // squash wraps just the terrain + frost; entities draw undistorted in
+    // simulation.render() below, each projected onto this same squashed ground
+    // via Projection.groundY (md/TEMANAWA_34VIEW_PLAN.md §5).
+    push();
     scale(1, _K);
 
     this.terrain.render();
@@ -954,6 +956,7 @@ class Game {
       rect(0, 0, this.terrain.mapWidth, this.terrain.mapHeight);
       pop();
     }
+    pop();   // end ground-only squash — entities below draw undistorted
 
     this.simulation.render();
 

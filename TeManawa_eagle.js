@@ -62,6 +62,9 @@ class HaastsEagle extends Boid {
     this.wingPhase = random(TWO_PI);
     this.bodyLength = this.wingspan * 0.45;
     this.animTime = random(1000);
+    // Eased flight altitude in world px (visual only — the sim stays 2D). Cruises
+    // while flying, eases to 0 to dive/rest so a swoop-to-catch reads at 3/4.
+    this._altitude = this.wingspan * 1.6;
     
     // Reusable vectors
     this._tempForce = createVector();
@@ -136,6 +139,15 @@ class HaastsEagle extends Boid {
   behave(simulation, dt = 1) {
     this.animTime += dt;
     this.hunger = Math.min(this.hunger + this.hungerRate * dt, this.maxHunger);
+
+    // Flight altitude (visual only): cruise while flying/searching, drop to the
+    // deck when diving on prey or resting, so a swoop reads as a real descent.
+    // Eased so it never pops. Runs before the early-returns below and uses last
+    // frame's state/target — a single frame of lag is invisible.
+    const _diving = this.hunting && this.target !== null;
+    const _cruiseAlt = this.wingspan * 1.6;
+    const _targetAlt = (_diving || this.state === 'resting') ? 0 : _cruiseAlt;
+    this._altitude += (_targetAlt - this._altitude) * Math.min(1, 0.05 * dt);
 
     // Emergent population model: age, maybe starve, and (when calm) maybe breed.
     if (this.emergent) {
@@ -699,13 +711,19 @@ class HaastsEagle extends Boid {
     
     if (sprite) {
       push();
-      translate(this.pos.x, this.pos.y);
-      
-      // Shadow
+      // Anchor on the squashed 3/4 ground, draw the shadow there, THEN lift the
+      // body to its flight altitude. The shadow staying on the ground is what
+      // sells height at 3/4 — and a dive (altitude → 0) reads as a real descent.
+      translate(this.pos.x, Projection.groundY(this.pos.y));
+
+      const _alt = this._altitude || 0;
+      const _sf = 1 - Math.min(0.55, _alt / 70);   // higher bird → smaller, fainter shadow
       noStroke();
-      fill(0, 0, 0, isActiveHunt ? 35 : 25);
-      ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5, this.wingspan * 0.6);
-      
+      fill(0, 0, 0, (isActiveHunt ? 35 : 25) * _sf);
+      ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5 * _sf, this.wingspan * 0.6 * _sf);
+
+      translate(0, -_alt);   // lift body to altitude (undistorted; 0 when diving/resting)
+
       // Step 1: orient a frame whose local "up" is the direction of travel.
       // _facing is the smoothed travel heading (eased in updateFacing()), so
       // the bird banks between headings instead of snapping.
