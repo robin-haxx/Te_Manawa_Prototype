@@ -982,6 +982,23 @@ class Game {
       pop();
     }
 
+    // North atmosphere: a soft haze fading DOWN from the top (the far/north edge)
+    // so distance reads — and somewhere the eruption's ash can grow from later.
+    // Over the terrain, under the animals. One static gradient rect (no
+    // photosensitivity concern). LOOK.haze toggles it. 34VIEW §7.
+    if (typeof LOOK !== 'undefined' && LOOK.haze && LOOK.hazeStrength > 0 && drawingContext.createLinearGradient) {
+      const _hz = color(LOOK.hazeColor);
+      const _hr = red(_hz) | 0, _hg = green(_hz) | 0, _hb = blue(_hz) | 0;
+      const _bandH = projH * LOOK.hazeHeight;
+      const _grad = drawingContext.createLinearGradient(0, 0, 0, _bandH);
+      _grad.addColorStop(0, `rgba(${_hr},${_hg},${_hb},${LOOK.hazeStrength})`);
+      _grad.addColorStop(1, `rgba(${_hr},${_hg},${_hb},0)`);
+      drawingContext.save();
+      drawingContext.fillStyle = _grad;
+      drawingContext.fillRect(0, 0, this.terrain.mapWidth, _bandH);
+      drawingContext.restore();
+    }
+
     this.simulation.render();
 
     drawingContext.restore();

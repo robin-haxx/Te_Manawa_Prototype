@@ -84,7 +84,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  colors:['#c2b280','#d4c794','#e6dca8'], contourColor:'#8a7d5a', outlineColor:'#7a6b45',
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
-                 colors:['#7fb069','#8fbc79','#9fc889'], contourColor:'#5a7d4a', outlineColor:'#3e5a34',
+                 colors:['#e6dca8', '#c8d697', '#789762'], contourColor:'#5a7d4a', outlineColor:'#3e5a34',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','flax'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:['#2d5a3d','#346644','#3b724b'], contourColor:'#1e3d29', outlineColor:'#132416',

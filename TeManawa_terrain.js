@@ -31,6 +31,9 @@ const LOOK = {
   quietSat:      0.16,   // 0 = full colour ground, 1 = greyscale
   quietContrast: 0.92,   // <1 compresses ground contrast toward mid-grey
   shadeStrength: 50.0,   // slope-shading gain (high = hard/binary; ~6–12 is gentle)
+  hazeStrength:  0.5,    // north-atmosphere overlay opacity at the top edge (0..1)
+  hazeHeight:    0.35,   // how far down the map the atmosphere fades (fraction of height)
+  outlineJitter: 0.35,   // hand-inked lineweight variation on the boundary ink (0 = uniform)
 
   // ---- colours ----
   hazeColor:    '#20303a', // uniform tone the sky fades to (keeps the top streak-free)
@@ -790,7 +793,19 @@ class TerrainGenerator {
         const edge = edgeFlags ? edgeFlags[cellIdx] : 0;
         if (edge === 1 && LOOK.outlines) {
           const oc = this._getCachedColor(this.biomeArray[this.biomeIndexMap[cellIdx]].outlineColor || LOOK.outlineColor);
-          cellColors[outIdx] = red(oc); cellColors[outIdx + 1] = green(oc); cellColors[outIdx + 2] = blue(oc);
+          let orr = red(oc), ogg = green(oc), obb = blue(oc);
+          // Hand-inked weight: where a smooth noise dips, let the ground show
+          // through so the line thins/breaks; where it peaks, full ink. Gives the
+          // uniform 1px boundary some lineweight variation. (Full variation comes
+          // with the higher-res bake.) cellColors[outIdx..] still hold the base here.
+          const jit = LOOK.outlineJitter;
+          if (jit > 0) {
+            const ink = 1 - jit * (1 - noise(col * 0.5 + this.seed, row * 0.5 + this.seed));
+            orr = cellColors[outIdx]     + (orr - cellColors[outIdx])     * ink;
+            ogg = cellColors[outIdx + 1] + (ogg - cellColors[outIdx + 1]) * ink;
+            obb = cellColors[outIdx + 2] + (obb - cellColors[outIdx + 2]) * ink;
+          }
+          cellColors[outIdx] = orr; cellColors[outIdx + 1] = ogg; cellColors[outIdx + 2] = obb;
         } else if (edge === 2 && LOOK.shore) {
           cellColors[outIdx] = shoreRGB[0]; cellColors[outIdx + 1] = shoreRGB[1]; cellColors[outIdx + 2] = shoreRGB[2];
         }

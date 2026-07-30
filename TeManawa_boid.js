@@ -38,6 +38,16 @@ class Boid {
     this._turnMax = 0.15;       // hard cap on turn per frame-unit (~8.6°/frame)
     this._turnEase = 0.12;      // how fast the turn rate ramps in/out (the "ramp-up")
 
+    // Lateral flip — the moa renderer uses this INSTEAD of rotation, to read as a
+    // walking animal that turns around rather than a top-down sprite that spins.
+    // _faceDir is the committed horizontal facing (+1 right, -1 left); _flip eases
+    // toward it and animates the turn (passing through 0 = edge-on). Eagles keep
+    // the smoothed angle above (a soaring bird reads fine rotated).
+    this._faceDir = (this.vel.x >= 0) ? 1 : -1;
+    this._flip = this._faceDir;
+    this._flipSpeed = 0.14;     // how fast the flip animates toward _faceDir
+    this._faceGateX = 0.03;     // min |vel.x| to commit a new direction (hysteresis)
+
     // Reusable vectors
     this._steeringVec = createVector();
     this._tempVec1 = createVector();
@@ -422,5 +432,15 @@ class Boid {
     // Keep the angle bounded so it cannot drift over a day-long kiosk run.
     if (this._facing > Math.PI) this._facing -= TAU;
     else if (this._facing < -Math.PI) this._facing += TAU;
+
+    // ---- Lateral flip (moa renderer) --------------------------------------
+    // Commit a new horizontal facing only when the sideways movement is clear
+    // (the gate is hysteresis, so a near-vertical path or x-jitter does not
+    // flip-flap), then ease the animated flip toward it — passing through 0 is
+    // the little turn-around pop.
+    if (vx > this._faceGateX) this._faceDir = 1;
+    else if (vx < -this._faceGateX) this._faceDir = -1;
+    const fk = this._flipSpeed * dt;
+    this._flip += (this._faceDir - this._flip) * (fk > 1 ? 1 : fk);
   }
 }

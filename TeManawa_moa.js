@@ -1126,14 +1126,13 @@ class Moa extends Boid {
     fill(0, 0, 0, 25);
     ellipse(1.5, 1.5, this.size * 1.0, this.size * 0.5);
     
-    // Facing is eased toward the direction of travel in updateFacing() (Boid):
-    // it glides between headings, ramps up from rest, and holds steady when
-    // near-stationary instead of spinning on velocity noise (mating, feeding,
-    // uphill crawls). Just read the smoothed angle here.
-    const facing = (this._facing !== undefined) ? this._facing : Math.atan2(this.vel.y, this.vel.x);
-    rotate(facing);
-
-    if (SpriteAngle.shouldMirror(facing)) scale(1, -1);
+    // Lateral flip instead of top-down rotation (a walking animal turns around,
+    // it doesn't spin). _flip is the eased horizontal facing (updateFacing, Boid):
+    // +1 faces right, -1 faces left, and it animates THROUGH 0, where the sprite
+    // is edge-on (scaleX → 0) and squashes before opening out mirrored. The small
+    // vertical stretch at |flip| → 0 is the bounce that makes the turn fun.
+    const flip = (this._flip !== undefined) ? this._flip : 1;
+    scale(flip, 1 + (1 - Math.abs(flip)) * 0.18);
     
     // Per-species tint (by genus), but skip it for species with their own
     // dedicated sprite set (e.g. bush moa) so their art shows unaltered.
