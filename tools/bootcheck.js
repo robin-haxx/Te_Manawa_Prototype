@@ -60,7 +60,8 @@ Object.assign(ctx,{
   color:(...a)=>({levels:a,toString:()=>'c'}), red:()=>0,green:()=>0,blue:()=>0,alpha:()=>255,
   textWidth:()=>10, windowWidth:1080, windowHeight:1920, mouseX:0, mouseY:0, key:'', keyCode:0,
   frameCount:0, deltaTime:16, drawingContext:{save(){},restore(){},beginPath(){},rect(){},clip(){},
-    fillStyle:'',globalAlpha:1,filter:'',shadowBlur:0,shadowColor:''},
+    fillStyle:'',globalAlpha:1,filter:'',shadowBlur:0,shadowColor:'',
+    createLinearGradient:()=>({addColorStop(){}}),fillRect(){}},
   getAudioContext:()=>({state:'running',resume(){}}),
   LEFT:'left',RIGHT:'right',CENTER:'center',TOP:'top',BOTTOM:'bottom',BASELINE:'baseline',
   CORNER:'corner',CORNERS:'corners',RADIUS:'radius',PI:Math.PI,TWO_PI:Math.PI*2,
@@ -348,6 +349,37 @@ const g=vm.runInContext('game',ctx);
     : 'facing smoothing: glide + ramp-up + flicker-damped, no overshoot, dt-aware');
 }
 
+// ---- lateral flip: face from vel.x, animate through edge-on, hysteresis --
+// The moa renderer flips (scale(_flip, ...)) instead of rotating. _flip must
+// commit a direction from horizontal movement, ease toward it (through 0 = the
+// turn-around pop), stay in [-1,1], and NOT flip on a near-vertical path.
+{
+  const Boid = vm.runInContext('Boid', ctx);
+  const terr = { mapWidth: 512, mapHeight: 512 };
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  const b = new Boid(100, 100, terr);
+  b.vel.set(1, 0);
+  for (let i = 0; i < 32; i++) b.updateFacing(1);
+  chk(b._faceDir === 1 && Math.abs(b._flip - 1) < 0.05, 'clear rightward motion settles facing +1');
+
+  b.vel.set(-1, 0);
+  let minAbs = 1, outOfRange = false;
+  for (let i = 0; i < 40; i++) { b.updateFacing(1); const a = Math.abs(b._flip); if (a < minAbs) minAbs = a; if (b._flip < -1.001 || b._flip > 1.001) outOfRange = true; }
+  chk(b._faceDir === -1 && Math.abs(b._flip + 1) < 0.05, 'turning left settles facing -1');
+  chk(minAbs < 0.2, 'the flip animates THROUGH edge-on (|flip| passes near 0 = the pop)');
+  chk(!outOfRange, 'flip stays within [-1, 1]');
+
+  // vertical-only motion must not change the committed facing (hysteresis on vel.x)
+  const c = new Boid(0, 0, terr); c.vel.set(1, 0); c.updateFacing(1);
+  const dir0 = c._faceDir;
+  for (let i = 0; i < 20; i++) { c.vel.set(0, i % 2 ? 1 : -1); c.updateFacing(1); }
+  chk(c._faceDir === dir0, 'a near-vertical path must not flip the sprite');
+
+  console.log(fail ? `lateral flip: ${fail} FAILURES`
+    : 'lateral flip: faces from vel.x, animates through edge-on, hysteresis holds');
+}
+
 // ---- 3/4 projection: pure module, round-trip, no CONFIG writeback -----
 // Plan-oblique paint (md/TEMANAWA_34VIEW_PLAN.md §2, §9). The module is pure so
 // most of this needs no sketch; the live-state checks confirm the game
@@ -366,9 +398,11 @@ const g=vm.runInContext('game',ctx);
   chk(typeof C.projK==='undefined' && typeof C.K==='undefined' && typeof C.LIFT==='undefined' && typeof C.liftFrac==='undefined',
       'K/LIFT must live on Projection, never on CONFIG');
   chk(P.relief===true, 'live game must enable relief after the bake');
+  const _S = G.terrain._paintScale || 1;
   const _bh = G.terrain.seasonBuffers.summer && G.terrain.seasonBuffers.summer.height;
-  chk(_bh === Math.ceil(G.terrain.mapHeight * P.K + P.LIFT),
-      `relief buffer height (${_bh}) must equal ceil(mapH*K+LIFT)=${Math.ceil(G.terrain.mapHeight*P.K+P.LIFT)}`);
+  chk(_bh === Math.ceil(G.terrain.mapHeight * P.K + P.LIFT) * _S,
+      `relief buffer height (${_bh}) must equal ceil(mapH*K+LIFT)*bakeScale=${Math.ceil(G.terrain.mapHeight*P.K+P.LIFT)*_S}`);
+  chk(G.terrain._paintW === Math.round(G.terrain.mapWidth * _S), 'paint grid width must be mapWidth * bakeScale');
 
   // configure() clamps out-of-range authoring into the documented bounds
   P.configure({K:5, liftFrac:9, mapWidth:400, mapHeight:600});

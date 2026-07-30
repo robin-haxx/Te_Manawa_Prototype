@@ -217,7 +217,7 @@ const InstallHUD = {
     for (let i = 0; i < 70; i++) {
       const x = zx + ((i * 137 + tt) % mw);
       const y = zy + ((i * 83 + tt * 1.7) % mh);
-      line(x, y, x - 6, y + 14);
+      line(x, y, x + 6, y + 14);   // down-and-RIGHT: rain blown SE by the fixed NW wind (SPRITE_BRIEF §1.1)
     }
 
     if (cells && typeof placeableSprites !== 'undefined' && placeableSprites.loaded) {

@@ -24,21 +24,28 @@ const LOOK = {
   shade:     true,   // slope shading of the lit tops
   haze:      true,   // atmospheric fade in the sky above the far ridge
   quiet:     true,   // desaturate the ground so the outlined sprites read first
+  reliefEdge: true,  // bold dark outline along relief steps/cliff tops (like the sprite outlines)
 
   // ---- amounts (used only when the matching toggle is on) ----
   wobbleAmp:     0.025,  // border wander, in elevation units
   wobbleFreq:    0.18,   // spatial frequency of the wander
   quietSat:      0.16,   // 0 = full colour ground, 1 = greyscale
   quietContrast: 0.92,   // <1 compresses ground contrast toward mid-grey
-  shadeStrength: 50.0,   // slope-shading gain (high = hard/binary; ~6–12 is gentle)
-  hazeStrength:  0.5,    // north-atmosphere overlay opacity at the top edge (0..1)
-  hazeHeight:    0.35,   // how far down the map the atmosphere fades (fraction of height)
-  outlineJitter: 0.35,   // hand-inked lineweight variation on the boundary ink (0 = uniform)
+  shadeStrength: 50.0,   // slope-shading gain (feeds the cel bands below)
+  shadeSteps:    3,      // CEL bands: 0/1 = smooth gradient, 2–4 = flat toon steps (match the sprites)
+  shadeShadow:   0.68,   // darkest cel band (shadow side) — multiplier on the ground colour
+  shadeHigh:     1.22,   // lightest cel band (NW-lit highlight) — multiplier
+  bakeScale:     2,      // PAINT resolution vs the sim grid: 2 = free 2× (same memory);
+                         //   3–4 = sharper, but slower to bake + more memory. Press B to apply.
+  hazeStrength:  100000.5,    // north-atmosphere overlay opacity at the top edge (0..1)
+  hazeHeight:    0.45,   // how far down the map the atmosphere fades (fraction of height)
+  outlineJitter: .35,   // hand-inked lineweight variation on the boundary ink (0 = uniform)
 
   // ---- colours ----
   hazeColor:    '#20303a', // uniform tone the sky fades to (keeps the top streak-free)
   outlineColor: '#16210f', // fallback boundary ink (a biome's own `outlineColor` wins)
   shoreColor:   '#dfe9ef', // shoreline stroke
+  reliefEdgeColor: '#0e1712', // bold dark outline on relief steps (matches the sprite ink)
 
   dump() { const o = {}; for (const k in this) if (typeof this[k] !== 'function') o[k] = this[k]; console.log('[LOOK]', o); return o; }
 };
@@ -567,11 +574,13 @@ class TerrainGenerator {
     
     this._initSnowColors();
     
-    // Compute base cell colors (without snow)
-    this._computeBaseCellColors();
-
-    // Mark biome-boundary cells for the ink / shoreline strokes (illustration).
-    this._computeEdgeFlags();
+    // Build the high-resolution PAINT grid: the continuous elevation sampled at
+    // LOOK.bakeScale× the sim grid, with biome, colour, water and edge per fine
+    // cell. This is what the season bakes render from, decoupling PAINT resolution
+    // from the sim's cell budget so the ground reads as smooth curves, not grid
+    // cells. The sim's heightMap/biomeIndexMap (built above) are untouched.
+    // md/TEMANAWA_34VIEW_PLAN.md §4.
+    this._computePaintGrid();
 
     // Pre-bake all 4 seasonal buffers
     this._bakeAllSeasonBuffers();
@@ -686,225 +695,230 @@ class TerrainGenerator {
     }
   }
   
-  /**
-   * Bake a single season's terrain buffer using direct pixel manipulation
-   */
-  _bakeSeasonBuffer(seasonKey) {
-    // 3/4 relief: bake in PAINT SPACE — each cell displaced up by its elevation
-    // (Projection). The buffer is the projected world height (mapHeight·K + LIFT)
-    // tall; K/LIFT come from Projection, which Game.init configures before this
-    // runs. Falls back to a flat top-down bake if Projection is somehow absent.
+  // High-resolution PAINT grid — see generate(). Samples the CONTINUOUS terrain
+  // (getElevation) at LOOK.bakeScale× the sim grid, with biome, colour, water
+  // flag and boundary-edge flag per fine cell. The season bakes render from this,
+  // so PAINT resolution is decoupled from the sim's cell budget and the ground
+  // reads as smooth curves rather than square grid cells. 34VIEW §4.
+  _computePaintGrid() {
     const _P = (typeof Projection !== 'undefined') ? Projection : null;
-    const K = _P ? _P.K : 1;
-    const LIFT = _P ? _P.LIFT : 0;
-    const bufWorldH = Math.max(1, Math.ceil(this.mapHeight * K + LIFT));
+    this._paintK = _P ? _P.K : 1;
+    this._paintLIFT = _P ? _P.LIFT : 0;
+    this._paintWorldH = Math.max(1, Math.ceil(this.mapHeight * this._paintK + this._paintLIFT));
 
-    const buf = createGraphics(this.mapWidth, bufWorldH);
-    buf.loadPixels();
+    const S = Math.max(1, Math.round((typeof LOOK !== 'undefined' ? LOOK.bakeScale : 2) || 2));
+    this._paintScale = S;
+    const PW = this._paintW = Math.max(1, Math.round(this.mapWidth * S));
+    const PH = this._paintH = Math.max(1, Math.round(this.mapHeight * S));
 
-    const d = buf.pixelDensity();
-    const gridCols = this.gridCols;
-    const gridRows = this.gridRows;
+    const n = PW * PH;
+    const elevA  = this._paintElev  = new Float32Array(n);
+    const colR   = this._paintR     = new Uint8Array(n);
+    const colG   = this._paintG     = new Uint8Array(n);
+    const colB   = this._paintB     = new Uint8Array(n);
+    const waterA = this._paintWater = new Uint8Array(n);
+    const biomeA = this._paintBiome = new Uint8Array(n);
+    const edgeA  = this._paintEdge  = new Uint8Array(n);
+
+    const invS = 1 / S;
+    const wob = LOOK.wobble ? LOOK.wobbleAmp : 0;
+    const wobFreq = LOOK.wobbleFreq;
+    const quiet = LOOK.quiet, qs = LOOK.quietSat, qc = LOOK.quietContrast;
+
+    // Elevation is a smooth field the sim already sampled into heightMap. The
+    // paint grid BILINEARLY INTERPOLATES that instead of re-evaluating getElevation
+    // per fine cell — biome thresholds and relief then cross between samples as
+    // smooth curves rather than grid-cell steps (the "higher resolution" win),
+    // for a fraction of the cost. (Re-sampling getElevation here was ~10× slower
+    // and blew the init budget.)
     const heightMap = this.heightMap;
-    const baseCellColors = this._baseCellColors;
-    const snowColorsRGB = this._snowColorsRGB;
-    const hasSnow = this._snowBiome && snowColorsRGB;
-    
-    const snowLine = this.seasonSnowLines[seasonKey];
-    const permanentSnowLine = hasSnow ? this._snowBiome.minElevation : 1.0;
-    
-    let snowContourRGB = [176, 176, 176]; // default grey
-    if (hasSnow) {
-      const snowContourColor = this._getCachedColor(this._snowBiome.contourColor);
-      snowContourRGB = [red(snowContourColor), green(snowContourColor), blue(snowContourColor)];
-    }
-    
-    // Pre-compute cell colors with snow for this season
-    const cellColors = new Uint8Array(gridCols * gridRows * 3);
+    const GC = this.gridCols, GR = this.gridRows;
 
-    // Illustration linework: biome-boundary ink + shoreline stroke (see
-    // _computeEdgeFlags). Applied over the season colour, below.
-    const edgeFlags = this._edgeFlags;
-    const shoreC = this._getCachedColor(LOOK.shoreColor);
-    const shoreRGB = [red(shoreC), green(shoreC), blue(shoreC)];
-    const hazeC = this._getCachedColor(LOOK.hazeColor);
-    const hazeR = red(hazeC), hazeG = green(hazeC), hazeB = blue(hazeC);
+    // Pass 1 — interpolated elevation, biome, base colour (posterized + quieted), water.
+    for (let pr = 0; pr < PH; pr++) {
+      const wy = pr * invS;
+      let y0 = wy | 0; if (y0 > GR - 2) y0 = GR - 2 < 0 ? 0 : GR - 2; if (y0 < 0) y0 = 0;
+      let fy = wy - y0; if (fy < 0) fy = 0; else if (fy > 1) fy = 1;
+      const rowA = y0 * GC, rowB = (y0 + (GR > 1 ? 1 : 0)) * GC;
+      for (let pc = 0; pc < PW; pc++) {
+        const i = pr * PW + pc;
+        const wx = pc * invS;
+        let x0 = wx | 0; if (x0 > GC - 2) x0 = GC - 2 < 0 ? 0 : GC - 2; if (x0 < 0) x0 = 0;
+        let fx = wx - x0; if (fx < 0) fx = 0; else if (fx > 1) fx = 1;
+        const x1 = x0 + (GC > 1 ? 1 : 0);
+        const h00 = heightMap[rowA + x0], h10 = heightMap[rowA + x1];
+        const h01 = heightMap[rowB + x0], h11 = heightMap[rowB + x1];
+        const e = (h00 * (1 - fx) + h10 * fx) * (1 - fy) + (h01 * (1 - fx) + h11 * fx) * fy;
+        elevA[i] = e;
 
-    for (let row = 0; row < gridRows; row++) {
-      for (let col = 0; col < gridCols; col++) {
-        const cellIdx = row * gridCols + col;
-        const elevation = heightMap[cellIdx];
-        const baseIdx = cellIdx * 4;
-        const outIdx = cellIdx * 3;
-        
-        const isContour = baseCellColors[baseIdx + 3] === 1;
-        
-        // Check if this cell has snow in this season
-        if (hasSnow && elevation >= snowLine) {
-          // Calculate snow coverage
-          let snowCoverage;
-          if (elevation >= permanentSnowLine) {
-            snowCoverage = 1.0;
-          } else {
-            const range = permanentSnowLine - snowLine;
-            snowCoverage = range > 0 ? 0.4 + ((elevation - snowLine) / range) * 0.6 : 1.0;
-          }
-          
-          // Add subtle noise for natural look
-          const noiseVal = (Math.sin(elevation * 847 + col * 0.13 + row * 0.17) * 0.5 + 0.5) * 0.12;
-          snowCoverage = Math.min(1, snowCoverage + noiseVal);
-          
-          if (isContour) {
-            // Use snow contour color
-            cellColors[outIdx] = snowContourRGB[0];
-            cellColors[outIdx + 1] = snowContourRGB[1];
-            cellColors[outIdx + 2] = snowContourRGB[2];
-          } else {
-            // Blend base color with snow
-            const snowIdx = Math.min(snowColorsRGB.length - 1, (snowCoverage * snowColorsRGB.length) | 0);
-            const snowRGB = snowColorsRGB[snowIdx];
-            
-            const baseR = baseCellColors[baseIdx];
-            const baseG = baseCellColors[baseIdx + 1];
-            const baseB = baseCellColors[baseIdx + 2];
-            
-            cellColors[outIdx] = baseR + (snowRGB[0] - baseR) * snowCoverage;
-            cellColors[outIdx + 1] = baseG + (snowRGB[1] - baseG) * snowCoverage;
-            cellColors[outIdx + 2] = baseB + (snowRGB[2] - baseB) * snowCoverage;
-          }
-        } else {
-          // No snow - use base color
-          if (isContour) {
-            // Get biome contour color
-            const biomeIdx = this.biomeIndexMap[cellIdx];
-            const biome = this.biomeArray[biomeIdx];
-            const contourC = this._getCachedColor(biome.contourColor);
-            cellColors[outIdx] = red(contourC);
-            cellColors[outIdx + 1] = green(contourC);
-            cellColors[outIdx + 2] = blue(contourC);
-          } else {
-            cellColors[outIdx] = baseCellColors[baseIdx];
-            cellColors[outIdx + 1] = baseCellColors[baseIdx + 1];
-            cellColors[outIdx + 2] = baseCellColors[baseIdx + 2];
-          }
+        const eClass = wob > 0
+          ? e + (noise(wx * wobFreq + this.seed * 5, wy * wobFreq + this.seed * 7) * 2 - 1) * wob
+          : e;
+        const biome = this.getBiomeFromElevation(eClass);
+        biomeA[i] = this.biomeIndexByKey[biome.key];
+        waterA[i] = (biome.isWater || biome === this._waterBiome) ? 1 : 0;
+
+        const c = this.getColor(eClass, biome);
+        let cr = red(c), cg = green(c), cb = blue(c);
+        if (quiet) {
+          const gray = cr * 0.3 + cg * 0.59 + cb * 0.11;
+          cr = 128 + ((cr + (gray - cr) * qs) - 128) * qc;
+          cg = 128 + ((cg + (gray - cg) * qs) - 128) * qc;
+          cb = 128 + ((cb + (gray - cb) * qs) - 128) * qc;
         }
-
-        // Illustration: stroke biome boundaries as ink, the water's edge as shore.
-        const edge = edgeFlags ? edgeFlags[cellIdx] : 0;
-        if (edge === 1 && LOOK.outlines) {
-          const oc = this._getCachedColor(this.biomeArray[this.biomeIndexMap[cellIdx]].outlineColor || LOOK.outlineColor);
-          let orr = red(oc), ogg = green(oc), obb = blue(oc);
-          // Hand-inked weight: where a smooth noise dips, let the ground show
-          // through so the line thins/breaks; where it peaks, full ink. Gives the
-          // uniform 1px boundary some lineweight variation. (Full variation comes
-          // with the higher-res bake.) cellColors[outIdx..] still hold the base here.
-          const jit = LOOK.outlineJitter;
-          if (jit > 0) {
-            const ink = 1 - jit * (1 - noise(col * 0.5 + this.seed, row * 0.5 + this.seed));
-            orr = cellColors[outIdx]     + (orr - cellColors[outIdx])     * ink;
-            ogg = cellColors[outIdx + 1] + (ogg - cellColors[outIdx + 1]) * ink;
-            obb = cellColors[outIdx + 2] + (obb - cellColors[outIdx + 2]) * ink;
-          }
-          cellColors[outIdx] = orr; cellColors[outIdx + 1] = ogg; cellColors[outIdx + 2] = obb;
-        } else if (edge === 2 && LOOK.shore) {
-          cellColors[outIdx] = shoreRGB[0]; cellColors[outIdx + 1] = shoreRGB[1]; cellColors[outIdx + 2] = shoreRGB[2];
-        }
+        colR[i] = cr < 0 ? 0 : cr > 255 ? 255 : cr;
+        colG[i] = cg < 0 ? 0 : cg > 255 ? 255 : cg;
+        colB[i] = cb < 0 ? 0 : cb > 255 ? 255 : cb;
       }
     }
 
-    // ---- Relief fill: near-to-far ceiling painter -----------------------------
-    // Paint each column front (near/south, screen bottom) to back (far/north,
-    // screen top), keeping `ceiling` = the highest pixel filled so far. Each cell
-    // fills only the band from its projected top up to the ceiling, so nearer
-    // terrain occludes farther terrain, cliffs get a tall side face, and there
-    // are no gaps. One pass at generate() (~1s budget), never per frame.
-    // md/TEMANAWA_34VIEW_PLAN.md §3.
-    const fullWidth = this.mapWidth * d;
-    const fullHeight = bufWorldH * d;
-    const cellScale = this.scale;
-
-    // Water never lifts: the sea/river stay on the flat plane, so every shore
-    // gets a small bank face for free.
-    const waterFlag = new Uint8Array(this.biomeArray.length);
-    for (let i = 0; i < this.biomeArray.length; i++) {
-      const b = this.biomeArray[i];
-      waterFlag[i] = (b.isWater || b === this._waterBiome) ? 1 : 0;
+    // Pass 2 — boundary edges: 0 none, 1 biome-ink, 2 shoreline (water≠land, wins).
+    for (let pr = 0; pr < PH; pr++) {
+      for (let pc = 0; pc < PW; pc++) {
+        const i = pr * PW + pc;
+        const bi = biomeA[i], wi = waterA[i];
+        let edge = 0;
+        if (pc > 0)                    { const j = i - 1;  if (biomeA[j] !== bi) edge = (waterA[j] !== wi) ? 2 : (edge || 1); }
+        if (edge !== 2 && pc < PW - 1) { const j = i + 1;  if (biomeA[j] !== bi) edge = (waterA[j] !== wi) ? 2 : (edge || 1); }
+        if (edge !== 2 && pr > 0)      { const j = i - PW; if (biomeA[j] !== bi) edge = (waterA[j] !== wi) ? 2 : (edge || 1); }
+        if (edge !== 2 && pr < PH - 1) { const j = i + PW; if (biomeA[j] !== bi) edge = (waterA[j] !== wi) ? 2 : (edge || 1); }
+        edgeA[i] = edge;
+      }
     }
+  }
 
-    const TOPBAND = Math.max(1, Math.round(1.5 * d));   // lit top-surface thickness, px
-    // Simple directional shading: a slope that rises toward the viewer (south-
-    // facing) is turned away from the top light, so it darkens; a north-facing
-    // slope brightens. Cheap (one neighbour diff per cell) and it is what makes
-    // the relief read as form rather than flat colour steps. (LOOK.shadeStrength)
+  /**
+   * Bake one season's terrain buffer at PAINT resolution (bakeScale×): one
+   * physical pixel per paint cell, via a near-to-far ceiling painter that
+   * projects the relief, blends snow, strokes ink/shore, shades slopes and fades
+   * the sky. The buffer is S× the world footprint (drawn back down in render()),
+   * so nothing per-frame changes.
+   */
+  _bakeSeasonBuffer(seasonKey) {
+    const K = this._paintK, LIFT = this._paintLIFT, S = this._paintScale;
+    const PW = this._paintW, PH = this._paintH;
+    const bufWorldH = this._paintWorldH;
+
+    const buf = createGraphics(this.mapWidth * S, bufWorldH * S);
+    buf.pixelDensity(1);
+    buf.loadPixels();
+    const px = buf.pixels;
+    const fullWidth = PW;
+    const fullHeight = bufWorldH * S;
+
+    const elevA = this._paintElev, colR = this._paintR, colG = this._paintG, colB = this._paintB;
+    const waterA = this._paintWater, edgeA = this._paintEdge, biomeA = this._paintBiome;
+
+    const snowColorsRGB = this._snowColorsRGB;
+    const hasSnow = this._snowBiome && snowColorsRGB;
+    const snowLine = this.seasonSnowLines[seasonKey];
+    const permanentSnowLine = hasSnow ? this._snowBiome.minElevation : 1.0;
+
+    const shoreC = this._getCachedColor(LOOK.shoreColor);
+    const shoreR = red(shoreC), shoreG = green(shoreC), shoreB = blue(shoreC);
+    const hazeC = this._getCachedColor(LOOK.hazeColor);
+    const hazeR = red(hazeC), hazeG = green(hazeC), hazeB = blue(hazeC);
+
+    const invS = 1 / S;
     const SHADE = LOOK.shade ? LOOK.shadeStrength : 0;
+    const STEPS = LOOK.shade ? (LOOK.shadeSteps | 0) : 0;   // cel bands (>= 2 = flat toon steps)
+    const SHLO = LOOK.shadeShadow, SHHI = LOOK.shadeHigh;
+    const TOPBAND = Math.max(1, Math.round(1.5 * S));   // lit top-surface thickness, px
+    const CLIFF = 3 * S;
+    const reliefEdgeOn = LOOK.reliefEdge;
+    const reC = this._getCachedColor(LOOK.reliefEdgeColor);
+    const reR = red(reC), reG = green(reC), reB = blue(reC);
+    const EDGEW = Math.max(1, Math.round(1.3 * S));     // relief outline thickness, px
+    const jit = LOOK.outlines ? LOOK.outlineJitter : 0;
 
-    for (let c = 0; c < gridCols; c++) {
-      const pxStart = c * d;                            // pixelScale 1 → gridCols === mapWidth
-      let ceiling = fullHeight;                         // nothing filled yet in this column
-      let farR = 0, farG = 0, farB = 0, painted = false;// farthest painted top colour → sky fade
+    for (let pc = 0; pc < PW; pc++) {
+      let ceiling = fullHeight;
+      let farR = 0, farG = 0, farB = 0, painted = false;
 
-      for (let r = gridRows - 1; r >= 0; r--) {         // near → far
-        const idx = r * gridCols + c;
-        const e = heightMap[idx];
-        const liftE = waterFlag[this.biomeIndexMap[idx]] ? 0 : e;
+      for (let pr = PH - 1; pr >= 0; pr--) {             // near → far
+        const i = pr * PW + pc;
+        const e = elevA[i];
+        const liftE = waterA[i] ? 0 : e;
 
-        // Projected top of this cell in buffer pixels (paint space, +LIFT offset).
-        let yTop = ((r * cellScale * K - liftE * LIFT + LIFT) * d) | 0;
+        let yTop = ((pr * invS) * K - liftE * LIFT + LIFT) * S | 0;   // physical buffer px
         if (yTop < 0) yTop = 0;
-        if (yTop >= ceiling) continue;                  // fully occluded by nearer terrain
+        if (yTop >= ceiling) continue;                   // occluded by nearer terrain
 
-        const cidx = idx * 3;
-        // Shade the lit top by the north-neighbour slope.
-        const eN = (r > 0) ? heightMap[idx - gridCols] : e;
-        let sh = 1 - (e - eN) * SHADE;
-        if (sh < 0.72) sh = 0.72; else if (sh > 1.2) sh = 1.2;
-        let tr = (cellColors[cidx] * sh) | 0, tg = (cellColors[cidx + 1] * sh) | 0, tb = (cellColors[cidx + 2] * sh) | 0;
+        // ---- season colour for this paint cell ----
+        let cr = colR[i], cg = colG[i], cb = colB[i];
+
+        if (hasSnow && e >= snowLine) {
+          let cov;
+          if (e >= permanentSnowLine) cov = 1.0;
+          else { const range = permanentSnowLine - snowLine; cov = range > 0 ? 0.4 + ((e - snowLine) / range) * 0.6 : 1.0; }
+          cov = Math.min(1, cov + (Math.sin(e * 847 + pc * invS * 0.13 + pr * invS * 0.17) * 0.5 + 0.5) * 0.12);
+          const sRGB = snowColorsRGB[Math.min(snowColorsRGB.length - 1, (cov * snowColorsRGB.length) | 0)];
+          cr = cr + (sRGB[0] - cr) * cov; cg = cg + (sRGB[1] - cg) * cov; cb = cb + (sRGB[2] - cb) * cov;
+        }
+
+        const edge = edgeA[i];
+        if (edge === 1 && LOOK.outlines) {
+          const oc = this._getCachedColor(this.biomeArray[biomeA[i]].outlineColor || LOOK.outlineColor);
+          let orr = red(oc), ogg = green(oc), obb = blue(oc);
+          if (jit > 0) {
+            const ink = 1 - jit * (1 - noise(pc * invS * 0.5 + this.seed, pr * invS * 0.5 + this.seed));
+            orr = cr + (orr - cr) * ink; ogg = cg + (ogg - cg) * ink; obb = cb + (obb - cb) * ink;
+          }
+          cr = orr; cg = ogg; cb = obb;
+        } else if (edge === 2 && LOOK.shore) {
+          cr = shoreR; cg = shoreG; cb = shoreB;
+        }
+
+        // Cel / toon shading: a directional (NW-lit) slope term, QUANTIZED into a
+        // few flat bands so the ground shades in light/mid/shadow STEPS like the
+        // tree sprites — not a smooth gradient. Light from the NW (the fixed wind
+        // and sprite light axis, SPRITE_BRIEF §1.1). Per world-unit slope (× S) so
+        // it is bakeScale-independent.
+        const eN = (pr > 0) ? elevA[i - PW] : e;
+        const eW = (pc > 0) ? elevA[i - 1] : e;
+        let sh = 1 - ((e - eN) + (e - eW)) * 0.5 * S * SHADE;
+        if (sh < SHLO) sh = SHLO; else if (sh > SHHI) sh = SHHI;
+        if (STEPS >= 2) {
+          const b = Math.min(STEPS - 1, ((sh - SHLO) / (SHHI - SHLO)) * STEPS | 0);
+          sh = SHLO + (SHHI - SHLO) * (b / (STEPS - 1));
+        }
+        let tr = (cr * sh) | 0, tg = (cg * sh) | 0, tb = (cb * sh) | 0;
         if (tr > 255) tr = 255; if (tg > 255) tg = 255; if (tb > 255) tb = 255;
-        const sr = (tr * 0.6) | 0, sg = (tg * 0.6) | 0, sb = (tb * 0.6) | 0;   // side / cliff face
+        const fr = (tr * 0.6) | 0, fg = (tg * 0.6) | 0, fb = (tb * 0.6) | 0;   // side / cliff face
 
-        const isFront = (r === gridRows - 1);           // nearest row = foreground ground
-        const lip = (!isFront && (ceiling - yTop) > (3 * d)) ? TOPBAND : 0;   // dark ink lip on a real cliff
+        const isFront = (pr === PH - 1);
+        // A prominent rise (its top pokes well above the nearer terrain) gets a
+        // bold dark OUTLINE along its top silhouette — the terrain equivalent of
+        // the tree sprites' ink line, so relief forms read the same way.
+        const isEdge = reliefEdgeOn && !isFront && (ceiling - yTop) > CLIFF;
+        const lip = isEdge ? EDGEW : 0;
 
         for (let y = yTop; y < ceiling; y++) {
           const band = y - yTop;
           let rr, gg, bb;
-          if (isFront) { rr = tr; gg = tg; bb = tb; }            // foreground ground, no dark front wall
-          else if (band < lip) { rr = (tr * 0.32) | 0; gg = (tg * 0.32) | 0; bb = (tb * 0.32) | 0; }
+          if (band < lip) { rr = reR; gg = reG; bb = reB; }        // bold dark relief outline (silhouette)
+          else if (isFront) { rr = tr; gg = tg; bb = tb; }
           else if (band < TOPBAND) { rr = tr; gg = tg; bb = tb; }
-          else { rr = sr; gg = sg; bb = sb; }
-          const rowBase = (y * fullWidth + pxStart) * 4;
-          for (let k = 0; k < d; k++) {
-            const pi = rowBase + k * 4;
-            buf.pixels[pi] = rr; buf.pixels[pi + 1] = gg; buf.pixels[pi + 2] = bb; buf.pixels[pi + 3] = 255;
-          }
+          else { rr = fr; gg = fg; bb = fb; }
+          const pi = (y * fullWidth + pc) * 4;
+          px[pi] = rr; px[pi + 1] = gg; px[pi + 2] = bb; px[pi + 3] = 255;
         }
         ceiling = yTop;
         farR = tr; farG = tg; farB = tb; painted = true;
       }
 
-      // Sky above the far ridge. Blend the ridge colour DOWN into a single uniform
-      // haze tone at the very top (quadratic, so the haze dominates and only the
-      // band right at the ridge carries terrain colour). The uniform top is what
-      // keeps it streak-free — per-column ridge colours used to smear vertically
-      // here, which is the top-edge artifact. (LOOK.haze / LOOK.hazeColor)
+      // Sky above the far ridge → blend the ridge colour up to a uniform haze.
       if (ceiling > 0) {
         for (let y = 0; y < ceiling; y++) {
           let rr, gg, bb;
           if (LOOK.haze && painted) {
-            const t = y / ceiling;            // 0 at the top → 1 at the ridge
-            const tt = t * t;                 // haze-weighted
-            const inv = 1 - tt;
+            const t = y / ceiling, tt = t * t, inv = 1 - tt;
             rr = (hazeR * inv + farR * tt) | 0;
             gg = (hazeG * inv + farG * tt) | 0;
             bb = (hazeB * inv + farB * tt) | 0;
-          } else {
-            rr = hazeR; gg = hazeG; bb = hazeB;  // flat uniform sky (haze off, or empty column)
-          }
-          const rowBase = (y * fullWidth + pxStart) * 4;
-          for (let k = 0; k < d; k++) {
-            const pi = rowBase + k * 4;
-            buf.pixels[pi] = rr; buf.pixels[pi + 1] = gg; buf.pixels[pi + 2] = bb; buf.pixels[pi + 3] = 255;
-          }
+          } else { rr = hazeR; gg = hazeG; bb = hazeB; }
+          const pi = (y * fullWidth + pc) * 4;
+          px[pi] = rr; px[pi + 1] = gg; px[pi + 2] = bb; px[pi + 3] = 255;
         }
       }
     }
@@ -912,7 +926,7 @@ class TerrainGenerator {
     buf.updatePixels();
     return buf;
   }
-  
+
   regenerate() {
     this.seed = random(10000);
     this._colorCache.clear();
@@ -936,8 +950,10 @@ class TerrainGenerator {
    */
   render() {
     if (!this.seasonManager) {
-      // No season manager - just draw summer
-      image(this.seasonBuffers.summer, 0, 0);
+      // No season manager - just draw summer. The buffer is bakeScale× the world
+      // footprint, so draw it at (mapWidth × paintWorldH) — p5 downsamples the S×
+      // detail into the footprint, then the view zoom scales it up (higher-res).
+      image(this.seasonBuffers.summer, 0, 0, this.mapWidth, this._paintWorldH || this.mapHeight);
       return;
     }
     
@@ -946,18 +962,18 @@ class TerrainGenerator {
     
     if (transitionProgress < 0.01) {
       // No transition - just draw current season
-      image(this.seasonBuffers[currentKey], 0, 0);
+      image(this.seasonBuffers[currentKey], 0, 0, this.mapWidth, this._paintWorldH || this.mapHeight);
     } else {
       // Crossfade between current and next season
       const nextKey = this.seasonManager.nextKey;
       
       // Draw current season
-      image(this.seasonBuffers[currentKey], 0, 0);
+      image(this.seasonBuffers[currentKey], 0, 0, this.mapWidth, this._paintWorldH || this.mapHeight);
       
       // Draw next season with alpha
       push();
       tint(255, transitionProgress * 255);
-      image(this.seasonBuffers[nextKey], 0, 0);
+      image(this.seasonBuffers[nextKey], 0, 0, this.mapWidth, this._paintWorldH || this.mapHeight);
       noTint();
       pop();
     }
