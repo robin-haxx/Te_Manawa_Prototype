@@ -4,18 +4,33 @@
 order. This is the commissioning document; `TEMANAWA_BUILD_V3.md` §4 is the internal
 accounting behind it and `TEMANAWA_PLAN_V2.md` is why each asset exists.
 
-**113 new assets.** 45 already exist and are marked so.
+**132 new assets** (was 113; +19 terrain illustration stamps, §3.3). 45 already exist and
+are marked so. **The view is now a high 3/4 angle, not straight-down — see §1.**
 
 ---
 
 ## 1. The one thing that governs everything
 
-> ## This is a cartoon seen from directly overhead.
+> ## This is a cartoon of the Manawatū at a high 3/4 angle — a hair off straight down.
 
-Not a field guide. Not a diorama in perspective. **A bird's-eye view of a stretch of
-the Manawatū, stylised, on a portrait screen a visitor looks at for forty seconds.**
+Not a field guide. Not a diorama in deep perspective. **A near-overhead, stylised
+bird's-eye view of a stretch of the Manawatū, on a LANDSCAPE screen a visitor looks at
+for forty seconds.** The camera is tipped forward only slightly — a *plan-oblique* tilt,
+much closer to top-down than an isometric game. The ground now has real relief (the
+Ruahine and Tararua ranges and the gorge stand up toward the top of the screen) and
+sprites stand **upright** on it.
 
-Three consequences, and they overturn some instincts:
+Two things this changes from a pure top-down brief:
+
+- **Sprites are upright billboards, anchored at the base, drawn undistorted.** Design a
+  plant or bird crown-first (below), but you may let a little of the *side and height*
+  show — it sits on the ground at its feet, not centred on a point. No baked perspective
+  and no vanishing point; just a slight forward lean in how much side is visible.
+- **The ground carries relief and linework now** (§3.3). The engine bakes the slope
+  shading, cliff faces and biome-boundary ink. Your ground job is flat cel tones and a
+  few tiling textures/stamps — not a rendered landscape.
+
+Three consequences from the near-overhead angle, and they still overturn some instincts:
 
 **A plant is a crown, not a profile.** From above, a cabbage tree is a starburst of
 strap leaves, a nīkau is a radial palm crown, a tree fern is a frond star, a tōtara is a
@@ -168,6 +183,44 @@ engine can tint them:
 They're seen small and repeated over large areas, so: subtle, no strong directional
 pattern, no visible tile seam, no feature that reads as an object.
 
+### 3.3 Illustration-pass linework and stamps — 19 new + palette values
+
+The ground is now baked as a **cartoon illustration**, not a topo map. Most of that is
+procedural and already running (flat cel tones, wobbly biome-boundary ink, slope shading,
+cliff faces, a shoreline stroke, and muted ground so your sprites pop). Two things want
+art or values from you.
+
+**Per-biome palette + ink — colour values, no files.** For each of the ~8 ground bands
+(sea, coast, lowland, podocarp, montane, subalpine, alpine, snow): **2–3 flat tones**
+(low→high within the band) and **one dark `outlineColor`** — the ink stroked along that
+band's edges, which replaces contour lines. Colourblind-safe per §1.2 (cold/warm read
+carried by lightness and saturation, never red-vs-green). Authored straight into the
+level file — **no PNGs**.
+
+**Terrain texture stamps — new PNGs.** Small marks scattered into the ground to break up
+the flat tones (the koru / scrub / tussock flecks on the concept sheet). Transparent PNG,
+no baked shadow, trimmed, **~32 × 32** (a few up to 64²). Lit from the **north-west** like
+everything else (§1.1). Named by the sprite rule:
+`sprites/terrain/<biome>/<biome>_stamp_<nn>.png` — e.g. `terrain/grassland/grassland_stamp_01.png`.
+
+| Biome | Stamp reads as | Count |
+|---|---|:--:|
+| **grassland / lowland** | short tussock ticks, sparse | 3 |
+| **subalpine** | speargrass / scrub dots | 3 |
+| **podocarp** | leaf-litter fleck, dark | 2 |
+| **montane** | leaf-litter fleck, dark | 2 |
+| **coast** | pīngao tuft — the one warm accent | 2 |
+| **sea (shallows)** | koru / kōwhaiwhai water swirl | 3 |
+| **alpine / snow** | wind-scour streak, faint | 4 |
+
+**19 stamps.** All *optional to start*: the engine renders fine on procedural tones alone
+and picks the PNGs up automatically when they appear (silent fallback), so deliver them
+whenever. Per-biome scatter density is tuned in code, not by you.
+
+**Optional — one paper-grain texture.** Seamless **512 × 512**, near-white greyscale, very
+subtle; laid as a multiply over the finished ground. The engine can fake this
+procedurally, so it's a nicety, not a blocker.
+
 ---
 
 ## 4. Fauna — 33 new
@@ -296,9 +349,14 @@ these until that's settled.
 | Plants | 45 | 11 | **34** |
 | Fauna | 64 | 31 | **33** |
 | Terrain / landform | 21 | 0 | **21** |
+| Terrain illustration stamps (§3.3) | 19 | 0 | **19** |
 | Disturbance FX | 12 | 3 | **9** |
 | UI | 16 | 0 | **16** |
-| **Total** | **158** | **45** | **113** |
+| **Total** | **177** | **45** | **132** |
+
+Plus, not counted as files: **per-biome palette values** (2–3 tones + `outlineColor`) and
+an optional paper-grain texture (§3.3). The 3/4 view (§1) does not add assets, but it does
+change how plants and fauna are posed — upright, base-anchored, a little side showing.
 
 The four starred items — **Mamaku**, the **NI giant moa dimorphism pair**, **huia**, and
 the **two heightmaps** — carry more of the installation than their count suggests. If
