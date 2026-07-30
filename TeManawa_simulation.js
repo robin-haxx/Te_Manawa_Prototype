@@ -259,10 +259,17 @@ class Simulation {
   
   updateViewport() {
     const invZoom = 1 / this.config.zoom;
+    // The 3/4 squash (Projection.K ≤ 1) packs more world rows onto the screen
+    // vertically, so a cull box sized to the unsquashed height would drop
+    // entities near the bottom that are actually on screen. Widen the bottom
+    // bound by 1/K — an over-inclusive box only ever costs a few off-screen
+    // draws, never a visible pop-out. (LIFT headroom joins this once relief
+    // lands — md/TEMANAWA_34VIEW_PLAN.md §5 culling note.)
+    const K = (typeof Projection !== 'undefined' && Projection.K) ? Projection.K : 1;
     this._viewLeft = 0;
     this._viewTop = 0;
     this._viewRight = this.config.gameAreaWidth * invZoom;
-    this._viewBottom = this.config.gameAreaHeight * invZoom;
+    this._viewBottom = this.config.gameAreaHeight * invZoom / K;
   }
   
   // ============================================

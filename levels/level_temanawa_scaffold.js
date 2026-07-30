@@ -22,6 +22,17 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     plantDensity: 0.006, useLakes: false
   },
 
+  // 3/4 plan-oblique paint (md/TEMANAWA_34VIEW_PLAN.md). The SIMULATION stays
+  // top-down; this only tips the CAMERA.
+  //   K        pitch squash — 1.0 is straight top-down, lower tilts further.
+  //            Author 0.72-0.85 for the "slightly higher than Terra Nil" angle.
+  //   liftFrac relief height at elevation 1.0, as a fraction of map height. It
+  //            stands the ranges up; consumed by the relief bake + billboards in
+  //            the next step, harmless now under the squash-only render.
+  // Held on Projection (configured in Game.init), never written to CONFIG —
+  // same rule as TerrainGenerator.noiseScale.
+  projection: { K: 0.8, liftFrac: 0.14 },
+
   // ==========================================================
   // BIOMES — the single source of truth for the ground look.
   // ----------------------------------------------------------

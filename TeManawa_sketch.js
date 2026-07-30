@@ -680,6 +680,20 @@ class Game {
     this.seasonManager = new SeasonManager(CONFIG);
     this.terrain.setSeasonManager(this.seasonManager);
     this.terrain.generate();
+
+    // Configure the 3/4 projection from the level's authored K / liftFrac (with
+    // module defaults as fallback). Done here — after the terrain exists, so the
+    // map dimensions are known — and held on Projection, never on CONFIG.
+    if (typeof Projection !== 'undefined') {
+      const _proj = (this.currentLevel && this.currentLevel.projection) || {};
+      Projection.configure({
+        K: _proj.K,
+        liftFrac: _proj.liftFrac,
+        mapWidth: this.terrain.mapWidth,
+        mapHeight: this.terrain.mapHeight
+      });
+    }
+
     this._updateViewTransform();
 
     this._buildSimulation();
@@ -768,10 +782,12 @@ class Game {
 
   isInGameArea(mx, my) {
     if (CONFIG.fullscreen && this.terrain) {
+      // Drawn height is the squashed height (matches Game.render / view transform).
+      const _K = (typeof Projection !== 'undefined') ? Projection.K : 1;
       return mx >= CONFIG.viewX &&
              mx < CONFIG.viewX + this.terrain.mapWidth * CONFIG.viewZoom &&
              my >= CONFIG.viewY &&
-             my < CONFIG.viewY + this.terrain.mapHeight * CONFIG.viewZoom;
+             my < CONFIG.viewY + this.terrain.mapHeight * _K * CONFIG.viewZoom;
     }
     return mx >= CONFIG.gameAreaX &&
            mx < CONFIG.gameAreaX + CONFIG.gameAreaWidth &&
@@ -785,11 +801,15 @@ class Game {
   // fits the whole canvas, centred, with the HUD drawn as an overlay.
   _updateViewTransform() {
     if (this.terrain) {
+      // The 3/4 squash compresses the world vertically to mapHeight·K, so fit
+      // and centre against that projected height, not the raw grid height.
+      const _K = (typeof Projection !== 'undefined') ? Projection.K : 1;
+      const projH = this.terrain.mapHeight * _K;
       const z = Math.min(CONFIG.canvasWidth / this.terrain.mapWidth,
-                         CONFIG.canvasHeight / this.terrain.mapHeight);
+                         CONFIG.canvasHeight / projH);
       CONFIG.viewZoom = z;
       CONFIG.viewX = Math.round((CONFIG.canvasWidth - this.terrain.mapWidth * z) / 2);
-      CONFIG.viewY = Math.round((CONFIG.canvasHeight - this.terrain.mapHeight * z) / 2);
+      CONFIG.viewY = Math.round((CONFIG.canvasHeight - projH * z) / 2);
     } else {
       CONFIG.viewZoom = CONFIG.zoom;
       CONFIG.viewX = CONFIG.gameAreaX;
@@ -905,13 +925,21 @@ class Game {
     push();
     drawingContext.save();
     drawingContext.beginPath();
+    // 3/4 view: the world is squashed vertically by K (plan-oblique, step 1 —
+    // md/TEMANAWA_34VIEW_PLAN.md §8), so the clipped, drawn height is mapHeight·K.
+    const _K = (typeof Projection !== 'undefined') ? Projection.K : 1;
     const _clipW = this.terrain.mapWidth * CONFIG.viewZoom;
-    const _clipH = this.terrain.mapHeight * CONFIG.viewZoom;
+    const _clipH = this.terrain.mapHeight * _K * CONFIG.viewZoom;
     drawingContext.rect(CONFIG.viewX, CONFIG.viewY, _clipW, _clipH);
     drawingContext.clip();
 
     translate(CONFIG.viewX, CONFIG.viewY);
     scale(CONFIG.viewZoom);
+    // Squash terrain AND entities together so they share one plane. This is
+    // projY() with elevation 0; the relief bake and unsquashed billboards that
+    // use elevation come next (§3, §5). Everything below draws in world coords
+    // and is squashed by this single transform.
+    scale(1, _K);
 
     this.terrain.render();
 

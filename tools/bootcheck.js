@@ -348,6 +348,59 @@ const g=vm.runInContext('game',ctx);
     : 'facing smoothing: glide + ramp-up + flicker-damped, no overshoot, dt-aware');
 }
 
+// ---- 3/4 projection: pure module, round-trip, no CONFIG writeback -----
+// Plan-oblique paint (md/TEMANAWA_34VIEW_PLAN.md §2, §9). The module is pure so
+// most of this needs no sketch; the live-state checks confirm the game
+// configured it from the level and never leaked K/LIFT onto CONFIG.
+{
+  const P=vm.runInContext('Projection',ctx);
+  const C=vm.runInContext('CONFIG',ctx), G=vm.runInContext('game',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // Live state FIRST, before the pure tests below mutate the singleton: the
+  // booted game (through several resets/refits) must have configured it, and
+  // must not have written K/LIFT back onto CONFIG (same rule as noiseScale).
+  const K0=P.K, lf0=P.liftFrac;
+  chk(P.mapHeight===G.terrain.mapHeight, 'projection map height must track the live terrain');
+  chk(P.K>=P.K_MIN && P.K<=P.K_MAX, `live K must be in [${P.K_MIN},${P.K_MAX}], got ${P.K}`);
+  chk(typeof C.projK==='undefined' && typeof C.K==='undefined' && typeof C.LIFT==='undefined' && typeof C.liftFrac==='undefined',
+      'K/LIFT must live on Projection, never on CONFIG');
+
+  // configure() clamps out-of-range authoring into the documented bounds
+  P.configure({K:5, liftFrac:9, mapWidth:400, mapHeight:600});
+  chk(P.K===P.K_MAX, `K=5 must clamp to K_MAX ${P.K_MAX}, got ${P.K}`);
+  chk(P.liftFrac===P.LIFT_FRAC_MAX, `liftFrac=9 must clamp to ${P.LIFT_FRAC_MAX}, got ${P.liftFrac}`);
+  chk(Math.abs(P.LIFT - P.liftFrac*600)<1e-9, 'LIFT must be liftFrac x mapHeight');
+
+  // the projection itself: x unchanged, flat plane is exactly worldY x K, and
+  // higher ground is drawn HIGHER on screen (smaller y)
+  P.configure({K:0.8, liftFrac:0.14, mapWidth:400, mapHeight:600});
+  chk(P.projX(123)===123, 'projX is the identity (no x-shear in plan-oblique)');
+  chk(Math.abs(P.projY(100,0)-80)<1e-9, 'flat projY must be worldY x K');
+  chk(P.projY(100,1)<P.projY(100,0), 'elevation must lift a point UP the screen');
+  chk(P.squashedHeight()===600*0.8, 'squashedHeight must be mapHeight x K');
+  chk(P.projectedWorldHeight()>P.squashedHeight(), 'projected height must reserve relief headroom');
+
+  // screen -> world round-trip (the authoring inverse). Flat sampler is exact;
+  // a sloped sampler must still iterate back onto the source point.
+  const flat=()=>0.5;
+  let rtOk=true;
+  for(const [x,y] of [[0,0],[137,42],[399,599]]){
+    const w=P.screenToWorld(P.projX(x), P.projY(y, flat()), flat);
+    if(Math.abs(w.x-x)>1e-6 || Math.abs(w.y-y)>1e-6) rtOk=false;
+  }
+  chk(rtOk, 'screen->world must round-trip exactly on flat ground');
+  const slope=(x,y)=>Math.max(0,Math.min(1,y/600));
+  const yS=321, wS=P.screenToWorld(200, P.projY(yS, slope(200,yS)), slope);
+  chk(Math.abs(wS.y-yS)<0.5, `screen->world must converge on sloped ground (got ${wS.y.toFixed(2)} vs ${yS})`);
+
+  // restore a terrain-consistent projection so later sections see a sane world
+  P.configure({K:K0, liftFrac:lf0, mapWidth:G.terrain.mapWidth, mapHeight:G.terrain.mapHeight});
+
+  console.log(fail? `projection: ${fail} FAILURES`
+    : `projection: pure + round-trips, live K=${P.K} LIFT=${P.LIFT.toFixed(1)}px, no CONFIG writeback`);
+}
+
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);
 console.log('--- state ---');
 console.log('  Kiosk.game attached', !!K.game, ' resets', K.resetCount);
