@@ -765,6 +765,27 @@ class Game {
     this._buildSimulation();
   }
 
+  // Re-bake the terrain in place from the CURRENT look values (LOOK) and camera
+  // tilt (Projection), keeping the same land (no reseed) and the same living
+  // world (no ecosystem reset). This is the look-development path — bound to the
+  // B key — so tuning LOOK in the browser console and pressing B shows the result
+  // with no page reload. Authoring only; never reachable on the visitor path.
+  rebakeTerrain() {
+    if (!this.terrain) return;
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+    if (typeof Projection !== 'undefined') {
+      Projection.configure({
+        K: Projection.K, liftFrac: Projection.liftFrac,
+        mapWidth: this.terrain.mapWidth, mapHeight: this.terrain.mapHeight
+      });
+    }
+    this.terrain.generate();          // same seed → same land; re-applies all of LOOK + relief
+    this._updateViewTransform();
+    const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
+    console.log(`[look] terrain re-baked in ${ms.toFixed(0)}ms — tune LOOK / Projection, press B again`);
+    if (typeof LOOK !== 'undefined' && LOOK.dump) LOOK.dump();
+  }
+
   _buildSimulation() {
     this.simulation = new Simulation(
       this.terrain, CONFIG, this, this.seasonManager
@@ -995,6 +1016,14 @@ class Game {
     // the wall. Costs a full rebuild, same as ?terrain=.
     if (k === 'F') {
       this.setTerrainFit(CONFIG.terrainFit === 'fit' ? 'square' : 'fit');
+      return;
+    }
+
+    // B re-bakes the terrain in place with the current LOOK / Projection values —
+    // the look-development loop, no page reload. Authoring only (the wall is
+    // locked to 1-4). See LOOK in TeManawa_terrain.js.
+    if (k === 'b' || k === 'B') {
+      this.rebakeTerrain();
       return;
     }
   }

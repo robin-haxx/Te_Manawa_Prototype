@@ -1,16 +1,43 @@
-// ---- Illustration-pass tunables (bake-time; md/TEMANAWA_34VIEW_PLAN.md §7) ----
-// Everything here is applied ONCE, in the season bake — never per frame — so a
-// change needs a page reload, not a perf thought. This is the "pixel topo map →
-// cartoon illustration" knob box; dial to taste. Slope shading (SHADE) and the
-// sky haze (HAZE) live in _bakeSeasonBuffer next to the relief they belong to.
-const TERRAIN_ILLUS = {
-  posterize:     true,     // snap each biome ramp to flat cel tones, not a gradient
-  wobble:        0.025,    // biome-boundary wander (elevation units); 0 = straight bands
-  wobbleFreq:    0.18,     // spatial frequency of that wander
-  quietSat:      0.16,     // desaturate ground toward grey so outlined sprites pop (0..1)
-  quietContrast: 0.92,     // compress ground contrast toward mid-grey (1 = untouched)
-  outlineColor:  '#16210f',// fallback biome-boundary ink (a biome's own `outlineColor` wins)
-  shoreColor:    '#dfe9ef' // hand-wobble shoreline stroke at the water's edge
+// ============================================================================
+// LOOK — the terrain look-development control surface (bake-time)
+// md/TEMANAWA_34VIEW_PLAN.md §7
+// ============================================================================
+// Every knob for the "pixel topo map → cartoon illustration" ground, in ONE place.
+// All of it is applied during the season bake, never per frame.
+//
+// FAST ITERATION — no page reload:
+//   1. Tweak in the browser console, e.g.
+//        LOOK.shadeStrength = 12          // gentler shading
+//        LOOK.outlines = false            // turn a whole move OFF to see it
+//        LOOK.hazeColor = '#101820'
+//        Projection.K = 0.8               // the 3/4 tilt lives on Projection
+//   2. Press  B   (or run  game.rebakeTerrain()  ) to re-bake in place — no reload,
+//      no ecosystem reset, same land.
+//   LOOK.dump() prints the current settings. Each on/off toggle ISOLATES one move,
+//   so you can see exactly what each contributes and dial them one at a time.
+const LOOK = {
+  // ---- on / off — flip a move off to see what it does ----
+  posterize: true,   // flat cel tones (vs a smooth gradient ramp)
+  wobble:    true,   // biome borders wander like a brush (vs clean elevation bands)
+  outlines:  true,   // ink stroke along biome boundaries (replaces contour lines)
+  shore:     true,   // pale stroke at the water's edge
+  shade:     true,   // slope shading of the lit tops
+  haze:      true,   // atmospheric fade in the sky above the far ridge
+  quiet:     true,   // desaturate the ground so the outlined sprites read first
+
+  // ---- amounts (used only when the matching toggle is on) ----
+  wobbleAmp:     0.025,  // border wander, in elevation units
+  wobbleFreq:    0.18,   // spatial frequency of the wander
+  quietSat:      0.16,   // 0 = full colour ground, 1 = greyscale
+  quietContrast: 0.92,   // <1 compresses ground contrast toward mid-grey
+  shadeStrength: 50.0,   // slope-shading gain (high = hard/binary; ~6–12 is gentle)
+
+  // ---- colours ----
+  hazeColor:    '#20303a', // uniform tone the sky fades to (keeps the top streak-free)
+  outlineColor: '#16210f', // fallback boundary ink (a biome's own `outlineColor` wins)
+  shoreColor:   '#dfe9ef', // shoreline stroke
+
+  dump() { const o = {}; for (const k in this) if (typeof this[k] !== 'function') o[k] = this[k]; console.log('[LOOK]', o); return o; }
 };
 
 // ============================================
@@ -447,7 +474,7 @@ class TerrainGenerator {
 
     // Cel look: snap to the nearest authored ramp stop → 2-3 flat tones per biome
     // instead of a smooth gradient (md/TEMANAWA_34VIEW_PLAN.md §7).
-    if (TERRAIN_ILLUS.posterize) {
+    if (LOOK.posterize) {
       return this._getCachedColor(colors[Math.round(clampedPos * (colors.length - 1))]);
     }
 
@@ -517,10 +544,10 @@ class TerrainGenerator {
         // wander like a brush line instead of following clean elevation contours.
         // Only the COLOUR classification wobbles; the height map (walkability and
         // relief) is left exactly as generated.
-        const w = TERRAIN_ILLUS.wobble;
+        const w = LOOK.wobble ? LOOK.wobbleAmp : 0;
         const eClass = w > 0
-          ? elevation + (noise(col * TERRAIN_ILLUS.wobbleFreq + this.seed * 5,
-                               row * TERRAIN_ILLUS.wobbleFreq + this.seed * 7) * 2 - 1) * w
+          ? elevation + (noise(col * LOOK.wobbleFreq + this.seed * 5,
+                               row * LOOK.wobbleFreq + this.seed * 7) * 2 - 1) * w
           : elevation;
         let biome = this.getBiomeFromElevation(eClass);
         // water type handling (lake or sea)
@@ -576,11 +603,13 @@ class TerrainGenerator {
         // outlined, saturated sprites read first ("illustration reads sprite-
         // first", md/TEMANAWA_34VIEW_PLAN.md §7).
         let cr = red(c), cg = green(c), cb = blue(c);
-        const gray = cr * 0.3 + cg * 0.59 + cb * 0.11;
-        const qs = TERRAIN_ILLUS.quietSat, qc = TERRAIN_ILLUS.quietContrast;
-        cr = 128 + ((cr + (gray - cr) * qs) - 128) * qc;
-        cg = 128 + ((cg + (gray - cg) * qs) - 128) * qc;
-        cb = 128 + ((cb + (gray - cb) * qs) - 128) * qc;
+        if (LOOK.quiet) {
+          const gray = cr * 0.3 + cg * 0.59 + cb * 0.11;
+          const qs = LOOK.quietSat, qc = LOOK.quietContrast;
+          cr = 128 + ((cr + (gray - cr) * qs) - 128) * qc;
+          cg = 128 + ((cg + (gray - cg) * qs) - 128) * qc;
+          cb = 128 + ((cb + (gray - cb) * qs) - 128) * qc;
+        }
         this._baseCellColors[colorIdx]     = cr < 0 ? 0 : cr > 255 ? 255 : cr;
         this._baseCellColors[colorIdx + 1] = cg < 0 ? 0 : cg > 255 ? 255 : cg;
         this._baseCellColors[colorIdx + 2] = cb < 0 ? 0 : cb > 255 ? 255 : cb;
@@ -693,8 +722,10 @@ class TerrainGenerator {
     // Illustration linework: biome-boundary ink + shoreline stroke (see
     // _computeEdgeFlags). Applied over the season colour, below.
     const edgeFlags = this._edgeFlags;
-    const shoreC = this._getCachedColor(TERRAIN_ILLUS.shoreColor);
+    const shoreC = this._getCachedColor(LOOK.shoreColor);
     const shoreRGB = [red(shoreC), green(shoreC), blue(shoreC)];
+    const hazeC = this._getCachedColor(LOOK.hazeColor);
+    const hazeR = red(hazeC), hazeG = green(hazeC), hazeB = blue(hazeC);
 
     for (let row = 0; row < gridRows; row++) {
       for (let col = 0; col < gridCols; col++) {
@@ -757,10 +788,10 @@ class TerrainGenerator {
 
         // Illustration: stroke biome boundaries as ink, the water's edge as shore.
         const edge = edgeFlags ? edgeFlags[cellIdx] : 0;
-        if (edge === 1) {
-          const oc = this._getCachedColor(this.biomeArray[this.biomeIndexMap[cellIdx]].outlineColor || TERRAIN_ILLUS.outlineColor);
+        if (edge === 1 && LOOK.outlines) {
+          const oc = this._getCachedColor(this.biomeArray[this.biomeIndexMap[cellIdx]].outlineColor || LOOK.outlineColor);
           cellColors[outIdx] = red(oc); cellColors[outIdx + 1] = green(oc); cellColors[outIdx + 2] = blue(oc);
-        } else if (edge === 2) {
+        } else if (edge === 2 && LOOK.shore) {
           cellColors[outIdx] = shoreRGB[0]; cellColors[outIdx + 1] = shoreRGB[1]; cellColors[outIdx + 2] = shoreRGB[2];
         }
       }
@@ -789,8 +820,8 @@ class TerrainGenerator {
     // Simple directional shading: a slope that rises toward the viewer (south-
     // facing) is turned away from the top light, so it darkens; a north-facing
     // slope brightens. Cheap (one neighbour diff per cell) and it is what makes
-    // the relief read as form rather than flat colour steps.
-    const SHADE = 50.0;
+    // the relief read as form rather than flat colour steps. (LOOK.shadeStrength)
+    const SHADE = LOOK.shade ? LOOK.shadeStrength : 0;
 
     for (let c = 0; c < gridCols; c++) {
       const pxStart = c * d;                            // pixelScale 1 → gridCols === mapWidth
@@ -836,14 +867,24 @@ class TerrainGenerator {
         farR = tr; farG = tg; farB = tb; painted = true;
       }
 
-      // Sky / distance haze above the far ridge: fade the farthest painted colour
-      // up to a dim atmospheric tone. Fills the top cleanly — no stretched edge
-      // pixels — and reads as depth. (This region is [0, ceiling) of the column.)
-      if (painted && ceiling > 0) {
-        const HAZE = 0.42;                              // darkest tone at the very top
+      // Sky above the far ridge. Blend the ridge colour DOWN into a single uniform
+      // haze tone at the very top (quadratic, so the haze dominates and only the
+      // band right at the ridge carries terrain colour). The uniform top is what
+      // keeps it streak-free — per-column ridge colours used to smear vertically
+      // here, which is the top-edge artifact. (LOOK.haze / LOOK.hazeColor)
+      if (ceiling > 0) {
         for (let y = 0; y < ceiling; y++) {
-          const m = HAZE + (1 - HAZE) * (y / ceiling);  // dim at top → far colour at the ridge
-          const rr = (farR * m) | 0, gg = (farG * m) | 0, bb = (farB * m) | 0;
+          let rr, gg, bb;
+          if (LOOK.haze && painted) {
+            const t = y / ceiling;            // 0 at the top → 1 at the ridge
+            const tt = t * t;                 // haze-weighted
+            const inv = 1 - tt;
+            rr = (hazeR * inv + farR * tt) | 0;
+            gg = (hazeG * inv + farG * tt) | 0;
+            bb = (hazeB * inv + farB * tt) | 0;
+          } else {
+            rr = hazeR; gg = hazeG; bb = hazeB;  // flat uniform sky (haze off, or empty column)
+          }
           const rowBase = (y * fullWidth + pxStart) * 4;
           for (let k = 0; k < d; k++) {
             const pi = rowBase + k * 4;

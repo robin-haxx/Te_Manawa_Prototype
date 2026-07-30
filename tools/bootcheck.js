@@ -416,6 +416,41 @@ const g=vm.runInContext('game',ctx);
     : `projection: pure + round-trips, live K=${P.K} LIFT=${P.LIFT.toFixed(1)}px, no CONFIG writeback`);
 }
 
+// ---- look-dev tools: LOOK toggles + in-place re-bake --------------------
+// Every illustration move must be a LOOK on/off toggle, must bake cleanly when
+// switched off (the "isolate one move" workflow), and rebakeTerrain() must
+// re-bake in place — no reseed, no ecosystem reset (md/TEMANAWA_34VIEW_PLAN.md §7).
+{
+  const L = vm.runInContext('LOOK', ctx);
+  const G = vm.runInContext('game', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  chk(L && typeof L.dump === 'function', 'LOOK must exist with a dump() helper');
+  const toggles = ['posterize', 'wobble', 'outlines', 'shore', 'shade', 'haze', 'quiet'];
+  chk(toggles.every(t => typeof L[t] === 'boolean'), 'every illustration move must be a LOOK on/off toggle');
+
+  // in-place re-bake keeps the same land (no reseed) and the same living world
+  const seed0 = G.terrain.seed;
+  const moa0 = G.simulation.moas.length, eag0 = G.simulation.eagles.length;
+  G.rebakeTerrain();
+  chk(G.terrain.seed === seed0, 'rebakeTerrain must NOT reseed the land');
+  chk(G.simulation.moas.length === moa0 && G.simulation.eagles.length === eag0,
+      'rebakeTerrain must not touch the ecosystem');
+  chk(!!G.terrain.seasonBuffers.summer, 're-bake must leave the season buffers built');
+
+  // every move OFF must still bake cleanly (the isolate-one-move path)
+  const saved = {}; for (const t of toggles) { saved[t] = L[t]; L[t] = false; }
+  let threw = false;
+  try { G.rebakeTerrain(); } catch (e) { threw = true; console.log('  FAIL bake with all moves off threw:', e.message); }
+  chk(!threw, 'baking with every LOOK move off must not throw');
+  chk(!!G.terrain.seasonBuffers.summer, 'buffers still built with all moves off');
+  for (const t of toggles) L[t] = saved[t];        // restore and re-bake to a sane state
+  G.rebakeTerrain();
+
+  console.log(fail ? `look-dev: ${fail} FAILURES`
+    : 'look-dev: LOOK toggles + in-place re-bake OK (no reseed, no reset)');
+}
+
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);
 console.log('--- state ---');
 console.log('  Kiosk.game attached', !!K.game, ' resets', K.resetCount);

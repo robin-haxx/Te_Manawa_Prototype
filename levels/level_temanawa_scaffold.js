@@ -76,6 +76,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // ground's linework. `contourColor` is now unused (contours retired) but kept
   // so nothing downstream that still reads it breaks.
   biomes: {
+    //'#000000', '#000000', '#000000'
     sea:       { key:'sea',       name:"Sea",             minElevation:0,    maxElevation:0.10,
                  colors:['#1a3a52','#1e4d6b','#236384'], contourColor:'#0f2533', outlineColor:'#0d2233',
                  walkable:false, canHavePlants:false, canPlace:false },
