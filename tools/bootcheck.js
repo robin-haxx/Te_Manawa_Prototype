@@ -365,6 +365,10 @@ const g=vm.runInContext('game',ctx);
   chk(P.K>=P.K_MIN && P.K<=P.K_MAX, `live K must be in [${P.K_MIN},${P.K_MAX}], got ${P.K}`);
   chk(typeof C.projK==='undefined' && typeof C.K==='undefined' && typeof C.LIFT==='undefined' && typeof C.liftFrac==='undefined',
       'K/LIFT must live on Projection, never on CONFIG');
+  chk(P.relief===true, 'live game must enable relief after the bake');
+  const _bh = G.terrain.seasonBuffers.summer && G.terrain.seasonBuffers.summer.height;
+  chk(_bh === Math.ceil(G.terrain.mapHeight * P.K + P.LIFT),
+      `relief buffer height (${_bh}) must equal ceil(mapH*K+LIFT)=${Math.ceil(G.terrain.mapHeight*P.K+P.LIFT)}`);
 
   // configure() clamps out-of-range authoring into the documented bounds
   P.configure({K:5, liftFrac:9, mapWidth:400, mapHeight:600});
@@ -381,13 +385,14 @@ const g=vm.runInContext('game',ctx);
   chk(P.squashedHeight()===600*0.8, 'squashedHeight must be mapHeight x K');
   chk(P.projectedWorldHeight()>P.squashedHeight(), 'projected height must reserve relief headroom');
 
-  // groundY is the shared render mapping (terrain + every entity). Relief is OFF
-  // until the relief bake, so it must be the flat squashed plane and ignore
-  // elevation — otherwise sprites float above a ground that has not risen yet.
-  chk(P.relief===false, 'relief must default OFF until the relief bake lands');
-  chk(P.groundY(100,0)===80 && P.groundY(100,1)===80, 'groundY must ignore elevation while relief is off (flat squash)');
+  // groundY is the paint-space mapping shared by the terrain buffer and every
+  // entity (here K=0.8, mapHeight=600 → LIFT=0.14*600=84).
+  P.relief=false;
+  chk(P.groundY(100,0)===80 && P.groundY(100,1)===80, 'relief OFF: groundY ignores elevation (flat squash = worldY*K)');
   P.relief=true;
-  chk(Math.abs(P.groundY(100,1) - (80 - P.LIFT))<1e-9, 'with relief on, groundY must lift by elev x LIFT');
+  chk(Math.abs(P.groundY(100,1) - 80) < 1e-9, 'relief ON: a peak (elev 1) sits at worldY*K');
+  chk(Math.abs(P.groundY(100,0) - (80 + P.LIFT)) < 1e-9, 'relief ON: flat ground sits LIFT below the peak line');
+  chk(P.groundY(100,1) < P.groundY(100,0), 'relief ON: higher ground draws higher on screen');
   P.relief=false;
 
   // screen -> world round-trip (the authoring inverse). Flat sampler is exact;
@@ -405,6 +410,7 @@ const g=vm.runInContext('game',ctx);
 
   // restore a terrain-consistent projection so later sections see a sane world
   P.configure({K:K0, liftFrac:lf0, mapWidth:G.terrain.mapWidth, mapHeight:G.terrain.mapHeight});
+  P.relief = true;   // match the live (post-bake) state
 
   console.log(fail? `projection: ${fail} FAILURES`
     : `projection: pure + round-trips, live K=${P.K} LIFT=${P.LIFT.toFixed(1)}px, no CONFIG writeback`);

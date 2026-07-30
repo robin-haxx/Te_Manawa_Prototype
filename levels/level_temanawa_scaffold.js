@@ -31,7 +31,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   //            the next step, harmless now under the squash-only render.
   // Held on Projection (configured in Game.init), never written to CONFIG —
   // same rule as TerrainGenerator.noiseScale.
-  projection: { K: 0.8, liftFrac: 0.14 },
+  projection: { K: 0.75, liftFrac: 0.14 },
 
   // ==========================================================
   // BIOMES — the single source of truth for the ground look.

@@ -79,13 +79,19 @@ const Projection = {
   // what step 1's global squash uses.
   projY(worldY, elev) { return worldY * this.K - (elev || 0) * this.LIFT; },
 
-  // The render-facing vertical mapping every entity and the terrain share: where
-  // a thing standing on the ground at (·, worldY) of elevation `elev` is drawn.
-  // While relief is off it is the flat squash plane (worldY·K) and elevation is
-  // ignored, so undistorted sprites sit exactly on the squashed ground. When the
-  // relief bake turns `relief` on, the same call starts lifting with the terrain.
+  // The render-facing vertical mapping every entity and the terrain share: the
+  // PAINT-SPACE y (before the view zoom) where a thing standing on the ground at
+  // (·, worldY) of elevation `elev` is drawn. The relief buffer is baked in this
+  // exact space, so a sprite and the ground cell under it always line up.
+  //
+  // The +LIFT offset keeps paint y ≥ 0: the highest possible peak (elev 1) sits
+  // at worldY·K, and flat ground (elev 0) sits LIFT below it. Higher ground is
+  // therefore drawn higher on screen. While relief is off it is the flat squash
+  // plane (worldY·K, elevation ignored) — undistorted sprites on squashed ground.
   groundY(worldY, elev) {
-    return this.relief ? this.projY(worldY, elev) : worldY * this.K;
+    return this.relief
+      ? worldY * this.K - (elev || 0) * this.LIFT + this.LIFT
+      : worldY * this.K;
   },
 
   // The world's on-screen vertical extent, in world units. squashedHeight() is

@@ -679,11 +679,10 @@ class Game {
     this.terrain = new TerrainGenerator(CONFIG, this.activeBiomes);
     this.seasonManager = new SeasonManager(CONFIG);
     this.terrain.setSeasonManager(this.seasonManager);
-    this.terrain.generate();
-
-    // Configure the 3/4 projection from the level's authored K / liftFrac (with
-    // module defaults as fallback). Done here — after the terrain exists, so the
-    // map dimensions are known — and held on Projection, never on CONFIG.
+    // Configure the 3/4 projection from the level's authored K / liftFrac BEFORE
+    // the bake — _bakeSeasonBuffer reads Projection.K / LIFT to displace the
+    // relief. The terrain object already exists, so map dimensions are known.
+    // Held on Projection, never on CONFIG (same rule as noiseScale).
     if (typeof Projection !== 'undefined') {
       const _proj = (this.currentLevel && this.currentLevel.projection) || {};
       Projection.configure({
@@ -692,7 +691,10 @@ class Game {
         mapWidth: this.terrain.mapWidth,
         mapHeight: this.terrain.mapHeight
       });
+      Projection.relief = true;   // the season bake below produces baked relief
     }
+
+    this.terrain.generate();
 
     this._updateViewTransform();
 
@@ -782,12 +784,13 @@ class Game {
 
   isInGameArea(mx, my) {
     if (CONFIG.fullscreen && this.terrain) {
-      // Drawn height is the squashed height (matches Game.render / view transform).
-      const _K = (typeof Projection !== 'undefined') ? Projection.K : 1;
+      // Drawn height is the projected height (matches Game.render / view transform).
+      const projH = (typeof Projection !== 'undefined')
+        ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
       return mx >= CONFIG.viewX &&
              mx < CONFIG.viewX + this.terrain.mapWidth * CONFIG.viewZoom &&
              my >= CONFIG.viewY &&
-             my < CONFIG.viewY + this.terrain.mapHeight * _K * CONFIG.viewZoom;
+             my < CONFIG.viewY + projH * CONFIG.viewZoom;
     }
     return mx >= CONFIG.gameAreaX &&
            mx < CONFIG.gameAreaX + CONFIG.gameAreaWidth &&
@@ -801,11 +804,13 @@ class Game {
   // fits the whole canvas, centred, with the HUD drawn as an overlay.
   _updateViewTransform() {
     if (this.terrain) {
-      // The 3/4 squash compresses the world vertically to mapHeight·K, so fit
-      // and centre against that projected height, not the raw grid height.
-      const _K = (typeof Projection !== 'undefined') ? Projection.K : 1;
-      const projH = this.terrain.mapHeight * _K;
-      const z = Math.min(CONFIG.canvasWidth / this.terrain.mapWidth,
+      // Fill the screen with the terrain. Its on-screen size is
+      // mapWidth × projectedWorldHeight (mapHeight·K + LIFT). Use a COVER fit
+      // (max) so there is no letterbox; the modest overflow on the long axis is
+      // clipped. Centred.
+      const projH = (typeof Projection !== 'undefined')
+        ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
+      const z = Math.max(CONFIG.canvasWidth / this.terrain.mapWidth,
                          CONFIG.canvasHeight / projH);
       CONFIG.viewZoom = z;
       CONFIG.viewX = Math.round((CONFIG.canvasWidth - this.terrain.mapWidth * z) / 2);
@@ -925,38 +930,36 @@ class Game {
     push();
     drawingContext.save();
     drawingContext.beginPath();
-    // 3/4 view: the world is squashed vertically by K (plan-oblique, step 1 —
-    // md/TEMANAWA_34VIEW_PLAN.md §8), so the clipped, drawn height is mapHeight·K.
-    const _K = (typeof Projection !== 'undefined') ? Projection.K : 1;
+    // 3/4 relief: the terrain buffer is baked in paint space (K + relief), so it
+    // draws 1:1 — no squash transform here. The drawn world height is the
+    // projected height (mapHeight·K + LIFT). md/TEMANAWA_34VIEW_PLAN.md §3.
+    const projH = (typeof Projection !== 'undefined')
+      ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
     const _clipW = this.terrain.mapWidth * CONFIG.viewZoom;
-    const _clipH = this.terrain.mapHeight * _K * CONFIG.viewZoom;
+    const _clipH = projH * CONFIG.viewZoom;
     drawingContext.rect(CONFIG.viewX, CONFIG.viewY, _clipW, _clipH);
     drawingContext.clip();
 
     translate(CONFIG.viewX, CONFIG.viewY);
     scale(CONFIG.viewZoom);
 
-    // 3/4 view: squash the GROUND ONLY. Sprites must NOT be distorted, so the
-    // squash wraps just the terrain + frost; entities draw undistorted in
-    // simulation.render() below, each projected onto this same squashed ground
-    // via Projection.groundY (md/TEMANAWA_34VIEW_PLAN.md §5).
-    push();
-    scale(1, _K);
-
+    // The relief buffer already encodes the projection, so it draws directly.
+    // Every entity in simulation.render() projects onto the SAME paint space via
+    // Projection.groundY, so undistorted sprites sit on the lifted ground.
     this.terrain.render();
 
-    // Winter frost: a single cool haze laid over the ground (under the animals),
-    // fading in through late autumn and out into spring. One rect — no perf cost.
+    // Winter frost: a single cool haze over the ground (under the animals),
+    // fading in through late autumn and out into spring. Covers the projected
+    // terrain area. One rect — no perf cost.
     const _frost = this.seasonManager.getWinterness ? this.seasonManager.getWinterness() : 0;
     if (_frost > 0.001) {
       push();
       noStroke();
       rectMode(CORNER);
       fill(216, 232, 245, 72 * _frost);
-      rect(0, 0, this.terrain.mapWidth, this.terrain.mapHeight);
+      rect(0, 0, this.terrain.mapWidth, projH);
       pop();
     }
-    pop();   // end ground-only squash — entities below draw undistorted
 
     this.simulation.render();
 

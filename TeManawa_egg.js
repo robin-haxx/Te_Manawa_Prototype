@@ -127,8 +127,8 @@ class Egg {
     if (!this.alive) return;
     
     const px = this.pos.x;
-    // Sit on the squashed 3/4 ground; sprite drawn undistorted (§5).
-    const py = Projection.groundY(this.pos.y);
+    // Sit on the 3/4 ground (rides terrain relief); drawn undistorted (§5).
+    const py = Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y));
     const progress = this.currentTime / this.incubationTime;
     
     // Calculate wobble

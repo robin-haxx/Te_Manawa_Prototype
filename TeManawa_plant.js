@@ -398,9 +398,10 @@ class Plant {
     if (!this.alive && !this.dormant) return;
     
     const px = this.pos.x;
-    // Sit on the squashed 3/4 ground. Everything below keys off py, so this one
-    // projection stands base-anchored trees up on the ground undistorted (§5).
-    const py = Projection.groundY(this.pos.y);
+    // Sit on the 3/4 ground (rides terrain relief via the cached spawn
+    // elevation). Everything below keys off py, so this one projection stands
+    // base-anchored trees up on the lifted ground, undistorted (§5).
+    const py = Projection.groundY(this.pos.y, this.elevation);
     const dormant = this.dormant;
     const dormantMult = dormant ? 0.5 : 1;
     const displaySize = this.size * this.growth * dormantMult;

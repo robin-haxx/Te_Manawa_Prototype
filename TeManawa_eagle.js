@@ -711,10 +711,11 @@ class HaastsEagle extends Boid {
     
     if (sprite) {
       push();
-      // Anchor on the squashed 3/4 ground, draw the shadow there, THEN lift the
-      // body to its flight altitude. The shadow staying on the ground is what
-      // sells height at 3/4 — and a dive (altitude → 0) reads as a real descent.
-      translate(this.pos.x, Projection.groundY(this.pos.y));
+      // Anchor on the 3/4 ground (rides terrain relief), draw the shadow there,
+      // THEN lift the body to its flight altitude. The shadow staying on the
+      // ground is what sells height at 3/4 — and a dive (altitude → 0) reads as a
+      // real descent.
+      translate(this.pos.x, Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y)));
 
       const _alt = this._altitude || 0;
       const _sf = 1 - Math.min(0.55, _alt / 70);   // higher bird → smaller, fainter shadow

@@ -348,8 +348,8 @@ class PlaceableObject {
     if (!this.alive) return;
     
     push();
-    // Sit on the squashed 3/4 ground; drawn undistorted (§5).
-    translate(this.pos.x, Projection.groundY(this.pos.y));
+    // Sit on the 3/4 ground (rides terrain relief); drawn undistorted (§5).
+    translate(this.pos.x, Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y)));
 
     const lifeRatio = this.life / this.maxLife;
     const pulse = sin(frameCount * 0.05 + this.pulsePhase) * 0.1 + 1;

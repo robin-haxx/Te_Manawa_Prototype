@@ -583,9 +583,18 @@ class TerrainGenerator {
    * Bake a single season's terrain buffer using direct pixel manipulation
    */
   _bakeSeasonBuffer(seasonKey) {
-    const buf = createGraphics(this.mapWidth, this.mapHeight);
+    // 3/4 relief: bake in PAINT SPACE — each cell displaced up by its elevation
+    // (Projection). The buffer is the projected world height (mapHeight·K + LIFT)
+    // tall; K/LIFT come from Projection, which Game.init configures before this
+    // runs. Falls back to a flat top-down bake if Projection is somehow absent.
+    const _P = (typeof Projection !== 'undefined') ? Projection : null;
+    const K = _P ? _P.K : 1;
+    const LIFT = _P ? _P.LIFT : 0;
+    const bufWorldH = Math.max(1, Math.ceil(this.mapHeight * K + LIFT));
+
+    const buf = createGraphics(this.mapWidth, bufWorldH);
     buf.loadPixels();
-    
+
     const d = buf.pixelDensity();
     const gridCols = this.gridCols;
     const gridRows = this.gridRows;
@@ -667,27 +676,63 @@ class TerrainGenerator {
       }
     }
     
-    // Fill buffer pixels
+    // ---- Relief fill: near-to-far ceiling painter -----------------------------
+    // Paint each column front (near/south, screen bottom) to back (far/north,
+    // screen top), keeping `ceiling` = the highest pixel filled so far. Each cell
+    // fills only the band from its projected top up to the ceiling, so nearer
+    // terrain occludes farther terrain, cliffs get a tall side face, and there
+    // are no gaps. One pass at generate() (~1s budget), never per frame.
+    // md/TEMANAWA_34VIEW_PLAN.md §3.
     const fullWidth = this.mapWidth * d;
-    const fullHeight = this.mapHeight * d;
-    const invScaleD = this.invScale / d;
-    
-    for (let py = 0; py < fullHeight; py++) {
-      const gridRow = (py * invScaleD) | 0;
-      const rowOffset = gridRow * gridCols;
-      
-      for (let px = 0; px < fullWidth; px++) {
-        const gridCol = (px * invScaleD) | 0;
-        const colorIdx = (rowOffset + gridCol) * 3;
-        const pixelIdx = (py * fullWidth + px) * 4;
-        
-        buf.pixels[pixelIdx] = cellColors[colorIdx];
-        buf.pixels[pixelIdx + 1] = cellColors[colorIdx + 1];
-        buf.pixels[pixelIdx + 2] = cellColors[colorIdx + 2];
-        buf.pixels[pixelIdx + 3] = 255;
+    const fullHeight = bufWorldH * d;
+    const cellScale = this.scale;
+
+    // Water never lifts: the sea/river stay on the flat plane, so every shore
+    // gets a small bank face for free.
+    const waterFlag = new Uint8Array(this.biomeArray.length);
+    for (let i = 0; i < this.biomeArray.length; i++) {
+      const b = this.biomeArray[i];
+      waterFlag[i] = (b.isWater || b === this._waterBiome) ? 1 : 0;
+    }
+
+    const TOPBAND = Math.max(1, Math.round(1.5 * d));   // lit top-surface thickness, px
+
+    for (let c = 0; c < gridCols; c++) {
+      const pxStart = c * d;                            // pixelScale 1 → gridCols === mapWidth
+      let ceiling = fullHeight;                         // nothing filled yet in this column
+
+      for (let r = gridRows - 1; r >= 0; r--) {         // near → far
+        const idx = r * gridCols + c;
+        const e = heightMap[idx];
+        const liftE = waterFlag[this.biomeIndexMap[idx]] ? 0 : e;
+
+        // Projected top of this cell in buffer pixels (paint space, +LIFT offset).
+        let yTop = ((r * cellScale * K - liftE * LIFT + LIFT) * d) | 0;
+        if (r === 0) yTop = 0;                          // far edge fills to the top — no void band
+        if (yTop < 0) yTop = 0;
+        if (yTop >= ceiling) continue;                  // fully occluded by nearer terrain
+
+        const cidx = idx * 3;
+        const tr = cellColors[cidx], tg = cellColors[cidx + 1], tb = cellColors[cidx + 2];
+        const sr = (tr * 0.6) | 0, sg = (tg * 0.6) | 0, sb = (tb * 0.6) | 0;   // side / cliff face
+        const lip = ((ceiling - yTop) > (3 * d)) ? TOPBAND : 0;               // dark ink lip on a real cliff
+
+        for (let y = yTop; y < ceiling; y++) {
+          const band = y - yTop;
+          let rr, gg, bb;
+          if (band < lip) { rr = (tr * 0.35) | 0; gg = (tg * 0.35) | 0; bb = (tb * 0.35) | 0; }
+          else if (band < TOPBAND) { rr = tr; gg = tg; bb = tb; }
+          else { rr = sr; gg = sg; bb = sb; }
+          const rowBase = (y * fullWidth + pxStart) * 4;
+          for (let k = 0; k < d; k++) {
+            const pi = rowBase + k * 4;
+            buf.pixels[pi] = rr; buf.pixels[pi + 1] = gg; buf.pixels[pi + 2] = bb; buf.pixels[pi + 3] = 255;
+          }
+        }
+        ceiling = yTop;
       }
     }
-    
+
     buf.updatePixels();
     return buf;
   }
