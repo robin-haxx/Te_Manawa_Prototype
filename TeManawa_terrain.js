@@ -1,3 +1,18 @@
+// ---- Illustration-pass tunables (bake-time; md/TEMANAWA_34VIEW_PLAN.md §7) ----
+// Everything here is applied ONCE, in the season bake — never per frame — so a
+// change needs a page reload, not a perf thought. This is the "pixel topo map →
+// cartoon illustration" knob box; dial to taste. Slope shading (SHADE) and the
+// sky haze (HAZE) live in _bakeSeasonBuffer next to the relief they belong to.
+const TERRAIN_ILLUS = {
+  posterize:     true,     // snap each biome ramp to flat cel tones, not a gradient
+  wobble:        0.025,    // biome-boundary wander (elevation units); 0 = straight bands
+  wobbleFreq:    0.18,     // spatial frequency of that wander
+  quietSat:      0.16,     // desaturate ground toward grey so outlined sprites pop (0..1)
+  quietContrast: 0.92,     // compress ground contrast toward mid-grey (1 = untouched)
+  outlineColor:  '#16210f',// fallback biome-boundary ink (a biome's own `outlineColor` wins)
+  shoreColor:    '#dfe9ef' // hand-wobble shoreline stroke at the water's edge
+};
+
 // ============================================
 // TERRAIN GENERATOR - Pre-baked seasonal buffers
 // Zero computation during season transitions
@@ -429,7 +444,13 @@ class TerrainGenerator {
     const range = biome.maxElevation - biome.minElevation;
     const position = (elevation - biome.minElevation) / range;
     const clampedPos = Math.max(0, Math.min(1, position));
-    
+
+    // Cel look: snap to the nearest authored ramp stop → 2-3 flat tones per biome
+    // instead of a smooth gradient (md/TEMANAWA_34VIEW_PLAN.md §7).
+    if (TERRAIN_ILLUS.posterize) {
+      return this._getCachedColor(colors[Math.round(clampedPos * (colors.length - 1))]);
+    }
+
     const colorIndex = clampedPos * (colors.length - 1);
     const lowerIndex = colorIndex | 0;
     const upperIndex = Math.min(lowerIndex + 1, colors.length - 1);
@@ -492,14 +513,23 @@ class TerrainGenerator {
     for (let row = 0; row < gridRows; row++) {
       for (let col = 0; col < gridCols; col++) {
         const elevation = this.heightMap[idx];
-        let biome = this.getBiomeFromElevation(elevation);
+        // Wobble the band threshold with high-frequency noise so biome borders
+        // wander like a brush line instead of following clean elevation contours.
+        // Only the COLOUR classification wobbles; the height map (walkability and
+        // relief) is left exactly as generated.
+        const w = TERRAIN_ILLUS.wobble;
+        const eClass = w > 0
+          ? elevation + (noise(col * TERRAIN_ILLUS.wobbleFreq + this.seed * 5,
+                               row * TERRAIN_ILLUS.wobbleFreq + this.seed * 7) * 2 - 1) * w
+          : elevation;
+        let biome = this.getBiomeFromElevation(eClass);
         // water type handling (lake or sea)
         if (biome === this.biomeList[1] && this._waterBiome) {
           if (!this.hasAdjacentWater(row, col)) {
             biome = this._fallbackBiome;
           }
         }
-        
+
         this.biomeIndexMap[idx] = this.biomeIndexByKey[biome.key];
         idx++;
       }
@@ -509,7 +539,10 @@ class TerrainGenerator {
     
     // Compute base cell colors (without snow)
     this._computeBaseCellColors();
-    
+
+    // Mark biome-boundary cells for the ink / shoreline strokes (illustration).
+    this._computeEdgeFlags();
+
     // Pre-bake all 4 seasonal buffers
     this._bakeAllSeasonBuffers();
   }
@@ -538,11 +571,20 @@ class TerrainGenerator {
         
         const c = this.getColor(elevation, biome);
         const colorIdx = cellIdx * 4;
-        
-        this._baseCellColors[colorIdx] = red(c);
-        this._baseCellColors[colorIdx + 1] = green(c);
-        this._baseCellColors[colorIdx + 2] = blue(c);
-        
+
+        // Quieter ground: desaturate toward grey and compress contrast so the
+        // outlined, saturated sprites read first ("illustration reads sprite-
+        // first", md/TEMANAWA_34VIEW_PLAN.md §7).
+        let cr = red(c), cg = green(c), cb = blue(c);
+        const gray = cr * 0.3 + cg * 0.59 + cb * 0.11;
+        const qs = TERRAIN_ILLUS.quietSat, qc = TERRAIN_ILLUS.quietContrast;
+        cr = 128 + ((cr + (gray - cr) * qs) - 128) * qc;
+        cg = 128 + ((cg + (gray - cg) * qs) - 128) * qc;
+        cb = 128 + ((cb + (gray - cb) * qs) - 128) * qc;
+        this._baseCellColors[colorIdx]     = cr < 0 ? 0 : cr > 255 ? 255 : cr;
+        this._baseCellColors[colorIdx + 1] = cg < 0 ? 0 : cg > 255 ? 255 : cg;
+        this._baseCellColors[colorIdx + 2] = cb < 0 ? 0 : cb > 255 ? 255 : cb;
+
         // Check if this is a contour line
         if (showContours) {
           const mod = elevation % contourInterval;
@@ -553,7 +595,40 @@ class TerrainGenerator {
       }
     }
   }
-  
+
+  // Mark biome-boundary cells for the ink / shoreline strokes drawn in the bake.
+  //   0 = interior · 1 = ink outline (biome ≠ neighbour) · 2 = shoreline (water
+  //   meets land, and it wins over ink). This is what replaces contour lines as
+  //   the ground's linework (md/TEMANAWA_34VIEW_PLAN.md §7).
+  _computeEdgeFlags() {
+    const gridCols = this.gridCols, gridRows = this.gridRows;
+    const bmap = this.biomeIndexMap, arr = this.biomeArray;
+    const isWater = (bi) => { const b = arr[bi]; return b.isWater || b === this._waterBiome; };
+    this._edgeFlags = new Uint8Array(gridCols * gridRows);
+
+    for (let row = 0; row < gridRows; row++) {
+      for (let col = 0; col < gridCols; col++) {
+        const i = row * gridCols + col;
+        const bi = bmap[i];
+        const wi = isWater(bi);
+        let edge = 0;
+        // 4-neighbourhood; a water/land seam becomes a shoreline (2), any other
+        // biome change becomes ink (1). Shore wins.
+        const test = (ni) => {
+          const bn = bmap[ni];
+          if (bn === bi) return;
+          if (isWater(bn) !== wi) edge = 2;
+          else if (edge === 0) edge = 1;
+        };
+        if (col > 0) test(i - 1);
+        if (col < gridCols - 1) test(i + 1);
+        if (row > 0) test(i - gridCols);
+        if (row < gridRows - 1) test(i + gridCols);
+        this._edgeFlags[i] = edge;
+      }
+    }
+  }
+
   /**
    * Pre-bake all 4 seasonal terrain buffers
    */
@@ -614,7 +689,13 @@ class TerrainGenerator {
     
     // Pre-compute cell colors with snow for this season
     const cellColors = new Uint8Array(gridCols * gridRows * 3);
-    
+
+    // Illustration linework: biome-boundary ink + shoreline stroke (see
+    // _computeEdgeFlags). Applied over the season colour, below.
+    const edgeFlags = this._edgeFlags;
+    const shoreC = this._getCachedColor(TERRAIN_ILLUS.shoreColor);
+    const shoreRGB = [red(shoreC), green(shoreC), blue(shoreC)];
+
     for (let row = 0; row < gridRows; row++) {
       for (let col = 0; col < gridCols; col++) {
         const cellIdx = row * gridCols + col;
@@ -673,9 +754,18 @@ class TerrainGenerator {
             cellColors[outIdx + 2] = baseCellColors[baseIdx + 2];
           }
         }
+
+        // Illustration: stroke biome boundaries as ink, the water's edge as shore.
+        const edge = edgeFlags ? edgeFlags[cellIdx] : 0;
+        if (edge === 1) {
+          const oc = this._getCachedColor(this.biomeArray[this.biomeIndexMap[cellIdx]].outlineColor || TERRAIN_ILLUS.outlineColor);
+          cellColors[outIdx] = red(oc); cellColors[outIdx + 1] = green(oc); cellColors[outIdx + 2] = blue(oc);
+        } else if (edge === 2) {
+          cellColors[outIdx] = shoreRGB[0]; cellColors[outIdx + 1] = shoreRGB[1]; cellColors[outIdx + 2] = shoreRGB[2];
+        }
       }
     }
-    
+
     // ---- Relief fill: near-to-far ceiling painter -----------------------------
     // Paint each column front (near/south, screen bottom) to back (far/north,
     // screen top), keeping `ceiling` = the highest pixel filled so far. Each cell
@@ -696,10 +786,16 @@ class TerrainGenerator {
     }
 
     const TOPBAND = Math.max(1, Math.round(1.5 * d));   // lit top-surface thickness, px
+    // Simple directional shading: a slope that rises toward the viewer (south-
+    // facing) is turned away from the top light, so it darkens; a north-facing
+    // slope brightens. Cheap (one neighbour diff per cell) and it is what makes
+    // the relief read as form rather than flat colour steps.
+    const SHADE = 50.0;
 
     for (let c = 0; c < gridCols; c++) {
       const pxStart = c * d;                            // pixelScale 1 → gridCols === mapWidth
       let ceiling = fullHeight;                         // nothing filled yet in this column
+      let farR = 0, farG = 0, farB = 0, painted = false;// farthest painted top colour → sky fade
 
       for (let r = gridRows - 1; r >= 0; r--) {         // near → far
         const idx = r * gridCols + c;
@@ -708,19 +804,26 @@ class TerrainGenerator {
 
         // Projected top of this cell in buffer pixels (paint space, +LIFT offset).
         let yTop = ((r * cellScale * K - liftE * LIFT + LIFT) * d) | 0;
-        if (r === 0) yTop = 0;                          // far edge fills to the top — no void band
         if (yTop < 0) yTop = 0;
         if (yTop >= ceiling) continue;                  // fully occluded by nearer terrain
 
         const cidx = idx * 3;
-        const tr = cellColors[cidx], tg = cellColors[cidx + 1], tb = cellColors[cidx + 2];
+        // Shade the lit top by the north-neighbour slope.
+        const eN = (r > 0) ? heightMap[idx - gridCols] : e;
+        let sh = 1 - (e - eN) * SHADE;
+        if (sh < 0.72) sh = 0.72; else if (sh > 1.2) sh = 1.2;
+        let tr = (cellColors[cidx] * sh) | 0, tg = (cellColors[cidx + 1] * sh) | 0, tb = (cellColors[cidx + 2] * sh) | 0;
+        if (tr > 255) tr = 255; if (tg > 255) tg = 255; if (tb > 255) tb = 255;
         const sr = (tr * 0.6) | 0, sg = (tg * 0.6) | 0, sb = (tb * 0.6) | 0;   // side / cliff face
-        const lip = ((ceiling - yTop) > (3 * d)) ? TOPBAND : 0;               // dark ink lip on a real cliff
+
+        const isFront = (r === gridRows - 1);           // nearest row = foreground ground
+        const lip = (!isFront && (ceiling - yTop) > (3 * d)) ? TOPBAND : 0;   // dark ink lip on a real cliff
 
         for (let y = yTop; y < ceiling; y++) {
           const band = y - yTop;
           let rr, gg, bb;
-          if (band < lip) { rr = (tr * 0.35) | 0; gg = (tg * 0.35) | 0; bb = (tb * 0.35) | 0; }
+          if (isFront) { rr = tr; gg = tg; bb = tb; }            // foreground ground, no dark front wall
+          else if (band < lip) { rr = (tr * 0.32) | 0; gg = (tg * 0.32) | 0; bb = (tb * 0.32) | 0; }
           else if (band < TOPBAND) { rr = tr; gg = tg; bb = tb; }
           else { rr = sr; gg = sg; bb = sb; }
           const rowBase = (y * fullWidth + pxStart) * 4;
@@ -730,6 +833,23 @@ class TerrainGenerator {
           }
         }
         ceiling = yTop;
+        farR = tr; farG = tg; farB = tb; painted = true;
+      }
+
+      // Sky / distance haze above the far ridge: fade the farthest painted colour
+      // up to a dim atmospheric tone. Fills the top cleanly — no stretched edge
+      // pixels — and reads as depth. (This region is [0, ceiling) of the column.)
+      if (painted && ceiling > 0) {
+        const HAZE = 0.42;                              // darkest tone at the very top
+        for (let y = 0; y < ceiling; y++) {
+          const m = HAZE + (1 - HAZE) * (y / ceiling);  // dim at top → far colour at the ridge
+          const rr = (farR * m) | 0, gg = (farG * m) | 0, bb = (farB * m) | 0;
+          const rowBase = (y * fullWidth + pxStart) * 4;
+          for (let k = 0; k < d; k++) {
+            const pi = rowBase + k * 4;
+            buf.pixels[pi] = rr; buf.pixels[pi + 1] = gg; buf.pixels[pi + 2] = bb; buf.pixels[pi + 3] = 255;
+          }
+        }
       }
     }
 

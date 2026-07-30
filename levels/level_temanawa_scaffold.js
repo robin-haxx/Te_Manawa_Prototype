@@ -71,30 +71,34 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // Colours are baked into four season buffers at generate() time, so a change
   // needs a page reload to show up — it is not read per frame.
   // ==========================================================
+  // `outlineColor` is the ink the illustration pass strokes along this biome's
+  // boundaries (md/TEMANAWA_34VIEW_PLAN.md §7) — it replaces contour lines as the
+  // ground's linework. `contourColor` is now unused (contours retired) but kept
+  // so nothing downstream that still reads it breaks.
   biomes: {
     sea:       { key:'sea',       name:"Sea",             minElevation:0,    maxElevation:0.10,
-                 colors:['#1a3a52','#1e4d6b','#236384'], contourColor:'#0f2533',
+                 colors:['#1a3a52','#1e4d6b','#236384'], contourColor:'#0f2533', outlineColor:'#0d2233',
                  walkable:false, canHavePlants:false, canPlace:false },
     coastal:   { key:'coastal',   name:"Coast",           minElevation:0.10, maxElevation:0.15,
-                 colors:['#c2b280','#d4c794','#e6dca8'], contourColor:'#8a7d5a',
+                 colors:['#c2b280','#d4c794','#e6dca8'], contourColor:'#8a7d5a', outlineColor:'#7a6b45',
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
-                 colors:['#7fb069','#8fbc79','#9fc889'], contourColor:'#5a7d4a',
+                 colors:['#7fb069','#8fbc79','#9fc889'], contourColor:'#5a7d4a', outlineColor:'#3e5a34',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','flax'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
-                 colors:['#2d5a3d','#346644','#3b724b'], contourColor:'#1e3d29',
+                 colors:['#2d5a3d','#346644','#3b724b'], contourColor:'#1e3d29', outlineColor:'#132416',
                  walkable:true,  canHavePlants:true, plantTypes:['fern','rimu'], canPlace:true },
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
-                 colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740',
+                 colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740', outlineColor:'#1b3222',
                  walkable:true,  canHavePlants:true, plantTypes:['beech','fern'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
-                 colors:['#86a860','#a4b56d','#9ec27a'], contourColor:'#cfdbbb',
+                 colors:['#86a860','#a4b56d','#9ec27a'], contourColor:'#cfdbbb', outlineColor:'#55663a',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
-                 colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c',
+                 colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c', outlineColor:'#4a4a4a',
                  walkable:false, canHavePlants:false, canPlace:false },
     snow:      { key:'snow',      name:"Snow",            minElevation:0.90, maxElevation:1.0,
-                 colors:['#e8e8e8','#f0f0f0','#ffffff'], contourColor:'#b0b0b0',
+                 colors:['#e8e8e8','#f0f0f0','#ffffff'], contourColor:'#b0b0b0', outlineColor:'#9aa6ad',
                  walkable:false, canHavePlants:false, canPlace:false }
   },
 

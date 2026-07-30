@@ -1134,43 +1134,47 @@ class Simulation {
     const moas = this.moas;
     const eagles = this.eagles;
 
-    // DRAW ORDER Z INDEX
-    
-    // Layer 1: Ground plants (not trees — fern is now a tree)
-    this._renderFiltered(plants, 0, p => p.type !== 'rimu' && p.type !== 'beech' && p.type !== 'fern', true, inView);
-    
-    // Layer 2: Placeables (not Storms)
-    this._renderFiltered(placeables, 50, p => p.type !== 'Storm', true, inView);
-    
-    // Layer 3: Eggs
-    this._renderFiltered(eggs, 0, null, true, inView);
-    
-    // Layer 4: Moas (body)
-    this._renderFiltered(moas, 0, null, true, inView, 'render');
-    
-    for (const [type, list] of Object.entries(this.otherEntities)) {
-      this._renderFiltered(list, 0, null, true, inView, 'render');
+    // ---- Ground layer: one depth-sorted (painter) pass -----------------------
+    // At the 3/4 angle, draw order must follow DEPTH (world y), not entity type:
+    // a moa south of a tree has to draw in FRONT of it (the old fixed layers
+    // always drew trees over moas). Collect every ground entity, insertion-sort
+    // by pos.y ascending (far/north first), render in that order. The list is a
+    // persistent array cleared each frame (never reallocated) and insertion sort
+    // is ~O(n) on the near-sorted order frame to frame — no allocation in
+    // draw(). md/TEMANAWA_34VIEW_PLAN.md §5.
+    const GM = 60;   // uniform cull margin (covers sprite extent + lift)
+    const list = this._sortList || (this._sortList = []);
+    list.length = 0;
+
+    for (let i = 0; i < plants.length; i++) { const e = plants[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+    for (let i = 0; i < placeables.length; i++) { const e = placeables[i]; if (e.alive && e.type !== 'Storm' && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+    for (let i = 0; i < eggs.length; i++) { const e = eggs[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+    for (let i = 0; i < moas.length; i++) { const e = moas[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+    for (const [type, arr] of Object.entries(this.otherEntities)) {
+      if (type === 'kea') continue;                    // flying — drawn above with the eagles
+      for (let i = 0; i < arr.length; i++) { const e = arr[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     }
 
-    // Layer 5: Trees (rimu, beech, fern)
-    this._renderFiltered(plants, 30, p => p.type === 'rimu' || p.type === 'beech' || p.type === 'fern', true, inView);
-    
-    // Layer 6: Eagles (aliveCheck true so a just-starved bird stops drawing
-    // immediately instead of lingering until the next cleanup pass)
+    for (let i = 1; i < list.length; i++) {            // insertion sort by depth (pos.y)
+      const e = list[i], key = e.pos.y;
+      let j = i - 1;
+      while (j >= 0 && list[j].pos.y > key) { list[j + 1] = list[j]; j--; }
+      list[j + 1] = e;
+    }
+    for (let i = 0; i < list.length; i++) list[i].render();
+
+    // ---- Above the ground plane (flyers, storms, indicators) -----------------
+    // Eagles (aliveCheck true so a just-starved bird stops drawing immediately).
     this._renderFiltered(eagles, 30, null, true, inView);
-    
-    // Layer 6b: Flying other entities (kea)
-    // Kea should render above trees like eagles
+    // Flying others (kea) render above, like eagles.
     if (this.otherEntities.kea) {
       this._renderFiltered(this.otherEntities.kea, 30, null, true, inView);
     }
-
-    // Layer 7: Storms
+    // Storms sit above everything.
     this._renderFiltered(placeables, 80, p => p.type === 'Storm', true, inView);
-    
-    // Layer 8: Moa indicators
+    // Moa indicators (debug-only layer).
     this._renderFiltered(moas, 0, null, true, inView, 'renderIndicators');
-    
+
     if (CONFIG.debugMode && CONFIG.showGridStats) this.renderGridStats();
   }
   

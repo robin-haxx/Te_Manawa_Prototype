@@ -174,7 +174,7 @@ const CONFIG = {
   col_panelBorder: [60, 90, 70],
   col_panelHeader: [45, 75, 55],
 
-  showContours: true,
+  showContours: false,   // retired: biome-boundary ink (levelDef.biomes[].outlineColor) replaces topo contours (34VIEW §7)
   contourInterval: 0.1,
   showLabels: false,
   showDebug: false,
