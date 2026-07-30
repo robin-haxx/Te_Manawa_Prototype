@@ -178,16 +178,11 @@ const CONFIG = {
   contourInterval: 0.1,
   showLabels: false,
   showDebug: false,
-  // The whole per-entity UI layer: hunger and breeding bars, heart and
-  // pregnancy indicators, low-population rings, state glyphs, egg progress.
-  // OFF by default — it is the strongest "this is a video game" signal on
-  // screen and it distracts from the diorama. Breeding is meant to be read as
-  // behaviour (two moa together, then an egg on the ground), not as a floating
-  // heart. Debug.applyVisibility() turns it on with the debug overlay.
+
+  // PER-ENTITY UI
+  // OFF by default
   //
-  // Named showEntityUI rather than showHungerBars because bars were only ever
-  // part of what it gates — the hearts, rings and glyphs were not gated at all
-  // and stayed on screen permanently.
+  // Renamed showEntityUI from showHungerBars 
   showEntityUI: false,
 
   // ===== LEVEL-VARIABLE PARAMS (written by loadLevel) =====
@@ -225,10 +220,8 @@ const CONFIG = {
    * Call once in setup() and again whenever the window dimensions change
    * (though during gameplay the canvas dimensions are locked and CSS-scaled).
    */
-  // Full-bleed at ANY aspect, portrait included. The engine's original version
-  // was landscape-only (aspect clamped to [4:3, 21:9]) and reserved space for a
-  // sidebar and top/bottom bars. The installation has none of those: the SHORT
-  // side of the canvas is pinned to referenceHeight and the long side follows the
+  // Renders full-bleed at ANY aspect.
+  // SHORT side of the canvas is pinned to referenceHeight and the long side follows the
   // window, so the square terrain letterboxes into it via _updateViewTransform().
   recalculateLayout(windowW, windowH) {
     const s = this.referenceHeight;
@@ -249,7 +242,7 @@ const CONFIG = {
 };
 
 // ============================================
-// LEVEL MECHANICS (optional, per-level, opt-in)
+// LEVEL MECHANICS 
 // Read by mauri_moa.js / mauri_simulation.js. Empty = disabled,
 // so levels that don't set `mechanics` behave exactly as before.
 // ============================================
@@ -335,7 +328,7 @@ function strokeColor(colorArray) {
 }
 
 // ============================================
-// PRE-CACHED COLORS
+// PRE-CACHED COLORS (UI Palette)
 // ============================================
 const CACHED_COLORS = {};
 
@@ -391,7 +384,7 @@ const GAME_STATE = {
 const PLACEABLES = {
   kawakawa: {
     name: "Kawakawa Grove",
-    description: "Rich feeding ground",
+    description: "Food with seasonal boost",
     cost: 25,
     icon: '🌿',
     color: '#2d8a4e',
@@ -447,7 +440,7 @@ const PLACEABLES = {
   
   Storm: {
     name: "Storm",
-    description: "Distracts hunting eagles",
+    description: "Distracts hunting eagles (10s cooldown)",
     cost: 40,
     icon: '🌩️',
     color: '#c4a35a',
@@ -463,7 +456,7 @@ const PLACEABLES = {
   
   waterhole: {
     name: "Waterhole",
-    description: "Rest and slow hunger",
+    description: "Slows hunger rate and provides security",
     cost: 45,
     icon: '💧',
     color: '#4a90a4',
@@ -482,7 +475,7 @@ const PLACEABLES = {
   
   harakeke: {
     name: "Harakeke Flax",
-    description: "Food and light cover",
+    description: "Year-round food and light cover",
     cost: 30,
     icon: '🌾',
     color: '#5a8a3a',
@@ -554,23 +547,6 @@ function initPlaceableColors() {
 }
 
 // ============================================
-// BIOME DEFINITIONS — deleted, deliberately.
-// ============================================
-// There used to be a `const BIOMES = {...}` here: a full second copy of the
-// biome table, elevation bands and ground colours included.
-//
-// It never reached the screen. TerrainGenerator is constructed with
-// `Game.activeBiomes`, which is `levelDef.biomes` — so the table that renders
-// is the one in levels/, and this one was only ever handed to
-// REGISTRY.registerBiome(). Editing a colour here changed nothing, silently,
-// while looking exactly like the canonical definition: it sat in the engine
-// file, it was registered, and level_format.js validated against it.
-//
-// The single source of truth is now `levelDef.biomes`. Registration moved into
-// Game.loadLevel() so the registry can only ever hold the biomes actually in
-// play. See md/TEMANAWA_REORG.md §4.2.
-
-// ============================================
 // PLANT DEFINITIONS
 // ============================================
 const PLANT_TYPES = {
@@ -603,11 +579,6 @@ const PLANT_TYPES = {
   speargrass: { name: "Speargrass", nutrition: 30, color: '#8f9a55', size: 26, growthTime: 260,
     description: "Taramea: spiny herb of the hills" }
 };
-
-// ============================================
-// MAURI MANAGER
-// ============================================
-
 
 // ============================================
 // GAME MANAGER
@@ -665,20 +636,21 @@ class Game {
   }
 
   // Full build: new terrain (noise + season bakes) AND a new ecosystem.
-  // Expensive — hundreds of milliseconds at mapGrid 512, because
+  // Expensive; 200ms+ @ mapGrid 512
   // TerrainGenerator.generate() runs the noise over every cell and then bakes
-  // four season buffers. Call this on first load and on a deliberate reseed,
-  // NOT on the attract loop. See resetEcosystem() below.
+  // four season buffers. Call this on first load and on a deliberate reseed;
+  // attract loop uses soft regen, resetEcosystem()
   init() {
     if (!this.currentLevel) return;
 
-    // Free the outgoing generator's season buffers. Without this every reseed
-    // and every refit leaks four canvases — see TerrainGenerator.disposeBuffers.
+    // Free the outgoing generator's season buffers. 
+    // Without this, every reseed and every refit leaks four canvases. See TerrainGenerator.disposeBuffers()
     if (this.terrain && this.terrain.disposeBuffers) this.terrain.disposeBuffers();
 
     this.terrain = new TerrainGenerator(CONFIG, this.activeBiomes);
     this.seasonManager = new SeasonManager(CONFIG);
     this.terrain.setSeasonManager(this.seasonManager);
+
     // Configure the 3/4 projection from the level's authored K / liftFrac BEFORE
     // the bake — _bakeSeasonBuffer reads Projection.K / LIFT to displace the
     // relief. The terrain object already exists, so map dimensions are known.
@@ -753,13 +725,12 @@ class Game {
     return true;
   }
 
-  // Cheap rebuild: keep the terrain and its baked buffers, replace the living
-  // world. This is the attract-loop path, and it is the one that has to stay
-  // fast — see TEMANAWA_BUILD_V3.md §5.1. The land does not need to change
+  // Cheap rebuild: 
+  // Retains terrain, baked buffers. Regenerates living entities.
+  // see TEMANAWA_BUILD_V3.md §5.1. The land does not need to change
   // between visitors; only the ecosystem and the clock do.
   //
-  // Terrain generation is ~95% of a full init(), so skipping it is the whole
-  // difference between a reset the visitor notices and one they don't.
+  // Fun fact: Terrain generation is ~95% of a full init()
   resetEcosystem() {
     if (!this.currentLevel || !this.terrain) { this.init(); return; }
     this._buildSimulation();
@@ -1054,6 +1025,11 @@ class Game {
       this.rebakeTerrain();
       return;
     }
+
+    // G applies the current GEN landform params (regenerate + re-bake); N draws a
+    // NEW random landform. Dev tools — see md/TEMANAWA_DEVTOOLS.md.
+    if ((k === 'g' || k === 'G') && typeof GEN !== 'undefined') { GEN.apply(); return; }
+    if ((k === 'n' || k === 'N') && typeof GEN !== 'undefined') { GEN.reseed(); return; }
   }
 
 }
@@ -1099,6 +1075,10 @@ function setup() {
 
   if (typeof Kiosk !== 'undefined') { Kiosk.attach(game); Kiosk.install(); }
   if (typeof Debug !== 'undefined') Debug.applyVisibility();
+
+  // Dev tools: mirror the live landform params into GEN so the console shows the
+  // real values (md/TEMANAWA_DEVTOOLS.md). Authoring only; no effect on the kiosk.
+  if (typeof GEN !== 'undefined' && GEN.sync) GEN.sync();
 }
 
 function windowResized() {

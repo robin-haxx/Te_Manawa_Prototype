@@ -183,6 +183,7 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`4`.
 | `1`–`4` | The four visitor buttons (deep time, growth, storm, eruption) |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` |
+| `B` / `G` / `N` | Dev tools: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. See `md/TEMANAWA_DEVTOOLS.md` |
 | `?art=low\|high` | Sprite resolution, startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
 

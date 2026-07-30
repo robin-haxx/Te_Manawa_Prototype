@@ -92,6 +92,10 @@ for(const f of files){
   catch(e){ console.log('LOAD FAIL',f,'\n  ',e.message); process.exit(1); }
 }
 console.log('all', files.length, 'scripts loaded');
+// Dev harness runs MANY regenerations; bake at 1× so they stay fast. bakeScale is
+// only a paint-resolution knob — the "buffer = footprint × bakeScale" relationship
+// is still asserted (via terrain._paintScale), so the checks are not weakened.
+try { const _L = vm.runInContext('LOOK', ctx); if (_L) _L.bakeScale = 1; } catch (e) {}
 try{ ctx.preload && ctx.preload(); console.log('preload() ok'); }
 catch(e){ console.log('PRELOAD FAIL:', e.message,'\n',e.stack.split('\n')[1]); process.exit(1); }
 try{ ctx.setup(); console.log('setup() ok'); }
@@ -548,6 +552,50 @@ const g=vm.runInContext('game',ctx);
 
   console.log(fail ? `look-dev: ${fail} FAILURES`
     : 'look-dev: LOOK toggles + in-place re-bake OK (no reseed, no reset)');
+}
+
+// ---- dev console tools: LOOK API + GEN landform + reset ------------------
+// LOOK.solo/all/reset drive the toggles; GEN mirrors, writes and reseeds the
+// landform params (md/TEMANAWA_DEVTOOLS.md). rebake is stubbed so the API logic
+// is exercised without paying for real regenerations.
+{
+  const L = vm.runInContext('LOOK', ctx), GN = vm.runInContext('GEN', ctx);
+  const C = vm.runInContext('CONFIG', ctx), G = vm.runInContext('game', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  chk(GN && typeof GN.apply === 'function' && typeof GN.reseed === 'function', 'GEN must exist with apply()/reseed()');
+  chk(typeof L.solo === 'function' && typeof L.reset === 'function' && typeof L.bake === 'function',
+      'LOOK must gain solo()/reset()/bake()');
+
+  const realBake = G.rebakeTerrain.bind(G);            // stub the slow real re-bake
+  let bakes = 0; G.rebakeTerrain = () => { bakes++; };
+
+  L.solo('shade');
+  chk(L.shade === true && L.posterize === false && L.outlines === false, 'LOOK.solo isolates one move');
+  chk(bakes >= 1, 'LOOK.solo re-bakes');
+  L.all(true);
+  chk(L._toggles.every(t => L[t] === true), 'LOOK.all(true) turns every move on');
+  L.reset();
+  chk(L.posterize === L._defaults.posterize && L.shadeSteps === L._defaults.shadeSteps,
+      'LOOK.reset restores the authored defaults');
+
+  GN.sync();
+  chk(GN.octaves === C.octaves, 'GEN.sync mirrors the live CONFIG');
+  const seed0 = G.terrain.seed;
+  GN.octaves = 5; GN.apply();
+  chk(C.octaves === 5, 'GEN.apply writes params back to CONFIG');
+  chk(G.terrain.seed === seed0, 'GEN.apply keeps the same land (no reseed)');
+  GN.reseed();
+  chk(G.terrain.seed !== seed0, 'GEN.reseed changes the seed (new landform)');
+
+  // restore real re-bake + authored look/land (one real regenerate)
+  G.rebakeTerrain = realBake;
+  Object.assign(L, L._defaults);
+  GN.reset();
+  chk(C.octaves === G.currentLevel.terrain.octaves, 'GEN.reset restores the level authored terrain');
+
+  console.log(fail ? `dev tools: ${fail} FAILURES`
+    : 'dev tools: LOOK solo/all/reset + GEN sync/apply/reseed/reset OK');
 }
 
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);

@@ -88,6 +88,10 @@
     <!-- Level definition — the Manawatū scene -->
     <script src="levels/level_temanawa_scaffold.js"></script>
 
+    <!-- Dev console tools (LOOK / GEN / DEV) — authoring only. Loads after
+         terrain.js so it can extend LOOK; see md/TEMANAWA_DEVTOOLS.md. -->
+    <script src="TeManawa_devtools.js"></script>
+
     <!-- Main game (owns setup()/draw()) — must load last -->
     <script src="TeManawa_sketch.js"></script>
   </body>

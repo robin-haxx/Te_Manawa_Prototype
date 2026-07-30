@@ -1,6 +1,6 @@
 # Te Manawa — document index
 
-17 documents, ~6,000 lines. This says which ones are live, which are superseded, and
+19 documents, ~6,000 lines. This says which ones are live, which are superseded, and
 which are research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
@@ -61,6 +61,15 @@ reaches the screen — which is deliberately not much.
 | `TEMANAWA_RESEARCH.md` | 86 | Sources and reading notes. Points at `research/*.pdf` |
 
 Primary sources are the five PDFs in `research/`.
+
+---
+
+## Process — the 3/4 restyle and the dev workflow
+
+| Document | |
+|---|---|
+| `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshapes Phase 3; sits under `PLAN_V2.md`. Most of it is now built |
+| `TEMANAWA_DEVTOOLS.md` | **The console dev workflow.** `LOOK` (paint) and `GEN` (landform) live-editable globals, the `B` / `G` / `N` keys, and how to extend them. Read this before tuning the look |
 
 ---
 
