@@ -167,7 +167,12 @@ const Kiosk = {
   // exactly why it is occasional rather than every time.
   reseedEvery: 12,
 
-  resetToAttract(g, reason = 'manual') {
+  // opts.reseed (optional) forces the terrain rebuild on or off for this call.
+  // Left undefined, the every-Nth counter below decides — the attract/idle/error
+  // path, so the land still varies across an unattended day. The Eruption button
+  // overrides it: a tap passes reseed:false (cheap, terrain kept) and a long
+  // press passes reseed:true (the deliberate reseed). See TeManawa_hud.js.
+  resetToAttract(g, reason = 'manual', opts = null) {
     if (!g || !g.currentLevel) return 0;
     const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
@@ -183,7 +188,8 @@ const Kiosk = {
       // Rebuild from memory — no loadImage, no loadSound, no network.
       // resetEcosystem() keeps the terrain and its baked season buffers and
       // only replaces the living world, which is ~95% cheaper than init().
-      const reseed = (this.resetCount + 1) % this.reseedEvery === 0;
+      let reseed = (this.resetCount + 1) % this.reseedEvery === 0;
+      if (opts && typeof opts.reseed === 'boolean') reseed = opts.reseed;
       if (reseed) g.init(); else g.resetEcosystem();
 
       this.resetCount++;

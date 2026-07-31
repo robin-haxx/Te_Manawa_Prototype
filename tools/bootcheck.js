@@ -102,10 +102,75 @@ catch(e){ console.log(`DRAW FAIL at frame ${frames}:`, e.message,'\n',e.stack.sp
 console.log('draw() x'+frames+' ok');
 // exercise the buttons and the debug overlay
 try{
-  for(const k of ['1','2','3','d','d','4']) vm.runInContext('game',ctx).handleKey(k);
+  const G0=vm.runInContext('game',ctx);
+  for(const k of ['1','2','3','d','d']) G0.handleKey(k);
+  G0.handleKey('4'); G0.handleKeyUp('4');   // eruption is press-and-hold; a tap is down+up
   for(let i=0;i<30;i++) FRAME(ctx.draw);
   console.log('buttons 1-4 + debug modes ok');
 }catch(e){ console.log('INPUT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- eruption: tap erupts (no reseed), spam-guarded; hold reseeds ------
+// The Eruption button is press-and-hold. A tap does a soft reset (living world
+// only, terrain kept) and cannot be spammed (a 2 s cooldown); a ~3 s hold
+// reseeds the land (the expensive init()) with the ash flash ramped up across
+// the hold, so the reseed hitch never lands as a hard cut (TEMANAWA_BUILD_V3.md
+// §3). init() swaps in a NEW TerrainGenerator, so terrain identity is the exact
+// tap-vs-reseed signal; resetEcosystem() keeps the same object.
+try{
+  const G=vm.runInContext('game',ctx), H=vm.runInContext('InstallHUD',ctx);
+  const K=vm.runInContext('Kiosk',ctx), TM=vm.runInContext('TM_TIME',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // peak alpha of the full-screen ash rect, read straight off the render path
+  const ashAlpha=()=>{ const cap=[], old=ctx.fill; ctx.fill=(...a)=>cap.push(a);
+    H.renderAshFlash(G,1080,1920); ctx.fill=old;
+    let mx=0; for(const a of cap) if(a.length===4) mx=Math.max(mx,a[3]); return mx; };
+
+  // clean slate (the smoke test above tapped '4')
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+
+  // --- a tap: exactly one soft reset, terrain kept, flash armed ----------
+  const terrTap=G.terrain, resTap=K.resetCount;
+  G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
+  chk(K.resetCount===resTap+1,'a tap fires exactly one soft reset');
+  chk(G.terrain===terrTap,'a tap keeps the terrain (soft reset, no reseed)');
+  chk(G._tmAshMode==='tap' && G._tmAshUntil>0,'a tap arms the ramped ash flash');
+
+  // --- spam guard: a second tap inside the cooldown does nothing ---------
+  const resSpam=K.resetCount;
+  ctx.__tick(30); G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');   // < 2 s later
+  chk(K.resetCount===resSpam,'a second tap inside the 2 s cooldown is ignored');
+
+  // --- past the cooldown, a tap fires again -----------------------------
+  ctx.__tick(Math.ceil(TM.erCooldownMs/16)+2);
+  const resAfter=K.resetCount;
+  G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
+  chk(K.resetCount===resAfter+1,'a tap after the cooldown fires again');
+
+  // --- a long press: flash ramps up, then the land reseeds --------------
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  const terrHold=G.terrain;
+  G.handleKey('4');                                     // press & hold
+  ctx.__tick(30);  const aEarly=ashAlpha();             // ~0.5 s in
+  ctx.__tick(60);  const aMid=ashAlpha();               // ~1.5 s in
+  chk(aMid>aEarly,`the flash must ramp UP while held (${aEarly.toFixed(0)} -> ${aMid.toFixed(0)})`);
+  ctx.__tick(Math.ceil(TM.erLongPressMs/16));  G.update(1);   // cross erLongPressMs
+  chk(G._tmErFired===true,'holding past erLongPressMs fires the reseed');
+  chk(G.terrain!==terrHold,'a long press rebuilds (reseeds) the terrain');
+  chk(G._tmAshMode==='hold','the reseed flash falls from the charged peak');
+  const aPeak=ashAlpha();
+  chk(aPeak>=180 && aPeak>aMid,`the flash is near full when the reseed lands (${aPeak.toFixed(0)})`);
+
+  // --- releasing after a long press must NOT also tap-erupt --------------
+  const resRel=K.resetCount;
+  G.handleKeyUp('4');
+  chk(K.resetCount===resRel,'releasing after a long press does not tap-erupt');
+
+  // leave state clean for the sections below
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  console.log(fail? `eruption: ${fail} FAILURES`
+    : 'eruption: tap erupts (no reseed), 2 s spam-guard holds, hold reseeds with a ramped flash');
+}catch(e){ console.log('ERUPTION FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 try{
   const K=vm.runInContext('Kiosk',ctx);
   const t=[]; for(let n=0;n<6;n++){ const a=Date.now(); K.resetToAttract(K.game,'test'); t.push(Date.now()-a); for(let i=0;i<5;i++) FRAME(ctx.draw); }

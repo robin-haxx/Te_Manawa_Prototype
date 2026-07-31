@@ -198,7 +198,7 @@ const CONFIG = {
   ridgeInfluence: 1.3,
   elevationPower: 1.5,
   islandFalloff: 0.6,
-  plantDensity: 0.006,
+  plantDensity: 0.003,
 
   initialMoaCount: 7,
   maxMoaPopulation: 60,
@@ -1022,7 +1022,18 @@ class Game {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
     if (this.ui && this.ui.handleFullscreenClick(mx, my)) return;
   }
-  
+
+  // Release halves of the two handlers above. The Eruption button is
+  // press-and-hold (tap erupts, hold reseeds), so it needs the key/pointer UP;
+  // the other three buttons ignore it.
+  handleClickUp(mx, my) {
+    if (typeof InstallHUD !== 'undefined' && this.ui) InstallHUD.handleClickUp(this.ui);
+  }
+
+  handleKeyUp(k) {
+    if (typeof InstallHUD !== 'undefined') InstallHUD.handleKeyUp(this, k);
+  }
+
   handleKey(k) {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
@@ -1219,4 +1230,6 @@ function updateFPS() {
 
 
 function mousePressed() { game.handleClick(mouseX, mouseY); }
+function mouseReleased() { game.handleClickUp(mouseX, mouseY); }
 function keyPressed() { game.handleKey(key); }
+function keyReleased() { game.handleKeyUp(key); }

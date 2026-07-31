@@ -21,6 +21,9 @@ const TM_TIME = {
   stormSeconds:  20,
   growthSeconds:  8,
   ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
+  ashPeak:      205,      // flash alpha at the peak (kept < 255 for headroom)
+  erCooldownMs: 2000,     // minimum gap between eruptions — the anti-spam limit
+  erLongPressMs: 3000,    // hold the eruption button this long to reseed the land
   // read-through to DeepTime so older references keep working
   get yearsStart() { return DeepTime.yearsStart; },
   get yearsEnd()   { return DeepTime.yearsEnd; },
@@ -52,14 +55,20 @@ const InstallHUD = {
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        InstallHUD.initStormCells(g); },
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
+    // Eruption is press-and-hold, not tap-to-reset. A tap could be spammed, and
+    // a stream of full-screen ash flashes is exactly the photosensitivity case
+    // TEMANAWA_BUILD_V3.md §3 rules out — so a tap erupts (ash flash + soft
+    // reset) but is rate-limited by erCooldownMs, and HOLDING for erLongPressMs
+    // reseeds the land (the expensive init()). The flash ramps up across the
+    // hold so the reseed lands under an already-bright frame. Phase 6 will swap
+    // the tap's soft reset for disturb('ash') + a wetland-weighted growth pulse
+    // (PLAN_V2 §4); until those fields exist it falls back to the kiosk's soft
+    // reset, the same path the attract loop uses. See erDown/erUp/renderAshFlash.
     { id: 'reset',  key: '4', label: 'ERUPTION',
-      action: (g) => { g._tmAshUntil    = millis() + TM_TIME.ashMillis;
-                       // Phase 6 replaces this with disturb('ash') + a wetland-
-                       // weighted growth pulse (PLAN_V2 §4). Until the fields
-                       // exist, fall back to the kiosk's soft reset — which is the
-                       // same code path the attract loop uses, so it gets exercised.
-                       if (typeof Kiosk !== "undefined") Kiosk.resetToAttract(g, "eruption"); },
-      isActive: (g) => g._tmAshUntil    && millis() < g._tmAshUntil }
+      action: (g) => InstallHUD.erDown(g),   // press-down only arms the interaction
+      onUp:   (g) => InstallHUD.erUp(g),     // release taps unless the hold already reseeded
+      isActive: (g) => (g._tmErDownAt && !g._tmErFired) ||
+                       (g._tmAshUntil && millis() < g._tmAshUntil) }
   ],
 
   press(g, id) {
@@ -74,6 +83,13 @@ const InstallHUD = {
     return false;
   },
 
+  handleKeyUp(g, k) {
+    for (const b of this.BUTTONS) {
+      if (k === b.key) { if (b.onUp) b.onUp(g); return true; }
+    }
+    return false;
+  },
+
   handleClick(ui, mx, my) {
     for (const b of (ui._tmButtons || [])) {
       if (mx > b.x && mx < b.x + b.w && my > b.y && my < b.y + b.h) {
@@ -84,6 +100,57 @@ const InstallHUD = {
     const H = ui.config.canvasHeight;
     // Swallow clicks landing on either strip so they don't fall through to the map.
     return (my < this.TOP_H || my > H - this.BOT_H);
+  },
+
+  // A pointer release carries no button identity, so resolve every hold-capable
+  // button. erUp() is a no-op unless that button is actually mid-hold, so this
+  // is safe to fire on any release (incl. one that started off a button).
+  handleClickUp(ui) {
+    for (const b of this.BUTTONS) if (b.onUp) b.onUp(ui.game);
+  },
+
+  // ---- eruption: tap to erupt, hold to reseed --------------
+  // Press-down only arms the interaction; whether it becomes a tap or a long
+  // press is decided later (on release, or by update() at the hold threshold),
+  // so the one button can do two things. The guard makes OS key-repeat — which
+  // fires keydown repeatedly while '4' is held — a no-op after the first.
+  erDown(g) {
+    if (!g._tmErDownAt) { g._tmErDownAt = millis(); g._tmErFired = false; }
+  },
+
+  // Release: if the hold never reached erLongPressMs (so update() didn't already
+  // reseed) it counts as a tap — a normal eruption, subject to the cooldown.
+  erUp(g) {
+    if (!g._tmErDownAt) return;
+    const fired = g._tmErFired;
+    g._tmErDownAt = 0;
+    g._tmErFired  = false;
+    if (!fired) this.fireEruption(g);
+  },
+
+  // A tap: ash flash + soft reset (living world only, terrain kept). Swallowed
+  // inside the cooldown, so the button cannot be spammed into a flash strobe.
+  fireEruption(g) {
+    const now = millis();
+    if (now < (g._tmErCooldownUntil || 0)) return false;
+    g._tmAshUntil = now + TM_TIME.ashMillis;
+    g._tmAshMode  = 'tap';                         // flash rises and falls
+    g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
+    if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption', { reseed: false });
+    return true;
+  },
+
+  // A long press: reseed the land (Game.init — the expensive terrain rebuild).
+  // The charge ramp in renderAshFlash has driven the flash to full by the time
+  // this fires, so the init() hitch lands under a bright frame and the flash
+  // falls from that peak (no second rise). Fired from update() at the threshold.
+  fireEruptionReseed(g) {
+    const now = millis();
+    g._tmErFired = true;                           // release must not also tap-erupt
+    g._tmAshUntil = now + TM_TIME.ashMillis;
+    g._tmAshMode  = 'hold';                         // flash falls from the charged peak
+    g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
+    if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption-reseed', { reseed: true });
   },
 
   // ==========================================================
@@ -111,6 +178,14 @@ const InstallHUD = {
     if (g._tmStormUntil && millis() < g._tmStormUntil) {
       this.applyStormDistraction(g);
       this.updateStormCells(g, dt);
+    }
+
+    // Eruption long-press: holding the button past erLongPressMs reseeds the
+    // land. Fire once — erFired guards both this test and OS key-repeat — the
+    // instant the threshold lands, by which point the flash has ramped to full.
+    if (g._tmErDownAt && !g._tmErFired &&
+        millis() - g._tmErDownAt >= TM_TIME.erLongPressMs) {
+      this.fireEruptionReseed(g);
     }
 
     return g.timeScale;
@@ -376,14 +451,37 @@ const InstallHUD = {
     pop();
   },
 
-  // Photosensitivity: a single sine ramp up and back down over ashMillis.
-  // No hard cut, no strobe. TEMANAWA_BUILD_V3.md §3 sets the rule this must
-  // satisfy — max 3 luminance transitions per second, large-area changes
-  // ramped over >=500 ms. At ashMillis 1600 this is one transition per press.
+  // Photosensitivity: every rise here is a single monotonic ramp over >=500 ms,
+  // with no hard cut and no strobe, and the cooldown caps how often one can
+  // start. TEMANAWA_BUILD_V3.md §3 sets the rule — max 3 luminance transitions
+  // per second, large-area changes ramped over >=500 ms.
+  //
+  // Two contributions, whichever is brighter wins:
+  //  1. CHARGE — while the button is held for a long press, the flash ramps
+  //     0 -> peak across erLongPressMs (3 s), so a hold visibly builds toward the
+  //     reseed. Eased (squared) so a brief tap barely registers.
+  //  2. FLASH — after an eruption fires. A tap has no charge behind it, so it
+  //     rises AND falls (a sine bump). A long-press reseed hands off from the
+  //     charge ramp already at peak, so it only falls (a cosine tail) — no dip,
+  //     no second rise, and the init() hitch stays hidden under the bright frame.
   renderAshFlash(g, W, H) {
-    if (!(g._tmAshUntil && millis() < g._tmAshUntil)) return;
-    const p = 1 - (g._tmAshUntil - millis()) / TM_TIME.ashMillis;
-    const a = Math.sin(Math.max(0, Math.min(1, p)) * Math.PI) * 205;
+    const now = millis();
+    let a = 0;
+
+    if (g._tmErDownAt && !g._tmErFired) {
+      const c = Math.max(0, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
+      a = Math.max(a, c * c * TM_TIME.ashPeak);
+    }
+
+    if (g._tmAshUntil && now < g._tmAshUntil) {
+      const p = Math.max(0, Math.min(1, 1 - (g._tmAshUntil - now) / TM_TIME.ashMillis));
+      const env = (g._tmAshMode === 'hold')
+        ? Math.cos(p * (Math.PI / 2))   // 1 -> 0 : fall from the charged peak
+        : Math.sin(p * Math.PI);        // 0 -> 1 -> 0 : a tap's rise and fall
+      a = Math.max(a, env * TM_TIME.ashPeak);
+    }
+
+    if (a <= 0) return;
     push(); noStroke(); fill(205, 202, 196, a); rect(0, 0, W, H); pop();
   }
 };
