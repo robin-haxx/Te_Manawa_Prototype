@@ -3,15 +3,7 @@
 // ------------------------------------------------------------
 // Phase 1.5 replacement for the 44 kB Mauri GameUI.
 //
-// The Mauri UI was built for a game: a mauri counter, a placeable
-// toolbar, a goals panel, an event log, a species sidebar, pause
-// and fullscreen buttons, a minimap. None of that exists in the
-// installation — there is no economy, no goals, no win state and
-// no operator. All of it is gone.
-//
-// What is left is a host: it owns the notification strip (the
-// simulation still narrates ecological events) and delegates the
-// on-screen HUD to InstallHUD, which draws the deep-time timeline
+// delegates on-screen HUD to InstallHUD, which draws the deep-time timeline
 // and the four buttons.
 //
 // Kept deliberately thin. If something here grows past a screen it
@@ -26,9 +18,7 @@ class GameUI {
     this.game = game;
     this.seasonManager = seasonManager;
 
-    // Ecological events narrated by the simulation ("A Pouākai eaglet
-    // hatches"). Kept because they are useful while tuning, but only drawn
-    // in debug mode — see renderFullscreenOverlay.
+    // DEBUG MESSAGES.
     this.messages = [];
     this.maxMessages = 4;
     this.messageLife = 300;       // frames
@@ -36,8 +26,7 @@ class GameUI {
     this.recalculate();
   }
 
-  // Layout is trivial now: two full-width strips over a letterboxed
-  // square map. Kept as a method because windowResized() calls it.
+  // Kept as a method because windowResized() calls it.
   recalculate() {
     this.layout = {
       topStripH: InstallHUD.TOP_H,
@@ -60,7 +49,7 @@ class GameUI {
   }
 
   // ---- render ------------------------------------------------
-  // Name kept from the engine because Game.render() calls it.
+  // called by Game.render() 
   renderFullscreenOverlay() {
     const g = this.game;
     const W = this.config.canvasWidth;
@@ -69,9 +58,7 @@ class GameUI {
     InstallHUD.renderWorldLayer(g, W, H);   // storm cells — under the strips
     InstallHUD.renderTimeline(this, g, W, H);
     InstallHUD.renderButtons(this, g, W, H);
-    // Notifications are debug-only. "A moa has hatched!" is engine chatter
-    // from the game this used to be; an ambient diorama does not narrate
-    // itself, and the strip sat directly over the play area.
+
     if (typeof Debug !== 'undefined' && Debug.enabled) this.renderMessages(W, H);
     InstallHUD.renderAshFlash(g, W, H);     // over everything
 
@@ -80,7 +67,7 @@ class GameUI {
 
   renderMessages(W, H) {
     if (!this.messages.length) return;
-    // Sits below the debug climate strip so the two don't overlap.
+    // Sits below the debug climate strip.
     const y0 = InstallHUD.TOP_H + 62;
     const tw = 460;
     push();

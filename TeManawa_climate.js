@@ -21,34 +21,45 @@
 //     · open      -> glacialIndex x topographic exposure
 //
 // ------------------------------------------------------------
-// WHY THIS IS A TABLE AND NOT A SINE
-//
-// The first version of this file was a generic ~100 kyr oscillator.
-// It produced three tidy cycles across the window and got two
-// checkable facts wrong: it put MIS 5e (~125 ka) — the LAST
-// INTERGLACIAL, and already a marker on our own timeline — in the
-// middle of a glacial, and it never reached a glacial maximum at the
-// end of the run, so the LGM went missing. Extending the window to
-// 25.5 ka was done precisely to capture the LGM, so a curve that
-// misses it defeats the decision.
-//
-// Late-Quaternary cycles are ~100 kyr but strongly asymmetric and
-// genuinely irregular: MIS 7 has three separate warm peaks, MIS 5 has
-// four substages, and terminations are abrupt. No closed-form curve
-// gets that right, and there is no reason to guess when the record is
-// well established.
-//
-// So: anchor points from the broad shape of the LR04 benthic stack,
-// smoothstepped between. Everything the visitor sees now lands where
-// it actually happened, and the anchors are auditable one line at a
-// time. Ages are approximate and rounded — this is a cartoon, and the
-// point is that the SHAPE and the ORDER are true.
+// WHY A TABLE, NOT A SINE: a generic ~100 kyr oscillator got two checkable facts wrong —
+// it put MIS 5e (the last interglacial) mid-glacial and missed the LGM at the end of the
+// run. Real late-Quaternary cycles are ~100 kyr but strongly asymmetric and irregular
+// (MIS 7 has three warm peaks, MIS 5 four substages, terminations are abrupt); no closed
+// form gets that right. So: anchor points from the LR04 benthic stack, smoothstepped
+// between and auditable one line at a time. Ages are rounded — the SHAPE and ORDER are
+// what's true. Full rationale: TEMANAWA_PLAN_V2.md §8.2.
 // ============================================================
 
 const Climate = {
   // ---- anchors: [yearsBP, glacialIndex]  (0 = interglacial, 1 = full glacial)
   // Ordered oldest -> youngest, matching the direction the run plays.
   ANCHORS: [
+    // ---- deep window: 1 Ma → 350 ka -------------------------------------------
+    // Added so the FIRST HALF of the run breathes too (before this the curve held a
+    // flat 0.85 from 1 Ma to 350 ka — ~62% of the window frozen). The Mid-Pleistocene
+    // Transition sits inside this span: cycles before ~0.86 Ma (≈MIS 22, the "900-ka
+    // event") are ~41 kyr and LOWER amplitude; after it they grow into the strong
+    // ~100 kyr sawtooth the younger table already carries. So the glacials get DEEPER
+    // and the interglacials WARMER toward the present — that change of character is
+    // real and worth seeing on the wall. Ages rounded to the MIS; SHAPE and ORDER are
+    // what's true (same rule as the younger anchors below).
+    [1000000, 0.30],  // MIS 25 — interglacial (pre-MPT, damped)
+    [ 950000, 0.60],  // MIS 24 — glacial (41-kyr world, modest)
+    [ 920000, 0.34],  // MIS 23 — interglacial
+    [ 880000, 0.72],  // MIS 22 — glacial; the ~900-ka intensification (MPT)
+    [ 835000, 0.22],  // MIS 21 — interglacial (amplitude growing)
+    [ 800000, 0.82],  // MIS 20 — glacial
+    [ 787000, 0.15],  // MIS 19 — interglacial (Matuyama–Brunhes; a Holocene analog)
+    [ 740000, 0.88],  // MIS 18 — glacial
+    [ 690000, 0.20],  // MIS 17 — interglacial
+    [ 650000, 0.95],  // MIS 16 — glacial (strong)
+    [ 590000, 0.15],  // MIS 15 — interglacial
+    [ 540000, 0.78],  // MIS 14 — glacial (weak–moderate)
+    [ 500000, 0.25],  // MIS 13 — interglacial (moderate)
+    [ 450000, 1.00],  // MIS 12 — glacial (one of the largest of the Quaternary)
+    [ 410000, 0.08],  // MIS 11 — interglacial (exceptionally warm and long)
+    [ 375000, 0.55],  // MIS 11 → 10 cooling
+    // ---- younger window: 350 ka → 18 ka (original table, unchanged) -----------
     [350000, 0.85],   // MIS 10 — glacial. Whakamaru erupts ~349 ka
     [335000, 0.15],   // MIS 9e — interglacial peak
     [320000, 0.45],
@@ -75,9 +86,18 @@ const Climate = {
     [ 18000, 0.95]
   ],
 
-  // Named intervals, for the timeline and the debug overlay.
+  // Named intervals, for the timeline and the debug overlay. Extended back to 1 Ma
+  // alongside the anchors above; boundaries rounded to the nearest few kyr.
   MIS: [
-    [350000, 340000, 'MIS 10'], [340000, 300000, 'MIS 9'],
+    [1000000, 960000, 'MIS 25'], [960000, 936000, 'MIS 24'],
+    [ 936000, 900000, 'MIS 23'], [900000, 866000, 'MIS 22'],
+    [ 866000, 814000, 'MIS 21'], [814000, 790000, 'MIS 20'],
+    [ 790000, 761000, 'MIS 19'], [761000, 712000, 'MIS 18'],
+    [ 712000, 676000, 'MIS 17'], [676000, 621000, 'MIS 16'],
+    [ 621000, 563000, 'MIS 15'], [563000, 533000, 'MIS 14'],
+    [ 533000, 478000, 'MIS 13'], [478000, 424000, 'MIS 12'],
+    [ 424000, 374000, 'MIS 11'],
+    [374000, 340000, 'MIS 10'], [340000, 300000, 'MIS 9'],
     [300000, 245000, 'MIS 8'],  [245000, 190000, 'MIS 7'],
     [190000, 130000, 'MIS 6'],  [130000,  80000, 'MIS 5'],
     [ 80000,  57000, 'MIS 4'],  [ 57000,  29000, 'MIS 3'],

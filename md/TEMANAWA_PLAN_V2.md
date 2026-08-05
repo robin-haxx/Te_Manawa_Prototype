@@ -4,10 +4,15 @@
 (*the river is older than the mountains*). Adds only the ecology a visitor will actually
 perceive in forty seconds.
 
-**Window: ~345 ka → ~25.5 ka**, ending on the **Ōruanui eruption** (decided). This
-takes in the **Last Glacial Maximum** and the **Koputaroa dunefield**, and gives the run
-two eruption markers — Whakamaru at the start, Ōruanui at the end — so the timeline
-opens and closes on the same kind of event.
+**Window: ~1 Ma → ~25.5 ka**, ending on the **Ōruanui eruption** (decided). It opens
+near the axial ranges' earliest uplift — they rise from almost nothing to full height
+across the run (`TEMANAWA_GEOGRAPHY.md`) — and closes cold, heading into the **Last
+Glacial Maximum**. Whakamaru (~345 ka) and Ōruanui both fall inside it as eruption markers.
+
+> The window was ~345 ka in v2.1, pushed back to ~1 Ma so the ranges rising is earned
+> on-screen rather than assumed (`TEMANAWA_GEOGRAPHY.md`). The climate curve still begins
+> at ~350 ka (§8.2), so the opening ~650 ky run under tectonic uplift with the glacial
+> cycle held flat until Whakamaru.
 
 Supersedes the ecology sections of `TEMANAWA_PLAN.md`; §§1–3, 5–8, 10 of that document
 stand. The four deep dives remain the reference material — this is the subset we build.
@@ -29,7 +34,7 @@ all sourced from documents already in this repo, plus one governing principle.
 | **4** | **Three predator corrections applied** (§5.2) | `..._ECOLOGY_FAUNA.md` §5 marks all three `[BUILD]`; v2 said "unchanged." One of them inverts the cold-phase readout |
 | **5** | **Every disturbance gets a local clock** (§3.4) | Three of the four measured recovery times are invisible at any speed the kiosk runs at. This is the fix that makes the aftermath teach |
 | **6** | **`resetToAttract()` is a first-class system** (§4.2) | On an unattended kiosk the reset *is* the product. v2 left it as one clause |
-| **7** | **Terrain reduced to two authored heights + parametric sea level** (§7) | The topography barely moves across this window. The keyframe pipeline was the risky phase and most of it is deletable |
+| **7** | **Terrain reduced to two authored heights + parametric sea level** (§7) — *since revised again to an SVG geography skeleton; see §7* | The topography barely moved across the old 345 ka window. The keyframe pipeline was the risky phase and most of it is deletable |
 
 ### 0.1 The governing principle
 
@@ -371,45 +376,49 @@ This is how a visitor reads the vegetation without text.
 
 ---
 
-## 7. Terrain — reduced
+## 7. Terrain — the geography skeleton
 
-v1 called terrain morph "the hard, new part" and specified a full keyframe pipeline
-(`TEMANAWA_TERRAIN_PLAN.md` §3–5). `..._CONCEPT_ECOLOGY_FIRST.md` §2.1 makes the
-counter-case with numbers: across the window the ranges gain a few hundred metres on a
-range already 1,500 m high, while the vegetation goes **forest → two-thirds open →
-forest, three times.** A visitor cannot perceive a 20% uplift over ten minutes. They can
-perceive tree ferns vanishing.
+**The history, briefly.** v1 specified a full keyframe morph pipeline
+(`TEMANAWA_TERRAIN_PLAN.md` §3–5). v2.1 cut it — across the old ~345 ka window the ranges
+gained a few hundred metres on a range already 1,500 m high, imperceptible — down to two
+authored heightmaps blended by `yearsBP` plus parametric sea level.
+`TEMANAWA_GEOGRAPHY.md` then pushed the window back to ~1 Ma, over which the ranges *do*
+rise from almost nothing, and replaced the painted heightmaps with a lighter model: one
+SVG of ranges and a river, elevation built procedurally around it.
 
-`[BUILD]` **Keep two things; delete the rest of the pipeline.**
+**What is built (Phase 3):**
 
-1. **Two authored heightmaps** — young (ranges low, gorge shallow) and old (ranges high,
-   gorge deep) — blended by `yearsBP`. **The river sits in the same place in both**, so
-   antecedence falls out of the art for free.
-2. **Parametric sea level** off `glacialIndex`. No art. The coast walking ~30 km west
-   and back is the biggest visible landform move in the window and it costs a threshold
-   comparison.
+1. **An SVG skeleton, not raster heightmaps.** `geo/manawatu.svg` (ranges as blobs, the
+   river as a line) is flattened at author-time by `tools/svg2geo.js` into
+   `geo/manawatu.geo.js` — a plain data file the kiosk loads like a level, so the runtime
+   never parses SVG. `getElevation()` builds distance fields once per bake: ranges lift
+   the land toward alpine, the river carves a channel to the water band; noise and a
+   per-run seed vary the rest. **The river is authored once**, so antecedence still falls
+   out of the art for free.
+2. **Two curves, not one.** `tUplift(yearsBP)` grows the ranges (eased — most uplift is
+   late); `tIncision(yearsBP)` runs slightly *ahead*, so the gorge floor drops faster than
+   the ridges rise and the visitor sees the river outpace the uplift. This was the
+   load-bearing idea from the two-heightmap plan and it carried straight over.
+3. **Parametric sea level** off `glacialIndex`. No art, a threshold comparison. *(Coast
+   and dune skeleton features are stubbed for later — `TEMANAWA_GEOGRAPHY.md` §7.)*
+4. **Interval re-bake, amortised.** The world re-bakes once `yearsBP` drifts past
+   `morphIntervalYears` (~9 ky), cross-faded like the seasons, split across frames against
+   a millisecond budget so fast-forward never drops a frame.
 
-**Two curves, not one.** A single blend factor moves uplift and incision in lockstep,
-which makes the takeaway — *the river carved the gorge by **outpacing** the uplift* —
-literally impossible to show. Run `tIncision` slightly ahead of `tUplift`: the gorge
-floor drops faster than the ridges rise, and the visitor sees the river winning.
-
-This deletes `TEMANAWA_TERRAIN_PLAN.md` §3 (manifest and layer format), §4 (the six-step
-morph) and most of §5 (noise guardrails), and removes the risk from the phase v1 itself
-identified as the risky one. Rendering detail and the perceptibility problem are in
-`TEMANAWA_BUILD_V3.md` §6.
+The 3/4 restyle on top is `TEMANAWA_34VIEW_PLAN.md`; the surviving parts of the old plan
+are `TEMANAWA_BUILD_V3.md` §6 and `TEMANAWA_TERRAIN_PLAN.md` §7.
 
 ---
 
 ## 8. Build phases
 
-Phases 0 and 1 are done.
+Phases 0–2 are done; **Phase 3 is substantially built.**
 
 | Phase | Work | Notes |
 |---|---|---|
 | **1.5 — Cleanup** | Delete shims, strip economy/toolbar/goals, **square play area**, split into modules, clean the asset directory | ✅ **Done** — see §8.1 |
 | **2 — Deep time** | `timeScale` + `yearsBP` mapping, Button 1, timeline playhead and era bands | ✅ **Done** — see §8.2 |
-| **3 — Terrain (minimal)** | Two authored heights + two curves + parametric `seaLevel(t)`; one base buffer + live snow tint | Much smaller than v2's Phase 3 |
+| **3 — Terrain** | SVG geography skeleton + `tUplift`/`tIncision` morph + parametric `seaLevel`; the 3/4 relief bake and cel illustration look | ✅ **Substantially built** (§7). Window now ~1 Ma. See `TEMANAWA_GEOGRAPHY.md`, `TEMANAWA_34VIEW_PLAN.md`. Left: bump to 1.1 Ma, coast/dune features, real terrain stamps |
 | **4 — The four fields** | `wet`, `open`, `bare`, `warp`; `glacialIndex` oscillator; hook to sea level and snowline | Mostly coefficients on `SeasonManager` |
 | **5 — Flora** | The §2.4 table; plants read fields not biomes; **sprite/palette split**; atlas pipeline | **Start the art in parallel with Phase 2** |
 | **6 — Disturbance** | `bare` + `warp` decay, `disturb()`, wire Buttons 2–4 | The heart of the ecology |
@@ -443,8 +452,9 @@ from 33 methods to 14.
 2. **The soft reset was ~950 ms, not 25 ms.** `Game.init()` regenerates terrain noise
    over every cell *and* bakes four season buffers. Split into `init()` (full, for first
    load and the occasional reseed) and **`resetEcosystem()`** (keeps the terrain and its
-   baked buffers, replaces only the living world). Measured **17–31 ms**, ~50× cheaper,
-   which is inside the §5.1 budget. The land does not need to change between visitors.
+   baked buffers, replaces only the living world). Measured **17–31 ms** — ~50× cheaper
+   then, and ~100× now that Phase 3's heavier terrain bake has grown `init()` to ~1.8 s.
+   Well inside the §5.1 budget, and the land does not need to change between visitors.
 
 **`tools/bootcheck.js`** is a headless harness: it stubs p5 and the DOM, loads every
 script in `index.html` order, runs `preload`/`setup`/120 `draw` frames, presses all four
@@ -471,11 +481,13 @@ are. Returns `glacialIndex`, `seaLevel`, `snowLine`, `tempBias`, `stage` and `MI
 >
 > Real cycles are ~100 kyr but strongly asymmetric and genuinely irregular — MIS 7 has
 > three warm peaks, MIS 5 has four substages, terminations are abrupt. No closed form
-> gets that right and there is no reason to guess. The curve now interpolates 24 anchor
-> points taken from the broad shape of the LR04 benthic stack. The run opens in MIS 10
-> just after Whakamaru, breathes three times, and closes at **g ≈ 0.90 heading into the
-> LGM as Ōruanui erupts** — cold, on an eruption. `tools/bootcheck.js` asserts five
-> dated facts against the curve on every run.
+> gets that right and there is no reason to guess. The curve interpolates 24 anchor
+> points taken from the broad shape of the LR04 benthic stack, from MIS 10 (~350 ka, just
+> after Whakamaru) to the LGM. It breathes three times and closes at **g ≈ 0.90 heading
+> into the LGM as Ōruanui erupts** — cold, on an eruption. `tools/bootcheck.js` asserts
+> five dated facts against the curve on every run. *(The deep-time run now opens earlier,
+> at ~1 Ma — §7; the curve is held flat before its first anchor, so the opening ~650 ky
+> are tectonic-only.)*
 
 **`TeManawa_time.js` — `DeepTime`.** `yearsBP` is now the authoritative clock rather
 than something derived from `playTime`, so geology and climate land correctly at any
@@ -579,8 +591,8 @@ All of it is preserved in the deep dives.
    strongest material in the research (97% of the wetland gone, under 5% of the plains
    vegetation) without depicting the transition. Curatorial call, not technical.
 7. **Does the sibling landform screen already carry the geology?** If it does, this
-   screen can lean further ecological — which would justify cutting even the two-height
-   terrain blend, the last expensive thing in Phase 3.
+   screen can lean further ecological — which would justify simplifying even the
+   geography-skeleton morph, the most expensive part of Phase 3.
 8. **Hardware.** Final portrait resolution; touchscreen only, or touchscreen plus
    physical arcade buttons. Sets the button zone, the input path and `pixelDensity`.
 9. **Mana whenua co-design** — unchanged: naming, narration, story framing, and any use

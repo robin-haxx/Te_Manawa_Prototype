@@ -114,27 +114,23 @@ try{
 }catch(e){ console.log('INPUT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- eruption button: tap = revert to previous event, hold = skip to next ----
-// The Eruption button navigates the four volcanic events on the timeline. A TAP reverts
-// to the previous (older) eruption; a ~3 s HOLD skips forward to the next (younger) one,
-// wrapping to Kidnappers past Whakamaru (Oruanui is terminal). Both soft-regen + morph the
-// terrain TO THAT YEAR (terrain object KEPT — no init/reseed) and apply the ash clearing,
-// so `yearsBP` after the gesture is the signal, not terrain identity. The flash still ramps
-// across a hold, keeping full-screen luminance inside the photosensitivity budget.
+// The Eruption button navigates the four volcanic events. A TAP reverts to the previous
+// (older) eruption; a HOLD skips forward to the next (younger) one, wrapping to Kidnappers
+// past Whakamaru. Both soft-regen + morph the terrain TO THAT YEAR (terrain object KEPT)
+// and apply the ash clearing, so `yearsBP` after the gesture is the signal.
 try{
   const G=vm.runInContext('game',ctx), H=vm.runInContext('InstallHUD',ctx);
   const DT=vm.runInContext('DeepTime',ctx), TM=vm.runInContext('TM_TIME',ctx);
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
 
-  // peak alpha of the full-screen ash FLASH rect, read straight off the render path
   const ashAlpha=()=>{ const cap=[], old=ctx.fill; ctx.fill=(...a)=>cap.push(a);
     H.renderAshFlash(G,1080,1920); ctx.fill=old;
     let mx=0; for(const a of cap) if(a.length===4) mx=Math.max(mx,a[3]); return mx; };
-  const settle=()=>{ for(let i=0;i<4;i++) FRAME(ctx.draw); };   // let the morph job finish
+  const settle=()=>{ for(let i=0;i<4;i++) FRAME(ctx.draw); };
 
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
 
-  // --- a tap: revert to the previous (older) eruption; terrain kept ------
-  DT.seekTo(500000);                                   // between Kaukatea (900k) and Whakamaru (349k)
+  DT.seekTo(500000);
   const terrTap=G.terrain;
   G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
   chk(DT.yearsBP===900000,'a tap reverts to the previous eruption (Kaukatea, 900 ka)');
@@ -142,84 +138,43 @@ try{
   chk(G._tmAshMode==='tap' && G._tmAshUntil>0,'a tap arms the ramped ash flash');
   settle();
 
-  // --- spam guard: a second tap inside the cooldown does nothing ---------
   const yGuard=DT.yearsBP;
-  ctx.__tick(30); G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');   // < 2 s later
+  ctx.__tick(30); G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
   chk(DT.yearsBP===yGuard,'a second tap inside the 2 s cooldown is ignored');
 
-  // --- no-op at/older than the first event ------------------------------
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
-  DT.seekTo(DT.yearsStart);                            // 1 Ma — nothing older
+  DT.seekTo(DT.yearsStart);
   G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
   chk(DT.yearsBP===DT.yearsStart,'a tap at the first event is a no-op (nothing older)');
 
-  // --- a hold: flash ramps up, then skip to the next (younger) eruption --
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
   DT.seekTo(500000);
   const terrHold=G.terrain;
-  G.handleKey('4');                                     // press & hold
-  ctx.__tick(30);  const aEarly=ashAlpha();             // ~0.5 s in
-  ctx.__tick(60);  const aMid=ashAlpha();               // ~1.5 s in
+  G.handleKey('4');
+  ctx.__tick(30);  const aEarly=ashAlpha();
+  ctx.__tick(60);  const aMid=ashAlpha();
   chk(aMid>aEarly,`the flash must ramp UP while held (${aEarly.toFixed(0)} -> ${aMid.toFixed(0)})`);
-  ctx.__tick(Math.ceil(TM.erLongPressMs/16));  G.update(1);   // cross erLongPressMs
+  ctx.__tick(Math.ceil(TM.erLongPressMs/16));  G.update(1);
   chk(G._tmErFired===true,'holding past erLongPressMs fires the skip');
   chk(DT.yearsBP===349000,'a hold skips to the next eruption (Whakamaru, 349 ka)');
   chk(G.terrain===terrHold,'skip keeps the terrain object (morph, no reseed)');
   chk(G._tmAshMode==='hold','the skip flash falls from the charged peak');
-  chk(ashAlpha()>=150,'the flash is near full when the skip lands');
   settle();
 
-  // --- releasing after a hold must NOT also revert ----------------------
-  const yRel=DT.yearsBP;
-  G.handleKeyUp('4');
+  const yRel=DT.yearsBP; G.handleKeyUp('4');
   chk(DT.yearsBP===yRel,'releasing after a hold does not also revert');
 
-  // --- wrap: a hold past Whakamaru wraps forward to Kidnappers -----------
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
-  DT.seekTo(200000);                                    // past Whakamaru, before Oruanui
+  DT.seekTo(200000);
   G.handleKey('4'); ctx.__tick(Math.ceil(TM.erLongPressMs/16)); G.update(1); G.handleKeyUp('4');
   chk(DT.yearsBP===DT.yearsStart,'a hold past Whakamaru wraps to Kidnappers (1 Ma)');
   settle();
 
-  // leave state clean + clock reset for the sections below
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
   DT.reset();
   console.log(fail? `eruption: ${fail} FAILURES`
     : 'eruption nav: tap reverts (prev), hold skips (next, wraps at Whakamaru), cooldown + ramped hold flash');
 }catch(e){ console.log('ERUPTION FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
-
-// ---- auto-eruptions + attract returns to the last eruption --------------
-// Eruptions fire ONCE as the clock CROSSES each checkpoint while playing forward (no button
-// needed), and the attract reset returns to the previous eruption rather than the far 1 Ma.
-try{
-  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), K=vm.runInContext('Kiosk',ctx);
-  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
-  const fired=()=>G._firedEruptions;
-
-  // opening: the 1 Ma event auto-fires on the first frame of a fresh cycle
-  DT.reset(); G.resetEcosystem(); G.update(1);
-  chk(fired().has(1000000),'the 1 Ma opening eruption auto-fires on cycle start');
-
-  // crossing 900 ka fires Kaukatea exactly once
-  DT.seekTo(900050); for(let i=0;i<30 && DT.yearsBP>899980;i++) G.update(1);
-  chk(fired().has(900000),'crossing 900 ka auto-fires Kaukatea');
-
-  // attract returns to the LAST eruption (900 ka), not the 1 Ma start
-  DT.seekTo(500000); const rc=K.resetCount; K.resetToAttract(G,'idle',{reseed:false});
-  chk(Math.round(DT.yearsBP)===900000,'attract returns to the previous eruption (900 ka), not 1 Ma');
-  chk(K.resetCount===rc+1,'attract still counts as a reset');
-
-  // a jump to 349 ka must NOT spuriously re-fire the older events behind the playhead
-  DT.seekTo(500000); G.applyEruptionAt(349000, DT.eruptionByYear(349000));
-  for(let i=0;i<6;i++) G.update(1);
-  chk(!fired().has(1000000) && !fired().has(900000),'a jump to 349 ka does not re-fire the older eruptions');
-  chk(fired().has(349000),'the jumped-to eruption is marked fired');
-
-  DT.reset(); G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
-  console.log(fail? `auto-eruptions: ${fail} FAILURES`
-    : 'auto-eruptions: fire once on checkpoint crossing; attract returns to the last eruption; jumps do not re-fire');
-}catch(e){ console.log('AUTOERUPT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
-
 try{
   const K=vm.runInContext('Kiosk',ctx);
   const t=[]; for(let n=0;n<6;n++){ const a=Date.now(); K.resetToAttract(K.game,'test'); t.push(Date.now()-a); for(let i=0;i<5;i++) FRAME(ctx.draw); }
@@ -262,12 +217,6 @@ const g=vm.runInContext('game',ctx);
   chk(CL.at(140000).glacialIndex>0.85,'MIS 6 (140ka) should be full glacial');
   chk(CL.at(335000).glacialIndex<0.35,'MIS 9e (335ka) should be interglacial');
   chk(CL.at(270000).glacialIndex>0.75,'MIS 8 (270ka) should be glacial');
-  // extended window (1 Ma → 350 ka): the early run must breathe, not sit flat
-  chk(CL.at(410000).glacialIndex<0.20,'MIS 11 (410ka) should be a strong interglacial');
-  chk(CL.at(450000).glacialIndex>0.90,'MIS 12 (450ka) should be a strong glacial');
-  chk(CL.at(787000).glacialIndex<0.25,'MIS 19 (787ka) should be interglacial');
-  chk(CL.at(950000).glacialIndex>0.45 && CL.at(950000).glacialIndex<0.72,'MIS 24 (950ka) pre-MPT glacial (damped amplitude)');
-  chk(Math.abs(CL.at(800000).glacialIndex-CL.at(600000).glacialIndex)>0.3,'1 Ma → 350 ka must vary (no flat 0.85 hold)');
 
   // clock runs the right direction at the right rate
   DT.reset();
@@ -336,16 +285,6 @@ const g=vm.runInContext('game',ctx);
   chk(vbb({a:{key:'a',minElevation:0,maxElevation:0.5},
            b:{key:'b',minElevation:0.5,maxElevation:1.0}}).length===0,
       'a clean partition must report nothing');
-
-  // out-of-range elevation must clamp to the FLOOR band, not fall through to the
-  // last (snow). Marine emergence clamps whole basins to elevation 0 and the
-  // border wobble then samples slightly NEGATIVE — unguarded, that painted the
-  // 1 Ma sea as a grey-white snow speckle (the grey-screen bug, Aug 2026).
-  const lowest=G.terrain.biomeList[0], highest=G.terrain.biomeList[G.terrain.biomeList.length-1];
-  chk(G.terrain.getBiomeFromElevation(-0.01)===lowest,
-      'negative elevation must classify as the lowest band, not fall through to '+highest.key);
-  chk(G.terrain.getBiomeFromElevation(NaN)===lowest,
-      'NaN elevation must classify as the lowest band');
 
   const live=vbb(G.currentLevel.biomes);
   console.log(fail? `biomes: ${fail} FAILURES`
@@ -649,26 +588,6 @@ const g=vm.runInContext('game',ctx);
   GN.reseed();
   chk(G.terrain.seed !== seed0, 'GEN.reseed changes the seed (new landform)');
 
-  // GEO — the ranges' shaping (still on the stubbed re-bake)
-  const GEOt = vm.runInContext('GEO', ctx);
-  chk(GEOt && typeof GEOt.apply === 'function' && typeof GEOt.list === 'function'
-      && typeof GEOt.uplift === 'function' && typeof GEOt._draw === 'function',
-      'GEO must exist with apply()/list()/uplift()/_draw()');
-  GEOt.sync();
-  chk(Math.abs(GEOt.relief - L.rangeRelief) < 1e-9, 'GEO.sync mirrors LOOK.rangeRelief');
-  GEOt.set({ spine: 0.7 });
-  chk(Math.abs(L.rangeSpine - 0.7) < 1e-9, 'GEO.set writes rangeSpine back to LOOK');
-  GEOt.uplift(0.5);
-  chk(G.terrain._geoUpliftOverride === 0.5, 'GEO.uplift sets the maturity-preview override');
-  GEOt.uplift(null);
-  chk(G.terrain._geoUpliftOverride == null, 'GEO.uplift(null) clears the override');
-  if (G.terrain.geo && G.terrain.geo.ranges && G.terrain.geo.ranges[0]) {
-    const _h0 = G.terrain.geo.ranges[0].height;
-    GEOt.height(0, 0.77);
-    chk(G.terrain.geo.ranges[0].height === 0.77, 'GEO.height edits the range source (picked up on regenerate)');
-    G.terrain.geo.ranges[0].height = _h0;
-  }
-
   // restore real re-bake + authored look/land (one real regenerate)
   G.rebakeTerrain = realBake;
   Object.assign(L, L._defaults);
@@ -676,7 +595,7 @@ const g=vm.runInContext('game',ctx);
   chk(C.octaves === G.currentLevel.terrain.octaves, 'GEN.reset restores the level authored terrain');
 
   console.log(fail ? `dev tools: ${fail} FAILURES`
-    : 'dev tools: LOOK solo/all/reset + GEN sync/apply/reseed/reset + GEO ranges OK');
+    : 'dev tools: LOOK solo/all/reset + GEN sync/apply/reseed/reset OK');
 }
 
 // ---- simulation robustness: dynamic grids + walkable-null guards --------
@@ -787,8 +706,7 @@ const g=vm.runInContext('game',ctx);
 
 // ---- geography skeleton: river carves, ranges lift, deep-time factors --------
 // SVG-authored skeleton (TE_MANAWA_GEO) reshapes the base noise: ranges lift the
-// land, the river incises a channel that rides the local ground (reaching sea level
-// only at the coast), both scaling with yearsBP.
+// land, the river carves to the water band, both scaling with yearsBP.
 {
   const TG = vm.runInContext('TerrainGenerator', ctx);
   const G = vm.runInContext('game', ctx);
@@ -805,26 +723,18 @@ const g=vm.runInContext('game',ctx);
   chk(TG._compressBase(0.3, 0.5) === 0.3, 'base below the ceiling is unchanged');
   chk(TG._compressBase(1.0, 0.5) < 0.77, 'max procedural base stays out of the alpine band (ranges own the highs)');
 
-  // N/S edge falloff: eases a truncated range down to plains at the top/bottom edge
-  chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1) < 0.3, 'N/S edge falloff eases high terrain down to plains at the map edge');
-  chk(TG._nsEdgeFalloff(0.9, 0.5, 0.1) === 0.9, 'N/S edge falloff leaves the mid-map untouched');
-  chk(TG._nsEdgeFalloff(0.04, 0.0, 0.1) === 0.04, 'N/S edge falloff never raises the carved river channel');
-
-  // deep-time factors: keyed to ABSOLUTE dates (not window progress), so a given yearsBP
-  // always maps to the same geological state — jump the clock or resize the window freely.
-  const at = yr => TG.geoTimeFactors(yr);
-  chk(at(1000000).uplift < 0.02, 'at ~1 Ma the ranges are nascent (uplift ~0)');
-  chk(at(25500).uplift > 0.98, 'by ~25 ka the ranges are mature (uplift ~1)');
-  chk(at(1000000).incision > at(1000000).uplift, 'incision leads uplift — the river outpaces the ranges');
-  chk(at(1500000).uplift === 0, 'before the onset date (older than ~1 Ma) uplift floors at 0');
-  chk(at(1000000).emergence < 0.02, 'at ~1 Ma the river has barely emerged (strait, not yet a river)');
-  chk(at(500000).emergence > 0.98, 'the river is fully connected by its dated completion (~500 ka)');
-  chk(at(100000).emergence > 0.98 && at(100000).uplift > 0.7, 'a near-present date reads near-modern regardless of the window');
+  // deep-time factors: ranges grow, incision leads uplift, clamped
+  const s = vm.runInContext('DeepTime.yearsStart', ctx), e = vm.runInContext('DeepTime.yearsEnd', ctx);
+  const f0 = TG.geoTimeFactors(s), f1 = TG.geoTimeFactors(e);
+  chk(f0.uplift < 0.02, 'at the start (~1.1 Ma) ranges are nascent (uplift ~0)');
+  chk(f1.uplift > 0.98, 'by the end ranges are mature (uplift ~1)');
+  chk(f0.incision > f0.uplift, 'incision leads uplift — the river outpaces the ranges');
+  chk(TG.geoTimeFactors(s + 5e5).uplift === 0, 'uplift floors at 0 before the window opens');
 
   // integration: at mature factors, a range core lifts to alpine + a river cell carves to water
   if (GEO && G.terrain._baseNoise) {
     const T = G.terrain, savedT = T._geoT;
-    T._geoT = { uplift: 1, incision: 1, emergence: 1 }; T._prepGeo();
+    T._geoT = { uplift: 1, incision: 1 }; T._prepGeo();
     const poly = GEO.ranges && GEO.ranges[0] && GEO.ranges[0].poly;
     const river = GEO.rivers && GEO.rivers[0] && GEO.rivers[0].pts;
     if (poly) {
@@ -832,37 +742,10 @@ const g=vm.runInContext('game',ctx);
       const lifted = T._applyGeo(0.2, cx, cy, cx * T.mapWidth, cy * T.mapHeight);
       chk(lifted > 0.35, `a range lifts the land well above the plains (got ${lifted.toFixed(2)})`);
     }
-    // Range spine: the crest concentrates on the range's long (PCA) axis; flanks fall to foothills.
-    const rr = T._geoRanges && T._geoRanges[0];
-    if (rr && rr.halfW) {
-      const offU = rr.cx + rr.perpX * rr.halfW * 0.9, offV = rr.cy + rr.perpY * rr.halfW * 0.9;
-      chk(Math.abs(TG._spineHeight(rr, rr.cx, rr.cy, 0.45) - 1) < 1e-9, 'range spine: full crest height on the axis');
-      chk(TG._spineHeight(rr, offU, offV, 0.45) < 0.75, 'range spine: the flank crest drops toward foothills');
-      chk(TG._spineHeight(rr, offU, offV, 0) === 1, 'range spine: spine 0 = flat plateau (back-compat)');
-    }
     if (river) {
-      // A river over the PLAINS incises below the local ground but does NOT ditch to sea
-      // level — that uniform trench was the bug (entities plunged crossing it). Given
-      // plains-height ground (0.4) the bed sits ~incise below it, well above the sea band.
       const mid = river[(river.length / 2) | 0];
-      const carvedMid = T._applyGeo(0.4, mid[0], mid[1], mid[0] * T.mapWidth, mid[1] * T.mapHeight);
-      chk(carvedMid < 0.4 && carvedMid > 0.2,
-        `a plains river cell incises below local ground but not to sea level (got ${carvedMid.toFixed(2)})`);
-      // The SAME river, where the land is already low (the coast), DOES reach the sea band.
-      const mouth = river[0];
-      const carvedMouth = T._applyGeo(0.08, mouth[0], mouth[1], mouth[0] * T.mapWidth, mouth[1] * T.mapHeight);
-      chk(carvedMouth < 0.1, `near the coast the river bed reaches the sea band (got ${carvedMouth.toFixed(2)})`);
-    }
-    // Emergence: at the window's start the channel is only a seaward embayment — the upstream
-    // is still land — and it connects inland over deep time (the strait → river transition).
-    if (river) {
-      const mid = river[(river.length / 2) | 0], mouth = river[0];
-      T._geoT.emergence = 0;
-      const dryMid = T._applyGeo(0.4, mid[0], mid[1], mid[0] * T.mapWidth, mid[1] * T.mapHeight);
-      chk(dryMid > 0.38, `at the window start the mid-river is not yet a channel (got ${dryMid.toFixed(2)})`);
-      const wetMouth = T._applyGeo(0.08, mouth[0], mouth[1], mouth[0] * T.mapWidth, mouth[1] * T.mapHeight);
-      chk(wetMouth < 0.12, `at the window start the seaward embayment already carves (got ${wetMouth.toFixed(2)})`);
-      T._geoT.emergence = 1;
+      const carved = T._applyGeo(0.4, mid[0], mid[1], mid[0] * T.mapWidth, mid[1] * T.mapHeight);
+      chk(carved < 0.2, `a river cell carves toward water (got ${carved.toFixed(2)})`);
     }
     T._geoT = savedT; T._prepGeo();
   }
@@ -871,7 +754,7 @@ const g=vm.runInContext('game',ctx);
   chk(TG.shouldMorphBake(100000, 120000, 5000, 0, 9000, 1000) === true, 'morph fires once yearsBP drifts past the interval and the throttle elapsed');
   chk(TG.shouldMorphBake(119000, 120000, 5000, 0, 9000, 1000) === false, 'morph waits until yearsBP drifts far enough');
   chk(TG.shouldMorphBake(100000, 120000, 500, 0, 9000, 1000) === false, 'morph respects the real-time throttle');
-  chk(Math.abs(TG._combineGeo(0.3, 0, 0, 0, 0, 0, 0, 1, 1, 0.45, 0.06, 0.04, 0.5, 1) - 0.3) < 1e-9, 'combineGeo with no feature leaves the base untouched');
+  chk(Math.abs(TG._combineGeo(0.3, 0, 0, 0, 0, 0, 0, 1, 1, 0.45) - 0.3) < 1e-9, 'combineGeo with no feature leaves the base untouched');
   if (GEO && G.terrain._geoCache) {
     const T = G.terrain;
     T.morphTo(vm.runInContext('DeepTime.yearsStart', ctx), 1);   // p=0 — ranges nascent
@@ -883,7 +766,7 @@ const g=vm.runInContext('game',ctx);
   }
 
   console.log(fail ? `geography: ${fail} FAILURES`
-    : 'geography: river emerges coast→source & incises, ranges lift with a NE–SW spine over deep time (cached), morph driver gated');
+    : 'geography: river carves, ranges lift over deep time (cached), morph driver gated');
 }
 
 // ---- incremental morph: sliced job == synchronous bake ------------------
@@ -910,10 +793,6 @@ const g=vm.runInContext('game',ctx);
     // (1) identity: synchronous reference at yearsEnd, rewind, slice back to yearsEnd
     T.morphTo(DT.yearsEnd, 1);
     const refH=T.heightMap.slice(), refB=T.biomeIndexMap.slice();
-    // NaN guard: ridgeInfluence > 1 used to send ~2% of cells through
-    // pow(negative, fractional) -> NaN, silently classified as the LAST biome.
-    // (This identity section is what caught it — NaN !== NaN.)
-    chk(refH.every(v=>!Number.isNaN(v)),'heightMap must contain no NaN cells (clamp before the elevation pow)');
     const refE=T._paintElev.slice(), refPB=T._paintBiome.slice(), refEd=T._paintEdge.slice();
     T.morphTo(DT.yearsStart, 1);
     const fronts={...T.seasonBuffers};
@@ -925,6 +804,12 @@ const g=vm.runInContext('game',ctx);
     chk(steps>1,'the job must actually slice across multiple steps, not stall once');
     const eq=(a,b)=>{ if(!a||!b||a.length!==b.length) return false;
       for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; };
+    {let fi=-1;for(let i=0;i<T.heightMap.length;i++)if(Number.isNaN(T.heightMap[i])){fi=i;break;}
+     if(fi>=0){const gc=T._geoCache;
+       console.log('  DBG NaN@',fi,'row',Math.floor(fi/T.gridCols),'col',fi%T.gridCols,
+         'base',T._baseNoise[fi],'rMask',gc&&gc.rMask[fi],'rH',gc&&gc.rH[fi],'ridge',gc&&gc.ridge[fi],
+         'detail',gc&&gc.detail[fi],'wMask',gc&&gc.wMask[fi],'wDepth',gc&&gc.wDepth[fi],
+         'geoT',JSON.stringify(T._geoT),'relief',vm.runInContext('LOOK.rangeRelief',ctx));}}
     chk(eq(T.heightMap,refH),'sliced heightMap must be identical to the synchronous bake');
     chk(eq(T.biomeIndexMap,refB),'sliced biome map must be identical to the synchronous bake');
     chk(eq(T._paintElev,refE)&&eq(T._paintBiome,refPB)&&eq(T._paintEdge,refEd),

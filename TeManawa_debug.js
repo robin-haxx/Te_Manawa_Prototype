@@ -408,9 +408,9 @@ const Debug = {
                        s.time.deep ? [255, 210, 120] : null],
       ['sim yr/sec',   Math.round(s.time.yrPerSec).toLocaleString()],
       ['window',       (s.time.windowSecs / 60).toFixed(1) + ' min'],
-      ['season',       s.time.season],
-      ['winterness',   s.time.winterness.toFixed(2)],
-      ['hungerMod',    s.time.hungerMod.toFixed(2)]
+      ['glacial phase', s.time.season],
+      ['glacial idx',   s.time.winterness.toFixed(2)],
+      ['hungerMod',     s.time.hungerMod.toFixed(2)]
     ]);
 
     this._section(x1, y1 + 10, colW, 'CLIMATE', [

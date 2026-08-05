@@ -323,9 +323,10 @@ about the climate read depends on it.
 NI giant moa male (5) · Mantell's moa (5) · NI goose (5) · kērangi perched + dash (4).
 **19 assets.** The dimorphism pair is the highest value-per-asset item in the project.
 
-**3 — The two heightmaps (Phase 3).**
-`height_young.png`, `height_old.png`. **2 assets**, and they're small in count but they
-are the entire landform system, so they need a conversation before they're drawn.
+**3 — The geography skeleton (Phase 3).**
+`geo/manawatu.svg` — ranges and river as authored vectors, not raster heightmaps.
+**1 source asset**: small in count but it *is* the landform system, so it needs a
+conversation before it's drawn. See `TEMANAWA_GEOGRAPHY.md`.
 
 **4 — Completes the set.**
 `Nikau` (3) · `Manuka` (3) · `Kowhai` (4) · kererū (5) · huia (6) · egg/nest (2).
@@ -359,7 +360,7 @@ an optional paper-grain texture (§3.3). The 3/4 view (§1) does not add assets,
 change how plants and fauna are posed — upright, base-anchored, a little side showing.
 
 The four starred items — **Mamaku**, the **NI giant moa dimorphism pair**, **huia**, and
-the **two heightmaps** — carry more of the installation than their count suggests. If
+the **geography SVG** — carry more of the installation than their count suggests. If
 anything gets extra attention, those.
 
 ---

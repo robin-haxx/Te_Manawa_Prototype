@@ -22,44 +22,33 @@ decides most of what follows:
 | **3** | Kiosk self-run |
 | **4** | The sprite manifest |
 | **5** | **Performance and load budget** — hard limits, and why reset is nearly free |
-| **6** | **Terrain — does a single lerp hold up?** |
+| **6** | **Terrain — how the morph reads** |
 | **7** | Appendix: the v2 → v2.1 assessment trail |
 
 ---
 
 ## 2. Architecture
 
-### 2.1 First: stop patching
+### 2.1 Stop patching — done
 
-`TeManawa_install.js` monkey-patches `Game` and `GameUI` rather than editing the large
-engine files. That was the right call for Phase 1 — it proved the ambient mode without
-touching 76 kB of `sketch.js`. **It is the wrong call from Phase 4 onward**, because
-Phases 4–6 change the inside of those files: the terrain fields, the plant spawner and
-the season manager.
+Phase 1 monkey-patched `Game`/`GameUI` via `TeManawa_install.js` to prove the ambient
+mode without touching 76 kB of `sketch.js`. **Phase 1.5 folded that back in** (details in
+`TEMANAWA_PLAN_V2.md` §8.1): the shims and their four dead call-sites (tutorial, menu_art,
+progress, benchmark) are gone, the economy (mauri, toolbar, costs, goals, win/lose,
+notifications, rings) is stripped, the play area is a fixed square grid, and `install.js`
+is now normal modules — `TeManawa_hud.js` and `TeManawa_kiosk.js`.
 
-`[BUILD]` **One cleanup commit, before Phase 4, not after.** It is the cheapest it will
-ever be:
-
-1. Delete `TeManawa_shims.js` and the four dead call-sites in `sketch.js`
-   (tutorial, menu_art, progress, benchmark).
-2. Strip the economy: mauri currency, toolbar, placeable costs, goals, win/lose,
-   notifications, highlight rings. `TeManawa_UI.js` is 44 kB and most of it is for a
-   game this installation isn't.
-3. Fix the square play area — `mapWidth = mapHeight = grid` in the `TerrainGenerator`
-   constructor (currently derived from window and zoom at L46). Deferred since Phase 1,
-   and it blocks the art brief: nobody can size a sprite against an unknown footprint.
-4. Fold `install.js` back in as normal modules.
-
-**Then split along the seams the design already has**, so ecology work lands in small
-files instead of inside a 76 kB one:
+**Still to split, at Phase 4–5**, so ecology work lands in small files rather than inside
+`sketch.js`:
 
 ```
 TeManawa_fields.js      wet / open / bare / warp — the four Float32Arrays, and disturb()
-TeManawa_climate.js     glacialIndex(yearsBP) -> seaLevel, snowLine, tempBias
 TeManawa_flora.js       the plant table + establishment rules + the palette
 TeManawa_atlas.js       sprite atlas load + frame lookup
-TeManawa_kiosk.js       watchdog, idle/attract, resetToAttract(), error capture, lockdown
 ```
+
+`TeManawa_climate.js` and `TeManawa_kiosk.js` already exist. The `sketch.js` split itself
+is scoped in `TEMANAWA_REORG.md` §4.
 
 ### 2.2 The data model
 
@@ -165,7 +154,7 @@ notifications and automatic updates. Assume the museum power-cycles the wall at 
 
 **Input lockdown.** `touch-action: none`, `user-select: none`, `cursor: none`, context
 menu suppressed, pinch-zoom disabled, keys limited to `1`–`4` so physical arcade
-microswitches map straight onto the existing handlers (`install.js` already does this).
+microswitches map straight onto the existing handlers (`TeManawa_kiosk.js` does this).
 
 **Display.** Call `pixelDensity(1)` explicitly. On a 4K portrait panel p5 defaults to 2
 and **quadruples fill rate for no visible gain** — on its own this can be the difference
@@ -173,8 +162,8 @@ between 60 and 25 fps under the Deep-time button.
 
 **Photosensitivity.** Give it a testable number rather than "ramp it": **no more than 3
 luminance transitions per second, and any large-area luminance change ramped over
-≥500 ms.** The current `ashMillis: 1600` in `install.js` is compliant; write the rule
-down so nobody "improves" it later.
+≥500 ms.** The current `ashMillis: 1600` in `TeManawa_hud.js` is compliant; write the
+rule down so nobody "improves" it later.
 
 **Accessibility.** Reachable button height for a child and a wheelchair user, one-finger
 operation, colourblind-safe palette, and **drawn glyph icons rather than emoji** — emoji
@@ -246,7 +235,7 @@ profile. Huia's bill and kererū's white waistcoat both need bird's-eye equivale
 
 | Asset | Count | Notes |
 |---|:--:|---|
-| **Authored heightmaps** | 2 | Young and old (§6). All that remains of the morph pipeline |
+| **Geography SVG** | 1 | `geo/manawatu.svg` — ranges + river skeleton (§6, `TEMANAWA_GEOGRAPHY.md`). Source art, not a runtime sprite; replaced the two heightmaps |
 | **Dune form — spinifex** | 3 | Smooth, even, ~6 m, 14–16°. Three sizes so the dune grows |
 | **Dune form — pīngao** | 3 | Low convex, <3 m, 8–14° |
 | **Buried logs** | 3 | Sand-buried trunk, drowned stumps in peat, ash-killed snag |
@@ -320,14 +309,13 @@ Distinguish two very different operations that are easy to conflate:
 
 | | **Soft reset** | **Hard reload** |
 |---|---|---|
-| Triggered by | idle timeout, end-of-window, attract loop, eruption reset, `onerror` recovery | watchdog stall, crash, nightly 03:00 |
+| Triggered by | idle timeout, end-of-window, attract loop, `onerror` recovery | watchdog stall, crash, nightly 03:00 |
 | What happens | re-seed and rebuild in memory | full page load |
 | Frequency | **hundreds of times a day** | ideally once a day |
 | Cost | **~10–25 ms** | **1.5–2.5 s** (see §5.3) |
 
-The current build's eruption reset calls `loadLevel()`, which re-inits terrain, seasons
-and simulation. `..._PLAN_V2.md` §4.2 replaces it with `resetToAttract()`. The whole
-point is that it stays in memory:
+`resetToAttract()` (`..._PLAN_V2.md` §4.2) is the soft path, built in Phase 1.5. The
+whole point is that it stays in memory:
 
 | Step | Work | Estimate |
 |---|---|---|
@@ -338,9 +326,11 @@ point is that it stays in memory:
 | Re-bake vegetation layer | see §5.4 | **5–10 ms amortised** |
 | **Total** | | **~10–25 ms** |
 
-> ✅ **Measured, Phase 1.5.** `tools/bootcheck.js` times six consecutive soft resets:
-> **17–31 ms**, against **~950 ms** for a full `Game.init()` — about 50× cheaper, and
-> inside the budget above.
+> ✅ **Measured.** `tools/bootcheck.js` times six consecutive soft resets: **17–31 ms**,
+> against **~950 ms** for a full `Game.init()` at Phase 1.5 — about 50× cheaper. *(Since
+> Phase 3 the terrain bake is much heavier — supersampled paint, geography fields, relief
+> — so `init()` is now ~1.8 s in the harness and a soft reset is ~100× cheaper. The soft
+> path is unchanged; this only sharpens the rule.)*
 >
 > Getting there required splitting the two operations, because the first attempt simply
 > called `init()` and cost the full 950 ms. `Game.init()` regenerates terrain noise over
@@ -382,7 +372,7 @@ The load that actually costs, and the one the watchdog pays.
 
 | Item | Now | After |
 |---|---|---|
-| `p5.js` | **5.4 MB unminified** | `p5.min.js`, ~1 MB — **saves ~4.4 MB and ~200–400 ms of parse** |
+| `p5.js` | 5.4 MB unminified | ✅ **shipped:** `p5.min.js`, ~1 MB — saved ~4.4 MB and ~200–400 ms of parse |
 | `p5.sound.min.js` | 200 kB | unchanged |
 | Engine JS | 448 kB across 18 files | ~250 kB after the economy strip; bundle to 1 file |
 | Sprites | 2.0 MB across ~90 loose PNGs, heading for 158 | **5 atlases** |
@@ -395,10 +385,10 @@ The load that actually costs, and the one the watchdog pays.
   sequential image requests, and 6.5 MB of audio decoded up front.
 - **After the four changes above: ~1.5–2.5 s.**
 
-`[BUILD]` The single highest-value change is **preloading only the ambient audio bed**.
-6.5 MB of mp3 decoded in `preload()` blocks the first frame, and fifteen of the
-seventeen clips are event sounds that aren't needed for several seconds. Second-highest
-is switching to `p5.min.js`, which is one line in `index.html`.
+`[BUILD]` The single highest-value change remaining is **preloading only the ambient
+audio bed**. 6.5 MB of mp3 decoded in `preload()` blocks the first frame, and fifteen of
+the seventeen clips are event sounds that aren't needed for several seconds. (The
+`p5.min.js` swap — previously second on this list — has shipped.)
 
 **Show something in the first 200 ms.** Draw a static title card from a single small
 image before the main `preload()` resolves, so a watchdog reload reads as a transition
@@ -439,74 +429,32 @@ grid size and the bake interval, and guessing at it is how installations die on 
 
 ---
 
-## 6. Terrain — does a single lerp hold up?
+## 6. Terrain — how the morph reads
 
-**Short answer: yes, and it's arguably the *correct* tool for this particular story —
-but not with a single blend factor, and not without help from the renderer.**
+The terrain model is now the **SVG geography skeleton** (`TEMANAWA_GEOGRAPHY.md`,
+`TEMANAWA_PLAN_V2.md` §7), not the two-heightmap lerp this section originally analysed.
+Three conclusions from that analysis carried over and still hold:
 
-### 6.1 Why one lerp is enough
+1. **The river is authored once, so antecedence is free.** A morph that changes elevation
+   *in place* — features don't migrate across the map — means the channel never drifts.
+   Draw the river once and *the river is older than the mountains* falls out of the art,
+   with no mask and no constraint solver. The skeleton keeps this: the river line is
+   fixed; only its carve depth grows with `tIncision`.
+2. **Two curves, not one.** A single blend factor moves uplift and incision in lockstep,
+   so neither can outpace the other and the takeaway is unshowable. `tIncision` runs
+   slightly ahead of `tUplift`; the gorge floor drops faster than the ridges rise, and the
+   visitor watches the river win. **Built** — the load-bearing idea that survived the rewrite.
+3. **The shading sells it, not the numbers.** A 0.2 change in a normalised elevation will
+   not read as "mountains rising" from a bird's-eye cartoon; the read comes from the relief
+   response — hillshade contrast and ridge highlights that strengthen with uplift, a dark
+   gorge-shadow corridor keyed on `tIncision`, the snow line dropping onto the new peaks
+   (`SeasonManager` already does this), colour banding tightening as the range widens.
+   Budget roughly a quarter of the effort on the height field and three-quarters on the
+   relief render — now the 3/4 relief bake (`TEMANAWA_34VIEW_PLAN.md` §3).
 
-`h(x,y,t) = lerp(H_young, H_old, t)` interpolates **per cell**, so a cell on a ridge
-rises while a cell on the gorge floor drops, in the same operation. Opposite-signed
-change in adjacent cells is not a problem for a lerp — it's what a lerp does.
-
-More importantly, the thing a two-frame lerp *can't* do is move a feature laterally:
-cells morph in place, so nothing migrates across the map. **For this story that's a
-feature, not a limit.** Antecedence means the river doesn't move. Draw the river in the
-same place in both heightmaps and the takeaway — *the river is older than the mountains*
-— falls out of the art for free, with no mask, no constraint solver and no risk of the
-channel drifting.
-
-Cost: two `Float32Array`s and one multiply-add per cell. Against the keyframe pipeline
-in `TEMANAWA_TERRAIN_PLAN.md` §3–5 — manifest, registration validation, rasterisation,
-override layers, connectivity passes — this is a rounding error.
-
-### 6.2 Where it breaks, and the three fixes
-
-**Problem 1 — one `t` makes the takeaway unshowable.** The sentence is *"the river
-carved the gorge by **outpacing** the uplift."* A single blend factor moves uplift and
-incision in lockstep, so by construction neither outpaces the other. You can't show it.
-
-> `[BUILD]` **Use two curves over the same two heightmaps.** Split the height into a
-> ridge term and a corridor term:
-> ```js
-> h = lerp(H_young, H_old, tUplift)                      // everywhere
-> h -= gorgeMask * lerp(0, gorgeDepth, tIncision)        // the corridor only
-> ```
-> with `tIncision` running slightly ahead of `tUplift`. The gorge floor drops faster
-> than the ridges rise, and the visitor watches the river win. **Two curves, still one
-> pair of heightmaps.**
-
-**Problem 2 — linear change over eleven minutes is imperceptible.** A constant-rate ramp
-is physically honest and dramatically dead: at any given moment nothing appears to
-happen. Ease `t` — smoothstep with a couple of holds, or better, tie visible jumps to
-events the visitor already sees (an eruption marker, a glacial turn). **Change should
-arrive in beats, not as a gradient.**
-
-**Problem 3 — and this is the real one — the heightmap isn't what sells it.** A 0.2
-change in a normalised elevation value will not read as "mountains rising" from a
-bird's-eye cartoon. The read has to come from **the shading response, not the numbers**:
-
-- **Hillshade contrast scales with `t`.** Same slope, progressively harder relief.
-- **Ridge lines sharpen.** A highlight term keyed on local curvature, strengthening as
-  uplift accumulates.
-- **The snow line drops onto the new peaks.** `SeasonManager` already has this — it just
-  needs to see the rising heightmap.
-- **The gorge gets a shadow.** A dark corridor term keyed on `tIncision` is the single
-  most legible cue in the whole terrain system, and it's a gradient, not geometry.
-- **Colour banding tightens** as the elevation range widens.
-
-`[BUILD]` **Budget the effort accordingly: roughly a quarter on the height blend and
-three quarters on the shading response.** The blend is a day. The relief rendering is
-what the visitor actually perceives, and it's where the fixture you care about — the
-ranges rising around the river — either lands or doesn't.
-
-### 6.3 If two heightmaps prove too coarse
-
-The escape hatch is cheap and doesn't reintroduce the pipeline: **add a third heightmap
-at ~185 ka** and lerp between the bracketing pair. Same code path, one more asset, and
-it buys a mid-shape if the two-frame blend reads as a linear inflation. Author the two
-first and only add the third if you can see the problem.
+One caution that applies to any morph: **change should arrive in beats, not as a
+gradient.** A constant-rate ramp is honest and dramatically dead — ease the curves and tie
+visible jumps to events the visitor already sees (an eruption marker, a glacial turn).
 
 ---
 

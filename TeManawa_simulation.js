@@ -14,9 +14,6 @@ class Simulation {
     this.eggs = [];
     this.placeables = [];
 
-    this.activeSpecies = {moa: {}, eagle: []};
-    this.otherEntities = {};
-    
     this.stats = {
       births: 0,
       deaths: 0,
@@ -33,9 +30,6 @@ class Simulation {
     this.otherEntities = {};
     this._speciesStableTimes = {};
     this._speciesLastAlive = {};
-
-    this._speciesStableTimes = {};
-    this.speciesLastAlive = {};
 
     const worldWidth = terrain.mapWidth;
     const worldHeight = terrain.mapHeight;
@@ -58,7 +52,7 @@ class Simulation {
       { grid: this.eggGrid, list: this.eggs }
     ];
 
-    this.dynamicGrids = {};
+    this._dynamicGrids = {};   // underscore matters: updateSpatialGrids()/getNearbyOfType() read this._dynamicGrids
 
     // Population cache
     this._cachedAliveMoas = 0;
@@ -258,13 +252,15 @@ class Simulation {
   // ============================================
   
   updateViewport() {
-    const invZoom = 1 / this.config.zoom;
+    // Cull box in WORLD coords. Use the LIVE view zoom the renderer draws with
+    // (CONFIG.viewZoom), not the authored CONFIG.zoom — when viewZoom < zoom (a
+    // wider view) a box sized to zoom comes out too SMALL and on-screen entities
+    // near the edge get culled (a visible pop-out). Falls back to zoom if unset.
+    const invZoom = 1 / (this.config.viewZoom || this.config.zoom || 1);
     // The 3/4 squash (Projection.K ≤ 1) packs more world rows onto the screen
-    // vertically, so a cull box sized to the unsquashed height would drop
-    // entities near the bottom that are actually on screen. Widen the bottom
-    // bound by 1/K — an over-inclusive box only ever costs a few off-screen
-    // draws, never a visible pop-out. (LIFT headroom joins this once relief
-    // lands — md/TEMANAWA_34VIEW_PLAN.md §5 culling note.)
+    // vertically, so widen the bottom bound by 1/K — an over-inclusive box only
+    // ever costs a few off-screen draws, never a visible pop-out. (LIFT headroom
+    // joins this once relief lands — md/TEMANAWA_34VIEW_PLAN.md §5 culling note.)
     const K = (typeof Projection !== 'undefined' && Projection.K) ? Projection.K : 1;
     this._viewLeft = 0;
     this._viewTop = 0;
@@ -390,7 +386,7 @@ class Simulation {
     const prey = this.getClosestMoa(x, y, 600);
     if (prey) {
       const near = this.findWalkablePositionNear(prey.pos.x, prey.pos.y, 70);
-      cx = near.x; cy = near.y;
+      if (near) { cx = near.x; cy = near.y; }   // null after 30 failed attempts — keep the spawn point
     }
     eagle.nest.set(cx, cy);
     eagle.patrolCenter.set(cx, cy);
@@ -403,6 +399,7 @@ class Simulation {
     let bx = x, by = y, bestE = this.terrain.getElevationAt(x, y);
     for (let i = 0; i < 12; i++) {
       const p = this.findWalkablePositionNear(x, y, radius);
+      if (!p) continue;                         // no walkable spot found; keep the best so far
       const e = this.terrain.getElevationAt(p.x, p.y);
       if (e > bestE) { bestE = e; bx = p.x; by = p.y; }
     }
@@ -1050,13 +1047,13 @@ class Simulation {
     if (target < minE) target = minE;
     if (target > maxE) target = maxE;
 
-    const season = this.seasonManager.currentKey;
+    const phase = this.seasonManager.currentKey;
     const n = this.eagles.length;
-    // Prey scarce + cold season -> an eagle starves or leaves.
-    if (n > target && (season === 'winter' || season === 'autumn')) {
+    // Prey scarce + cold (glacial) -> an eagle starves or leaves.
+    if (n > target && (phase === 'glacial' || phase === 'fullGlacial')) {
       this._removeWeakestEagle();
-    // Prey plentiful + warm season -> an eagle establishes / breeds.
-    } else if (n < target && (season === 'spring' || season === 'summer')) {
+    // Prey plentiful + warm (interglacial) -> an eagle establishes / breeds.
+    } else if (n < target && (phase === 'interglacial' || phase === 'cooling')) {
       this.spawnEagle();
     }
   }

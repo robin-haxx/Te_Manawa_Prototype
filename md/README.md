@@ -1,9 +1,13 @@
 # Te Manawa — document index
 
-19 documents, ~6,000 lines. This says which ones are live, which are superseded, and
-which are research to draw on rather than build from.
+21 documents. This says which ones are live, which are superseded, and which are
+research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
+
+**Current state:** the run opens ~1 Ma and closes on Ōruanui (~25.5 ka). Phases 0–2 are
+done and **Phase 3 (terrain) is substantially built** — the 3/4 view, the SVG geography
+skeleton, the deep-time land morph and the illustration look are all running.
 
 ---
 
@@ -11,9 +15,9 @@ which are research to draw on rather than build from.
 
 | # | Document | Lines | Role |
 |--:|---|--:|---|
-| 1 | **`TEMANAWA_PLAN_V2.md`** | 596 | **The design spine.** v2.1. The filter, the plants, the mechanical core, the four buttons, the fauna cast, the build phases. Anything that disagrees with this loses |
-| 2 | **`TEMANAWA_BUILD_V3.md`** | 535 | Architecture, kiosk self-run, the **158-asset manifest**, performance and load budgets. Makes no design decisions — it costs the plan's |
-| 3 | **`TEMANAWA_TERRAIN_PLAN.md`** | 296 | Terrain: keyframe morph pipeline, square play area, one-buffer rendering, procedural plants. Feeds Phase 3 |
+| 1 | **`TEMANAWA_PLAN_V2.md`** | 608 | **The design spine.** v2.1. The filter, the plants, the mechanical core, the four buttons, the fauna cast, the build phases. Anything that disagrees with this loses |
+| 2 | **`TEMANAWA_BUILD_V3.md`** | 483 | Architecture, kiosk self-run, the **158-asset manifest**, performance and load budgets. Makes no design decisions — it costs the plan's |
+| 3 | **`TEMANAWA_TERRAIN_PLAN.md`** | 296 | Terrain background. Its keyframe pipeline was cut, then partly **revived by `TEMANAWA_GEOGRAPHY.md`** as the SVG skeleton. §1, §6 and §7 are still live |
 | 4 | **`TEMANAWA_REORG.md`** | — | Structural proposal: the asset pipeline, splitting `sketch.js`, economy residue, and the adaptive terrain mode as built. Ordered so each step is harness-verifiable |
 
 Start at 1. If you are about to write code, read 2 §5 (the budgets) as well.
@@ -36,7 +40,7 @@ current documents state as conclusions.
 
 | Document | Lines | |
 |---|--:|---|
-| `TEMANAWA_SPRITE_BRIEF.md` | 312 | **The art brief.** Footprint rules, tiers, states. The naming convention in `TEMANAWA_REORG.md` §3.2 belongs here and should be folded in |
+| `TEMANAWA_SPRITE_BRIEF.md` | 370 | **The art brief.** Footprint rules, tiers, states. The naming convention in `TEMANAWA_REORG.md` §3.2 belongs here and should be folded in |
 | `TEMANAWA_SPECIES_SUMMARY.md` | 155 | Quick reference across the cast |
 | `TEMANAWA_SPECIES_KERANGI.md` | 230 | Kērangi (Eyles' harrier) in depth. The only fauna with finished art |
 | `TEMANAWA_FAUNA_POOL.md` | 206 | The candidate pool and visual hooks. **`BUILD_V3.md` §4.2 leans on this** — but flags that its hooks are written from a field-guide viewpoint and need bird's-eye equivalents |
@@ -64,11 +68,12 @@ Primary sources are the five PDFs in `research/`.
 
 ---
 
-## Process — the 3/4 restyle and the dev workflow
+## Process — the terrain restyle, the geography skeleton, the dev workflow
 
 | Document | |
 |---|---|
-| `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshapes Phase 3; sits under `PLAN_V2.md`. Most of it is now built |
+| `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshaped Phase 3; sits under `PLAN_V2.md`. **Built** through the relief bake, entity y-sort and cel look |
+| `TEMANAWA_GEOGRAPHY.md` | **The SVG geography skeleton** — ranges and river authored as vectors, elevation built around them, with the deep-time uplift/incision morph. Revives `TERRAIN_PLAN.md` §3–5 and updates `PLAN_V2.md` §7. Static integration and the morph are built |
 | `TEMANAWA_DEVTOOLS.md` | **The console dev workflow.** `LOOK` (paint) and `GEN` (landform) live-editable globals, the `B` / `G` / `N` keys, and how to extend them. Read this before tuning the look |
 
 ---

@@ -25,12 +25,8 @@
 // TerrainGenerator.noiseScale, where a per-run value must not mutate authored
 // config (it would compound across regenerations).
 //
-// STAGING (md/TEMANAWA_34VIEW_PLAN.md §8). Step 1 — the current step — applies K
-// as a global scale(1, K) squash in Game.render(), which is exactly projY() with
-// elev = 0. LIFT is authored and exposed now, but the relief bake (§3) and the
-// unsquashed entity billboards + y-sort (§5) that consume elevation land in the
-// next step. projY(y, elev) already takes elevation so those steps drop in
-// without changing this contract.
+// STATUS: the full 3/4 pipeline is built (md/TEMANAWA_34VIEW_PLAN.md §8) — projY(y, elev)
+// drives the relief bake, the unsquashed entity billboards and the painter y-sort.
 
 const Projection = {
   // Authoring bounds. configure() clamps into these rather than trusting input;
@@ -48,11 +44,22 @@ const Projection = {
   mapWidth: 512,
   mapHeight: 512,
 
-  // Whether elevation currently lifts things off the flat plane. FALSE until the
-  // relief bake (step 2) exists — while the ground bake is flat, lifting entities
-  // by elevation would float them above a ground that has not risen to meet them.
-  // The relief step sets this true; groundY() and the bake then agree.
+  // Whether elevation lifts things off the flat plane. Defaults false so a flat ground
+  // bake never floats entities above it; the relief bake sets it true and groundY() and
+  // the bake then agree.
   relief: false,
+
+  // Fraction of the relief HEADROOM (LIFT) to hide above the top of the frame in the cover
+  // fit. The top map rows are eased to plains (geoEdgeMargin), so that headroom is empty
+  // sky/haze — cropping it makes the terrain fill to the top instead of leaving a streaky
+  // band. ~0.78 ≈ the eased plains far-edge line (1 − ~0.22). 0 = show the full buffer.
+  reliefCropFrac: 0.78,
+
+  // FRONT (bottom) apron allowance, as a fraction of LIFT, hidden below the frame — the
+  // near counterpart to reliefCropFrac. The front row's side-face/apron fills from the
+  // plains line down to the buffer edge; that, plus the eased near rows, reads as a flat
+  // strip just above the HUD bottom bar unless pushed off-frame. Tune alongside geoEdgeMargin.
+  reliefCropBottomFrac: 0.30,
 
   _clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); },
 
@@ -63,6 +70,8 @@ const Projection = {
     const o = opts || {};
     if (Number.isFinite(o.K))        this.K = this._clamp(o.K, this.K_MIN, this.K_MAX);
     if (Number.isFinite(o.liftFrac)) this.liftFrac = this._clamp(o.liftFrac, this.LIFT_FRAC_MIN, this.LIFT_FRAC_MAX);
+    if (Number.isFinite(o.reliefCropFrac)) this.reliefCropFrac = this._clamp(o.reliefCropFrac, 0, 0.95);
+    if (Number.isFinite(o.reliefCropBottomFrac)) this.reliefCropBottomFrac = this._clamp(o.reliefCropBottomFrac, 0, 1.5);
     if (o.mapWidth  > 0) this.mapWidth  = o.mapWidth;
     if (o.mapHeight > 0) this.mapHeight = o.mapHeight;
     this.LIFT = this.liftFrac * this.mapHeight;
@@ -75,8 +84,7 @@ const Projection = {
   projX(worldX) { return worldX; },
 
   // World y and the cell's elevation (0–1) → screen y, in WORLD units (i.e.
-  // before the view zoom). elev defaults to 0 → the flat squash plane, which is
-  // what step 1's global squash uses.
+  // before the view zoom). elev defaults to 0 → the flat squash plane.
   projY(worldY, elev) { return worldY * this.K - (elev || 0) * this.LIFT; },
 
   // The render-facing vertical mapping every entity and the terrain share: the
@@ -94,11 +102,27 @@ const Projection = {
       : worldY * this.K;
   },
 
-  // The world's on-screen vertical extent, in world units. squashedHeight() is
-  // the flat plane (what step 1 uses for fit + centering); projectedWorldHeight()
-  // adds the relief headroom the taller relief bake needs (step 2).
+  // The world's on-screen vertical extent, in world units. squashedHeight() is the
+  // flat plane (fit + centering); projectedWorldHeight() adds the relief headroom the
+  // taller relief bake needs.
   squashedHeight() { return this.mapHeight * this.K; },
   projectedWorldHeight() { return this.mapHeight * this.K + this.LIFT; },
+
+  // World-unit height of the empty relief headroom to hide above the top of the frame
+  // (0 when relief is off — a flat bake has no headroom). The cover fit subtracts this.
+  reliefCrop() { return this.relief ? this.LIFT * this.reliefCropFrac : 0; },
+
+  // World-unit height of the FRONT band to hide below the bottom of the frame — the near
+  // counterpart to reliefCrop(). Two parts: the near rows eased to plains over `edgeMargin`
+  // (their squashed height, edgeMargin·mapHeight·K) and the front apron below the plains
+  // line (LIFT·reliefCropBottomFrac). Pushing both off-frame stops the flattening ramp from
+  // reading as a strip above the HUD bar. 0 when relief is off. `edgeMargin` is the terrain's
+  // geoEdgeMargin (0 if none). The cover fit subtracts this too.
+  reliefCropBottom(edgeMargin) {
+    if (!this.relief) return 0;
+    const em = (edgeMargin > 0) ? edgeMargin : 0;
+    return em * this.mapHeight * this.K + this.LIFT * this.reliefCropBottomFrac;
+  },
 
   // ---- inverse: screen → world (authoring only; the kiosk has no pointer) ----
   // screenY couples y and elevation, so invert by iteration: assume flat, sample
@@ -126,6 +150,8 @@ const Projection = {
     this.mapHeight = 512;
     this.LIFT = 0.14 * 512;
     this.relief = false;
+    this.reliefCropFrac = 0.78;
+    this.reliefCropBottomFrac = 0.30;
     return this;
   }
 };

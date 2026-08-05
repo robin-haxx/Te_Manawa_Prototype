@@ -13,25 +13,42 @@
 
 const DeepTime = {
   // ---- the window ------------------------------------------
-  yearsStart: 345000,   // opens just after the Whakamaru eruption (~349 ka)
+  // These bound the RUN (and the timeline UI), not the geology: the ranges/river state is
+  // keyed to absolute dates in TerrainGenerator.GEO_EPOCHS, so you can shrink or shift this
+  // window to zoom into any era for debugging and the terrain still reads true for the date.
+  yearsStart: 1000000,  // opens at ~1 Ma — the ranges' earliest stages; they rise across the run (1.1 Ma is the eventual target)
   yearsEnd:    25500,   // closes on Oruanui, heading into the LGM
+
+  // ---- eruptions -------------------------------------------
+  // The four TVZ events inside the window, oldest → youngest. This is the single
+  // source of truth: DEEP_TIME_MARKERS (below) and the Eruption button both read it.
+  //   tier      — clearing severity for the disturb/regen mechanic (see the plan).
+  //   skip      — a forward-SKIP target (long press). Oruanui is `false`: its fallout
+  //               sits too close to the present to show, so a forward skip past
+  //               Whakamaru WRAPS to Kidnappers rather than landing on it.
+  //   terminal  — the run's closing ash beat; reached by the clock, never by a skip.
+  // Ages: Kidnappers/Potaka ~1.0 Ma (Mangakino), Kaukatea ~0.9 Ma, Whakamaru/Rangitawa
+  // 349 ka, Kawakawa/Oruanui ~25.5 ka. See md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md.
+  ERUPTIONS: [
+    { yearsBP: 1000000, name: 'Kidnappers', tier: 'major',        skip: true  },
+    { yearsBP:  900000, name: 'Kaukatea',   tier: 'minor',        skip: true  },
+    { yearsBP:  349000, name: 'Whakamaru',  tier: 'catastrophic', skip: true  },
+    { yearsBP:   25500, name: 'Oruanui',    tier: 'major',        skip: false, terminal: true }
+  ],
 
   // ---- rates -----------------------------------------------
   yrPerSec:   500,      // baseline sim-years per real second at scale 1
   fps:         60,
 
-  // Deep-time button. TEMANAWA_PLAN.md §5: ~50,000 years in ~10 seconds.
+  // TIMELAPSE, see TEMANAWA_PLAN.md §5: ~50,000 years in ~10 seconds.
   deepMult:    10,
   deepSeconds: 10,
 
-  // The ramp. A hard step to 10x visibly jolts — the terrain, the season
-  // cross-fade and every boid all change speed on one frame. Easing in and out
-  // over ~1.2 s costs nothing and reads as the piece accelerating rather than
-  // as a glitch. rampSeconds is counted INSIDE deepSeconds, not added to it.
+  // ACCESSIBILITY: make sure this is suitable for photosensitivity
   rampSeconds: 1.2,
 
   // ---- state -----------------------------------------------
-  yearsBP:     345000,
+  yearsBP:     1000000,
   timeScale:   1,
   _deepUntil:  0,
   _deepFrom:   0,
@@ -44,6 +61,65 @@ const DeepTime = {
     this._deepUntil = 0;
     this._deepFrom  = 0;
     this._ended     = false;
+  },
+
+  // ---- seek: jump the clock to a date ----------------------
+  // Used by the Eruption button's skip/revert navigation. Sets yearsBP directly
+  // (clamped to the window), cancels any deep-time ramp, and clears the ended
+  // flag so a seek back from the close re-enables play. The terrain morph and the
+  // living world are the caller's responsibility (HUD: morph to the year, then
+  // soft-regen); this only owns the clock.
+  seekTo(yearsBP) {
+    this.yearsBP   = Math.max(this.yearsEnd, Math.min(this.yearsStart, yearsBP));
+    this.timeScale = 1;
+    this._deepUntil = 0;
+    this._deepFrom  = 0;
+    this._ended     = false;
+    return this.yearsBP;
+  },
+
+  // The years a forward skip may land on — every eruption except the terminal one.
+  skipTargets() {
+    return this.ERUPTIONS.filter(e => e.skip !== false).map(e => e.yearsBP);
+  },
+
+  // LONG PRESS — the next eruption forward in playback (younger, smaller yearsBP).
+  // Wraps to the oldest target when there is nothing younger (i.e. once past
+  // Whakamaru), so a forward skip loops 1 Ma → 0.9 Ma → 349 ka → (wrap) 1 Ma and
+  // never lands on the terminal Oruanui.
+  nextEruption(yearsBP) {
+    const t = this.skipTargets();
+    let best = null;
+    for (const e of t) if (e < yearsBP && (best === null || e > best)) best = e;
+    return best !== null ? best : Math.max.apply(null, t);   // wrap → oldest
+  },
+
+  // SINGLE PRESS — the last eruption backward in playback (older, larger yearsBP):
+  // the most recent one already passed. null when nothing is older (at/older than
+  // Kidnappers), which the caller treats as a no-op.
+  prevEruption(yearsBP) {
+    const t = this.skipTargets();
+    let best = null;
+    for (const e of t) if (e > yearsBP && (best === null || e < best)) best = e;
+    return best;
+  },
+
+  // The full eruption record for a year (or null) — lets the button read an event's
+  // tier after prev/nextEruption has chosen the year.
+  eruptionByYear(yearsBP) {
+    for (const e of this.ERUPTIONS) if (e.yearsBP === yearsBP) return e;
+    return null;
+  },
+
+  // Clearing / recovery per tier, for the disturb mechanic (plan §2.1). clearFraction
+  // = share of plants knocked out at the eruption; decayYears = sim-years for the ash
+  // to clear and the land to green back. One table, keyed by ERUPTIONS[i].tier, so all
+  // four events stay in sync. Severity is magnitude × standing cover: Kidnappers (#1)
+  // and Oruanui (#4) are both 'major' but read differently (sea vs frozen ground).
+  TIERS: {
+    minor:        { clearFraction: 0.15, decayYears:  6000 },
+    major:        { clearFraction: 0.60, decayYears: 18000 },
+    catastrophic: { clearFraction: 0.95, decayYears: 35000 }
   },
 
   // ---- the Deep-time button --------------------------------
@@ -121,14 +197,17 @@ const DeepTime = {
 };
 
 // Timeline markers. Content is a co-design hook — these are placeholders with
-// correct dates, not final label text.
+// correct dates, not final label text. The eruption markers are DERIVED from
+// DeepTime.ERUPTIONS so the timeline and the button can never disagree on a date
+// (all four now show, and Whakamaru reads its true 349 ka, not the old 345 ka).
+// The glacial/warm markers are climate instrumentation and live in the debug
+// overlay; the visitor timeline only draws kind === 'eruption'.
 const DEEP_TIME_MARKERS = [
-  { yearsBP: 345000, label: 'Whakamaru',  kind: 'eruption' },
-  { yearsBP: 270000, label: 'MIS 8',      kind: 'glacial'  },
-  { yearsBP: 140000, label: 'MIS 6',      kind: 'glacial'  },
-  { yearsBP: 122000, label: 'MIS 5e',     kind: 'warm'     },
-  { yearsBP:  30000, label: 'LGM',        kind: 'glacial'  },
-  { yearsBP:  25500, label: 'Oruanui',    kind: 'eruption' }
+  ...DeepTime.ERUPTIONS.map(e => ({ yearsBP: e.yearsBP, label: e.name, kind: 'eruption' })),
+  { yearsBP: 270000, label: 'MIS 8',  kind: 'glacial' },
+  { yearsBP: 140000, label: 'MIS 6',  kind: 'glacial' },
+  { yearsBP: 122000, label: 'MIS 5e', kind: 'warm'    },
+  { yearsBP:  30000, label: 'LGM',    kind: 'glacial' }
 ];
 
 if (typeof module !== 'undefined' && module.exports) module.exports = { DeepTime, DEEP_TIME_MARKERS };

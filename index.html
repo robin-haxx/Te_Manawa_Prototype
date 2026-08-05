@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Avian Age: Te Manawa</title>
 
-    <!-- TODO (TEMANAWA_BUILD_V3.md §5.3): swap to p5.min.js.
-         p5.js is 5.4 MB unminified and is the single largest item in the
-         cold-boot budget, which the watchdog pays on every hard reload. -->
-    <script src="p5.js"></script>
+    <!-- p5.min.js: esbuild-minified from vendored p5.js v1.11.11 (5.4 MB -> 1.4 MB) —
+         p5 was the largest item in the cold-boot budget. Full p5.js kept for debugging.
+         Regenerate: npx esbuild p5.js --minify --legal-comments=none --outfile=p5.min.js -->
+    <script src="p5.min.js"></script>
     <script src="p5.sound.min.js"></script>
 
     <link rel="stylesheet" type="text/css" href="style.css">
@@ -20,15 +20,9 @@
          Avian Age: TE MANAWA — standalone museum installation
          A fork of the Mauri engine, stripped to an ambient diorama.
 
-         PHASE 1.5 (cleanup) is in:
-           · TeManawa_shims.js and TeManawa_install.js are gone — the four
-             dropped subsystems (tutorial, menu_art, progress, benchmark)
-             no longer have call-sites, and the install layer is now
-             normal modules instead of runtime monkey-patches.
-           · The economy is gone: no mauri, no toolbar, no placement
-             costs, no goals, no phases, no win/lose, no level select.
-           · The play area is a fixed SQUARE grid (CONFIG.mapGrid),
-             letterboxed into the portrait screen.
+         Economy stripped (no mauri, toolbar, goals, win/lose); the play area is a
+         letterboxed grid, adaptive by default (CONFIG.terrainFit). Phases 0–2 done;
+         Phase 3 (terrain) substantially built.
 
          See md/TEMANAWA_PLAN_V2.md §8 for the phase plan and
          md/TEMANAWA_BUILD_V3.md for architecture and budgets.
@@ -49,6 +43,10 @@
     <!-- Data definitions -->
     <script src="TeManawa_species_data.js"></script>
     <script src="TeManawa_entity_sprites.js"></script>
+
+    <!-- Geography skeleton (SVG-authored via tools/svg2geo.js). Optional; the
+         terrain reshapes its base noise around it. See md/TEMANAWA_GEOGRAPHY.md. -->
+    <script src="geo/manawatu.geo.js"></script>
 
     <!-- Terrain and seasons/climate -->
     <script src="TeManawa_terrain.js"></script>

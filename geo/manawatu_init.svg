@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <!-- Te Manawa geography skeleton. Landscape 16:9, NORTH = up.
+       West (Tāsman coast) at left; axial ranges down the west and top-right;
+       the river runs W->E in a double S, then curves N toward the gorge /
+       Whanganui exit (top-right). Edit in Inkscape/Illustrator, then:
+         node tools/svg2geo.js geo/manawatu.svg geo/manawatu.geo.js
+       Feature elements are tagged by class; anything untagged (this frame,
+       labels) is ignored by the converter. See md/TEMANAWA_GEOGRAPHY.md. -->
+
+  <rect x="2" y="2" width="1596" height="896" fill="none" stroke="#ccc" stroke-width="2"/>
+
+  <!-- Axial range massif down the west/left (Tararua block). data-height is the
+       MATURE peak elevation (0..1); the 1.1 Ma uplift curve scales up to it. -->
+  <polygon class="range" data-height="0.86" data-spread="0.17"
+    points="40,150 175,205 205,360 182,545 120,660 55,620 30,430 46,250"/>
+
+  <!-- Gorge country / Ruahine spur (top-right), where the river cuts through. -->
+  <polygon class="range" data-height="0.80" data-spread="0.12"
+    points="1180,130 1372,150 1442,270 1400,372 1268,388 1160,300 1150,196"/>
+
+  <!-- Manawatū river centreline: rises by the western range, snakes W->E in a
+       double S, then curves N toward the gorge / Whanganui exit. -->
+  <polyline class="river" data-width="0.05" data-depth="1.0" fill="none"
+    points="150,470 300,525 430,562 560,540 660,470 765,432 845,470 945,545 1055,548 1140,472 1226,360 1306,250 1366,176"/>
+
+  <!-- Foxton dune wedge (future habitat) on the coastal plain, low-centre. -->
+  <polygon class="dune" data-height="0.20" data-spread="0.06"
+    points="360,815 560,735 616,766 432,820"/>
+</svg>

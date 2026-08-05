@@ -85,7 +85,7 @@ function preload(){
 // ============================================
 const CONFIG = {
   // ===== ENGINE CONSTANTS (never change between levels) =====
-  version: 'alpha 1.0.7 (TEST_BUILD_2_dev)',
+  version: '0.2',
 
   // Reference height is always 1080; width is computed from window aspect ratio
   referenceHeight: 1080,
@@ -121,8 +121,8 @@ const CONFIG = {
   get width() { return this.gameAreaWidth; },
   get height() { return this.gameAreaHeight; },
 
-  pixelScale: 1,
-  zoom: 2.5,
+  pixelScale: 1, //dont fw
+  zoom: 1,
   debugMode: false,
 
   // ===== PLAY AREA =====
@@ -169,13 +169,26 @@ const CONFIG = {
   viewY: 180,
   viewZoom: 2.5,
 
+  // Terrain morph (deep-time land change). The driver in Game.update re-bakes the
+  // land as yearsBP advances so ranges rise and the gorge deepens. The re-bake is
+  // INCREMENTAL (TerrainGenerator.morphBegin/morphStep): each frame spends at most
+  // morphBudgetMs on it, into back buffers that swap in when finished, so the
+  // visitor path never hitches. At the default budget a morph completes in
+  // ~30-60 frames — well inside morphMinMs before the next one can start.
+  morphEnabled: true,
+  morphIntervalYears: 9000,   // re-bake once yearsBP has drifted this far from the baked land
+  morphMinMs: 1100,           // ...and at least this long since the last morph re-bake (throttle)
+  morphBakeScale: 2,          // supersample for morph re-bakes (lower = cheaper + softer while moving)
+  morphBudgetMs: 3,           // per-frame time slice for the incremental re-bake (60fps frame = 16.6ms)
+  morphFadeMs: 600,           // crossfade for the on-screen buffer swap (floored at 500ms — photosensitivity)
+
   col_UI: [40, 70, 30, 180],
   col_panelBg: [25, 35, 30, 240],
   col_panelBorder: [60, 90, 70],
   col_panelHeader: [45, 75, 55],
 
   showContours: false,   // retired: biome-boundary ink (levelDef.biomes[].outlineColor) replaces topo contours (34VIEW §7)
-  contourInterval: 0.1,
+  contourInterval: 0.5,
   showLabels: false,
   showDebug: false,
 
@@ -193,7 +206,7 @@ const CONFIG = {
   ridgeInfluence: 1.3,
   elevationPower: 1.5,
   islandFalloff: 0.6,
-  plantDensity: 0.003,
+  plantDensity: 0.001,
 
   initialMoaCount: 7,
   maxMoaPopulation: 60,
@@ -269,8 +282,10 @@ function applyLevelToConfig(levelDef) {
   if (levelDef.terrainFit != null && !CONFIG._terrainFitPinned) {
     CONFIG.terrainFit = levelDef.terrainFit;
   }
-  const _seasonOrder = ['summer', 'autumn', 'winter', 'spring'];
-  CONFIG.startSeasonIndex = levelDef.startSeason ? Math.max(0, _seasonOrder.indexOf(levelDef.startSeason)) : 0;
+  // Glacial phases warm→cold. The manager re-derives its phase from the deep-time
+  // glacial index every frame, so this only sets the pre-first-update seed.
+  const _phaseOrder = ['interglacial', 'cooling', 'glacial', 'fullGlacial'];
+  CONFIG.startSeasonIndex = levelDef.startSeason ? Math.max(0, _phaseOrder.indexOf(levelDef.startSeason)) : 0;
 
   const t = levelDef.terrain;
   CONFIG.noiseScale = t.noiseScale;
@@ -280,6 +295,8 @@ function applyLevelToConfig(levelDef) {
   CONFIG.ridgeInfluence = t.ridgeInfluence;
   CONFIG.elevationPower = t.elevationPower;
   CONFIG.islandFalloff = t.islandFalloff;
+  if (t.geoBaseCeil != null) CONFIG.geoBaseCeil = t.geoBaseCeil;   // skeleton: procedural base ceiling (see terrain.js)
+  if (t.geoEdgeMargin != null) CONFIG.geoEdgeMargin = t.geoEdgeMargin;   // skeleton: N/S edge falloff (see terrain.js)
 
   // Optional terrain features
   CONFIG.useLakes = levelDef.terrain.useLakes || false;
@@ -549,34 +566,51 @@ function initPlaceableColors() {
 // ============================================
 // PLANT DEFINITIONS
 // ============================================
+// coldTolerance: 0 = most cold-sensitive (tree ferns), 1 = fully cold-hardy
+// (tussock, glacial shrubs). Modulates dormancy chance and the effective
+// modifier that drives sprite state, so a glacial produces varied composition
+// — tussock thriving, beech holding mature, fern wilting — rather than a
+// blanket shift.
 const PLANT_TYPES = {
   tussock: { name: "Tussock", nutrition: 25, color: '#8ea040', size: 24, growthTime: 200,
+    coldTolerance: 1.0,
     description: "Hardy grass that covers the high country" },
   flax: { name: "Flax", nutrition: 35, color: '#487020', size: 26, growthTime: 280,
+    coldTolerance: 0.7,
     description: "Harakeke: versatile, with sweet nectar" },
   fern: { name: "Fern", nutrition: 30, color: '#228B22', size: 36, growthTime: 240,
+    coldTolerance: 0.1,
     description: "The iconic Ponga's fronds populate forests" },
   rimu: { name: "Rimu", nutrition: 50, color: '#8B0000', size: 48, growthTime: 400,
+    coldTolerance: 0.3,
     description: "Ancient podocarp with bright red fruit" },
   beech: { name: "Beech", nutrition: 40, color: '#8b430f', size: 52, growthTime: 350,
+    coldTolerance: 0.6,
     description: "Tawhai: produces mast seed in good years" },
   kawakawa: { name: "Kawakawa", nutrition: 40, color: '#3d9a5e', size: 22, growthTime: 150,
+    coldTolerance: 0.15,
     description: "Heart-shaped leaves with peppery fruit" },
   patotara: { name: "Patotara", nutrition: 35, color: '#c94c5a', size: 28, growthTime: 160,
+    coldTolerance: 0.8,
     description: "Alpine shrub with summer berries" },
 
   // --- Glacial-flora (LGM) additions. Procedural blob-rendered (no sprites yet). ---
   coprosma: { name: "Coprosma", nutrition: 30, color: '#5c7d3e', size: 22, growthTime: 190,
+    coldTolerance: 0.85,
     description: "Divaricating shrub; hardy glacial browse with orange berries" },
   dracophyllum: { name: "Dracophyllum", nutrition: 28, color: '#9a7b4f', size: 30, growthTime: 250,
+    coldTolerance: 0.9,
     description: "Inaka grass-tree of the cold subalpine tops" },
   matagouri: { name: "Matagouri", nutrition: 26, color: '#7a6f4a', size: 24, growthTime: 210,
+    coldTolerance: 0.95,
     description: "Tūmatakuru: thorny shrub of the glacial outwash flats" },
 
   // --- Favoured, browse-resistant plants (planted via the palette) ---
   lancewood: { name: "Juvenile Lancewood", nutrition: 34, color: '#6a5a33', size: 30, growthTime: 300,
+    coldTolerance: 0.5,
     description: "Horoeka: tough and spiky when growing." },
   speargrass: { name: "Speargrass", nutrition: 30, color: '#8f9a55', size: 26, growthTime: 260,
+    coldTolerance: 0.85,
     description: "Taramea: spiny herb of the hills" }
 };
 
@@ -593,6 +627,8 @@ class Game {
     this.activeSpecies = null;
 
     this.terrain = null;
+    this._bakedYearsBP = 0;   // yearsBP the terrain was last (re)baked at — drives the morph
+    this._lastMorphMs = 0;
     this.simulation = null;
     this.ui = null;
     this.seasonManager = null;
@@ -602,9 +638,6 @@ class Game {
 
     this.notifications = [];
 
-    this._cachedMoaCount = 0;
-    this._cachedEggCount = 0;
-    this._cachedThrivingCount = 0;
     this._tempVec = null;
   }
 
@@ -667,6 +700,7 @@ class Game {
     }
 
     this.terrain.generate();
+    this._bakedYearsBP = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
 
     this._updateViewTransform();
 
@@ -711,6 +745,12 @@ class Game {
     const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
     this.init();
+
+    // A full init can block the main thread for several seconds (the Phase 3 bake).
+    // Stamp the kiosk heartbeat so a LEGITIMATE long rebuild is never mistaken for
+    // a stall — otherwise a desktop resize (DevTools opening counts) triggers the
+    // watchdog's hard reload right after the rebuild finishes.
+    if (typeof Kiosk !== 'undefined' && Kiosk.beat) Kiosk.beat();
 
     const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
     console.log(`[Terrain] refit ${CONFIG.terrainFit}: ${from} -> ` +
@@ -772,6 +812,19 @@ class Game {
     SPECIES_HIGHLIGHT.clear();
     this.state = GAME_STATE.PLAYING;
     this._tempVec = createVector(0, 0);
+
+    // Eruption ash state (disturb/regen, plan §2.1). A fresh living world carries no ash;
+    // applyAsh() arms it after a rebuild when an eruption is being shown.
+    this._ashCover = 0; this._ashFromYear = 0; this._ashDecayYears = 1; this._ashTier = null;
+
+    // Which eruption years have already fired this cycle — so an eruption fires ONCE as the
+    // clock crosses its checkpoint (auto), and again only after a rebuild repositions the
+    // clock. Cleared here (every rebuild); applyAsh() adds a year when it fires.
+    this._firedEruptions = new Set();
+    // Previous frame's yearsBP, for crossing detection. Seed just ABOVE the current year so
+    // an eruption AT the (re)start year fires on the next frame (e.g. Kidnappers at the 1 Ma
+    // open). applyEruptionAt overrides this to the target so a jump does not re-fire events.
+    this._autoPrevYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP + 1 : Infinity;
   }
 
   isInGameArea(mx, my) {
@@ -800,13 +853,26 @@ class Game {
       // mapWidth × projectedWorldHeight (mapHeight·K + LIFT). Use a COVER fit
       // (max) so there is no letterbox; the modest overflow on the long axis is
       // clipped. Centred.
+      //   The top `reliefCrop` of the buffer is empty relief headroom above the far
+      //   ridge (the top rows are eased to plains) — sky/haze, not terrain. Cover-fit
+      //   the REMAINING height and shift the view up by the crop so that headroom sits
+      //   above the frame: the terrain then fills to the top instead of leaving a streak.
+      //   `reliefCropBottom` is the near counterpart: the front rows are eased to plains
+      //   and the front apron fills below them, which otherwise reads as a flat strip just
+      //   above the HUD bottom bar. Subtract it too so that band sits BELOW the frame — the
+      //   visible front edge becomes a normal terrain row. (Top shift stays `crop·z`; the
+      //   bottom band falls off-frame because the fit height loses `cropB`.)
       const projH = (typeof Projection !== 'undefined')
         ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
+      const crop  = (typeof Projection !== 'undefined') ? Projection.reliefCrop() : 0;
+      const cropB = (typeof Projection !== 'undefined')
+        ? Projection.reliefCropBottom(CONFIG.geoEdgeMargin || 0) : 0;
+      const fitH = Math.max(1, projH - crop - cropB);
       const z = Math.max(CONFIG.canvasWidth / this.terrain.mapWidth,
-                         CONFIG.canvasHeight / projH);
+                         CONFIG.canvasHeight / fitH);
       CONFIG.viewZoom = z;
       CONFIG.viewX = Math.round((CONFIG.canvasWidth - this.terrain.mapWidth * z) / 2);
-      CONFIG.viewY = Math.round((CONFIG.canvasHeight - projH * z) / 2);
+      CONFIG.viewY = Math.round((CONFIG.canvasHeight - fitH * z) / 2 - crop * z);
     } else {
       CONFIG.viewZoom = CONFIG.zoom;
       CONFIG.viewX = CONFIG.gameAreaX;
@@ -814,32 +880,126 @@ class Game {
     }
   }
   
-  updateCachedCounts() {
-    const moas = this.simulation.moas;
-    let moaCount = 0, thrivingCount = 0;
-    
-    for (let i = 0; i < moas.length; i++) {
-      if (moas[i].alive) {
-        moaCount++;
-        if (moas[i].hunger < 20) thrivingCount++;
+  // Single source of truth: the Simulation caches population once per frame
+  // (Simulation._ensurePopulationCache). Game used to walk moas+eggs a SECOND
+  // time every frame in updateCachedCounts() — that duplicate walk is gone (#13);
+  // this delegates to the one cache. _cachedThrivingCount/_cachedEggCount were
+  // write-only (nothing read them), so they're gone too.
+  getMoaPopulation() {
+    return this.simulation.getMoaPopulation();
+  }
+  
+  // Deep-time land morph: as yearsBP advances, re-bake the terrain so ranges rise and
+  // the gorge deepens. The heightMap re-shape is cheap (geo cache); the bake is the
+  // cost, so it is SLICED: morphBegin() stages a resumable job and each frame runs
+  // morphStep(morphBudgetMs) until the back buffers swap in — no frame ever pays
+  // more than the budget. The interval + throttle gate when a NEW job may start;
+  // an in-flight job just keeps stepping. _bakedYearsBP is recorded at job START
+  // (the job bakes toward that year regardless of where the clock drifts meanwhile).
+  _morphTick() {
+    if (!CONFIG.morphEnabled || !this.terrain || !this.terrain.geo || typeof DeepTime === 'undefined') return;
+    if (this.terrain.morphInProgress) {
+      this.terrain.morphStep(CONFIG.morphBudgetMs);
+      return;
+    }
+    const yb = DeepTime.yearsBP;
+    const now = (typeof millis === 'function') ? millis() : Date.now();
+    if (TerrainGenerator.shouldMorphBake(yb, this._bakedYearsBP, now, this._lastMorphMs,
+                                         CONFIG.morphIntervalYears, CONFIG.morphMinMs)) {
+      this.terrain.morphBegin(yb, CONFIG.morphBakeScale);
+      this._bakedYearsBP = yb;
+      this._lastMorphMs = now;
+      this.terrain.morphStep(CONFIG.morphBudgetMs);
+    }
+  }
+
+  // ============================================
+  // ERUPTION DISTURBANCE — ash clear + slow regen (plan §2.1 / §6)
+  // ============================================
+  // Land on an eruption event: rebuild the living world (soft regen — which resets the
+  // clock, so re-seek AFTER, per §3.4), morph the terrain to that year under the ash flash,
+  // then apply the ash clearing. The clock plays on and the land greens back as ash decays.
+  // Used by the Eruption button for BOTH revert (previous event) and skip (next event).
+  applyEruptionAt(targetYear, eruption) {
+    // ORDER MATTERS. Reshape the terrain to the target year BEFORE spawning the living
+    // world, so plants (and moa) seed against the RIGHT biome map. Spawning first and
+    // morphing after seeded them on the old land and stranded them in the NEW sea when a
+    // skip/wrap jumped to a high-sea year like 1 Ma — the reported bug. spawnPlants()
+    // already honours biome.canHavePlants; it just needs the correct map underneath it.
+    if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);
+    if (this.terrain && this.terrain.morphTo) {                  // SYNCHRONOUS — finished before the spawn; the ash flash hides the hitch
+      this.terrain.morphTo(targetYear, CONFIG.morphBakeScale);
+      this._bakedYearsBP = targetYear;
+      this._lastMorphMs = (typeof millis === 'function') ? millis() : Date.now();
+    }
+    this.resetEcosystem();                                       // spawns against the morphed (target-year) biome map (also DeepTime.reset())
+    if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);   // ...so re-seek after the rebuild (§3.4)
+    this.applyAsh(eruption);
+    this._autoPrevYear = targetYear;                             // the auto-check must not re-fire the event we just placed
+  }
+
+  // Knock the cast back and arm the ash cover for the event's tier. Canopy (FOREST_TREES)
+  // takes the full clearFraction; other plants a lighter share. Killed plants recover on
+  // their existing regrowth timers as the ash clears — no wetland bloom (no wetland biome yet).
+  applyAsh(eruption) {
+    const T = (typeof DeepTime !== 'undefined' && DeepTime.TIERS) || null;
+    const tier = (T && eruption && T[eruption.tier]) || (T && T.major) || { clearFraction: 0.6, decayYears: 18000 };
+    this._ashCover = 1;
+    this._ashFromYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
+    this._ashDecayYears = tier.decayYears || 18000;
+    this._ashTier = eruption ? eruption.tier : 'major';
+    const plants = this.simulation && this.simulation.plants;
+    if (plants) {
+      const canopy = (typeof FOREST_TREES !== 'undefined') ? FOREST_TREES : null;
+      for (let i = 0; i < plants.length; i++) {
+        const p = plants[i];
+        if (!p || !p.alive) continue;
+        const frac = (canopy && canopy.has(p.type)) ? tier.clearFraction : tier.clearFraction * 0.6;
+        if (Math.random() < frac) { p.alive = false; p.growth = 0; p.regrowthTimer = 0; }
       }
     }
-    
-    let eggCount = 0;
-    const eggs = this.simulation.eggs;
-    for (let i = 0; i < eggs.length; i++) {
-      if (eggs[i].alive) eggCount++;
+    if (eruption && this._firedEruptions) this._firedEruptions.add(eruption.yearsBP);   // fired once per cycle
+  }
+
+  // Fire an eruption IN PLACE — the ambient-timeline path. No seek, no soft-regen (the
+  // living world carries on): just the ash clearing on the current cast plus a gentle,
+  // photosensitivity-safe ramped flash. Used by _checkAutoEruptions as the clock crosses
+  // each checkpoint, so the visitor sees the eruptions happen without touching the button.
+  _fireEruptionInPlace(eruption) {
+    if (typeof TM_TIME !== 'undefined' && typeof millis === 'function') {
+      this._tmAshUntil = millis() + TM_TIME.ashMillis;
+      this._tmAshMode  = 'tap';                    // a single rise-and-fall, no charge, no strobe
     }
-    
-    this._cachedMoaCount = moaCount;
-    this._cachedEggCount = eggCount;
-    this._cachedThrivingCount = thrivingCount;
+    this.applyAsh(eruption);                        // ashCover + tiered knock-back; marks it fired
   }
-  
-  getMoaPopulation() {
-    return this._cachedMoaCount;
+
+  // Fire each eruption once, the frame the clock CROSSES its year while playing forward.
+  // Crossing (not "clock is past it") is the point: `e in [y, prev)` only catches events the
+  // clock stepped over THIS frame, so events already behind the playhead are not re-fired.
+  // A backward jump (revert) or pause is skipped; the fired-set is the once-per-cycle guard.
+  _checkAutoEruptions() {
+    if (typeof DeepTime === 'undefined' || !this._firedEruptions || !DeepTime.ERUPTIONS) return;
+    const y = DeepTime.yearsBP;
+    const prev = (this._autoPrevYear != null) ? this._autoPrevYear : y;
+    this._autoPrevYear = y;                          // always advance, even when we skip below
+    if (!(y < prev)) return;                          // clock did not move forward this frame
+    const ER = DeepTime.ERUPTIONS;
+    for (let i = 0; i < ER.length; i++) {
+      const e = ER[i].yearsBP;
+      if (e < prev && e >= y && !this._firedEruptions.has(e)) this._fireEruptionInPlace(ER[i]);
+    }
   }
-  
+
+  // Ash clears over decayYears of SIM time (yearsBP falls as the run plays), so the land
+  // greens back on its own. Called each frame from update().
+  updateAshCover() {
+    if (this._ashCover > 0 && typeof DeepTime !== 'undefined' && this._ashDecayYears > 0) {
+      const elapsed = this._ashFromYear - DeepTime.yearsBP;      // yearsBP decreases as time runs
+      const t = elapsed / this._ashDecayYears;
+      this._ashCover = t >= 1 ? 0 : (t < 0 ? this._ashCover : 1 - t);
+    }
+  }
+
   update(dt = 1) {
     // The HUD owns the deep-time multiplier and the transient button effects,
     // and returns the timeScale this frame should run at.
@@ -851,7 +1011,9 @@ class Game {
     if (this.seasonManager.update(sdt)) this.onSeasonChange();
 
     this.simulation.update(sdt);
-    this.updateCachedCounts();
+    this._morphTick();
+    this.updateAshCover();
+    this._checkAutoEruptions();
     this.updateNotifications(sdt);
     if (this.ui) this.ui.update(dt);
 
@@ -889,16 +1051,16 @@ class Game {
   }
   
   onSeasonChange() {
-    const season = this.seasonManager.current;
-    const seasonKey = this.seasonManager.currentKey;
+    const phase = this.seasonManager.current;
+    const phaseKey = this.seasonManager.currentKey;
 
-    this.addNotification(`Season changed to ${season.name} ${season.icon}`, 'info');
-    if (audioManager) audioManager.playSeasonChange(seasonKey);
+    this.addNotification(`Entering the ${phase.name}`, 'info');   // drawn glyphs only — no emoji icon
+    if (audioManager) audioManager.playSeasonChange(phaseKey);
 
-    // Glacial predation: winter drives an extra hungry eagle to hunt.
-    if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.winterPredation && seasonKey === 'winter') {
+    // Deep cold drives an extra hungry eagle to hunt (opt-in via LEVEL_MECHANICS).
+    if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.winterPredation && phaseKey === 'fullGlacial') {
       this.simulation.spawnEagle();
-      this.addNotification("The glacial winter drives a hungry eagle to hunt.", 'error');
+      this.addNotification("The full glacial drives a hungry eagle to hunt.", 'error');
     }
     
     const aliveMoas = this.simulation.moas.filter(m => m.alive);
@@ -940,15 +1102,28 @@ class Game {
     // Projection.groundY, so undistorted sprites sit on the lifted ground.
     this.terrain.render();
 
-    // Winter frost: a single cool haze over the ground (under the animals),
-    // fading in through late autumn and out into spring. Covers the projected
-    // terrain area. One rect — no perf cost.
+    // Glacial frost: a single cool haze over the ground (under the animals), scaling
+    // with the glacial index (getWinterness) so it deepens through a glacial and lifts
+    // in an interglacial. Covers the projected terrain area. One rect — no perf cost.
     const _frost = this.seasonManager.getWinterness ? this.seasonManager.getWinterness() : 0;
     if (_frost > 0.001) {
       push();
       noStroke();
       rectMode(CORNER);
       fill(216, 232, 245, 72 * _frost);
+      rect(0, 0, this.terrain.mapWidth, projH);
+      pop();
+    }
+
+    // Volcanic ash: a slow warm-grey wash over the ground while ashCover decays — a fresh
+    // eruption greys the land and it lifts as the cast regrows. Decays over SIM-years, so it
+    // is never a flash (the ramped flash is the HUD's job, InstallHUD.renderAshFlash). One rect.
+    const _ash = this._ashCover || 0;
+    if (_ash > 0.001) {
+      push();
+      noStroke();
+      rectMode(CORNER);
+      fill(120, 116, 110, 105 * _ash);
       rect(0, 0, this.terrain.mapWidth, projH);
       pop();
     }
@@ -971,6 +1146,10 @@ class Game {
     }
 
     this.simulation.render();
+
+    // Range-authoring overlay (GEO.show() / key R). Drawn in the terrain transform so the
+    // footprints + spine axes sit on the lifted ground. Authoring only — off by default.
+    if (typeof GEO !== 'undefined' && GEO._overlay) GEO._draw(this.terrain);
 
     drawingContext.restore();
     pop();
@@ -1030,6 +1209,9 @@ class Game {
     // NEW random landform. Dev tools — see md/TEMANAWA_DEVTOOLS.md.
     if ((k === 'g' || k === 'G') && typeof GEN !== 'undefined') { GEN.apply(); return; }
     if ((k === 'n' || k === 'N') && typeof GEN !== 'undefined') { GEN.reseed(); return; }
+
+    // R toggles the range-authoring overlay (footprints + spine axes). Authoring only.
+    if ((k === 'r' || k === 'R') && typeof GEO !== 'undefined') { GEO.toggle(); return; }
   }
 
 }
@@ -1048,7 +1230,9 @@ function setup() {
 
   CONFIG.recalculateLayout(windowWidth, windowHeight);
 
-  pixelDensity(2); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size
+  pixelDensity(1); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size
+                   // pixelDensity 1 is non-negotiable on the 4K panel (CLAUDE.md, BUILD_V3 §5.2):
+                   // a 4K device would otherwise back a 4× fill cost every frame.
   let cnv = createCanvas(CONFIG.canvasWidth, CONFIG.canvasHeight);
   cnv.style('display', 'block');
   document.body.style.margin = '0';
@@ -1079,6 +1263,7 @@ function setup() {
   // Dev tools: mirror the live landform params into GEN so the console shows the
   // real values (md/TEMANAWA_DEVTOOLS.md). Authoring only; no effect on the kiosk.
   if (typeof GEN !== 'undefined' && GEN.sync) GEN.sync();
+  if (typeof GEO !== 'undefined' && GEO.sync) GEO.sync();
 }
 
 function windowResized() {

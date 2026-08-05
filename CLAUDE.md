@@ -1,8 +1,8 @@
 # Te Manawa — working notes
 
 **Avian Age: Te Manawa** — a standalone museum installation. An ambient top-down diorama
-of the Manawatū across ~345 ka to 25.5 ka, on one portrait screen, unattended, no
-operator, no network. Vanilla JavaScript on p5.js, classic scripts, no build step.
+of the Manawatū across ~1 Ma to 25.5 ka, on one screen, unattended, no operator, no
+network. Vanilla JavaScript on p5.js, classic scripts, no build step.
 
 > **Governing principle** (`md/TEMANAWA_PLAN_V2.md` §0.1):
 > *This is a cartoon seen from above, not a survey of the Manawatū.*
@@ -55,12 +55,15 @@ than adding a test framework. If a section prints `FAILURES`, that is a real reg
 ```
 index.html                 script load order — it is hand-ordered and it matters
 TeManawa_kiosk.js          watchdog, idle/attract, soft reset, error ring buffer
+TeManawa_audio.js          ambient bed + event sounds
 TeManawa_registry.js       species/plant/biome/placeable registry + validation
 TeManawa_spatial.js        spatial hash grids
 TeManawa_simulation.js     the world: entity lists, update/render loops, spawning
 TeManawa_species_data.js   MOA_SPECIES, EAGLE_SPECIES
 TeManawa_entity_sprites.js SpriteAngle, ArtMode, ART_SETS, EntitySprites
-TeManawa_terrain.js        TerrainGenerator — noise, biome classification, pixel bake
+geo/manawatu.geo.js        SVG-authored geography skeleton (ranges + river) — see TEMANAWA_GEOGRAPHY.md
+TeManawa_terrain.js        TerrainGenerator — geo skeleton, noise, biome classify, 3/4 relief bake, LOOK look-dev
+TeManawa_projection.js     plan-oblique 3/4 projection — pure, p5-free (like climate.js)
 TeManawa_seasons.js        SeasonManager
 TeManawa_boid.js           steering base class
 TeManawa_moa.js  _eagle.js  _egg.js  _plant.js  _placeable.js
@@ -71,8 +74,10 @@ TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
 TeManawa_UI.js             thin host; delegates to InstallHUD
 TeManawa_level_format.js   level schema + resolution
 levels/                    level definitions
+TeManawa_devtools.js       LOOK / GEN console dev tools (B/G/N) — see TEMANAWA_DEVTOOLS.md
 TeManawa_sketch.js         CONFIG, Game, and the p5 entry points (see REORG §4)
-tools/                     serve.js, bootcheck.js
+tools/                     serve.js, bootcheck.js, svg2geo.js
+geo/                       manawatu.svg (authored) + manawatu.geo.js (emitted)
 md/                         design, build and research docs — start at md/README.md
 sprites/  audio/  typefaces/  research/
 ```
@@ -145,7 +150,7 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 
 | Limit | Value |
 |---|---|
-| Sim grid | **256²** long-term; **currently 512²** (`CONFIG.mapGrid`), drop in Phase 3 |
+| Sim grid | **256²** long-term; **currently 512²** (`CONFIG.mapGrid`), still to drop |
 | Live plant entities | ≤ 1,000 |
 | Live fauna | ≤ 300 |
 | `image()` calls per frame | ≤ 1,500 |
@@ -167,9 +172,9 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 | Cost | **17–31 ms** | 1.5–2.5 s |
 | Frequency | hundreds a day | ideally once a day |
 
-`Game.init()` is the expensive one (~1 s) because it regenerates terrain noise over every
-cell and bakes four season buffers. `resetEcosystem()` keeps the terrain and replaces only
-the living world. Every 12th reset reseeds the land via `init()` so it varies across a
+`Game.init()` is the expensive one (~1.8 s now — the Phase 3 terrain bake is heavy) because
+it regenerates terrain noise over every cell and bakes four season buffers.
+`resetEcosystem()` keeps the terrain and replaces only the living world. Every 12th reset reseeds the land via `init()` so it varies across a
 day. **Nothing on the visitor path may call `init()`.**
 
 ---
@@ -189,8 +194,10 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`4`.
 
 ## Current phase
 
-Phases 0, 1, 1.5 and 2 are done. **Phase 3 (terrain) is next**, and
-`md/TEMANAWA_REORG.md` §8 proposes landing steps 1–4 of the reorganisation before it —
-the asset pipeline first, because it is the only item that blocks other people's work.
+Phases 0–2 are done and **Phase 3 (terrain) is substantially built** — the 3/4 view, the
+SVG geography skeleton (`md/TEMANAWA_GEOGRAPHY.md`), the deep-time morph and the cel
+illustration look are all running. Currently tuning the terrain look; `CONFIG.mapGrid` is
+still 512. The `md/TEMANAWA_REORG.md` §8 structural steps (asset pipeline, `sketch.js`
+split) are still pending.
 
 **Critical path is Phase 5 art: ~113 new assets, not "twenty sprites."**

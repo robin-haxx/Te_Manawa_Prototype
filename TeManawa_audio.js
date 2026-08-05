@@ -92,12 +92,14 @@ class AudioManager {
       (err) => console.warn('Could not load moa_milestone:', err)
     );
     
-    // Season change sounds
-    const seasons = ['summer', 'autumn', 'winter', 'spring'];
-    for (const season of seasons) {
-      this.sounds.seasonChange[season] = loadSound(audioPath + `season_${season}.mp3`,
+    // Glacial-phase change cues. Files are still named season_*.mp3; map each glacial
+    // phase onto the nearest-in-feel cue (warm → summer, cold → winter).
+    const phaseAudio = { interglacial: 'summer', cooling: 'autumn', glacial: 'spring', fullGlacial: 'winter' };
+    for (const phase in phaseAudio) {
+      const file = phaseAudio[phase];
+      this.sounds.seasonChange[phase] = loadSound(audioPath + `season_${file}.mp3`,
         () => {},
-        (err) => console.warn(`Could not load season_${season}:`, err)
+        (err) => console.warn(`Could not load season_${file}:`, err)
       );
     }
     
@@ -300,7 +302,7 @@ class AudioManager {
   
   /**
    * Play season change sound
-   * @param {string} seasonKey - 'summer', 'autumn', 'winter', or 'spring'
+   * @param {string} seasonKey - glacial phase: 'interglacial', 'cooling', 'glacial', or 'fullGlacial'
    */
   playSeasonChange(seasonKey) {
     const sound = this.sounds.seasonChange[seasonKey];

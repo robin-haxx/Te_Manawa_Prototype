@@ -1,7 +1,10 @@
 # Te Manawa — 3/4 View & Illustration Restyle
 
-Status: proposal. Sits under `TEMANAWA_PLAN_V2.md`; where they disagree, V2 wins.
-Reshapes Phase 3 (terrain) — it does not add a phase.
+Status: **substantially built** (Phase 3). Sits under `TEMANAWA_PLAN_V2.md`; where they
+disagree, V2 wins. Reshaped Phase 3 (terrain) — it did not add a phase. Built:
+`TeManawa_projection.js`, the relief bake, entity y-sort with feet anchors, and the cel
+illustration look (`LOOK` in `TeManawa_terrain.js`). Pending: real terrain stamps and the
+illustrator's final palette (§8 step 5).
 
 Two changes, one plan:
 
@@ -55,7 +58,8 @@ the two constants. `K`/`LIFT` are authored in the level def and held on the
 instance — never written back to `CONFIG` (existing convention; see
 `noiseScale`).
 
-Load order: after `terrain.js`, before `simulation.js` and `hud.js`.
+Load order: after `terrain.js`. Consumers read it at runtime, so it need only be defined
+before `draw()`.
 
 ---
 
@@ -177,16 +181,17 @@ winter) — the existing per-pixel snow blend can stay underneath or retire.
 
 ## 8. Order of work
 
-1. **Projection + squash-only** — `TeManawa_projection.js`, draw the *existing*
-   bake with `scale(1, K)`, entity y-sort, feet anchors, bird shadows. Proves
-   the entire pipeline with zero new art.
-2. **Relief bake** (§3) + bake-resolution decouple (§4).
-3. **Illustration pass** (§7) with placeholder stamps.
-4. **Authored geography** (§6) — river, ranges, gorge.
-5. Real stamps and palette from the illustrator.
+1. ✅ **Projection + squash-only** — `TeManawa_projection.js`, entity y-sort, feet anchors,
+   bird shadows.
+2. ✅ **Relief bake** (§3) + bake-resolution decouple (§4) — `LOOK.bakeScale` supersamples
+   the paint; the bake displaces each row by `K`/`LIFT`.
+3. ✅ **Illustration pass** (§7) — cel ramps, ink outlines, wobble, haze, relief edges
+   (`LOOK`). Placeholder textures; real stamps pending (step 5).
+4. ✅ **Authored geography** (§6) — the SVG skeleton, `TEMANAWA_GEOGRAPHY.md`.
+5. ⬜ Real stamps and palette from the illustrator.
 
-Fits `TEMANAWA_REORG.md` §8: this *is* Phase 3, reshaped. The asset pipeline
-still lands first — §7's stamps are new manifest entries.
+Fits `TEMANAWA_REORG.md` §8: this *was* Phase 3, reshaped. The asset pipeline still lands
+first — §7's stamps are new manifest entries.
 
 ---
 

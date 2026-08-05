@@ -144,15 +144,18 @@ class PlaceableObject {
     
     push();
     imageMode(CENTER);
-    
+    noTint();                       // clouds fade via globalAlpha (#7), not tint()
+    const _dc = drawingContext;
+
     for (const cloud of this.clouds) {
       const sprite = placeableSprites[cloud.spriteType];
       if (!sprite) continue;
-      
+
       const size = 64 * cloud.scale;
-      tint(255, cloud.alpha * lifeRatio);
+      _dc.globalAlpha = cloud.alpha * lifeRatio;
       image(sprite, cloud.x, cloud.y + sin(cloud.bobPhase) * 2, size, size);
     }
+    _dc.globalAlpha = 1;
     
     if (this.boltActive && placeableSprites.bolt) {
       push();

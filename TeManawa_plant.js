@@ -201,13 +201,14 @@ class Plant {
     this.size = plantDef.size;
     this.baseGrowthTime = plantDef.growthTime;
     this.growthTime = plantDef.growthTime;
-    
+    this.coldTolerance = plantDef.coldTolerance ?? 0.5;
+
     // Parse color once and cache RGB values (for procedural rendering)
     const c = color(plantDef.color);
     this.baseR = red(c);
     this.baseG = green(c);
     this.baseB = blue(c);
-    
+
     this.alive = true;
     this.dormant = false;
     this.dormantTimer = 0;
@@ -215,6 +216,7 @@ class Plant {
     this.growth = 1.0;
     this.seasonalModifier = 1.0;
     this.plantTypeModifier = 1.0;
+    this.effectiveModifier = 1.0;   // combined biome + type, drives sprite state
     
     this.isSpawned = false;
     this.parentPlaceable = null;
@@ -260,10 +262,16 @@ class Plant {
     if (Math.abs(newModifier - this.seasonalModifier) > 0.01) {
       this.seasonalModifier = newModifier;
     }
-    
+
     // Get plant-type specific modifier (for patotara berries, etc.)
     this.plantTypeModifier = seasonManager.getPlantTypeModifier(this.type);
-    
+
+    // Combined modifier drives sprite state selection so species within the
+    // same biome show different visual states during glacials. Clamped so the
+    // thriving threshold (>1.1) is reachable for cold-hardy types even when
+    // the biome modifier is depressed.
+    this.effectiveModifier = this.seasonalModifier * this.plantTypeModifier;
+
     this.checkDormancy(seasonManager);
     
     if (this.dormant) {
@@ -276,16 +284,22 @@ class Plant {
   
   checkDormancy(seasonManager) {
     if (this.dormant || !this.alive) return;
-    
-    // Summer uses wilting sprites instead of dormancy for harsh conditions
-    if (seasonManager.currentKey === 'summer') return;
-    
+
+    // The interglacial (warmest phase) has no dormancy — plants stay in leaf.
+    if (seasonManager.currentKey === 'interglacial') return;
+
     if (seasonManager.shouldPlantBeDormant(this.elevation, this.biomeKey)) {
-      const dormancyChance = seasonManager.getDormancyChance();
-      
-      if (seasonManager.justChanged && random() < dormancyChance) {
+      // Cold-tolerant species (tussock 1.0, matagouri 0.95) resist dormancy;
+      // sensitive ones (fern 0.1, kawakawa 0.15) succumb easily. The base
+      // dormancy chance from the phase is scaled by (1 - coldTolerance), so a
+      // tussock at coldTolerance 1.0 multiplies the chance by 0, never going
+      // dormant from cold alone.
+      const baseDormancyChance = seasonManager.getDormancyChance();
+      const speciesChance = baseDormancyChance * (1 - this.coldTolerance);
+
+      if (seasonManager.justChanged && random() < speciesChance) {
         this.goDormant();
-      } else if (this.seasonalModifier < 0.25 && this.growth > 0.5 && random() < 0.01) {
+      } else if (this.effectiveModifier < 0.2 && this.growth > 0.5 && random() < 0.008 * (1 - this.coldTolerance)) {
         this.goDormant();
       }
     }
@@ -365,7 +379,13 @@ class Plant {
       return 'dormant';
     }
 
-    if (this.seasonalModifier < 0.5) {
+    // effectiveModifier combines the biome modifier (same for all plants in a
+    // zone) with the per-species type modifier, so a glacial podocarp forest
+    // can show fern wilting, beech holding mature, and tussock thriving — all
+    // in adjacent cells.
+    const eff = this.effectiveModifier;
+
+    if (eff < 0.5) {
       return 'wilting';
     }
 
@@ -375,7 +395,7 @@ class Plant {
       return 'growing';
     }
 
-    if (this.seasonalModifier > 1.1 && this.growth > 0.7) {
+    if (eff > 1.1 && this.growth > 0.7) {
       return 'thriving';
     }
 

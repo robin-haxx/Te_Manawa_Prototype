@@ -55,15 +55,14 @@ const InstallHUD = {
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        InstallHUD.initStormCells(g); },
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
-    // Eruption is press-and-hold, not tap-to-reset. A tap could be spammed, and
-    // a stream of full-screen ash flashes is exactly the photosensitivity case
-    // TEMANAWA_BUILD_V3.md §3 rules out — so a tap erupts (ash flash + soft
-    // reset) but is rate-limited by erCooldownMs, and HOLDING for erLongPressMs
-    // reseeds the land (the expensive init()). The flash ramps up across the
-    // hold so the reseed lands under an already-bright frame. Phase 6 will swap
-    // the tap's soft reset for disturb('ash') + a wetland-weighted growth pulse
-    // (PLAN_V2 §4); until those fields exist it falls back to the kiosk's soft
-    // reset, the same path the attract loop uses. See erDown/erUp/renderAshFlash.
+    // Eruption is a press-and-hold TIME-NAVIGATION control between the volcanic events
+    // (plan §3). A TAP reverts to the previous (older) eruption and replays it; a HOLD
+    // (erLongPressMs) skips forward to the next (younger) one, wrapping to Kidnappers past
+    // Whakamaru. Both do a soft regen + terrain morph to that year + the event's ash
+    // clearing (Game.applyEruptionAt), so the visitor watches the land recover. A tap is
+    // rate-limited by erCooldownMs and the flash ramps across a hold, keeping full-screen
+    // luminance changes inside the photosensitivity budget (TEMANAWA_BUILD_V3.md §3). See
+    // erDown/erUp/fireEruption/fireEruptionReseed/renderAshFlash.
     { id: 'reset',  key: '4', label: 'ERUPTION',
       action: (g) => InstallHUD.erDown(g),   // press-down only arms the interaction
       onUp:   (g) => InstallHUD.erUp(g),     // release taps unless the hold already reseeded
@@ -96,6 +95,7 @@ const InstallHUD = {
         b.def.action(ui.game);
         return true;
       }
+          
     }
     const H = ui.config.canvasHeight;
     // Swallow clicks landing on either strip so they don't fall through to the map.
@@ -109,7 +109,7 @@ const InstallHUD = {
     for (const b of this.BUTTONS) if (b.onUp) b.onUp(ui.game);
   },
 
-  // ---- eruption: tap to erupt, hold to reseed --------------
+  // ---- eruption: tap = revert to previous event, hold = skip to next ----
   // Press-down only arms the interaction; whether it becomes a tap or a long
   // press is decided later (on release, or by update() at the hold threshold),
   // so the one button can do two things. The guard makes OS key-repeat — which
@@ -128,29 +128,37 @@ const InstallHUD = {
     if (!fired) this.fireEruption(g);
   },
 
-  // A tap: ash flash + soft reset (living world only, terrain kept). Swallowed
-  // inside the cooldown, so the button cannot be spammed into a flash strobe.
+  // A tap: REVERT to the previous (older) eruption and replay it — soft regen from the
+  // cleared state (plan §3.2). Ash flash + Game.applyEruptionAt does the seek/morph/clear.
+  // No-op at/older than the first event (prevEruption null). Swallowed inside the cooldown
+  // so the button cannot be spammed into a flash strobe.
   fireEruption(g) {
     const now = millis();
     if (now < (g._tmErCooldownUntil || 0)) return false;
+    const y = (typeof DeepTime !== 'undefined') ? DeepTime.prevEruption(DeepTime.yearsBP) : null;
+    if (y == null) return false;                   // nothing older to revert to
     g._tmAshUntil = now + TM_TIME.ashMillis;
     g._tmAshMode  = 'tap';                         // flash rises and falls
     g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
-    if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption', { reseed: false });
+    if (typeof g.applyEruptionAt === 'function') g.applyEruptionAt(y, DeepTime.eruptionByYear(y));
+    else if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption', { reseed: false });
     return true;
   },
 
-  // A long press: reseed the land (Game.init — the expensive terrain rebuild).
-  // The charge ramp in renderAshFlash has driven the flash to full by the time
-  // this fires, so the init() hitch lands under a bright frame and the flash
-  // falls from that peak (no second rise). Fired from update() at the threshold.
+  // A long press: SKIP forward to the next (younger) eruption and fire its clearing (plan
+  // §3.2); wraps to Kidnappers past Whakamaru — Oruanui is terminal (§3.5). The charge ramp
+  // in renderAshFlash has driven the flash to full by the time this fires, so the morph hitch
+  // lands under a bright frame and the flash falls from that peak. Fired from update() at the
+  // threshold.
   fireEruptionReseed(g) {
     const now = millis();
-    g._tmErFired = true;                           // release must not also tap-erupt
+    g._tmErFired = true;                           // release must not also revert
     g._tmAshUntil = now + TM_TIME.ashMillis;
     g._tmAshMode  = 'hold';                         // flash falls from the charged peak
     g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
-    if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption-reseed', { reseed: true });
+    const y = (typeof DeepTime !== 'undefined') ? DeepTime.nextEruption(DeepTime.yearsBP) : null;
+    if (y != null && typeof g.applyEruptionAt === 'function') g.applyEruptionAt(y, DeepTime.eruptionByYear(y));
+    else if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption-reseed', { reseed: true });
   },
 
   // ==========================================================
@@ -298,14 +306,17 @@ const InstallHUD = {
     if (cells && typeof placeableSprites !== 'undefined' && placeableSprites.loaded) {
       noStroke();
       imageMode(CENTER);
+      noTint();                       // clouds fade via globalAlpha (#7), not tint()
+      const _dc = drawingContext;
       for (let i = 0; i < cells.length; i++) {
         const c = cells[i];
         const sp = placeableSprites[c.sprite];
         if (!sp) continue;
         const size = 64 * c.scale * z;
-        tint(255, c.alpha * env);
+        _dc.globalAlpha = c.alpha * env;
         image(sp, zx + c.x * z, zy + (c.y + Math.sin(c.bobPhase) * 2) * z, size, size);
       }
+      _dc.globalAlpha = 1;
       const b = g._tmBolt;
       if (b && b.active && placeableSprites.bolt) {
         push();

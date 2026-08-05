@@ -155,7 +155,15 @@ const EntitySprites = {
   },
   loaded: false,
   loadAttempted: false,
-  
+
+  // Per-species tinted sprite variants, baked ONCE per unique tint (keyed
+  // "r,g,b") the first time that species renders, then reused every frame —
+  // replacing the per-moa, per-frame tint() composite in moa.render (#6). Same
+  // idiom as the terrain: colours baked, not read per frame. This is a one-time
+  // cache warm, not per-frame allocation; it survives soft resets (sprites are
+  // not reloaded) and a hard reload re-bakes it lazily.
+  _tintCache: {},
+
   animation: {
     moaWalkSpeed: 0.12,
     eagleFlySpeed: 0.15,
@@ -260,6 +268,52 @@ const EntitySprites = {
     if (set !== this.moa) return this.getMoaSprite(animTime, isMoving, isJuvenile);
 
     return null;
+  },
+
+  // Bake one tinted copy of a loaded frame into an offscreen buffer, so the tint
+  // is applied once here instead of per draw. Falls back to the untinted frame if
+  // it hasn't loaded yet (so a not-yet-loaded frame is never cached as tinted).
+  _bakeTintedFrame(img, r, g, b) {
+    if (!this.isValid(img)) return img;
+    const gph = createGraphics(img.width, img.height);
+    gph.pixelDensity(1);
+    gph.clear();
+    gph.tint(r, g, b);
+    gph.image(img, 0, 0);
+    gph.noTint();
+    return gph;
+  },
+
+  // Get (baking on first use) the tinted mirror of the generic moa set for a tint.
+  _ensureTintSet(tint) {
+    const key = tint[0] + ',' + tint[1] + ',' + tint[2];
+    let set = this._tintCache[key];
+    if (set) return set;
+    const r = tint[0], g = tint[1], b = tint[2];
+    set = { walk: [], idle: null, juvenileWalk: [] };
+    for (const f of this.moa.walk) set.walk.push(this._bakeTintedFrame(f, r, g, b));
+    set.idle = this._bakeTintedFrame(this.moa.idle, r, g, b);
+    for (const f of this.moa.juvenileWalk) set.juvenileWalk.push(this._bakeTintedFrame(f, r, g, b));
+    this._tintCache[key] = set;
+    return set;
+  },
+
+  // Like getMoaSprite, but returns a PRE-TINTED frame for `tint` ([r,g,b]). Frame
+  // selection mirrors getMoaSprite exactly so the animation is identical; only the
+  // source is the baked tinted mirror — no tint() call per frame (#6).
+  getMoaSpriteTinted(animTime, isMoving, isJuvenile, tint) {
+    if (!tint) return this.getMoaSprite(animTime, isMoving, isJuvenile, null);
+    const set = this._ensureTintSet(tint);
+    if (isJuvenile && set.juvenileWalk.length > 0) {
+      const jf = Math.floor(animTime * this.animation.moaWalkSpeed) % set.juvenileWalk.length;
+      if (this.isValid(set.juvenileWalk[jf])) return set.juvenileWalk[jf];
+    }
+    if (isMoving && set.walk.length > 0) {
+      const fi = Math.floor(animTime * this.animation.moaWalkSpeed) % set.walk.length;
+      if (this.isValid(set.walk[fi])) return set.walk[fi];
+    }
+    if (this.isValid(set.idle)) return set.idle;
+    return this.getMoaSprite(animTime, isMoving, isJuvenile, null);
   },
 
   getEagleSprite(animTime, state) {

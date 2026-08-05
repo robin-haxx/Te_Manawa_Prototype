@@ -126,6 +126,16 @@ const Kiosk = {
   tick() {
     const now = Date.now();
 
+    // 0. Hidden tab -> the browser throttles/pauses requestAnimationFrame, so the
+    //    heartbeat stops WITHOUT anything being wrong. That is a dev-environment
+    //    state (tab switch, DevTools, screenshots) — the kiosk panel is never
+    //    hidden. Treat it as time-not-passing rather than a stall, otherwise
+    //    authoring sessions live in a reload loop.
+    if (typeof document !== 'undefined' && document.hidden) {
+      this.lastHeartbeat = now;
+      return;
+    }
+
     // 1. Frame loop stalled -> hard reload. Catches a thrown draw() and a
     //    lost graphics context, neither of which the p5 loop can recover from.
     if (now - this.lastHeartbeat > this.watchdogSeconds * 1000) {
@@ -186,11 +196,28 @@ const Kiosk = {
       if (g.ui && g.ui.messages) g.ui.messages.length = 0;
 
       // Rebuild from memory — no loadImage, no loadSound, no network.
-      // resetEcosystem() keeps the terrain and its baked season buffers and
-      // only replaces the living world, which is ~95% cheaper than init().
       let reseed = (this.resetCount + 1) % this.reseedEvery === 0;
       if (opts && typeof opts.reseed === 'boolean') reseed = opts.reseed;
-      if (reseed) g.init(); else g.resetEcosystem();
+
+      // Return to the LAST ERUPTION rather than the far start (user request): an idle or
+      // end-of-window reset seeks back to the previous eruption checkpoint and replays it
+      // (Game.applyEruptionAt), so the ambient loop cycles on the eruptions instead of
+      // restarting the whole 1 Ma every time. Exceptions:
+      //   · a periodic reseed (every reseedEvery) is a deliberate FULL restart at 1 Ma — it
+      //     also varies the land, and lets the whole cycle (emergence onward) replay;
+      //   · before the first eruption (no prior), a plain rebuild at the current start.
+      // NOTE: applyEruptionAt morphs the terrain to the eruption year, so this reset is
+      // heavier than the bare resetEcosystem() swap — but it is crossfaded and infrequent
+      // (idle / once per cycle), well short of the watchdog. See TEMANAWA_BUILD_V3.md §5.1.
+      const beforeYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null;
+      const lastEr = (typeof DeepTime !== 'undefined' && beforeYear != null) ? DeepTime.prevEruption(beforeYear) : null;
+      if (!reseed && lastEr != null && typeof g.applyEruptionAt === 'function') {
+        g.applyEruptionAt(lastEr, DeepTime.eruptionByYear(lastEr));   // back to the last eruption
+      } else if (reseed) {
+        g.init();                                                     // full restart at 1 Ma (+ reseed the land)
+      } else {
+        g.resetEcosystem();                                          // before the first eruption → rebuild at start
+      }
 
       this.resetCount++;
       this.lastResetMs = Date.now();

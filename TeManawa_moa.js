@@ -192,7 +192,7 @@ class Moa extends Boid {
     // Smooth 0..1 "winterness": ramps up across late autumn, holds at 1 through
     // winter, fades across the winter->spring thaw. Winter penalties scale by
     // this instead of snapping on at the hard season boundary.
-    c.winterness = sm.getWinterness ? sm.getWinterness() : (c.key === 'winter' ? 1 : 0);
+    c.winterness = sm.getWinterness ? sm.getWinterness() : (c.key === 'fullGlacial' ? 1 : 0);
     const sp = sm.getPreferredElevation();
     const pp = this.speciesConfig.preferredElevation || sp;
     c.preferredElevation.min = (pp.min + sp.min) * 0.5;
@@ -718,7 +718,6 @@ class Moa extends Boid {
       return;
     }
     
-    const aliveEggs = simulation.eggs.filter(e => e.alive && !e.hatched);
     const egg = simulation.addEgg(this.pos.x, this.pos.y);
     egg.speedBonus = this.eggSpeedBonus;
     if (this.speciesKey) egg.parentSpecies = this.speciesKey;
@@ -1098,7 +1097,14 @@ class Moa extends Boid {
     if (!this.alive) return;
 
     const variant = this.speciesConfig.spriteSet;
-    const sprite = EntitySprites.getMoaSprite(this.animTime, this.vel.magSq() > 0.01, this.isJuvenile(), variant);
+    // Per-species tint (by genus), baked into the sprite once (EntitySprites
+    // caches the tinted frames) instead of a tint() composite every frame (#6).
+    // Skip it for species with their own dedicated sprite set (e.g. bush moa).
+    const _tint = variant ? null : this.speciesConfig.tint;
+    const _moving = this.vel.magSq() > 0.01;
+    const sprite = _tint
+      ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, this.isJuvenile(), _tint)
+      : EntitySprites.getMoaSprite(this.animTime, _moving, this.isJuvenile(), variant);
     if (!sprite) return;
     
     push();
@@ -1134,10 +1140,7 @@ class Moa extends Boid {
     const flip = (this._flip !== undefined) ? this._flip : 1;
     scale(flip, 1 + (1 - Math.abs(flip)) * 0.18);
     
-    // Per-species tint (by genus), but skip it for species with their own
-    // dedicated sprite set (e.g. bush moa) so their art shows unaltered.
-    const _tint = variant ? null : this.speciesConfig.tint;
-    if (_tint) tint(_tint[0], _tint[1], _tint[2]);
+    noTint();   // the sprite is already tinted (baked once); avoid a stray double-tint
     imageMode(CENTER);
     const _drawSize = this.size * 2.5 * (this.speciesConfig.spriteScale || 1);
     image(sprite, 0, 0, _drawSize, _drawSize);

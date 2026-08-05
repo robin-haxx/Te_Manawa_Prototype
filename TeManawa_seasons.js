@@ -1,167 +1,143 @@
-// mauri_seasons.js
+// TeManawa_seasons.js
+//
+// GLACIAL CYCLE — not seasons.
+// =============================================================================
+// This module is parent-game residue. It began life as a four-SEASON cycle on a
+// short frame timer. In Te Manawa there are no seasons — there is only the
+// glacial cycle, and it is keyed to DEEP TIME.
+//
+// The class name (SeasonManager) and its method/field names are KEPT so the ~8
+// files that call into it keep working unchanged. But everything it MODELS is now
+// a point on the interglacial → full-glacial gradient, and its DRIVER is
+// Climate.glacialIndexAt(DeepTime.yearsBP), NOT a timer. Nothing here cycles on
+// its own any more; scrub the deep-time clock and the cold state follows.
+//
+//   phase   = interglacial | cooling | glacial | fullGlacial   (warm → cold)
+//   winterness (kept name) == the glacial index, 0..1
+//
+// The four phases also key the four baked terrain buffers and their snow lines
+// (TerrainGenerator.seasonBuffers / seasonSnowLines). See
+// md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §1.1.
+// =============================================================================
 
 // ============================================
-// SEASON DEFINITIONS
+// GLACIAL PHASE DEFINITIONS  (warmest → coldest)
 // ============================================
-const SEASONS = {
-  summer: {
-    name: "Summer",
-    icon: "☀️",
-    color: '#f4a460',
-    plantModifiers: {
-      coastal: 0.2, grassland: 0.3, podocarp: 0.4,
-      montane: 0.9, subalpine: 1.3,
-      // Glacial biomes: brief high-country growth, parched lowland flats
-      glacialFlats: 0.6, shrubland: 0.8, forestRefuge: 1.0
-    },
-    plantTypeModifiers: {
-      patotara: 1.8,  // Peak berry season
-      rimu: 1.6,      // Summer fruiting
-      coprosma: 1.3, dracophyllum: 1.2, matagouri: 1.2
-    },
-    preferredElevation: { min: 0.50, max: 0.78 },
-    migrationStrength: 0.8,
-    hungerModifier: 1.15,
-    snowLine: 0.92,
-    description: "Lowlands dry out. Moa migrate to alpine meadows.",
-    dormancyElevation: 0.35,
-    dormancyChance: 0.4
-  },
-  
-  autumn: {
-    name: "Autumn",
-    icon: "🍂",
-    color: '#d2691e',
-    plantModifiers: {
-      coastal: 0.6, grassland: 1.0, podocarp: 1.2,
-      montane: 1.0, subalpine: 0.6,
-      // Glacial biomes: forest fruits, browse ripens on the flats
-      glacialFlats: 1.0, shrubland: 1.1, forestRefuge: 1.2
-    },
-    plantTypeModifiers: {
-      patotara: 1.5,  // Late berry season
-      rimu: 1.3,      // Late fruiting
-      coprosma: 1.5, dracophyllum: 1.0, matagouri: 0.9
-    },
-    preferredElevation: { min: 0.30, max: 0.58 },
+// These are the anchors the deep-time glacial index blends between. Modifiers
+// use REAL biome keys (sea/coastal/grassland/podocarp/montane/subalpine/…) and
+// REAL plant types (tussock/flax/fern/rimu/beech); anything missing falls back
+// to 1.0. No `icon` field — visitor-facing UI is drawn glyphs only, no emoji.
+const GLACIAL_PHASES = {
+  interglacial: {
+    name: "Interglacial",
+    color: '#6ba36b',
+    plantModifiers: { coastal: 1.0, grassland: 1.0, podocarp: 1.2, montane: 1.2, subalpine: 0.9 },
+    plantTypeModifiers: { rimu: 1.4, beech: 1.3, fern: 1.4, tussock: 0.7, flax: 0.9 },
+    preferredElevation: { min: 0.40, max: 0.72 },   // moa range high into forest / subalpine
     migrationStrength: 0.5,
     hungerModifier: 0.9,
-    snowLine: 0.85,
-    description: "Forests fruit. Moa descend to feast.",
+    snowLine: 0.92,
+    description: "Forest climbs high; the ranges green to the treeline.",
     dormancyElevation: null,
     dormancyChance: 0
   },
-  
-  winter: {
-    name: "Winter",
-    icon: "❄️",
-    color: '#87ceeb',
-    plantModifiers: {
-      coastal: 0.7, grassland: 0.8, podocarp: 0.7,
-      montane: 0.3, subalpine: 0.1,
-      // Glacial winter: flats freeze, forest refuge is the last larder (and gets crowded)
-      glacialFlats: 0.4, shrubland: 0.5, forestRefuge: 0.7
-    },
-    plantTypeModifiers: {
-      patotara: 0.3,  // No berries, just foliage
-      rimu: 0.5,      // Dormant, no fruit
-      coprosma: 0.5, dracophyllum: 0.7, matagouri: 0.4
-    },
-    preferredElevation: { min: 0.18, max: 0.42 },
-    migrationStrength: 1.0,
-    hungerModifier: 1.25,
-    snowLine: 0.77,
-    description: "Alpine areas freeze. Moa shelter in lowland forests.",
-    dormancyElevation: 0.55,
-    dormancyChance: 0.6,
+
+  cooling: {
+    name: "Cooling",
+    color: '#8a9a5b',
+    plantModifiers: { coastal: 0.9, grassland: 1.1, podocarp: 1.0, montane: 0.8, subalpine: 0.8 },
+    plantTypeModifiers: { rimu: 1.0, beech: 1.0, fern: 0.9, tussock: 1.0, flax: 1.0 },
+    preferredElevation: { min: 0.32, max: 0.60 },
+    migrationStrength: 0.6,
+    hungerModifier: 1.0,
+    snowLine: 0.80,
+    description: "The treeline eases downslope; scrub gains the tops.",
+    dormancyElevation: 0.62,
+    dormancyChance: 0.3,
     dormancyAbove: true
   },
-  
-  spring: {
-    name: "Spring",
-    icon: "🌸",
-    color: '#98fb98',
-    plantModifiers: {
-      coastal: 0.9, grassland: 1.3, podocarp: 1.1,
-      montane: 0.8, subalpine: 0.5,
-      // Glacial spring: melt brings new growth to the low flats
-      glacialFlats: 1.2, shrubland: 1.0, forestRefuge: 0.9
-    },
-    plantTypeModifiers: {
-      patotara: 0.6,  // Flowering, few berries yet
-      rimu: 0.8,      // Budding
-      coprosma: 0.8, dracophyllum: 1.0, matagouri: 1.1
-    },
-    preferredElevation: { min: 0.22, max: 0.52 },
-    migrationStrength: 0.6,
-    hungerModifier: 0.85,
-    snowLine: 0.82,
-    description: "New growth emerges. Best time for nesting.",
-    dormancyElevation: 0.65,
-    dormancyChance: 0.3,
+
+  glacial: {
+    name: "Glacial",
+    color: '#b7b393',
+    plantModifiers: { coastal: 0.8, grassland: 1.2, podocarp: 0.6, montane: 0.4, subalpine: 0.6 },
+    plantTypeModifiers: { rimu: 0.6, beech: 0.6, fern: 0.4, tussock: 1.3, flax: 1.1 },
+    preferredElevation: { min: 0.22, max: 0.48 },
+    migrationStrength: 0.8,
+    hungerModifier: 1.15,
+    snowLine: 0.67,
+    description: "Forest falls back to sheltered pockets; tussock takes the flats.",
+    dormancyElevation: 0.50,
+    dormancyChance: 0.5,
+    dormancyAbove: true
+  },
+
+  fullGlacial: {
+    name: "Full glacial",
+    color: '#cfd3d6',
+    plantModifiers: { coastal: 0.7, grassland: 1.0, podocarp: 0.3, montane: 0.15, subalpine: 0.4 },
+    plantTypeModifiers: { rimu: 0.3, beech: 0.3, fern: 0.15, tussock: 1.4, flax: 1.0 },
+    preferredElevation: { min: 0.15, max: 0.40 },   // moa forced onto the low outwash flats
+    migrationStrength: 1.0,
+    hungerModifier: 1.3,
+    snowLine: 0.55,
+    description: "Grassland and herbfield; forest only in the refugia. Tree ferns gone.",
+    dormancyElevation: 0.38,
+    dormancyChance: 0.65,
     dormancyAbove: true
   }
 };
 
+// Back-compat alias in case any older reference still reads SEASONS.
+const SEASONS = GLACIAL_PHASES;
+
 // ============================================
-// STATIC MIGRATION DATA (extracted from methods)
+// MIGRATION COPY — keyed by glacial phase (co-design placeholder text)
 // ============================================
 const MIGRATION_PATTERNS = {
   upland_moa: {
-    summerHabitat: 'subalpine tussock',
-    winterHabitat: 'podocarp forest',
-    summer: {
-      current: "Upland Moa are grazing in the high subalpine meadows.",
-      upcoming: "As autumn approaches, Upland Moa will begin moving downhill."
-    },
-    autumn: {
-      current: "Upland Moa are migrating down to the forests for winter.",
-      upcoming: "Upland Moa will shelter in the podocarp forest through winter."
-    },
-    winter: {
-      current: "Upland Moa are sheltering in the podocarp forest.",
-      upcoming: "When spring arrives, Upland Moa will start moving uphill."
-    },
-    spring: {
-      current: "Upland Moa are migrating up to the subalpine zone.",
-      upcoming: "Upland Moa will spend summer in the high meadows."
-    }
+    interglacial: { current: "Upland Moa graze the high subalpine meadows.",  upcoming: "As the cold comes on, they will move downhill." },
+    cooling:      { current: "Upland Moa are moving down off the tops.",      upcoming: "They will shelter in the forest as the glacial deepens." },
+    glacial:      { current: "Upland Moa hold in the forest pockets.",        upcoming: "If it warms, they will climb back to the meadows." },
+    fullGlacial:  { current: "Upland Moa crowd the last forest refugia.",     upcoming: "They wait out the ice on the sheltered ground." }
   }
 };
 
 const MIGRATION_HINTS = {
   upland_moa: {
-    summer: { direction: '↑', text: 'High meadows', detail: 'Upland Moa thrive in subalpine terrain' },
-    autumn: { direction: '↓', text: 'Moving downhill', detail: 'Migrating to forest for winter' },
-    winter: { direction: '↓', text: 'Forest shelter', detail: 'Sheltering in the forest refuge' },
-    spring: { direction: '↑', text: 'Moving uphill', detail: 'Returning to subalpine meadows' }
+    interglacial: { direction: '↑', text: 'High meadows',   detail: 'Ranging into subalpine and forest' },
+    cooling:      { direction: '↓', text: 'Moving downhill', detail: 'Descending as the treeline drops' },
+    glacial:      { direction: '↓', text: 'Forest pockets',  detail: 'Holding in sheltered refugia' },
+    fullGlacial:  { direction: '·', text: 'On the flats',    detail: 'Forced onto the low outwash country' }
   },
   little_bush_moa: {
-    summer: { direction: '·', text: 'In the forest', detail: 'Little Bush Moa stay in the closed forest refuge' },
-    autumn: { direction: '·', text: 'Feasting on mast', detail: 'Feeding on beech and rimu fruit' },
-    winter: { direction: '·', text: 'Forest-bound', detail: 'Crowding the shrinking winter forest' },
-    spring: { direction: '·', text: 'Nesting in cover', detail: 'Breeding under the canopy' }
+    interglacial: { direction: '·', text: 'In the forest', detail: 'Closed-forest bird, broad canopy' },
+    cooling:      { direction: '·', text: 'Forest holds',  detail: 'Canopy still broad' },
+    glacial:      { direction: '·', text: 'Forest shrinks', detail: 'Crowding the refugia' },
+    fullGlacial:  { direction: '·', text: 'Refugia only',  detail: 'Confined to sheltered pockets' }
   },
   stout_legged_moa: {
-    summer: { direction: '↓', text: 'Open flats', detail: 'Stout-legged Moa graze the glacial outwash flats' },
-    autumn: { direction: '↓', text: 'Browsing shrubland', detail: 'Feeding on coprosma and matagouri' },
-    winter: { direction: '↓', text: 'Hard on the flats', detail: 'Frozen flats force a lean winter' },
-    spring: { direction: '↓', text: 'New growth below', detail: 'Melt greens the low country' }
+    interglacial: { direction: '↓', text: 'Open ground', detail: 'Grazing flats and margins' },
+    cooling:      { direction: '↓', text: 'Open ground', detail: 'Browsing spreading shrubland' },
+    glacial:      { direction: '↓', text: 'Grassland',   detail: 'The open country suits it' },
+    fullGlacial:  { direction: '↓', text: 'Grassland',   detail: 'At home on the glacial flats' }
   }
 };
 
 // ============================================
-// SEASON MANAGER
+// GLACIAL-PHASE MANAGER  (named SeasonManager for call-site compatibility)
 // ============================================
 class SeasonManager {
   constructor(config) {
     this.config = config;
-    this.seasonOrder = ['summer', 'autumn', 'winter', 'spring'];
+    // Warm → cold. Field kept as `seasonOrder` because TeManawa_placeable.js reads
+    // it directly; it now holds GLACIAL PHASE keys, not seasons.
+    this.seasonOrder = ['interglacial', 'cooling', 'glacial', 'fullGlacial'];
     this.currentSeasonIndex = (config && config.startSeasonIndex) ? config.startSeasonIndex : 0;
-    this.timer = 0;
     this.transitionProgress = 0;
     this.justChanged = false;
-    
+    this.glacialIndex = 0;              // the driver, sampled each update from deep time
+
     // Reusable elevation object (avoid allocation per call)
     this._elevationResult = { min: 0, max: 0 };
 
@@ -169,40 +145,47 @@ class SeasonManager {
     this._fbFrame = -1;
     this._fbCache = null;
   }
-  
-  get current() { return SEASONS[this.seasonOrder[this.currentSeasonIndex]]; }
-  get currentKey() { return this.seasonOrder[this.currentSeasonIndex]; }
-  get next() { return SEASONS[this.seasonOrder[(this.currentSeasonIndex + 1) % 4]]; }
-  get nextKey() { return this.seasonOrder[(this.currentSeasonIndex + 1) % 4]; }
-  get progress() { return this.timer / this.config.seasonDuration; }
 
-  // 0..1 "how wintry it looks" — ramps up across the autumn->winter transition,
-  // holds at 1 through winter, and fades back to 0 across the winter->spring
-  // transition. Used to fade the frost overlay so it glides rather than snaps.
+  get current()    { return GLACIAL_PHASES[this.seasonOrder[this.currentSeasonIndex]]; }
+  get currentKey() { return this.seasonOrder[this.currentSeasonIndex]; }
+  // Next COLDER phase, clamped (full glacial has no colder neighbour — no wrap).
+  get next()       { return GLACIAL_PHASES[this.seasonOrder[Math.min(this.currentSeasonIndex + 1, this.seasonOrder.length - 1)]]; }
+  get nextKey()    { return this.seasonOrder[Math.min(this.currentSeasonIndex + 1, this.seasonOrder.length - 1)]; }
+  get progress()   { return this.glacialIndex || 0; }   // repurposed: how deep into the cold
+
+  // 0..1 "winterness" — KEPT NAME, now == the glacial index (0 interglacial, 1 full
+  // glacial). Every cold response (frost haze, moa habitat stress, breeding, forest
+  // competition) reads this, so re-sourcing it here rebinds the whole sim to deep
+  // time at one point.
   getWinterness() {
-    const k = this.currentKey;
-    if (k === 'winter') {
-      return this.nextKey === 'spring' ? 1 - this.transitionProgress : 1;
-    }
-    if (k === 'autumn' && this.transitionProgress > 0 && this.nextKey === 'winter') {
-      return this.transitionProgress;
-    }
-    return 0;
+    return this.glacialIndex != null ? this.glacialIndex : 0;
   }
-  
+
+  _sampleGlacialIndex() {
+    if (typeof Climate === 'undefined') return this.glacialIndex || 0;
+    const yr = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : this.config.yearsStart;
+    return Climate.glacialIndexAt(yr);
+  }
+
+  // Driven by the deep-time glacial index, NOT dt. Maps g∈[0,1] onto the four
+  // phases (p = g·3): the floor is the current phase, the next colder phase is the
+  // blend target, and the fraction is transitionProgress — so the snow line, the
+  // baked-buffer crossfade and every modifier glide continuously across the cycle.
+  // Returns true when the discrete phase index changes (a phase boundary crossed),
+  // which Game/Simulation use to fire onSeasonChange().
   update(dt = 1) {
-    this.timer += dt;
     this.justChanged = false;
-    
-    const transitionStart = this.config.seasonDuration * 0.85;
-    this.transitionProgress = this.timer >= transitionStart
-      ? (this.timer - transitionStart) / (this.config.seasonDuration * 0.15)
-      : 0;
-    
-    if (this.timer >= this.config.seasonDuration) {
-      this.timer = 0;
-      this.currentSeasonIndex = (this.currentSeasonIndex + 1) % 4;
-      this.transitionProgress = 0;
+    const g = this._sampleGlacialIndex();
+    this.glacialIndex = g;
+
+    const n = this.seasonOrder.length;                 // 4
+    const p = g * (n - 1);                              // 0..3
+    let idx = Math.floor(p);
+    if (idx < 0) idx = 0; else if (idx > n - 1) idx = n - 1;
+    this.transitionProgress = (idx >= n - 1) ? 0 : (p - idx);
+
+    if (idx !== this.currentSeasonIndex) {
+      this.currentSeasonIndex = idx;
       this.justChanged = true;
       return true;
     }
@@ -212,11 +195,8 @@ class SeasonManager {
   // ============================================
   // UNIFIED LERP HELPER
   // ============================================
-  
-  /**
-   * Get a value from current season, with smooth transition to next.
-   * Works for any numeric property path.
-   */
+
+  /** Value from the current phase, blended toward the next colder phase. */
   _lerpSeasonal(getCurrentVal, getNextVal) {
     const current = getCurrentVal();
     if (this.transitionProgress > 0) {
@@ -243,21 +223,22 @@ class SeasonManager {
   getSnowCoverage(elevation) {
     const snowLine = this.getSnowLineElevation();
     const fullSnowLine = 0.9;
-    
+
     if (elevation >= fullSnowLine) return 1.0;
     if (elevation >= snowLine) return map(elevation, snowLine, fullSnowLine, 0.3, 1.0);
     return 0;
   }
 
-  // Forest productive band — contracts seasonally (treeline retreats in the
-  // glacial). Lerped smoothly per frame like the snow line, so no biome
-  // reclassification is needed (avoids stutter). Cached per frame. Returns
-  // null when the level does not enable forest contraction.
+  // Forest productive band — contracts as the glacial deepens (treeline drops,
+  // forest falls back to refugia). Lerped smoothly per frame like the snow line, so
+  // no biome reclassification is needed (avoids stutter). Cached per frame. Returns
+  // null unless the level opts in via LEVEL_MECHANICS.forestContraction +
+  // forestBandByStage (keyed by the four glacial phases). See plan §1.3.
   getForestBand() {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
-    if (!M || !M.forestContraction || !M.forestBandBySeason) return null;
+    const bands = M && M.forestContraction && (M.forestBandByStage || M.forestBandBySeason);
+    if (!bands) return null;
     if (this._fbFrame === frameCount) return this._fbCache;
-    const bands = M.forestBandBySeason;
     const cur = bands[this.currentKey] || M.forestBand;
     let band;
     if (this.transitionProgress > 0) {
@@ -284,14 +265,14 @@ class SeasonManager {
       () => this.next.plantTypeModifiers?.[plantType] || 1.0
     );
   }
-  
+
   getPlantModifier(biomeKey) {
     return this._lerpSeasonal(
       () => this.current.plantModifiers[biomeKey] || 1.0,
       () => this.next.plantModifiers[biomeKey] || 1.0
     );
   }
-  
+
   // ============================================
   // MOA MODIFIERS
   // ============================================
@@ -302,18 +283,18 @@ class SeasonManager {
       () => this.next.hungerModifier
     );
   }
-  
+
   getMigrationStrength() {
     return this._lerpSeasonal(
       () => this.current.migrationStrength,
       () => this.next.migrationStrength
     );
   }
-  
+
   getPreferredElevation() {
     const cur = this.current.preferredElevation;
     const result = this._elevationResult;
-    
+
     if (this.transitionProgress > 0) {
       const nxt = this.next.preferredElevation;
       result.min = lerp(cur.min, nxt.min, this.transitionProgress);
@@ -322,7 +303,7 @@ class SeasonManager {
       result.min = cur.min;
       result.max = cur.max;
     }
-    
+
     return result;
   }
 
@@ -331,14 +312,14 @@ class SeasonManager {
   // ============================================
 
   shouldPlantBeDormant(elevation, biomeKey) {
-    const season = this.current;
-    if (!season.dormancyElevation || season.dormancyChance <= 0) return false;
-    
-    return season.dormancyAbove 
-      ? elevation > season.dormancyElevation
-      : elevation < season.dormancyElevation;
+    const phase = this.current;
+    if (!phase.dormancyElevation || phase.dormancyChance <= 0) return false;
+
+    return phase.dormancyAbove
+      ? elevation > phase.dormancyElevation
+      : elevation < phase.dormancyElevation;
   }
-  
+
   getDormancyChance() {
     return this.current.dormancyChance || 0;
   }
@@ -347,7 +328,6 @@ class SeasonManager {
   // MIGRATION MESSAGING
   // ============================================
 
-  // Extract unique alive species from moa array (shared helper)
   _getSpeciesPresent(moas) {
     const species = new Set();
     for (const moa of moas) {
@@ -358,18 +338,18 @@ class SeasonManager {
 
   getMigrationMessages(moas) {
     const messages = { current: null, upcoming: null };
-    
+
     for (const speciesKey of this._getSpeciesPresent(moas)) {
       const pattern = MIGRATION_PATTERNS[speciesKey];
       if (!pattern) continue;
-      
-      const seasonData = pattern[this.currentKey];
-      if (seasonData) {
-        if (seasonData.current) messages.current = seasonData.current;
-        if (seasonData.upcoming) messages.upcoming = seasonData.upcoming;
+
+      const phaseData = pattern[this.currentKey];
+      if (phaseData) {
+        if (phaseData.current) messages.current = phaseData.current;
+        if (phaseData.upcoming) messages.upcoming = phaseData.upcoming;
       }
     }
-    
+
     return messages;
   }
 

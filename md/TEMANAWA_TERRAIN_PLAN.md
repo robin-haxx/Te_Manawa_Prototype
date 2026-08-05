@@ -1,20 +1,20 @@
 # Te Manawa — Terrain Implementation Plan
 
-> ⛔ **Largely superseded. Read `TEMANAWA_PLAN_V2.md` §7 and `TEMANAWA_BUILD_V3.md` §6
-> first.**
+> ⛔ **Superseded, then partly revived. Read `TEMANAWA_GEOGRAPHY.md`,
+> `TEMANAWA_PLAN_V2.md` §7 and `TEMANAWA_BUILD_V3.md` §6 first.**
 >
-> The keyframe pipeline below — **§3 (manifest and layer format), §4 (the six-step
-> morph) and most of §5 (noise guardrails)** — is **not being built.** Across the
-> installation's window the ranges gain a few hundred metres on a range already
-> 1,500 m high while the vegetation turns over three times, so the topography does not
-> earn a general morph system. It is replaced by **two authored heightmaps blended by
-> `yearsBP`, with a second curve for gorge incision so the river visibly outpaces the
-> uplift**, plus parametric sea level.
+> This doc's keyframe pipeline — **§3 (manifest/layer format), §4 (the six-step morph),
+> §5 (noise guardrails)** — was cut in v2.1, then the *idea* of an authored morph came
+> back in a lighter form. `TEMANAWA_GEOGRAPHY.md` is the built version: **one SVG skeleton
+> (ranges + river), elevation built around it, uplift/incision curves over `yearsBP`** —
+> not the grayscale rasters and override layers below. Read §3–5 for the shape of the
+> argument (bracket-and-blend, clamped noise, guardrails), not as a spec.
 >
-> **Still live and still correct:** §1 (what the engine gives us), §2's split of
-> tectonics from climate, §6 on the biome classifier, **§7 on rendering, the square
-> play area and the interval re-bake** — which is the load-bearing performance section
-> for the whole project — and §8 on plant distribution.
+> **Still live and still correct:** §1 (what the engine gives us), §2's split of tectonics
+> from climate, §6 on the biome classifier, **§7 on rendering and the interval re-bake** —
+> the load-bearing performance section for the whole project — and §8 on plant
+> distribution. (§7's fixed square grid became the adaptive `terrainFit` footprint —
+> `TEMANAWA_REORG.md` §9.)
 
 How the deep-time landscape morphs: **author a few vector "snapshots," let the
 sim interpolate between them, and let bounded procedural noise fill the detail** —

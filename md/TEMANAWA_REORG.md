@@ -381,7 +381,7 @@ and it was the duplicate table, now fixed. The signals that would make it worth 
 
 The natural time is alongside step 5, since both touch `_bakeSeasonBuffer`. A useful
 companion either way is a **re-bake path that skips noise regeneration** — colours only
-affect `_computeBaseCellColors` and the season bakes, not `heightMap` or `biomeIndexMap`, so
+affect `_computePaintGrid` and the season bakes, not `heightMap` or `biomeIndexMap`, so
 re-colouring is ~15 ms rather than the ~1 s of a full `init()`. That turns palette work into
 a live loop instead of a page reload per attempt.
 
@@ -419,11 +419,11 @@ a live loop instead of a page reload per attempt.
 
 `CONFIG.terrainFit`, `'square' | 'fit'`.
 
-**`'square'`** is the Phase 1.5 behaviour, unchanged and still the default: a
-`mapGrid × mapGrid` world letterboxed into the panel. On the 9:16 kiosk the world covers
-about 56% of the screen.
+**`'square'`** is the Phase 1.5 behaviour: a `mapGrid × mapGrid` world letterboxed into
+the panel. On the 9:16 kiosk the world covers about 56% of the screen.
 
-**`'fit'`** takes the screen's aspect at the **same cell count**:
+**`'fit'`** — **now the default** (`CONFIG.terrainFit`, and the scaffold sets it) — takes
+the screen's aspect at the **same cell count**:
 
 ```
 cols = grid·√a     rows = grid/√a      a = canvasWidth / canvasHeight
@@ -464,11 +464,9 @@ authoring-side:
 using `resetEcosystem()` at 17–31 ms. A refit is ~1 s and belongs nowhere near a visitor
 walking up.
 
-**Open question for you, not for the code.** `'fit'` and the Phase 3 authored heightmaps
-pull in opposite directions: `TERRAIN_PLAN.md` §9 wants two hand-authored square
-heightmaps rasterised into the grid, and a non-square grid means either authoring at the
-panel's aspect or sampling a square source non-uniformly. The mode is built so that
-choice can be deferred — a level can declare `terrainFit: 'square'` and pin itself — but
-it should be made before the heightmaps are drawn, not after. Sampling a square authored
-source into a 384×682 grid is straightforward if the source is drawn with margin; it is
-not if it is drawn tight.
+**Resolved by the SVG skeleton.** This once flagged a tension between `'fit'` and the
+Phase 3 authored heightmaps — a non-square grid means sampling a square raster source
+non-uniformly. `TEMANAWA_GEOGRAPHY.md` settles it: the geography is authored as an SVG at
+the target aspect (16:9), normalised to its viewBox and stretched to the footprint, so
+there is no square raster to sample. Author at the panel's aspect and the features stay
+true; a level can still pin `terrainFit: 'square'` if it wants to.
