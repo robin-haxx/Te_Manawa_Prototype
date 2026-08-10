@@ -107,11 +107,51 @@ console.log('draw() x'+frames+' ok');
 // exercise the buttons and the debug overlay
 try{
   const G0=vm.runInContext('game',ctx);
-  for(const k of ['1','2','3','d','d']) G0.handleKey(k);
-  G0.handleKey('4'); G0.handleKeyUp('4');   // eruption is press-and-hold; a tap is down+up
+  for(const k of ['1','2','3','4','d','d']) G0.handleKey(k);   // deep, FOREST, TUSSOCK, storm, debug x2
+  G0.handleKey('5'); G0.handleKeyUp('5');   // eruption is press-and-hold; a tap is down+up
   for(let i=0;i<30;i++) FRAME(ctx.draw);
-  console.log('buttons 1-4 + debug modes ok');
+  console.log('buttons 1-5 + debug modes ok');
 }catch(e){ console.log('INPUT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- two-clock split: deep-time warps LIFE, not the walk cadence -------------
+// A moa's walk cadence (animTime) and ground speed ride the REAL frame dt so they
+// stay calm in 10x fast-forward; aging/hunger/breeding ride the warped sim clock.
+// The contract has three seams — behave() (life), Boid.update() (motion + anim),
+// and simulation.update(dt, rdt) (the wiring) — and this asserts all three. Guards
+// against a regression that re-couples the animation cadence to the deep-time speed
+// (the "sped-up cartoon" look). Reading the code did not catch this class of bug.
+try{
+  const G=vm.runInContext('game',ctx);
+  const sim=G.simulation, season=G.seasonManager;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const m=sim.moas && sim.moas[0];
+  chk(!!m,'a moa exists to exercise the two-clock split');
+  if(m){
+    // (1) behave() is the LIFE clock: it ages the moa but must NOT touch animTime or pos.
+    const a0=m.animTime, px0=m.pos.x, py0=m.pos.y, age0=m.age;
+    m.behave(sim, season, 10);
+    chk(m.animTime===a0,'behave() leaves animTime alone (the walk cadence is not a life event)');
+    chk(m.pos.x===px0 && m.pos.y===py0,'behave() does not move the body (integration lives in update())');
+    chk(Math.abs((m.age-age0)-10)<1e-6,'behave() ages the moa by its warped dt (10)');
+
+    // (2) update() is the MOTION+ANIM clock: animTime and pos advance by ITS dt.
+    // Tiny velocity keeps it under any species speed cap so pos delta is exact.
+    m.vel.set(0.05,0); m.acc.set(0,0); m._speedCap=null;
+    const a1=m.animTime, px1=m.pos.x;
+    m.update(2);
+    chk(Math.abs((m.animTime-a1)-2)<1e-9,'update() advances animTime by its own (real) dt');
+    chk(Math.abs((m.pos.x-px1)-0.1)<1e-6,'update() moves the body by vel*dt (0.05 * 2)');
+
+    // (3) wiring: simulation.update(sdt, rdt) sends the warped dt to behave, the real to update.
+    m.hunger=0; m.alive=true;                 // keep it alive through the tick
+    const a2=m.animTime, age2=m.age;
+    sim.update(10, 1);
+    chk(Math.abs((m.animTime-a2)-1)<1e-6,'sim.update: animation advanced by the REAL dt (1), not the warped 10');
+    chk((m.age-age2)>=9.9,'sim.update: aging advanced by the WARPED dt (~10)');
+  }
+  console.log(fail? `two-clock: ${fail} FAILURES`
+    : 'two-clock split: deep-time warps aging/breeding, not the walk cadence or ground speed');
+}catch(e){ console.log('TWO-CLOCK FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- eruption button: tap = revert to previous event, hold = skip to next ----
 // The Eruption button navigates the four volcanic events on the timeline. A TAP reverts
@@ -136,7 +176,7 @@ try{
   // --- a tap: revert to the previous (older) eruption; terrain kept ------
   DT.seekTo(500000);                                   // between Kaukatea (900k) and Whakamaru (349k)
   const terrTap=G.terrain;
-  G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
+  G.handleKey('5'); ctx.__tick(6); G.handleKeyUp('5');
   chk(DT.yearsBP===900000,'a tap reverts to the previous eruption (Kaukatea, 900 ka)');
   chk(G.terrain===terrTap,'revert keeps the terrain object (soft regen + morph, no reseed)');
   chk(G._tmAshMode==='tap' && G._tmAshUntil>0,'a tap arms the ramped ash flash');
@@ -144,20 +184,20 @@ try{
 
   // --- spam guard: a second tap inside the cooldown does nothing ---------
   const yGuard=DT.yearsBP;
-  ctx.__tick(30); G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');   // < 2 s later
+  ctx.__tick(30); G.handleKey('5'); ctx.__tick(6); G.handleKeyUp('5');   // < 2 s later
   chk(DT.yearsBP===yGuard,'a second tap inside the 2 s cooldown is ignored');
 
   // --- no-op at/older than the first event ------------------------------
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
   DT.seekTo(DT.yearsStart);                            // 1 Ma — nothing older
-  G.handleKey('4'); ctx.__tick(6); G.handleKeyUp('4');
+  G.handleKey('5'); ctx.__tick(6); G.handleKeyUp('5');
   chk(DT.yearsBP===DT.yearsStart,'a tap at the first event is a no-op (nothing older)');
 
   // --- a hold: flash ramps up, then skip to the next (younger) eruption --
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
   DT.seekTo(500000);
   const terrHold=G.terrain;
-  G.handleKey('4');                                     // press & hold
+  G.handleKey('5');                                     // press & hold
   ctx.__tick(30);  const aEarly=ashAlpha();             // ~0.5 s in
   ctx.__tick(60);  const aMid=ashAlpha();               // ~1.5 s in
   chk(aMid>aEarly,`the flash must ramp UP while held (${aEarly.toFixed(0)} -> ${aMid.toFixed(0)})`);
@@ -171,13 +211,13 @@ try{
 
   // --- releasing after a hold must NOT also revert ----------------------
   const yRel=DT.yearsBP;
-  G.handleKeyUp('4');
+  G.handleKeyUp('5');
   chk(DT.yearsBP===yRel,'releasing after a hold does not also revert');
 
   // --- wrap: a hold past Whakamaru wraps forward to Kidnappers -----------
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
   DT.seekTo(200000);                                    // past Whakamaru, before Oruanui
-  G.handleKey('4'); ctx.__tick(Math.ceil(TM.erLongPressMs/16)); G.update(1); G.handleKeyUp('4');
+  G.handleKey('5'); ctx.__tick(Math.ceil(TM.erLongPressMs/16)); G.update(1); G.handleKeyUp('5');
   chk(DT.yearsBP===DT.yearsStart,'a hold past Whakamaru wraps to Kidnappers (1 Ma)');
   settle();
 
@@ -187,6 +227,110 @@ try{
   console.log(fail? `eruption: ${fail} FAILURES`
     : 'eruption nav: tap reverts (prev), hold skips (next, wraps at Whakamaru), cooldown + ramped hold flash');
 }catch(e){ console.log('ERUPTION FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- habitat health: the split-growth lesson keyed to the climate -------------
+// FOREST (warm) growth suits the interglacial, TUSSOCK (cold) growth suits the glacial. The
+// RIGHT press for the current climate holds habitat health (full ground saturation); the WRONG
+// press drains regime-fit and the scene quietly desaturates. Asserts the SIGN of the effect in
+// both climate states — the core of md/TEMANAWA_INTERACTION_HEALTH_PLAN.md step 2. Drives the
+// health update directly (flags forced live via a far-future `until`), so it is millis-clock-
+// independent; regime-fit is read straight off Game (not the slow-slewed _sceneSat).
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const season=G.seasonManager;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const FAR=1e15;
+  const climate=(yr)=>{ DT.seekTo(yr); season.update(1); return season.getWinterness(); };
+  const drive=(warmUntil,coldUntil,n)=>{ G._tmGrowWarmUntil=warmUntil; G._tmGrowColdUntil=coldUntil;
+    G._regimeFit=1; for(let i=0;i<n;i++) G._updateHabitatHealth(1); return G._regimeFit; };
+
+  const gi=climate(122000);   // MIS 5e interglacial
+  chk(gi<0.5, `122 ka reads interglacial (g=${gi.toFixed(2)})`);
+  chk(drive(FAR,0,90) > 0.9, 'FOREST growth in an interglacial holds regime fit (right action)');
+  chk(drive(0,FAR,90) < 0.8, 'TUSSOCK growth in an interglacial drains regime fit (wrong -> desaturates)');
+
+  const gg=climate(140000);   // MIS 6 full glacial
+  chk(gg>=0.5, `140 ka reads glacial (g=${gg.toFixed(2)})`);
+  chk(drive(0,FAR,90) > 0.9, 'TUSSOCK growth in a glacial holds regime fit (right action)');
+  chk(drive(FAR,0,90) < 0.8, 'FOREST growth in a glacial drains regime fit (wrong -> desaturates)');
+
+  G._tmGrowWarmUntil=0; G._tmGrowColdUntil=0; G._regimeFit=1; DT.reset();
+  console.log(fail? `habitat health: ${fail} FAILURES`
+    : 'habitat health: split growth keyed to climate — right cover holds saturation, wrong drains it');
+}catch(e){ console.log('HEALTH FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- kererū + seed dispersal --------------------------------------------------
+// Kererū are the only large-seed disperser: Simulation.disperseSeed() is the one runtime path
+// that GROWS the plant population (cap-guarded — nothing else adds plants). In the interglacial
+// the forest recruits via kererū, so the recruitment term of habitat health holds; with no
+// kererū it stalls and drains. md/TEMANAWA_INTERACTION_HEALTH_PLAN.md step 3.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const PT=vm.runInContext('PLANT_TYPES',ctx);
+  const sim=G.simulation, season=G.seasonManager;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  const ks = sim.otherEntities.kereru || [];
+  const aliveK = ks.filter(k=>k.alive).length;
+  chk(aliveK>0, `kererū spawn from initialEntityCounts (${aliveK} alive)`);
+  const k = ks.find(x=>x.alive) || ks[0];
+  chk(k && typeof k.behave==='function' && typeof k.update==='function' && typeof k.render==='function',
+      'kererū implement behave/update/render (otherEntities contract)');
+
+  // dispersal grows the plant population by one, near forest, as a low-growth warm seedling.
+  const n0 = sim.plants.length;
+  let planted=null;
+  for(let i=0;i<sim.plants.length && !planted;i++){
+    const p=sim.plants[i], d=PT[p.type];
+    if(d && d.coldTolerance<=0.65) planted=sim.disperseSeed(p.pos.x, p.pos.y);   // near a forest plant
+  }
+  chk(!!planted, 'disperseSeed plants a seedling near forest');
+  if(planted){
+    chk(sim.plants.length===n0+1, 'dispersal grows the plant population by one');
+    chk(planted.growth<0.2, 'a dispersed seed starts as a low-growth seedling');
+    chk(PT[planted.type] && PT[planted.type].coldTolerance<=0.65, 'kererū disperse a warm/forest (large-fruited) type');
+  }
+
+  // the live-plant cap is enforced HERE (the only place plants grow at runtime).
+  const saveLen = sim.plants.length;
+  while(sim.plants.length < 1000) sim.plants.push(sim.plants[0]);      // fill past any cap with refs
+  chk(k ? sim.disperseSeed(k.pos.x,k.pos.y)===null : true, 'disperseSeed refuses past the live-plant cap');
+  sim.plants.length = saveLen;                                        // restore
+
+  // frugivore + reproduction contract: kererū carry sex / maturity / a fruit crop /
+  // a behaviour state, and disperse only when they have eaten (crop > 0).
+  chk(k && typeof k.isFemale==='boolean' && typeof k.mature==='boolean' &&
+      typeof k.crop==='number' && typeof k.state==='string',
+      'kererū carry sex / maturity / crop / state');
+
+  // a kererū egg hatches a juvenile into the flock (the offspringType branch in
+  // updateEggs → _hatchKereruEgg), mirroring the emergent eagle path.
+  const kList = sim.otherEntities.kereru || [];
+  const kBefore = kList.filter(x=>x.alive).length;
+  const kegg = sim.addEgg(k ? k.pos.x : 100, k ? k.pos.y : 100);
+  kegg.offspringType='kereru'; kegg.parentSpecies='kereru'; kegg.hatched=true;
+  sim.updateEggs(1);
+  const kNow = sim.otherEntities.kereru || [];
+  chk(kNow.filter(x=>x.alive).length === kBefore+1, 'a kererū egg hatches a juvenile into the flock');
+  const chick = kNow[kNow.length-1];
+  chk(chick && chick.mature===false && typeof chick.crop==='number' &&
+      typeof chick.behave==='function' && typeof chick.render==='function',
+      'a hatched kererū is a juvenile with the frugivore fields');
+
+  // recruitment term: interglacial + no kererū drains R; kererū present holds it.
+  DT.seekTo(122000); season.update(1);
+  const savedK = sim.otherEntities.kereru;
+  G._recruitment=1; sim.otherEntities.kereru=[];
+  for(let i=0;i<120;i++) G._updateHabitatHealth(1);
+  chk(G._recruitment<0.9, 'no kererū in an interglacial drains recruitment (forest cannot recruit)');
+  sim.otherEntities.kereru=savedK; G._recruitment=1;
+  for(let i=0;i<60;i++) G._updateHabitatHealth(1);
+  chk(G._recruitment>0.95, 'kererū present holds recruitment');
+
+  G._recruitment=1; G._regimeFit=1; DT.reset();
+  console.log(fail? `kererū: ${fail} FAILURES`
+    : 'kererū: dispersal grows the forest (cap-guarded); recruitment stalls without them');
+}catch(e){ console.log('KERERU FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- auto-eruptions + attract returns to the last eruption --------------
 // Eruptions fire ONCE as the clock CROSSES each checkpoint while playing forward (no button
@@ -739,14 +883,14 @@ const g=vm.runInContext('game',ctx);
   // per-moa tint() composite (p5's _getTintedImageCanvas) is gone.
   chk(typeof ES.getMoaSpriteTinted === 'function', 'EntitySprites.getMoaSpriteTinted must exist');
   const tintA = [180, 120, 90];
-  const a1 = ES.getMoaSpriteTinted(0, true, false, tintA);
-  const a2 = ES.getMoaSpriteTinted(0, true, false, tintA);
+  const a1 = ES.getMoaSpriteTinted(0, true, tintA);
+  const a2 = ES.getMoaSpriteTinted(0, true, tintA);
   chk(ES.isValid(a1), 'a tinted moa frame must be valid');
   chk(a1 === a2, 'tinted frames are baked once and reused (no per-frame allocation)');
   chk(!!(ES._tintCache && ES._tintCache['180,120,90']), 'tints cache keyed by colour');
-  ES.getMoaSpriteTinted(0, true, false, [10, 20, 30]);
+  ES.getMoaSpriteTinted(0, true, [10, 20, 30]);
   chk(Object.keys(ES._tintCache).length >= 2, 'distinct tints cache separately');
-  chk(ES.isValid(ES.getMoaSpriteTinted(0, true, false, null)), 'a null tint falls back to a valid untinted frame');
+  chk(ES.isValid(ES.getMoaSpriteTinted(0, true, null)), 'a null tint falls back to a valid untinted frame');
 
   // #10 cull box tracks the LIVE viewZoom, not the authored zoom
   const z0 = C.viewZoom, zz0 = C.zoom;
@@ -806,9 +950,20 @@ const g=vm.runInContext('game',ctx);
   chk(TG._compressBase(1.0, 0.5) < 0.77, 'max procedural base stays out of the alpine band (ranges own the highs)');
 
   // N/S edge falloff: eases a truncated range down to plains at the top/bottom edge
-  chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1) < 0.3, 'N/S edge falloff eases high terrain down to plains at the map edge');
+  chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1) < 0.3, 'N/S edge falloff eases a high truncated range down to plains at the top edge');
   chk(TG._nsEdgeFalloff(0.9, 0.5, 0.1) === 0.9, 'N/S edge falloff leaves the mid-map untouched');
-  chk(TG._nsEdgeFalloff(0.04, 0.0, 0.1) === 0.04, 'N/S edge falloff never raises the carved river channel');
+  chk(TG._nsEdgeFalloff(0.04, 1.0, 0.1) === 0.04, 'the front (bottom) edge never RAISES the carved river channel / coast');
+  // TOP edge is TWO-WAY: a LOW far row is eased UP to plains so it meets the relief crop (fills the
+  // empty-headroom smear gap the zoom-out opened); the front (bottom) stays one-way (down only).
+  chk(TG._nsEdgeFalloff(0.04, 0.0, 0.1) > 0.2, 'the far (top) edge eases a low far row UP to plains (no smear gap)');
+  chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1, 0) === 0.9, 'a 0 top margin leaves the far edge as raw generated terrain');
+  chk(TG._nsEdgeFalloff(0.9, 1.0, 0.1, 0) < 0.3, 'the bottom apron still eases even when the top margin is 0');
+  chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1, 0.1) === TG._nsEdgeFalloff(0.9, 0.0, 0.1), '3-arg (symmetric) edge falloff is unchanged (back-compat)');
+  // NORTH UP-RAMP: max lift at the very top edge, smoothstepping to 0 by `frac`, 0 below the band.
+  chk(Math.abs(TG._northLift(0, 0.22, 0.13) - 0.13) < 1e-9, 'north up-ramp adds the full amount at the top edge');
+  chk(TG._northLift(0.22, 0.22, 0.13) === 0 && TG._northLift(0.5, 0.22, 0.13) === 0, 'north up-ramp is 0 at and below its band');
+  chk(TG._northLift(0.11, 0.22, 0.13) > 0 && TG._northLift(0.11, 0.22, 0.13) < 0.13, 'north up-ramp eases smoothly through the band');
+  chk(TG._northLift(0.1, 0.22, 0) === 0, 'north up-ramp off (amt 0) adds nothing');
 
   // deep-time factors: keyed to ABSOLUTE dates (not window progress), so a given yearsBP
   // always maps to the same geological state — jump the clock or resize the window freely.
@@ -821,9 +976,35 @@ const g=vm.runInContext('game',ctx);
   chk(at(500000).emergence > 0.98, 'the river is fully connected by its dated completion (~500 ka)');
   chk(at(100000).emergence > 0.98 && at(100000).uplift > 0.7, 'a near-present date reads near-modern regardless of the window');
 
+  // SOUTH-HALF STRAIT: a pulse — the southern half subsides 1 Ma → peak ~0.5 Ma → risen back ~0.3 Ma
+  chk(at(1000000).southSink < 0.02, 'at ~1 Ma the south half has not yet subsided (strait forming)');
+  chk(at(500000).southSink > 0.98, 'the south half is fully submerged at its ~0.5 Ma peak');
+  chk(at(300000).southSink < 0.02, 'the south half has risen back to normal land by ~0.3 Ma');
+  chk(at(100000).southSink < 0.02, 'no southern strait near the present');
+  chk(at(1000000).southSink < at(500000).southSink && at(300000).southSink < at(500000).southSink,
+      'the strait is a pulse — a single peak at ~0.5 Ma, dry on both sides');
+  // _southStrength: a south-ward latitude ramp (0 north of `lat` → 1 by `lat`+`feather`) × the pulse
+  chk(TG._southStrength(0.2, 1, 0.45, 0.22) === 0, 'south-sink strength is 0 north of the shore latitude');
+  chk(TG._southStrength(0.9, 1, 0.45, 0.22) > 0.98, 'south-sink strength is full in the deep south at peak');
+  chk(TG._southStrength(0.9, 0, 0.45, 0.22) === 0, 'south-sink strength is 0 when the pulse is 0 (no strait)');
+  // _patchStrength: an elliptical mask (full in the core, tapering over `feather`) × the submergence
+  chk(TG._patchStrength(0.58, 0.72, 1, 0.58, 0.72, 0.17, 0.15, 0.45) > 0.98, 'patch strength is full at the patch centre while submerged');
+  chk(TG._patchStrength(0.9, 0.2, 1, 0.58, 0.72, 0.17, 0.15, 0.45) === 0, 'patch strength is 0 well outside the ellipse');
+  chk(TG._patchStrength(0.58, 0.72, 0, 0.58, 0.72, 0.17, 0.15, 0.45) === 0, 'patch strength is 0 once emerged (submergence 0)');
+  chk(TG._patchStrength(0.58, 0.72, 1, 0.58, 0.72, 0, 0.15, 0.45) === 0, 'patch strength is 0 when disabled (radius 0)');
+  // directional EAST feather: a wide eastern taper reaches a point the symmetric feather can't, while the
+  // matching WEST point stays dry (the bias is east-only) — so the coast eases down over a longer eastern grade
+  chk(TG._patchStrength(0.852, 0.72, 1, 0.58, 0.72, 0.17, 0.15, 0.45, 1.4) > 0, 'patch east feather reaches uphill land the symmetric feather would not');
+  chk(TG._patchStrength(0.852, 0.72, 1, 0.58, 0.72, 0.17, 0.15, 0.45) === 0, 'without an east feather that same eastern point is dry (symmetric fallback)');
+  chk(TG._patchStrength(0.308, 0.72, 1, 0.58, 0.72, 0.17, 0.15, 0.45, 1.4) === 0, 'the east feather does not widen the western side');
+
   // integration: at mature factors, a range core lifts to alpine + a river cell carves to water
   if (GEO && G.terrain._baseNoise) {
     const T = G.terrain, savedT = T._geoT;
+    // These shape / river / southSink checks probe the skeleton at its RAW authored coords, so run
+    // them with the view zoom-out OFF (native scale) — otherwise the inset (_prepGeo, driven by
+    // _viewF) would move the geo out from under the probes. Restored at the block end.
+    const savedVF = T._viewF; T._viewF = 1;
     T._geoT = { uplift: 1, incision: 1, emergence: 1 }; T._prepGeo();
     const poly = GEO.ranges && GEO.ranges[0] && GEO.ranges[0].poly;
     const river = GEO.rivers && GEO.rivers[0] && GEO.rivers[0].pts;
@@ -864,7 +1045,49 @@ const g=vm.runInContext('game',ctx);
       chk(wetMouth < 0.12, `at the window start the seaward embayment already carves (got ${wetMouth.toFixed(2)})`);
       T._geoT.emergence = 1;
     }
-    T._geoT = savedT; T._prepGeo();
+    // SOUTH-HALF STRAIT: at its ~0.5 Ma peak the southern lowlands drown to the sea band, but the
+    // Tararua range footprint (GEO.ranges[0], the southern range) stays a dry peninsula — the land
+    // bridge — even before it has uplifted; and the lowland returns to normal once the strait drains.
+    if (poly) {
+      const su = 0.85, sv = 0.85;   // a deep-SE lowland cell, well clear of the range polygons
+      T._geoT = { uplift: 0, incision: 1, emergence: 1, southSink: 1 }; T._prepGeo();
+      let cx = 0, cy = 0; for (const p of poly) { cx += p[0]; cy += p[1]; } cx /= poly.length; cy /= poly.length;
+      const peninsula = T._applyGeo(0.3, cx, cy, cx * T.mapWidth, cy * T.mapHeight);
+      chk(peninsula > 0.2, `the Tararua footprint stays a dry peninsula at the strait peak (got ${peninsula.toFixed(2)})`);
+      const drowned = T._applyGeo(0.35, su, sv, su * T.mapWidth, sv * T.mapHeight);
+      chk(drowned < 0.12, `the southern lowland drowns to the sea band at the strait peak (got ${drowned.toFixed(2)})`);
+      T._geoT = { uplift: 1, incision: 1, emergence: 1, southSink: 0 }; T._prepGeo();
+      const returned = T._applyGeo(0.35, su, sv, su * T.mapWidth, sv * T.mapHeight);
+      chk(returned > 0.2, `the southern lowland returns to normal land after the strait drains (got ${returned.toFixed(2)})`);
+    }
+    T._viewF = savedVF; T._geoT = savedT; T._prepGeo();
+  }
+
+  // VIEW ZOOM-OUT (config.viewAreaGain): the generated world scales DOWN so a wider window fits
+  // the same grid (more terrain area on screen), the camera untouched. Assert the skeleton insets
+  // toward centre (shrinks, is NOT stretched to refill), spread shrinks with it, and the coord
+  // remap never hands getElevation a NaN at the corners (the getIslandFalloff edge clamp).
+  if (GEO && G.terrain && G.terrain.geo) {
+    const T = G.terrain, savedVF = T._viewF;
+    const raw = GEO.ranges && GEO.ranges[0] && GEO.ranges[0].poly;
+    if (raw) {
+      let rcx = 0, rcy = 0; for (const p of raw) { rcx += p[0]; rcy += p[1]; } rcx /= raw.length; rcy /= raw.length;
+      T._viewF = 1; T._prepGeo();
+      const off = T._geoRanges[0];
+      chk(Math.abs(off.cx - rcx) < 1e-6 && Math.abs(off.cy - rcy) < 1e-6, 'view zoom-out off (f=1): skeleton stays at its authored position');
+      const offSpread = off.spread;
+      T._viewF = 1.2; T._prepGeo();                       // an arbitrary zoom-out factor
+      const on = T._geoRanges[0];
+      chk(Math.abs(on.cx - 0.5) < Math.abs(off.cx - 0.5) && Math.abs(on.cy - 0.5) < Math.abs(off.cy - 0.5),
+          'view zoom-out: the range insets toward centre (shrinks, not stretched to refill)');
+      chk(on.spread < offSpread - 1e-9, 'view zoom-out: range spread shrinks with the factor');
+    }
+    T._viewF = Math.sqrt(1.6);                            // push corners well past the map edge
+    let bad = 0;
+    const corners = [[0, 0], [T.mapWidth - 1, 0], [0, T.mapHeight - 1], [T.mapWidth - 1, T.mapHeight - 1]];
+    for (const c of corners) { const e = T.getElevation(c[0], c[1]); if (!(e >= 0 && e <= 1)) bad++; }
+    chk(bad === 0, 'view zoom-out: getElevation stays finite in [0,1] at the map corners (edge clamp holds)');
+    T._viewF = savedVF; T._prepGeo();                     // back to the production skeleton
   }
 
   // morph driver gating (pure) + morphTo re-shapes the land with deep time (geo cache)
@@ -942,6 +1165,59 @@ const g=vm.runInContext('game',ctx);
     chk(!T._morphFade,'render() must retire the crossfade buffer once the fade ends');
     chk(T._bufPool.length>0,'retired back buffers must recycle into the bake pool');
 
+    // (4b) the morph crossfade must NOT dim the glacial-phase blend. The land morph
+    // is a crossfade between the retired buffer (drawn full) and the fresh CURRENT-
+    // phase land (drawn at fadeAlpha); the NEXT-phase season blend is a separate axis
+    // and must keep its true transitionProgress weight throughout. Folding fadeAlpha
+    // into the next layer collapsed it to ~0 the instant a morph swapped in, so the
+    // composite snapped to the pure old current-phase land — the terrain visibly
+    // flicked back to its previous state for the length of the fade. Arm a fade at
+    // fadeAlpha 0 during a live phase transition, record the per-layer image() alphas,
+    // and assert the next-phase layer still draws at ~transitionProgress.
+    {
+      const SM = T.seasonManager;
+      const s0 = SM.currentSeasonIndex, tp0 = SM.transitionProgress, y0 = DT.yearsBP;
+      SM.currentSeasonIndex = 0; SM.transitionProgress = 0.8;    // interglacial --0.8--> cooling
+      const nxtKey = SM.nextKey;                                 // 'cooling'
+      T.morphTo(DT.yearsBP, 1);                                  // arms _morphFade (retired current phase)
+      chk(!!T._morphFade, 'guard setup: a morph must arm the crossfade');
+      if (T._morphFade) { T._morphFade.t0 = _t; T._morphFade.ms = 600; }   // (_t - t0)/ms == 0 -> fadeAlpha 0
+      const draws = [], origImage = ctx.image;
+      ctx.image = (buf) => { draws.push({ buf, a: +ctx.drawingContext.globalAlpha }); };
+      T.render();
+      ctx.image = origImage;
+      const keyOf = (b) => { for (const k in T.seasonBuffers) if (T.seasonBuffers[k] === b) return k; return 'retired'; };
+      let nextA = -1, retiredFull = false;
+      for (const d of draws) { const k = keyOf(d.buf);
+        if (k === nxtKey) nextA = Math.max(nextA, d.a);
+        if (k === 'retired' && d.a > 0.98) retiredFull = true; }
+      chk(retiredFull, 'the morph fade must draw the retired buffer at full underneath (fadeAlpha 0)');
+      chk(nextA > 0.5 && Math.abs(nextA - SM.transitionProgress) < 0.05,
+          `the next-phase blend must survive the morph crossfade (drew next '${nxtKey}' at alpha ${nextA.toFixed(2)}, `+
+          `want ~${SM.transitionProgress}) — else the terrain flicks back to the old land mid-morph`);
+
+      // (4c) if the visible phase steps OFF the fade's phase mid-fade (a glacial
+      // boundary crossed, or the index oscillated), the retired buffer is a stale,
+      // wrong-phase, OLD-land buffer — drawing it at full flicks the terrain to that
+      // previous state. render() must retire the fade instead. Re-arm a fade for
+      // interglacial, move the live phase to glacial, and assert no stale buffer draws.
+      T._morphFade = null;                                       // clear (4b)'s fade so morphTo re-arms fresh
+      SM.currentSeasonIndex = 0; SM.transitionProgress = 0.5;
+      T.morphTo(DT.yearsBP, 1);
+      const fadeBuf = T._morphFade && T._morphFade.buf;
+      chk(!!T._morphFade && T._morphFade.key === 'interglacial', 'guard setup: fade must record its phase key');
+      if (T._morphFade) { T._morphFade.t0 = _t; T._morphFade.ms = 600; }   // fadeAlpha 0 (would draw the base)
+      SM.currentSeasonIndex = 2; SM.transitionProgress = 0.1;   // phase steps onto glacial mid-fade
+      const draws2 = [], origImage2 = ctx.image;
+      ctx.image = (buf) => { draws2.push(buf); };
+      T.render();
+      ctx.image = origImage2;
+      chk(!T._morphFade, 'render() must retire the crossfade when the visible phase steps off its phase');
+      chk(!draws2.includes(fadeBuf), 'the stale wrong-phase retired buffer must NOT be drawn once the phase has moved');
+      T._morphFade = null;                                       // retire the guard's fade
+      SM.currentSeasonIndex = s0; SM.transitionProgress = tp0; DT.yearsBP = y0;
+    }
+
     // (5) the driver: a due morph stages a job inside one tick (no blocking bake)
     // and finishes it across subsequent ticks.
     C.morphEnabled=true;
@@ -963,6 +1239,34 @@ const g=vm.runInContext('game',ctx);
   }
 }
 
+// ---- animated water overlay: built from geometry, animates + renders clean ----
+// WaterLayer stamps river-flow / eel / sea-shimmer decals from terrain.waterTypeAt()
+// + the river polylines, and draws them each frame in Game.render(). The 120-frame
+// boot loop above already exercised render() (a throw there fails as DRAW FAIL);
+// this asserts the placement and the eel travel/wrap the render depends on.
+{
+  const G = vm.runInContext('game', ctx), SS = vm.runInContext('SpriteStrips', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+  const w = G.water;
+  chk(!!w, 'game.water exists after a full build');
+  chk(SS && SS.has('water_current') && SS.has('sea_shimmer') && SS.has('eel_swim'),
+      'placeholder strips registered for every water animation');
+  chk(w && (w.decals.length + w.eels.length) > 0, 'water placed decals/eels from the geometry');
+  chk(!w || w.decals.length <= w.cfg.maxDecals, 'decal count stays within maxDecals');
+  chk(!w || w.eels.length <= w.cfg.eelCount, 'eel count stays within the configured count');
+  const preErr = _errors.length;
+  if (w && w.eels.length) {
+    const d0 = w.eels[0].d;
+    for (let i = 0; i < 40; i++) w.update(1);
+    chk(w.eels[0].d !== d0, 'eels travel downstream when updated');
+    chk(w.eels[0].d >= 0 && w.eels[0].d < w.eels[0].path.len + 1e-6, 'eel distance stays on the path (wraps)');
+  }
+  FRAME(ctx.draw);   // render the overlay once more through the full frame
+  chk(_errors.length === preErr, 'water update + render raised no console.error');
+  console.log(fail ? `water: ${fail} FAILURES`
+    : `water: ${w ? w.decals.length + ' decals, ' + w.eels.length + ' eels' : 'none'}, animates + renders clean`);
+}
+
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);
 console.log('--- state ---');
 console.log('  Kiosk.game attached', !!K.game, ' resets', K.resetCount);
@@ -977,4 +1281,71 @@ console.log('  grid      ', g.terrain.mapWidth+'x'+g.terrain.mapHeight);
 console.log('  moa/eagle ', g.simulation.moas.length+'/'+g.simulation.eagles.length);
 console.log('  plants    ', g.simulation.plants.length);
 console.log('  playTime  ', g.playTime.toFixed(0));
+
+// ---- land/water discipline: moa never strand on the sea, eels never on land --
+// Two symmetric ways an entity used to end up on the wrong surface, both fixed:
+//   • a moa is pushed off unwalkable water (coast advancing under it, or a fast
+//     state carrying it on) even at rest — Boid.avoidUnwalkable() Case 1;
+//   • an eel patrols only the WET river and bounces off any stretch that has
+//     dried to land (the main's NE arm recedes at ~0.6 Ma) — WaterLayer.update().
+// Runs LAST: it morphs the terrain to the window end and does not restore it, so
+// nothing downstream must depend on the live clock's land (the state dump above
+// has already printed). The morph is the single reason to sit here, not earlier.
+{
+  const DT = vm.runInContext('DeepTime', ctx);
+  const T = g.terrain, w = g.water;
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  // (a) moa eject — deterministic, on the live (window-start) land, tested
+  //     straight through avoidUnwalkable() so no simulation luck is involved.
+  const moa = g.simulation.moas[0];
+  const findCell = (wantWalkable, shoreOnly) => {
+    for (let y = 8; y < T.mapHeight - 8; y += 6)
+      for (let x = 8; x < T.mapWidth - 8; x += 6) {
+        if (T.isWalkable(x, y) !== wantWalkable) continue;
+        if (shoreOnly && !(T.isWalkable(x + 18, y) || T.isWalkable(x - 18, y) ||
+                           T.isWalkable(x, y + 18) || T.isWalkable(x, y - 18))) continue;
+        return { x, y };
+      }
+    return null;
+  };
+  if (moa) {
+    const sx = moa.pos.x, sy = moa.pos.y, svx = moa.vel.x, svy = moa.vel.y;
+    const water = findCell(false, true), land = findCell(true, false);
+    if (water) {
+      moa.pos.set(water.x, water.y); moa.vel.set(0, 0);   // stranded and at rest
+      const f = moa.avoidUnwalkable();
+      chk(f.x * f.x + f.y * f.y > 0, 'a stationary moa on water is pushed off it');
+      const fm = Math.hypot(f.x, f.y) || 1;
+      let escaped = false;
+      for (let r = 6; r <= 66 && !escaped; r += 6) escaped = T.isWalkable(water.x + f.x / fm * r, water.y + f.y / fm * r);
+      chk(escaped, 'the escape force points toward walkable ground');
+    }
+    if (land) {
+      moa.pos.set(land.x, land.y); moa.vel.set(0, 0);
+      const f = moa.avoidUnwalkable();
+      chk(f.x === 0 && f.y === 0, 'a stationary moa on land is not spuriously ejected');
+    }
+    moa.pos.set(sx, sy); moa.vel.set(svx, svy);           // restore the moa (not the land)
+  }
+
+  // (b) eels stay on water across deep time — including the window end, where the
+  //     NE arm has dried. waterTypeAt: 0 land · 1 sea · 2 river; only 0 is illegal.
+  const eelsAllWet = () => { for (const e of w.eels) if (T.waterTypeAt(e._x, e._y) === 0) return false; return true; };
+  for (let i = 0; i < 80; i++) w.update(1);
+  chk(eelsAllWet(), 'eels stay on water at the window start');
+
+  T.morphTo(DT.yearsEnd, 1); w.build(T);                  // 25.5 ka — NE arm long dry
+  let pathLand = 0;
+  if (w.eels.length) {
+    const p = w.eels[0].path, probe = { _x: 0, _y: 0, _angle: 0 };
+    for (let s = 0; s <= 50; s++) { w._samplePath(p, p.len * s / 50, probe); if (T.waterTypeAt(probe._x, probe._y) === 0) pathLand++; }
+  }
+  for (let i = 0; i < 400; i++) w.update(1);
+  chk(eelsAllWet(), 'eels never swim onto the dried NE arm at the window end');
+
+  console.log(fail ? `land/water discipline: ${fail} FAILURES`
+    : `land/water discipline: moa ejected off water, eels stay wet (${pathLand}/51 of the end-state path dried to land)`);
+}
+
 if(_errors.length){ console.log('--- console.error during run ---'); _errors.slice(0,10).forEach(e=>console.log('  ',e)); }

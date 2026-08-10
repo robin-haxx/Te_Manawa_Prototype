@@ -17,17 +17,26 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   unlockCondition: null,
 
   terrain: {
-    noiseScale: 0.005, octaves: 4, persistence: 0.40, lacunarity: 3.0,
-    ridgeInfluence: 1.4, elevationPower: 1.3, islandFalloff: 0.2,
-    plantDensity: 0.003, useLakes: false,
+    noiseScale: 0.007, octaves: 4, persistence: 0.35, lacunarity: 3.0,
+    ridgeInfluence: 1.6, elevationPower: 1.2, islandFalloff: 0.1,
+    plantDensity: 0.01, useLakes: false,
     // Geography skeleton present: compress the procedural base above this so the
     // RANGES own the highs. Raised from the 0.5 default to give the plains more
     // rolling relief (octaves/persistence bumped alongside for variation). GEN-tunable.
-    geoBaseCeil: 0.58,
+    geoBaseCeil: 0.48,
     // Ease terrain down to plains within this fraction of the top/bottom edges, so the
     // 3/4 relief bake has no truncated range to smear vertically (the ranges' SVG polys
-    // run off-frame). 0 disables.
-    geoEdgeMargin: 0.10
+    // run off-frame). 0 disables. geoTopMargin overrides it for the TOP (far) edge only —
+    // kept THIN so the north up-ramp (LOOK.northLift*) fills the far edge with real, slightly
+    // higher terrain instead of a wide flat eased-plains smear. Bottom stays 0.10 for the apron.
+    geoEdgeMargin: 0.10,
+    geoTopMargin: 0.04,
+    // Zoom the GENERATED WORLD out so ~this-much-more terrain AREA is visible on screen
+    // (1 = off; 1.25 = show 25% more area on all sides). The camera/cost are unchanged —
+    // the geo skeleton, coast and noise all scale down together (nothing is stretched to
+    // refill the screen), and plant density scales by this so the world stays lush.
+    // Live-tunable: GEN.viewAreaGain = 1.4; press G. See terrain.js (_viewF) / spawnPlants.
+    viewAreaGain: 1.25
   },
 
   // 3/4 plan-oblique paint (md/TEMANAWA_34VIEW_PLAN.md). The SIMULATION stays
@@ -39,7 +48,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   //            the next step, harmless now under the squash-only render.
   // Held on Projection (configured in Game.init), never written to CONFIG —
   // same rule as TerrainGenerator.noiseScale.
-  projection: { K: 0.76, liftFrac: 0.15 },
+  projection: { K: 0.76, liftFrac: 0.14 },
 
   // ==========================================================
   // BIOMES — the single source of truth for the ground look.
@@ -92,16 +101,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  colors:['#c2b280','#d4c794','#e6dca8'], contourColor:'#8a7d5a', outlineColor:'#d2c8af',
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
-                 colors:['#e6dca8', '#c8d697', '#789762'], contourColor:'#5a7d4a', outlineColor:'#65845a',
+                 colors:['#e6dca8', '#c8d697', '#789762'], contourColor:'#2d3a27', outlineColor:'#313e2d',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','flax'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:['#2d5a3d','#346644','#3b724b'], contourColor:'#1e3d29', outlineColor:'#28452e',
                  walkable:true,  canHavePlants:true, plantTypes:['fern','rimu'], canPlace:true },
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
-                 colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740', outlineColor:'#54a26c',
+                 colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740', outlineColor:'#203025',
                  walkable:true,  canHavePlants:true, plantTypes:['beech','fern'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
-                 colors:['#809a59','#a4b56d','#85a15c'], contourColor:'#bfcda8', outlineColor:'#a3af8f',
+                 colors:['#809a59','#a4b56d','#85a15c'], contourColor:'#bfcda8', outlineColor:'#2b2f25',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
                  colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c', outlineColor:'#5c6b55',
@@ -117,14 +126,14 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   },
   startingSpecies: 'upland_moa',
 
-  initialEntityCounts: { moa: 10, eagle: 2 },
+  initialEntityCounts: { moa: 15, eagle: 3, kereru: 8 },
 
   // Timings only — the economy is gone (Phase 1.5). startingMauri and
   // the placeable toolbar no longer exist. (`seasonDuration` is vestigial: the
   // cold cycle is driven by the deep-time glacial index now, not a frame timer.)
   economy: {
     seasonDuration: 2100, eggIncubationTime: 600,
-    securityTimeToLay: 900, securityTimeVariation: 300,
+    securityTimeToLay: 100, securityTimeVariation: 300,
     layingHungerThreshold: 28, eagleSpawnMilestones: [], maxPopulation: 60
   },
 
@@ -146,6 +155,10 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // ==========================================================
   mechanics: {
     forestContraction: true,
+    maxLivePlants: 900,                          // cap for kererū seed dispersal (≤1000 live-plant budget)
+    kereruMaxPopulation: 16,                     // flock cap (breeding stops at it); founders spawn 8
+    kereruPopulationFloor: 2,                    // never starve below this — keeps a disperser alive so
+                                                 // the interglacial forest can always recruit again
     forestBand: { min: 0.12, max: 0.80 },        // default / interglacial fallback
     forestBandByStage: {
       interglacial: { min: 0.12, max: 0.80 },

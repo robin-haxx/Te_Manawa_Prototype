@@ -1,6 +1,6 @@
 # Te Manawa — document index
 
-21 documents. This says which ones are live, which are superseded, and which are
+24 documents. This says which ones are live, which are superseded, and which are
 research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
@@ -9,6 +9,10 @@ research to draw on rather than build from.
 done and **Phase 3 (terrain) is substantially built** — the 3/4 view, the SVG geography
 skeleton, the deep-time land morph and the illustration look are all running.
 
+**New here?** Start with `TEMANAWA_PEDAGOGY.md` — the single-page overview of *what the
+running build teaches a visitor* and *what is left to reach a finished installation*. Then
+use the precedence order below for the build detail.
+
 ---
 
 ## The spine — build from these
@@ -16,7 +20,7 @@ skeleton, the deep-time land morph and the illustration look are all running.
 | # | Document | Lines | Role |
 |--:|---|--:|---|
 | 1 | **`TEMANAWA_PLAN_V2.md`** | 608 | **The design spine.** v2.1. The filter, the plants, the mechanical core, the four buttons, the fauna cast, the build phases. Anything that disagrees with this loses |
-| 2 | **`TEMANAWA_BUILD_V3.md`** | 483 | Architecture, kiosk self-run, the **158-asset manifest**, performance and load budgets. Makes no design decisions — it costs the plan's |
+| 2 | **`TEMANAWA_BUILD_V3.md`** | 511 | Architecture, kiosk self-run, the **158-asset manifest**, performance and load budgets. Makes no design decisions — it costs the plan's |
 | 3 | **`TEMANAWA_TERRAIN_PLAN.md`** | 296 | Terrain background. Its keyframe pipeline was cut, then partly **revived by `TEMANAWA_GEOGRAPHY.md`** as the SVG skeleton. §1, §6 and §7 are still live |
 | 4 | **`TEMANAWA_REORG.md`** | — | Structural proposal: the asset pipeline, splitting `sketch.js`, economy residue, and the adaptive terrain mode as built. Ordered so each step is harness-verifiable |
 
@@ -45,6 +49,7 @@ current documents state as conclusions.
 | `TEMANAWA_SPECIES_KERANGI.md` | 230 | Kērangi (Eyles' harrier) in depth. The only fauna with finished art |
 | `TEMANAWA_FAUNA_POOL.md` | 206 | The candidate pool and visual hooks. **`BUILD_V3.md` §4.2 leans on this** — but flags that its hooks are written from a field-guide viewpoint and need bird's-eye equivalents |
 | `TEMANAWA_FAUNA.md` | 246 | Broader fauna notes. Overlaps `FAUNA_POOL`; the pool is the one the manifest cites |
+| `TEMANAWA_FAUNA_IMPL.md` | 229 | **The implemented cast, in code.** What each animal (moa · eagle · kererū) *is*, how it behaves/breeds/draws, and where it's wired. Build reference, not research |
 
 ---
 
@@ -75,6 +80,9 @@ Primary sources are the five PDFs in `research/`.
 | `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshaped Phase 3; sits under `PLAN_V2.md`. **Built** through the relief bake, entity y-sort and cel look |
 | `TEMANAWA_GEOGRAPHY.md` | **The SVG geography skeleton** — ranges and river authored as vectors, elevation built around them, with the deep-time uplift/incision morph. Revives `TERRAIN_PLAN.md` §3–5 and updates `PLAN_V2.md` §7. Static integration and the morph are built |
 | `TEMANAWA_DEVTOOLS.md` | **The console dev workflow.** `LOOK` (paint) and `GEN` (landform) live-editable globals, the `B` / `G` / `N` keys, and how to extend them. Read this before tuning the look |
+| `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` | **The deep-time ecology build.** Season→glacial rebind, the climate table to 1 Ma, forest contraction, emergence sea level, and the four-eruption clear/regen + button seek/revert. **Implemented and harness-green** (see its §4) |
+| `TEMANAWA_INTERACTION_HEALTH_PLAN.md` | **Interaction plan.** Split Growth into glacial/interglacial buttons, a derived habitat-health scalar surfaced as scene saturation, and a kererū seed-dispersal loop coupled to Storm overuse. Builds on `DEEPTIME_ECOLOGY_PLAN.md`; sits under `PLAN_V2.md`. **Steps 1–3 built and harness-green** (health/saturation readout, five-button split FOREST/TUSSOCK growth, kererū seed dispersal); step 4 (Storm-overuse coupling) and step 5 (tuning) still to come |
+| `TEMANAWA_PEDAGOGY.md` | **What it teaches + the road to installation.** The visitor-facing pedagogy of the running build and the prioritised next steps. Descriptive; reads under `PLAN_V2.md` |
 
 ---
 

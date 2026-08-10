@@ -56,15 +56,16 @@ const GEN = {
   octaves: 6,           // detail layers (more = busier)
   persistence: 0.3,     // how much each finer octave contributes (roughness)
   lacunarity: 3.0,      // frequency step between octaves
-  ridgeInfluence: 1.3,  // blend of ridged vs smooth noise (sharper ranges)
+  ridgeInfluence: 1.7,  // blend of ridged vs smooth noise (sharper ranges)
   elevationPower: 1.5,  // contrast: >1 pushes lowlands down, peaks up
   useLakes: false,      // inland lake basins instead of a coastal island
   lakeThreshold: 0.12,
   lakeNoiseScale: 0.008,
+  viewAreaGain: 1,      // zoom the generated world OUT to show more area (1 = off; 1.25 ≈ +25% area). Re-bakes the land on G; plant COUNT only re-scales on a reset.
 
   // CONFIG-backed params (noiseScale is handled on its own — it is per-instance).
   _keys: ['octaves', 'persistence', 'lacunarity', 'ridgeInfluence', 'elevationPower',
-          'useLakes', 'lakeThreshold', 'lakeNoiseScale'],
+          'useLakes', 'lakeThreshold', 'lakeNoiseScale', 'viewAreaGain'],
 
   // Pull the values the game is actually running with into GEN.
   sync() {
@@ -123,6 +124,8 @@ const GEN = {
 const GEO = {
   relief: 0.50,        // → LOOK.rangeRelief — valley depth vs crest (0 = flat plateau)
   spine: 0.45,         // → LOOK.rangeSpine  — crest concentration on the range's long axis
+  gain: 2.2,           // → LOOK.rangeGain   — how hard uplift MULTIPLIES the existing ground (taller, more base-driven peaks)
+  ceil: 0.45,          // → LOOK.rangeCeil   — where the soft height ceiling starts (fraction of crest rH)
   edgeMargin: 0.10,    // → terrain._geoEdgeMargin — ease the N/S edges down to plains
 
   _overlay: false,
@@ -135,6 +138,8 @@ const GEO = {
     if (typeof LOOK !== 'undefined') {
       if (LOOK.rangeRelief != null) this.relief = LOOK.rangeRelief;
       if (LOOK.rangeSpine  != null) this.spine  = LOOK.rangeSpine;
+      if (LOOK.rangeGain   != null) this.gain   = LOOK.rangeGain;
+      if (LOOK.rangeCeil   != null) this.ceil   = LOOK.rangeCeil;
     }
     const t = this._terrain();
     if (t && t._geoEdgeMargin != null) this.edgeMargin = t._geoEdgeMargin;
@@ -143,7 +148,10 @@ const GEO = {
 
   // Write GEO → LOOK + terrain, regenerate the SAME land, re-bake (key G).
   apply() {
-    if (typeof LOOK !== 'undefined') { LOOK.rangeRelief = this.relief; LOOK.rangeSpine = this.spine; }
+    if (typeof LOOK !== 'undefined') {
+      LOOK.rangeRelief = this.relief; LOOK.rangeSpine = this.spine;
+      LOOK.rangeGain = this.gain; LOOK.rangeCeil = this.ceil;
+    }
     const t = this._terrain(); if (t) t._geoEdgeMargin = this.edgeMargin;
     if (typeof CONFIG !== 'undefined') CONFIG.geoEdgeMargin = this.edgeMargin;
     return this._bake();
@@ -154,6 +162,8 @@ const GEO = {
     if (obj) {
       if (obj.relief != null) this.relief = obj.relief;
       if (obj.spine != null) this.spine = obj.spine;
+      if (obj.gain != null) this.gain = obj.gain;
+      if (obj.ceil != null) this.ceil = obj.ceil;
       if (obj.edgeMargin != null) this.edgeMargin = obj.edgeMargin;
     }
     return this.apply();
@@ -201,7 +211,7 @@ const GEO = {
 
   dump() {
     const t = this._terrain();
-    console.log('[GEO]', { relief: this.relief, spine: this.spine, edgeMargin: this.edgeMargin,
+    console.log('[GEO]', { relief: this.relief, spine: this.spine, gain: this.gain, ceil: this.ceil, edgeMargin: this.edgeMargin,
       upliftOverride: t ? (t._geoUpliftOverride != null ? t._geoUpliftOverride : 'date-driven') : null,
       overlay: this._overlay });
     return this;
@@ -211,6 +221,8 @@ const GEO = {
     if (typeof LOOK !== 'undefined' && LOOK._defaults) {
       if (LOOK._defaults.rangeRelief != null) this.relief = LOOK._defaults.rangeRelief;
       if (LOOK._defaults.rangeSpine  != null) this.spine  = LOOK._defaults.rangeSpine;
+      if (LOOK._defaults.rangeGain   != null) this.gain   = LOOK._defaults.rangeGain;
+      if (LOOK._defaults.rangeCeil   != null) this.ceil   = LOOK._defaults.rangeCeil;
     }
     if (typeof game !== 'undefined' && game && game.currentLevel && game.currentLevel.terrain
         && game.currentLevel.terrain.geoEdgeMargin != null) this.edgeMargin = game.currentLevel.terrain.geoEdgeMargin;
@@ -275,6 +287,7 @@ const DEV = {
     GEO.show()          overlay the range footprints + spine axes  (key: R)
     GEO.list()          print each range (height, spread, spine axis)
     GEO.set({spine:0.6}) crest on the NE–SW axis · {relief:0.4} valley depth
+    GEO.set({gain:2.5}) uplift multiplies the ground harder · {ceil:0.5} peaks nearer crest
     GEO.height(0,0.95)  edit one range's crest · GEO.spread(0,0.2) its reach
     GEO.uplift(1)       preview mature ranges now · GEO.uplift(null) date-driven
     GEO.reset()         back to the authored range shaping

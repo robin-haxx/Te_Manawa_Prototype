@@ -226,6 +226,10 @@ class Plant {
     // Pre-calculate visual variation
     this.visualOffset = random(-1, 1);
     this.swayPhase = random(TWO_PI);
+    // Stable index into a plant's mature-size variants (see _renderSprite).
+    // Assigned once so a tree keeps the same variant for its whole life; taken
+    // modulo the loaded variant count at render, so it survives an art swap.
+    this._spriteVariant = Math.floor(random(1024));
     
     // Track sprite state to avoid recalculating
     this._lastSpriteState = 'mature';
@@ -370,6 +374,17 @@ class Plant {
   // ============================================
   
   _getSpriteState(sprites) {
+    // Size-only plants (tōtara) have no seasonal state art: they never switch to a
+    // Dormant/Wilting/Thriving/Mature frame. They play their growth sequence while
+    // immature, then hold their assigned size variant (via the 'mature' path in
+    // _renderSprite). No sprite-switching on dormancy, wilt, thrive or suppression.
+    if (sprites && sprites.meta && sprites.meta.sizeOnly) {
+      if (this.growth < 1.0 && sprites.growing && sprites.growing.length) {
+        return 'growing';
+      }
+      return 'mature';
+    }
+
     // Trees suppressed by forest contraction show as wilted
     if (this.suppressed) {
       return 'wilting';
@@ -449,6 +464,13 @@ class Plant {
     let sprite = sprites ? sprites[spriteState] : null;
     if (spriteState === 'growing') {
       sprite = this._getGrowingFrame(sprites.growing);
+    } else if ((spriteState === 'mature' || spriteState === 'thriving') &&
+               sprites && sprites.variants && sprites.variants.length) {
+      // A grown, healthy plant shows its assigned size variant instead of the
+      // shared Mature/Thriving frame. Falls through to that frame if the chosen
+      // variant hasn't loaded.
+      const v = sprites.variants[this._spriteVariant % sprites.variants.length];
+      if (v && v.width) sprite = v;
     }
 
     if (!sprite || !sprite.width) {

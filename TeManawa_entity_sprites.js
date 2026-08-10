@@ -74,7 +74,7 @@ const SpriteAngle = {
 // set is a matter of dropping another block into ART_SETS below.
 
 const ArtMode = {
-  current: 'high',            // 'low' | 'high'
+  current: 'low',             // 'low' | 'high'
 
   isHigh() { return this.current === 'high'; },
 
@@ -103,9 +103,11 @@ const ArtMode = {
 const ART_SETS = {
   eagle: {
     low: {
+      // 8-frame wingbeat, filenames zero-padded to 5 digits
+      // (EylesHarrier_Flying_00000..00007.png).
       dir: 'EylesHarrier/',
       prefix: 'EylesHarrier_Flying_',
-      pad: 2,
+      pad: 5,
       first: 0,
       count: 8,
       huntFrame: 4,
@@ -135,12 +137,12 @@ const EntitySprites = {
   moa: {
     walk: [],
     idle: null,
-    juvenileWalk: []
+    mate: null
   },
   // Dedicated per-species sprite sets. A species whose registry config sets
   // e.g. `spriteSet: 'bush'` renders from here instead of the generic moa art.
   moaVariants: {
-    bush: { walk: [], idle: null }
+    bush: { walk: [], idle: null, mate: null }
   },
   eagle: {
     fly: [],
@@ -163,7 +165,14 @@ const EntitySprites = {
   // cache warm, not per-frame allocation; it survives soft resets (sprites are
   // not reloaded) and a hard reload re-bakes it lazily.
   _tintCache: {},
+  _lastTintRef: null,   // single-slot ref fast path for _ensureTintSet (see there)
+  _lastTintSet: null,
 
+  // Fixed cel cadence. A frame index is floor(animTime * speed) % frameCount, and
+  // animTime advances on the REAL frame clock (Boid.update, not the warped behave()),
+  // so these speeds are a wall-clock cadence — moaWalkSpeed 0.12 ≈ a new frame every
+  // ~8 rendered frames (~7 fps) at any deep-time multiplier. A deliberately low,
+  // stepped cadence that reads as the cel look and never scrambles in fast-forward.
   animation: {
     moaWalkSpeed: 0.12,
     eagleFlySpeed: 0.15,
@@ -180,39 +189,32 @@ const EntitySprites = {
     
     const spritePath = 'sprites/';
     
-    // PROTOTYPE ART SWAP: the generic moa set renders with little bush moa art.
-    // The original moa_walk_1..4 / moa_idle are still in sprites/ and unreferenced
-    // — swap the two blocks back to restore them. Art only: every species key,
-    // its nutrition, size, tint and behaviour are untouched.
+    // PROTOTYPE ART SWAP: the generic moa set renders with the Side_Moa_Walk art —
+    // a 10-frame side walk cycle (Side_Moa_Walk_00..09). Art only: every species
+    // key, its nutrition, size, tint and behaviour are untouched.
     //
-    // The LB set is a 5-frame cycle, not 4. Nothing needs adjusting for that —
-    // getMoaSprite() takes the frame count from set.walk.length.
-    for (let i = 1; i <= 5; i++) {
+    // Frame count is read from set.walk.length, so a 10-frame cycle needs no other
+    // change. The non-moving/idle pose is frame 02 and the mating pose is frame 05,
+    // both ALIASED from the walk array below — loadImage is not deduped, so alias
+    // rather than reload.
+    for (let i = 0; i <= 9; i++) {
       const n = String(i).padStart(2, '0');
       this.moa.walk.push(loadImage(
-        `${spritePath}LB_moa_walk_${n}.png`,
+        `${spritePath}Side_Moa_Walk/Side_Moa_Walk_${n}.png`,
         () => {},
-        () => console.warn(`Could not load LB_moa_walk_${n}.png`)
+        () => console.warn(`Could not load Side_Moa_Walk_${n}.png`)
       ));
     }
 
-    this.moa.idle = loadImage(
-      `${spritePath}LB_moa_idle.png`,
-      () => {},
-      () => console.warn('Could not load LB_moa_idle.png')
-    );
+    // Non-moving pose = frame 02; mating pose = frame 05. Same p5.Image objects
+    // as the walk cycle above, not a second load.
+    this.moa.idle = this.moa.walk[2];
+    this.moa.mate = this.moa.walk[5];
 
-    // There is no moa_juvenile.png — the art is a 4-frame walk cycle. This used
-    // to load a non-existent file with an empty failure callback, so it failed
-    // silently and juveniles rendered as adults (TEMANAWA_BUILD_V3.md §2.4).
-    for (let i = 1; i <= 4; i++) {
-      this.moa.juvenileWalk.push(loadImage(
-        `${spritePath}moa_juvenile_walk_${i}.png`,
-        () => {},
-        () => console.warn(`Could not load moa_juvenile_walk_${i}.png`)
-      ));
-    }
-    
+    // Juveniles share the adult walk cycle — they are simply drawn smaller (moa
+    // size scales with age; see TeManawa_moa.js updateSize). There is no separate
+    // juvenile sprite state.
+
     // Bush moa (Anomalopteryx) — 5-frame walk + idle. While the generic set is
     // swapped to this same art (above), the variant ALIASES it rather than
     // loading the six files a second time: p5 does not dedupe loadImage, and
@@ -220,6 +222,7 @@ const EntitySprites = {
     // working unchanged. Restore the loop when the generic art comes back.
     this.moaVariants.bush.walk = this.moa.walk;
     this.moaVariants.bush.idle = this.moa.idle;
+    this.moaVariants.bush.mate = this.moa.mate;
 
     // Haast's eagle (Pouākai) — harrier wingbeat, frame count and resolution
     // depend on the active art mode.
@@ -248,14 +251,11 @@ const EntitySprites = {
     return sprite && sprite.width > 0 && sprite.height > 0;
   },
 
-  getMoaSprite(animTime, isMoving, isJuvenile = false, variant = null) {
+  getMoaSprite(animTime, isMoving, variant = null, isMating = false) {
     const set = (variant && this.moaVariants[variant]) || this.moa;
 
-    // Juveniles have their own walk cycle and no idle frame of their own.
-    if (isJuvenile && this.moa.juvenileWalk.length > 0) {
-      const jf = Math.floor(animTime * this.animation.moaWalkSpeed) % this.moa.juvenileWalk.length;
-      if (this.isValid(this.moa.juvenileWalk[jf])) return this.moa.juvenileWalk[jf];
-    }
+    // Mating holds a single dedicated pose (frame 05), overriding the walk cycle.
+    if (isMating && this.isValid(set.mate)) return set.mate;
 
     if (isMoving && set.walk.length > 0) {
       const frameIndex = Math.floor(animTime * this.animation.moaWalkSpeed) % set.walk.length;
@@ -265,7 +265,7 @@ const EntitySprites = {
     if (this.isValid(set.idle)) return set.idle;
 
     // Variant art missing/not loaded yet → fall back to the generic moa set.
-    if (set !== this.moa) return this.getMoaSprite(animTime, isMoving, isJuvenile);
+    if (set !== this.moa) return this.getMoaSprite(animTime, isMoving, null, isMating);
 
     return null;
   },
@@ -286,34 +286,43 @@ const EntitySprites = {
 
   // Get (baking on first use) the tinted mirror of the generic moa set for a tint.
   _ensureTintSet(tint) {
+    // Fast path: a species renders with the SAME tint array reference every
+    // frame, so remember the last resolved (reference -> set) and skip rebuilding
+    // the "r,g,b" key string on the hot path while the reference is unchanged
+    // (this was ~300 short-lived strings/frame). A new/changed reference falls
+    // through to the keyed object cache below — which is also what the boot
+    // harness inspects (_tintCache['r,g,b'] and Object.keys), so the structure
+    // and "baked once per colour" guarantee are unchanged.
+    if (tint === this._lastTintRef && this._lastTintSet) return this._lastTintSet;
     const key = tint[0] + ',' + tint[1] + ',' + tint[2];
     let set = this._tintCache[key];
-    if (set) return set;
-    const r = tint[0], g = tint[1], b = tint[2];
-    set = { walk: [], idle: null, juvenileWalk: [] };
-    for (const f of this.moa.walk) set.walk.push(this._bakeTintedFrame(f, r, g, b));
-    set.idle = this._bakeTintedFrame(this.moa.idle, r, g, b);
-    for (const f of this.moa.juvenileWalk) set.juvenileWalk.push(this._bakeTintedFrame(f, r, g, b));
-    this._tintCache[key] = set;
+    if (!set) {
+      const r = tint[0], g = tint[1], b = tint[2];
+      set = { walk: [], idle: null, mate: null };
+      for (const f of this.moa.walk) set.walk.push(this._bakeTintedFrame(f, r, g, b));
+      // idle (02) and mate (05) alias baked walk frames — no duplicate buffers.
+      set.idle = set.walk[2] || this._bakeTintedFrame(this.moa.idle, r, g, b);
+      set.mate = set.walk[5] || this._bakeTintedFrame(this.moa.mate, r, g, b);
+      this._tintCache[key] = set;
+    }
+    this._lastTintRef = tint;
+    this._lastTintSet = set;
     return set;
   },
 
   // Like getMoaSprite, but returns a PRE-TINTED frame for `tint` ([r,g,b]). Frame
   // selection mirrors getMoaSprite exactly so the animation is identical; only the
   // source is the baked tinted mirror — no tint() call per frame (#6).
-  getMoaSpriteTinted(animTime, isMoving, isJuvenile, tint) {
-    if (!tint) return this.getMoaSprite(animTime, isMoving, isJuvenile, null);
+  getMoaSpriteTinted(animTime, isMoving, tint, isMating = false) {
+    if (!tint) return this.getMoaSprite(animTime, isMoving, null, isMating);
     const set = this._ensureTintSet(tint);
-    if (isJuvenile && set.juvenileWalk.length > 0) {
-      const jf = Math.floor(animTime * this.animation.moaWalkSpeed) % set.juvenileWalk.length;
-      if (this.isValid(set.juvenileWalk[jf])) return set.juvenileWalk[jf];
-    }
+    if (isMating && this.isValid(set.mate)) return set.mate;
     if (isMoving && set.walk.length > 0) {
       const fi = Math.floor(animTime * this.animation.moaWalkSpeed) % set.walk.length;
       if (this.isValid(set.walk[fi])) return set.walk[fi];
     }
     if (this.isValid(set.idle)) return set.idle;
-    return this.getMoaSprite(animTime, isMoving, isJuvenile, null);
+    return this.getMoaSprite(animTime, isMoving, null, isMating);
   },
 
   getEagleSprite(animTime, state) {

@@ -400,7 +400,7 @@ const EAGLE_SPECIES = {
     description: "Largest known eagle, apex predator of moa",
     rarity: 'common',
     
-    wingspan: { min: 20, max: 26 },
+    wingspan: { min: 10, max: 14 },
     
     baseSpeed: 0.4,
     huntSpeed: 1.2,
@@ -429,7 +429,7 @@ const EAGLE_SPECIES = {
     description: "Inexperienced but energetic hunter",
     rarity: 'uncommon',
     
-    wingspan: { min: 16, max: 20 },
+    wingspan: { min: 8, max: 10 },
     
     baseSpeed: 0.5,
     huntSpeed: 1.3,    // Faster but less accurate

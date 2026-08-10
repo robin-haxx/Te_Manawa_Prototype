@@ -109,14 +109,9 @@ started and — per `..._BUILD_V3.md` §4.6 — nobody is currently thinking of 
 
 ## 6. The full asset ledger
 
-| Group | Total | In hand | **New** |
-|---|:--:|:--:|:--:|
-| Plants | 45 | 11 | **34** |
-| Fauna | 64 | 31 | **33** |
-| Terrain / landform | 21 | 0 | **21** |
-| Disturbance FX | 12 | 3 | **9** |
-| UI | 16 | 0 | **16** |
-| **Total** | **158** | **45** | **113** |
+The per-group totals live in **`TEMANAWA_BUILD_V3.md` §4.6** and are not repeated here — per
+the header note, if the two ever diverge that document wins. (Section 5 above already breaks
+the same totals down by what is drawn versus outstanding.)
 
 **Three constraints that apply to every asset in the set:**
 

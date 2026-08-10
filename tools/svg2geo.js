@@ -6,16 +6,24 @@
 //   node tools/svg2geo.js geo/manawatu.svg geo/manawatu.geo.js
 //
 // SVG conventions (see md/TEMANAWA_GEOGRAPHY.md):
-//   viewBox="0 0 W H"   the world extent + aspect (points are normalised to it)
-//   class/id "river"    an open path/polyline  = the river centreline
-//   class/id "range"    a filled polygon/path  = a mountain massif
-//   class/id "coast"    an open path/polyline  = the coastline            (future)
-//   class/id "dune"     a filled polygon/path  = a dune field             (future)
-//   optional attrs:     data-width data-depth (river/coast),
-//                       data-height data-spread (range/dune)
+//   viewBox="0 0 W H"     the world extent + aspect (points are normalised to it)
+//   class/id "river"      an open path/polyline  = the MAIN stem centreline
+//   class/id "tributary"  an open path/polyline  = a feeder stream (also "trib")
+//   class/id "range"      a filled polygon/path  = a mountain massif
+//   class/id "coast"      an open path/polyline  = the coastline            (future)
+//   class/id "dune"       a filled polygon/path  = a dune field             (future)
+//   optional attrs:       data-width data-depth (river/tributary/coast),
+//                         data-height data-spread (range/dune)
+//
+// DEFAULT: an UNTAGGED open stroke — a <polyline>, or a <path> that isn't a closed
+// shape — is treated as a TRIBUTARY. So you can just DRAW A LINE in the editor and it
+// becomes a feeder stream; only the main stem needs the explicit class="river" (and a
+// massif its class="range"). This is why a plain drawn polyline now yields tributary
+// data where before it was silently dropped. A <rect> frame and <text> labels are never
+// matched by the tag scanner, so they stay harmless; an untagged <polygon> is still
+// skipped (a closed massif must say class="range").
 // Geometry: <polyline>/<polygon> points, and <path d> with M L H V C S Q T Z
-// (absolute + relative); curves are flattened to line segments. Anything with
-// no matching class/id is ignored, so a frame rect / labels are harmless.
+// (absolute + relative); curves are flattened to line segments.
 
 const fs = require('fs');
 const path = require('path');
@@ -42,7 +50,8 @@ const numAttr = (tag, name, dflt) => { const v = attr(tag, name); const n = v ==
 
 function classify(tag) {
   const c = ((attr(tag, 'class') || '') + ' ' + (attr(tag, 'id') || '')).toLowerCase();
-  if (/\briver\b/.test(c)) return 'river';
+  if (/\btrib/.test(c))            return 'tributary';   // tributary / trib / trib2 / tributary-oroua
+  if (/\briver\b|\bmain\b/.test(c)) return 'river';       // the main stem
   if (/\brange\b/.test(c)) return 'range';
   if (/\bcoast\b/.test(c)) return 'coast';
   if (/\bdune\b/.test(c))  return 'dune';
@@ -84,17 +93,61 @@ function flattenPath(d) {
 
 const out = { source: path.basename(SRC), viewBox: { w: VW, h: VH }, rivers: [], ranges: [], coasts: [], dunes: [] };
 const norm = (pts) => pts.map(([x, y]) => [round(x / VW), round(y / VH)]);
-const counts = { river: 0, range: 0, coast: 0, dune: 0 };
+
+// Douglas–Peucker simplification (in normalised 0..1 space). Curve-flattening emits ~16
+// points per Bézier — hundreds per drawn tributary — but the terrain bake walks EVERY river
+// segment for EVERY cell (a per-cell distance field), so a 193-point stream would wreck the
+// init budget. Decimate to the coarsest polyline that stays within SIMPLIFY_EPS of the
+// original (sub-cell detail is invisible on a ~400-cell grid). Endpoints are always kept.
+const SIMPLIFY_EPS = 0.004;   // ~1.5 cells at mapGrid 384; raise to thin further
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+  let t = l2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function simplify(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  let maxD = -1, idx = 0;
+  const a = pts[0], b = pts[pts.length - 1];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = segDist(pts[i][0], pts[i][1], a[0], a[1], b[0], b[1]);
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD > eps) {
+    const left = simplify(pts.slice(0, idx + 1), eps);
+    const right = simplify(pts.slice(idx), eps);
+    return left.slice(0, -1).concat(right);
+  }
+  return [a, b];
+}
+const counts = { river: 0, tributary: 0, range: 0, coast: 0, dune: 0, autoTrib: 0 };
+
+// A path counts as CLOSED (a filled shape, not a stroke) if its data ends in Z/z. Only
+// OPEN strokes default to tributary; a closed untagged path is skipped like a polygon.
+const pathIsClosed = (tag) => /z\s*"?\s*$/i.test((attr(tag, 'd') || '').trim());
 
 const tagRe = /<(polyline|polygon|path)\b[^>]*?\/?>/g;
 let m;
 while ((m = tagRe.exec(svg))) {
-  const tag = m[0], kind = m[1], type = classify(tag);
+  const tag = m[0], kind = m[1];
+  let type = classify(tag);
+  // Default an untagged OPEN stroke (polyline, or a non-closed path) to a tributary, so a
+  // plainly-drawn line becomes a feeder stream. Untagged polygons / closed paths are skipped.
+  let autoTrib = false;
+  if (!type) {
+    const isOpen = (kind === 'polyline') || (kind === 'path' && !pathIsClosed(tag));
+    if (isOpen) { type = 'tributary'; autoTrib = true; }
+  }
   if (!type) continue;
   let pts = kind === 'path' ? flattenPath(attr(tag, 'd')) : parsePoints(attr(tag, 'points'));
   if (pts.length < 2) continue;
   pts = norm(pts);
-  if (type === 'river')      out.rivers.push({ width: numAttr(tag, 'data-width', 0.045), depth: numAttr(tag, 'data-depth', 1.0), pts });
+  // Simplify open strokes (rivers/tributaries/coasts). Ranges/dunes are closed few-point
+  // polygons authored by hand — leave them exact.
+  if (type === 'river' || type === 'tributary' || type === 'coast') pts = simplify(pts, SIMPLIFY_EPS);
+  if (type === 'river')           out.rivers.push({ type: 'main',      width: numAttr(tag, 'data-width', 0.045), depth: numAttr(tag, 'data-depth', 1.0), pts });
+  else if (type === 'tributary') { out.rivers.push({ type: 'tributary', width: numAttr(tag, 'data-width', 0.02),  depth: numAttr(tag, 'data-depth', 1.0), pts }); if (autoTrib) counts.autoTrib++; }
   else if (type === 'range') out.ranges.push({ height: numAttr(tag, 'data-height', 0.85), spread: numAttr(tag, 'data-spread', 0.14), poly: pts });
   else if (type === 'coast') out.coasts.push({ width: numAttr(tag, 'data-width', 0.04), pts });
   else if (type === 'dune')  out.dunes.push({ height: numAttr(tag, 'data-height', 0.18), spread: numAttr(tag, 'data-spread', 0.07), poly: pts });
@@ -110,4 +163,6 @@ const body =
   `if (typeof module !== 'undefined' && module.exports) module.exports = TE_MANAWA_GEO;\n`;
 fs.writeFileSync(OUT, banner + body);
 console.log(`svg2geo: wrote ${OUT}`);
-console.log(`  viewBox ${VW}x${VH}  rivers ${counts.river}  ranges ${counts.range}  coasts ${counts.coast}  dunes ${counts.dune}`);
+console.log(`  viewBox ${VW}x${VH}  main ${counts.river}  tributaries ${counts.tributary}  ranges ${counts.range}  coasts ${counts.coast}  dunes ${counts.dune}`);
+if (counts.autoTrib) console.log(`  (${counts.autoTrib} untagged open path${counts.autoTrib > 1 ? 's' : ''} treated as tributaries — tag class="river"/"range" to reclassify)`);
+if (counts.river === 0) console.log('  ! no main stem: tag one polyline class="river" (tributaries alone have no trunk to join)');

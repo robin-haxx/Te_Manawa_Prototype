@@ -58,7 +58,7 @@ class HaastsEagle extends Boid {
     this.relocateTimer = 0;
     
     // Visual
-    this.wingspan = random(14, 18);
+    this.wingspan = random(8, 12);
     this.wingPhase = random(TWO_PI);
     this.bodyLength = this.wingspan * 0.45;
     this.animTime = random(1000);
@@ -137,7 +137,8 @@ class HaastsEagle extends Boid {
   // ============================================
   
   behave(simulation, dt = 1) {
-    this.animTime += dt;
+    // animTime is NOT advanced here: the wingbeat must not fast-forward with the
+    // deep-time clock. It advances in Boid.update() on the real frame dt.
     this.hunger = Math.min(this.hunger + this.hungerRate * dt, this.maxHunger);
 
     // Flight altitude (visual only): cruise while flying/searching, drop to the

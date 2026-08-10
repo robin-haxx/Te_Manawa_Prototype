@@ -23,6 +23,9 @@ class Boid {
     };
     this.noiseOffset = random() * 1000;
     this.wanderTime = random() * 1000; // For delta-time compatible wander
+    this.animTime = 0;                 // sprite animation clock; rides the REAL
+                                       // frame dt in update() (subclasses reseed
+                                       // it to random() for per-entity phase)
     this._wanderHeading = Math.atan2(this.vel.y, this.vel.x); // last real heading, for relative wander
     this._speedCap = null; // smoothed effective max speed (ramps toward maxSpeed)
 
@@ -259,33 +262,59 @@ class Boid {
   avoidUnwalkable() {
     const result = this._steeringVec;
     result.set(0, 0);
-    
+
     const lookAhead = 12;
-    const velX = this.vel.x;
-    const velY = this.vel.y;
+    const px = this.pos.x, py = this.pos.y;
+    const angles = this._avoidAngles;
+
+    // Case 1 — already standing OFF walkable ground. A look-ahead nudge can only
+    // keep a moving animal from wading IN; it never rescues one that is already
+    // on the water. That happens two ways: the coastline advances under a moa
+    // during a deep-time morph, or a fast state (fleeing) carries it across the
+    // shore. A stationary moa returns no velocity to steer, so without this it
+    // renders stranded on the sea. Eject toward the nearest walkable direction
+    // with a strong, velocity-independent force so even an idle moa wades back.
+    if (!this.terrain.isWalkable(px, py)) {
+      let bestAngle = 0, found = false;
+      // Probe outward ring by ring and take the first walkable hit, so the moa
+      // heads for the CLOSEST shore rather than a distant one.
+      for (let ring = 1; ring <= 5 && !found; ring++) {
+        const r = lookAhead * ring;
+        for (let i = 0; i < 12; i++) {
+          const a = angles[i];
+          if (this.terrain.isWalkable(px + Math.cos(a) * r, py + Math.sin(a) * r)) {
+            bestAngle = a; found = true; break;
+          }
+        }
+      }
+      if (!found) {   // no land within reach — head for the map interior
+        bestAngle = Math.atan2(this.terrain.mapHeight * 0.5 - py, this.terrain.mapWidth * 0.5 - px);
+      }
+      result.set(Math.cos(bestAngle) * this.maxForce * 4, Math.sin(bestAngle) * this.maxForce * 4);
+      return result;
+    }
+
+    // Case 2 — on land but heading toward unwalkable ground: steer onto the
+    // heading that best preserves course while staying walkable.
+    const velX = this.vel.x, velY = this.vel.y;
     const velMagSq = velX * velX + velY * velY;
-    
     if (velMagSq < 0.0001) return result;
-    
-    const velMag = Math.sqrt(velMagSq);
-    const invVelMag = 1 / velMag;
-    const futureX = this.pos.x + velX * invVelMag * lookAhead;
-    const futureY = this.pos.y + velY * invVelMag * lookAhead;
-    
+
+    const invVelMag = 1 / Math.sqrt(velMagSq);
+    const futureX = px + velX * invVelMag * lookAhead;
+    const futureY = py + velY * invVelMag * lookAhead;
+
     if (!this.terrain.isWalkable(futureX, futureY)) {
       let bestDot = -2;
       let bestAngle = 0;
       const currentHeading = Math.atan2(velY, velX);
-      const px = this.pos.x;
-      const py = this.pos.y;
-      
-      const angles = this._avoidAngles;
+
       for (let i = 0; i < 12; i++) {
         const a = angles[i];
         const testAngle = currentHeading + a;
         const testX = px + Math.cos(testAngle) * lookAhead;
         const testY = py + Math.sin(testAngle) * lookAhead;
-        
+
         if (this.terrain.isWalkable(testX, testY)) {
           const dot = Math.cos(a);
           if (dot > bestDot) {
@@ -294,7 +323,7 @@ class Boid {
           }
         }
       }
-      
+
       if (bestDot > -2) {
         result.set(
           Math.cos(bestAngle) * this.maxForce * 2,
@@ -307,7 +336,7 @@ class Boid {
         );
       }
     }
-    
+
     return result;
   }
   
@@ -373,10 +402,13 @@ class Boid {
     if (this.pos.y < 5) this.pos.y = 5;
     else if (this.pos.y > h) this.pos.y = h;
 
-    // Velocity is final for the frame here (behave() set the forces, the lines
-    // above integrated and clamped them), so ease the sprite's facing now,
-    // using the same dt — which carries the deep-time multiplier — so the turn
-    // keeps pace when the clock fast-forwards.
+    // Motion clock. The dt reaching update() is the REAL frame delta — Game.update
+    // feeds the un-warped dt here while behave() gets the deep-time-warped one (the
+    // two-clock split). So the sprite's facing AND its walk/wingbeat cadence advance
+    // at wall-clock rate: a moa keeps a calm, deliberate step in 10x deep-time rather
+    // than a sped-up cartoon scramble. Aging, hunger and breeding ride the warped
+    // clock in behave(). See CLAUDE.md (water/habitat health already do this).
+    this.animTime += dt;
     this.updateFacing(dt);
   }
 

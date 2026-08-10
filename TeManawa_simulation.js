@@ -303,7 +303,11 @@ class Simulation {
     const spawnScale = 2;
     const spawnCols = Math.ceil(this.worldWidth / spawnScale);
     const spawnRows = Math.ceil(this.worldHeight / spawnScale);
-    const density = this.config.plantDensity;
+    // Scale plant density by the view zoom-out (config.viewAreaGain): the world extent for
+    // spawning is unchanged, but it now DEPICTS ~this-much-more terrain, so bumping density by
+    // the same factor keeps the on-screen plant density (plants per screen) constant instead of
+    // looking sparse after zooming out. 1 = off. Well under the ≤1000 live-plant budget.
+    const density = this.config.plantDensity * ((this.config.viewAreaGain > 0) ? this.config.viewAreaGain : 1);
     const terrain = this.terrain;
     
     for (let row = 0; row < spawnRows; row++) {
@@ -320,7 +324,38 @@ class Simulation {
       }
     }
   }
-  
+
+  // KERERŪ SEED DISPERSAL. The only runtime path that GROWS the plant population, so it is the
+  // single place the live-plant cap is enforced (nothing else adds plants — spawnPlants runs once
+  // at init, and browsed plants regrow in place). Plants a FOREST seedling (a warm, large-fruited
+  // type the biome supports) near (x,y) at low growth so it visibly grows in. Returns the new
+  // plant, or null if capped / no forest-capable spot found. See TeManawa_kereru.js.
+  disperseSeed(x, y) {
+    const cap = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.maxLivePlants) || 900;
+    if (this.plants.length >= cap) return null;
+    const terrain = this.terrain;
+    const warmMax = (typeof TM_GROW !== 'undefined') ? TM_GROW.warmMax : 0.65;
+    for (let tries = 0; tries < 6; tries++) {
+      const a = random(TWO_PI), r = random(46);
+      const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+      const biome = terrain.getBiomeAt(px, py);
+      if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
+      // kererū disperse LARGE forest fruit → only warm (low coldTolerance) types recruit
+      const warm = [];
+      for (let i = 0; i < biome.plantTypes.length; i++) {
+        const t = biome.plantTypes[i], d = PLANT_TYPES[t];
+        if (d && d.coldTolerance <= warmMax) warm.push(t);
+      }
+      if (!warm.length) continue;
+      const type = warm[(random() * warm.length) | 0];
+      const p = new Plant(px, py, type, terrain, biome.key);
+      p.growth = 0.06;               // a fresh seedling — grows in over time
+      this.plants.push(p);
+      return p;
+    }
+    return null;
+  }
+
   spawnMoas(count, speciesKey = null) {
     const pref = this.seasonManager.getPreferredElevation();
     
@@ -473,6 +508,31 @@ class Simulation {
 
     if (this.stats && this.stats.eagleBirths !== undefined) this.stats.eagleBirths++;
     if (this.game) this.game.addNotification('A Pouākai eaglet hatches.', 'success');
+  }
+
+  // Hatch a kererū egg into a juvenile in the flock (emergent frugivore
+  // reproduction — mirrors _hatchEagleEgg). Cap-guarded by kereruMaxPopulation.
+  _hatchKereruEgg(egg) {
+    const cap = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.kereruMaxPopulation) ?? 16;
+    if (this.getSpeciesCount('kereru') >= cap) return;
+
+    const chick = this._createFromRegistry('kereru', 'kereru', egg.pos.x, egg.pos.y, null);
+    if (!chick) return;
+
+    chick.age = 0;
+    chick.mature = false;
+    chick.hunger = 30;
+    chick.crop = 0;
+
+    const list = this.otherEntities.kereru || (this.otherEntities.kereru = []);
+    // Minority-sex balance: take the rarer sex among the living flock so a small
+    // population keeps both sexes and stays able to pair (like the moa/eagle path).
+    let f = 0, m = 0;
+    for (let i = 0; i < list.length; i++) { const o = list[i]; if (o.alive) { o.isFemale ? f++ : m++; } }
+    chick.isFemale = (f < m) ? true : (m < f ? false : random() < 0.5);
+
+    list.push(chick);
+    if (this.game) this.game.addNotification('A kererū chick hatches.', 'success');
   }
 
   findWalkablePosition(minElev, maxElev) {
@@ -742,7 +802,12 @@ class Simulation {
   // MAIN UPDATE LOOP
   // ============================================
   
-  update(dt = 1) {
+  // Two clocks. `dt` is the sim/life clock (deep-time-warped: aging, hunger,
+  // breeding, growth, spawn cadence). `rdt` is the real frame clock, threaded to
+  // fauna MOTION and ANIMATION so a moa walks and a harrier beats its wings at
+  // wall-clock rate even in 10x fast-forward. Defaults to `dt`, so any single-arg
+  // caller keeps the old fully-warped behaviour.
+  update(dt = 1, rdt = dt) {
     this.updateSpatialGrids();
     this.updatePlantsBatched(dt);
     
@@ -757,7 +822,7 @@ class Simulation {
     this.updateEggs(dt);
     
     const aliveBeforeUpdate = this.getMoaPopulation();
-    this.updateMoas(dt);
+    this.updateMoas(dt, rdt);
     
     this._invalidateCache();
     const aliveAfterUpdate = this.getMoaPopulation();
@@ -767,10 +832,10 @@ class Simulation {
       this.stats.deaths += newDeaths;
     }
     
-    this.updateEagles(dt);
-    
+    this.updateEagles(dt, rdt);
+
     // Update other entity types
-    this._updateOtherEntities(dt);
+    this._updateOtherEntities(dt, rdt);
     
     this._updateSpeciesStability(dt);
 
@@ -795,16 +860,16 @@ class Simulation {
     }
   }
 
-  _updateOtherEntities(dt) {
+  _updateOtherEntities(dt, rdt = dt) {
     for (const [type, list] of Object.entries(this.otherEntities)) {
       for (let i = 0; i < list.length; i++) {
         const entity = list[i];
         if (!entity.alive) continue;
-        
+
         // Each entity type must implement behave() and update()
         // just like moa and eagle do
-        if (entity.behave) entity.behave(this, this.seasonManager, dt);
-        if (entity.update) entity.update(dt);
+        if (entity.behave) entity.behave(this, this.seasonManager, dt);   // life (warped)
+        if (entity.update) entity.update(rdt);                            // motion/anim (real)
         this.constrainToBounds(entity.pos);
       }
     }
@@ -873,6 +938,29 @@ class Simulation {
     this._plantBatchIndex = endIdx >= len ? 0 : endIdx;
   }
 
+  // Remove plants whose ground has gone underwater. The deep-time land morph re-bakes the
+  // terrain WITHOUT rebuilding the living world (only the eruption path does a full respawn),
+  // so as the southern strait floods a cell, any plant standing on it was left stranded in the
+  // sea (the "tree in the water" bug). Game calls this once each time a morph re-bake completes
+  // — cheap (≤1000 plants, one grid lookup each) and off the per-frame path. Compacts the list.
+  cullSubmergedPlants() {
+    const plants = this.plants, terrain = this.terrain;
+    if (!plants.length || !terrain) return 0;
+    let writeIdx = 0, culled = 0;
+    for (let i = 0, len = plants.length; i < len; i++) {
+      const p = plants[i];
+      if (!p.alive) { culled++; continue; }                 // also drop any already-dead
+      const biome = terrain.getBiomeAt(p.pos.x, p.pos.y);
+      if (biome && (biome.isWater || !biome.walkable)) {     // its ground is now open water — strand it no longer
+        p.alive = false; culled++; continue;
+      }
+      plants[writeIdx++] = p;
+    }
+    if (writeIdx !== plants.length) plants.length = writeIdx;
+    if (culled && CONFIG.debugMode) console.log(`cullSubmergedPlants: removed ${culled} plant(s) now in water`);
+    return culled;
+  }
+
   updatePlaceables(dt = 1) {
     const placeables = this.placeables;
     let writeIdx = 0;
@@ -925,6 +1013,11 @@ class Simulation {
           // the egg (over-cap eggs are simply lost rather than lingering).
           this._hatchEagleEgg(egg);
           egg.alive = false;
+        } else if (egg.offspringType === 'kereru') {
+          // Emergent kererū reproduction: hatch a juvenile into the flock, then
+          // consume the egg (cap-guarded in _hatchKereruEgg).
+          this._hatchKereruEgg(egg);
+          egg.alive = false;
         } else if (this.getMoaPopulation() < config.maxMoaPopulation) {
           const offspringSpecies = egg.getOffspringSpecies();
           const _perSpeciesCap = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.maxPerSpecies) || Infinity;
@@ -975,27 +1068,27 @@ class Simulation {
     eggs.length = writeIdx;
   }
 
-  updateMoas(dt = 1) {
+  updateMoas(dt = 1, rdt = dt) {
     const moas = this.moas;
     const seasonManager = this.seasonManager;
-    
+
     for (let i = 0, len = moas.length; i < len; i++) {
       const moa = moas[i];
       if (moa.alive) {
-        moa.behave(this, seasonManager, dt);
-        moa.update(dt);
+        moa.behave(this, seasonManager, dt);   // life clock (warped)
+        moa.update(rdt);                        // motion + animation (real)
         this.constrainToBounds(moa.pos);
       }
     }
   }
 
-  updateEagles(dt = 1) {
+  updateEagles(dt = 1, rdt = dt) {
     const eagles = this.eagles;
     for (let i = 0, len = eagles.length; i < len; i++) {
       const eagle = eagles[i];
       if (!eagle.alive) continue;   // starved emergent birds await cleanup()
-      eagle.behave(this, dt);
-      eagle.update(dt);
+      eagle.behave(this, dt);       // life clock (warped)
+      eagle.update(rdt);            // motion + animation (real)
       this.constrainToBounds(eagle.pos);
     }
   }
@@ -1148,7 +1241,7 @@ class Simulation {
     for (let i = 0; i < eggs.length; i++) { const e = eggs[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (let i = 0; i < moas.length; i++) { const e = moas[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (const [type, arr] of Object.entries(this.otherEntities)) {
-      if (type === 'kea') continue;                    // flying — drawn above with the eagles
+      if (type === 'kea' || type === 'kereru') continue;   // flying — drawn above with the eagles
       for (let i = 0; i < arr.length; i++) { const e = arr[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     }
 
@@ -1166,6 +1259,10 @@ class Simulation {
     // Flying others (kea) render above, like eagles.
     if (this.otherEntities.kea) {
       this._renderFiltered(this.otherEntities.kea, 30, null, true, inView);
+    }
+    // Kererū fly over the canopy — render above the ground plane too.
+    if (this.otherEntities.kereru) {
+      this._renderFiltered(this.otherEntities.kereru, 30, null, true, inView);
     }
     // Storms sit above everything.
     this._renderFiltered(placeables, 80, p => p.type === 'Storm', true, inView);

@@ -21,7 +21,7 @@
 
 const Kiosk = {
   // ---- tunables --------------------------------------------
-  idleSeconds:        90,      // no input for this long -> attract reset
+  idleSeconds:        180,      // no input for this long -> attract reset
   watchdogSeconds:    10,      // no draw() heartbeat for this long -> hard reload
   nightlyReloadHour:  3,       // local hour for the scheduled refresh (null disables)
   crossfadeMillis:    400,     // covers the soft reset
@@ -189,7 +189,8 @@ const Kiosk = {
     try {
       g.playTime = 0;
       g.timeScale = 1;
-      g._tmDeepUntil = g._tmGrowthUntil = g._tmStormUntil = 0;
+      g._tmDeepUntil = g._tmGrowWarmUntil = g._tmGrowColdUntil = g._tmStormUntil = 0;
+      g._regimeFit = 1; g._recruitment = 1;
       g._tmStormCells = null;
       g._tmBolt = null;
       if (g.notifications) g.notifications.length = 0;

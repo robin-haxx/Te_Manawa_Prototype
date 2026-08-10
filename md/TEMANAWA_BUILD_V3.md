@@ -4,6 +4,13 @@ Architecture, performance budget and the full sprite manifest for
 **`TEMANAWA_PLAN_V2.md` (v2.1)**, which is the design spine. This document does not
 make design decisions — where the two disagree, the plan wins.
 
+> **Reconciled 2026-08-07** against the Phase 3 codebase. Corrected: the juvenile-moa
+> load bug (fixed), the asset-directory cleanup (done), the module inventory and engine
+> size (grew, not shrank), and the reset-cost claim — the soft reset is **no longer
+> uniformly "nearly free"** now that it returns to the last eruption checkpoint (§5.1).
+> Still open and correctly described: the four `Float32` fields, atlas packing, the
+> 512→256 grid drop, and audio preload.
+
 **Constraints assumed throughout:** vanilla JavaScript on p5.js, one portrait screen,
 **unattended kiosk**, no operator, no network.
 
@@ -21,7 +28,7 @@ decides most of what follows:
 | **2** | Architecture — modules, fields, instancing, atlases |
 | **3** | Kiosk self-run |
 | **4** | The sprite manifest |
-| **5** | **Performance and load budget** — hard limits, and why reset is nearly free |
+| **5** | **Performance and load budget** — hard limits, and the two-tier reset cost |
 | **6** | **Terrain — how the morph reads** |
 | **7** | Appendix: the v2 → v2.1 assessment trail |
 
@@ -47,8 +54,17 @@ TeManawa_flora.js       the plant table + establishment rules + the palette
 TeManawa_atlas.js       sprite atlas load + frame lookup
 ```
 
-`TeManawa_climate.js` and `TeManawa_kiosk.js` already exist. The `sketch.js` split itself
-is scoped in `TEMANAWA_REORG.md` §4.
+`TeManawa_climate.js` and `TeManawa_kiosk.js` already exist, and Phase 3 added a further
+tier of modules the original split did not anticipate: `TeManawa_terrain.js`,
+`TeManawa_projection.js` (pure plan-oblique 3/4), `TeManawa_seasons.js`,
+`TeManawa_registry.js`, `TeManawa_spatial.js`, `TeManawa_simulation.js`,
+`TeManawa_species_data.js`, `TeManawa_entity_sprites.js`, `TeManawa_level_format.js`,
+`TeManawa_debug.js`, and the `TeManawa_devtools.js` LOOK/GEN/GEO console tools
+(`TEMANAWA_DEVTOOLS.md`). The engine is now **24 files, ~590 kB** — it *grew* with the
+terrain, projection and dev-tooling work rather than shrinking to the ~250 kB the economy
+strip projected (which reconciles §5.3's stale "18 files / 448 kB"). The
+`fields`/`flora`/`atlas` trio above is still the outstanding ecology split; `sketch.js`
+itself is scoped in `TEMANAWA_REORG.md` §4.
 
 ### 2.2 The data model
 
@@ -104,15 +120,14 @@ visible black screen every time the watchdog reloads. And the watchdog *will* re
 - Keep the existing declarative structure — `PLANT_SPRITE_SETS` in `sketch.js` and
   `ART_SETS` in `entity_sprites.js` are both already the right shape. They resolve to
   atlas frames instead of file paths; nothing above them changes.
-- **Clean the asset directory first.** It currently ships:
-  - `sprites/2026-07-28 08-02-06.mp4` and `…(online-video-cutter.com).mp4` — **53 MB of
-    video** in the sprite folder
-  - `sprites/OneDrive_2026-07-27`, ` (1)`, ` (2)` — ~1.3 MB of duplicate downloads
-    shadowing `EylesHarrier_HiRes/` and `Totara/`
-  - `sprites/moa_walk_4 (Copy 1).png`, `sprites/trees.pxo`, `.fuse_hidden…` in the root
-- **Live bug:** `TeManawa_entity_sprites.js` L190 loads `sprites/moa_juvenile.png`,
-  which **does not exist** — the folder has `moa_juvenile_walk_1..4.png`. The failure
-  callback is `() => {}`, so it fails silently and juveniles fall through to adult art.
+- ✅ **Asset directory cleaned** (was "clean this first"). The ~53 MB of stray `.mp4`
+  video, the `trees.pxo`, the `OneDrive_2026-07-27*` duplicate downloads and the
+  `moa_walk_4 (Copy 1).png` / `.fuse_hidden…` cruft are gone. `sprites/` is now **91 loose
+  PNGs**. The atlas pack itself is still to do — no `sprites/*.json` frame map exists yet.
+- ✅ **Juvenile-moa load bug fixed** (was a live bug here). `TeManawa_entity_sprites.js`
+  now loads `moa_juvenile_walk_1..4.png` — which exist — with a real
+  `console.warn` failure callback instead of the silent `() => {}`. Juveniles no longer
+  fall through to adult art.
 
 ---
 
@@ -214,7 +229,7 @@ existing conventions in `TeManawa_entity_sprites.js` and are cut to cartoon mini
 | **NI giant moa — male** | 4 walk + 1 idle | 5 | — | **The dimorphism pair.** Different *build*, not a scaled copy |
 | **Little bush moa** | 5 walk + 1 idle | 6 | **✓ complete, 48²** | Warm-phase marker. Wired as `moaVariants.bush` |
 | **Mantell's moa** | 4 walk + 1 idle | 5 | — | **Cold-phase marker.** Smallest NI moa, stocky |
-| **Juvenile moa** | 4 walk + 1 idle | 5 | 4 of 5 | `moa_juvenile.png` referenced and **missing** (§2.4) |
+| **Juvenile moa** | 4 walk + 1 idle | 5 | 4 of 5 | 4-frame walk wired (`moa_juvenile_walk_1..4`); idle still to draw. The old silent-load bug is fixed (§2.4) |
 | **Kērangi — flight** | 16 @500² | 16 | **✓ complete** | Plus an 8-frame 256² low set. Already atlas-ready via `ART_SETS` |
 | **Kērangi — perched** | 2 | 2 | — | The dive puts it at rock shelters; there is no perched pose |
 | **Kērangi — dash** | 2 | 2 | — | Goshawk, not soaring harrier. Frame 8 currently doubles as the hunt pose |
@@ -312,7 +327,7 @@ Distinguish two very different operations that are easy to conflate:
 | Triggered by | idle timeout, end-of-window, attract loop, `onerror` recovery | watchdog stall, crash, nightly 03:00 |
 | What happens | re-seed and rebuild in memory | full page load |
 | Frequency | **hundreds of times a day** | ideally once a day |
-| Cost | **~10–25 ms** | **1.5–2.5 s** (see §5.3) |
+| Cost | **~20 ms** keep-terrain · **~1.2 s** if it re-morphs to an eruption checkpoint or reseeds | **1.5–2.5 s** (see §5.3) |
 
 `resetToAttract()` (`..._PLAN_V2.md` §4.2) is the soft path, built in Phase 1.5. The
 whole point is that it stays in memory:
@@ -326,19 +341,32 @@ whole point is that it stays in memory:
 | Re-bake vegetation layer | see §5.4 | **5–10 ms amortised** |
 | **Total** | | **~10–25 ms** |
 
-> ✅ **Measured.** `tools/bootcheck.js` times six consecutive soft resets: **17–31 ms**,
-> against **~950 ms** for a full `Game.init()` at Phase 1.5 — about 50× cheaper. *(Since
-> Phase 3 the terrain bake is much heavier — supersampled paint, geography fields, relief
-> — so `init()` is now ~1.8 s in the harness and a soft reset is ~100× cheaper. The soft
-> path is unchanged; this only sharpens the rule.)*
+> ✅ **Measured — and now two-tier.** `tools/bootcheck.js` times six consecutive soft
+> resets. When the reset **keeps the terrain**, it is still ~**20 ms**, against a full
+> `Game.init()` that is now **~6.8 s** in the harness (up from ~950 ms at Phase 1.5 as the
+> terrain bake grew: supersampled paint, geography fields, 3/4 relief). But the soft path
+> is **no longer uniformly cheap.** `Kiosk.resetToAttract()` now **returns to the last
+> eruption checkpoint** via `Game.applyEruptionAt()`, which re-morphs and re-bakes the
+> terrain and costs **~1.2 s**. In the harness — where eruptions have fired before the
+> reset loop runs — five of six resets take that path, so the measured series is
+> `20, 1240, 1237, 1237, 1228, 1298 ms` and the harness reports soft as only **~5×**
+> cheaper than `init()`, not the ~50–100× the pure keep-terrain path delivered.
 >
-> Getting there required splitting the two operations, because the first attempt simply
-> called `init()` and cost the full 950 ms. `Game.init()` regenerates terrain noise over
-> every cell *and* bakes four season buffers; `Game.resetEcosystem()` keeps the terrain
-> and its baked buffers and replaces only the living world. **Terrain generation is ~95%
-> of a reset that doesn't need to regenerate terrain** — and the land has no reason to
-> change between visitors. `Kiosk.reseedEvery` fires a full rebuild every 12th reset so
-> the landscape still varies across a day.
+> ⚠️ **This breaks the old "reset is nearly free" invariant** for any reset that lands on
+> an eruption checkpoint, and pushes it past the ≤25 ms budget in §5.1. The original
+> analysis assumed *the land has no reason to change between visitors*; the
+> eruption-checkpoint return is a new reason for it to change, and it reintroduces exactly
+> the terrain-regeneration cost the soft/hard split was built to avoid — on the visitor
+> path. It hides behind the crossfade, but 1.2 s is a long crossfade.
+> **Open question for the design spine:** is the eruption-checkpoint return worth ~1.2 s
+> on the visitor path, or should each checkpoint's terrain be baked once and swapped in
+> pointer-cheap? Flagged here rather than silently re-baselined.
+>
+> The cheap tier is otherwise unchanged: `Game.init()` regenerates terrain noise over
+> every cell *and* bakes the season buffers, whereas `Game.resetEcosystem()` keeps the
+> terrain and its baked buffers and replaces only the living world — **terrain generation
+> is ~95% of a reset that doesn't need it.** `Kiosk.reseedEvery` (=12) still fires a full
+> `init()` rebuild every 12th reset so the landscape varies across a day.
 
 That is **under one frame at 60 fps**, and it can hide entirely behind a 400 ms
 crossfade. Three conditions make it true, and all three are design constraints rather
@@ -358,7 +386,7 @@ Exceed these and the piece stops holding 60 fps on integrated graphics.
 
 | Limit | Value | Why |
 |---|---|---|
-| **Sim grid** | **256² (65,536 cells)** | 512² quadruples every field op *and* the bake. The single most expensive number in the project. **Currently 512** (`CONFIG.mapGrid`) to preserve the existing plant/moa density tuning — the pre-Phase-1.5 portrait map was ~432×768. Drop to 256 in Phase 3 when the interval re-bake lands, and retune `plantDensity` and spawn counts in the same commit |
+| **Sim grid** | **256² (65,536 cells)** | 512² quadruples every field op *and* the bake. The single most expensive number in the project. **Still 512** (`CONFIG.mapGrid`) to preserve the existing plant/moa density tuning — the pre-Phase-1.5 portrait map was ~432×768. The interval/sliced re-bake this drop was waiting on **has since landed** (§5.4; the harness verifies `incremental morph: sliced == synchronous`), so the precondition is met — the outstanding commit is the drop to 256 itself, retuning `plantDensity` and spawn counts in the same change |
 | **Live plant entities** | **≤ 1,000** | `h4` emergents plus moa food targets. Everything else is baked or palette |
 | **Live fauna** | **≤ 300** | including juveniles and ambient birds |
 | **Total `image()` calls per frame** | **≤ 1,500** | the practical ceiling for p5's 2D renderer on integrated graphics |
@@ -372,11 +400,11 @@ The load that actually costs, and the one the watchdog pays.
 
 | Item | Now | After |
 |---|---|---|
-| `p5.js` | 5.4 MB unminified | ✅ **shipped:** `p5.min.js`, ~1 MB — saved ~4.4 MB and ~200–400 ms of parse |
+| `p5.js` | 5.4 MB unminified | ✅ **shipped:** `p5.min.js`, ~1.4 MB — saved ~4.0 MB and ~200–400 ms of parse |
 | `p5.sound.min.js` | 200 kB | unchanged |
-| Engine JS | 448 kB across 18 files | ~250 kB after the economy strip; bundle to 1 file |
-| Sprites | 2.0 MB across ~90 loose PNGs, heading for 158 | **5 atlases** |
-| Audio | **6.5 MB across 17 mp3s, all in `preload()`** | preload the ambient bed only; lazy-load the rest |
+| Engine JS | **~590 kB across 24 files** — *grew* with Phase 3 (terrain, projection, dev tools), did not shrink to the projected ~250 kB | bundle to 1 file |
+| Sprites | 2.0 MB across **91 loose PNGs**, heading for 158 | **5 atlases** (no frame map exists yet) |
+| Audio | **6.5 MB across 17 mp3s, still all in `preload()`** | preload the ambient bed only; lazy-load the rest — **still outstanding** |
 | Fonts | 360 kB, 2 files | unchanged |
 
 **Estimated cold boot, local server, kiosk-class hardware:**

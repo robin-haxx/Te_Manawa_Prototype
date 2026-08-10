@@ -1,5 +1,14 @@
 # Avian Age: Te Manawa — Build Plan
 
+> ⛔ **Superseded by `TEMANAWA_PLAN_V2.md`. Read that first.**
+>
+> This is the v1 plan. `PLAN_V2.md` supersedes its ecology and its setting — the window
+> here (**~345 ka → <50 ka**) and the **four buttons** are both stale (the run is now
+> ~1 Ma → 25.5 ka, five buttons). **Still standing:** §§1–3, 5–8 and 10 — notably §2 (the
+> accessibility rule, *nothing essential conveyed by audio alone*, still quoted by
+> `BUILD_V3.md` §3) and §3 (cultural framing). Read it for *why* decisions went as they
+> did, not as a build spec.
+
 A standalone, self-running installation for **Te Manawa** museum's *Te Awa – The
 River* gallery: the interactive, deep-time companion to the existing portrait
 landform screen. It forks the *Mauri* engine but strips it to an **ambient

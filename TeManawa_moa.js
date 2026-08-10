@@ -12,6 +12,18 @@ const MOA_STATE = {
   MATING: 'mating'
 };
 
+// Fallback species-highlight halo colour. Hoisted to module scope so the render
+// path doesn't allocate a fresh [r,g,b] every frame for highlighted species that
+// have no configured highlightColor. Read-only — never mutated.
+const MOA_HL_DEFAULT = [255, 235, 120];
+
+// Native facing of the moa art, along +x. The Side_Moa_Walk set is authored
+// facing LEFT, but the lateral-flip convention (_flip: +1 = face right) assumes
+// right-facing art (see TeManawa_entity_sprites.js header). This sign reconciles
+// the two: with left-facing art it is -1, so flip=+1 renders a mirrored (right-
+// facing) frame. Set to +1 if the art is swapped back to a right-facing set.
+const MOA_ART_FACE_SIGN = -1;
+
 const MOA_AGE = {
   JUVENILE_MAX: 600,
   ADULT_MIN: 900,
@@ -270,7 +282,8 @@ class Moa extends Boid {
 
   behave(simulation, seasonManager, dt = 1) {
     this.updateAge(dt);
-    this.animTime += dt;
+    // animTime is NOT advanced here: the walk cadence must not fast-forward with
+    // the deep-time clock. It advances in Boid.update() on the real frame dt.
     this._updateSeasonCache(seasonManager);
     
     const sc = this._seasonCache;
@@ -1102,9 +1115,11 @@ class Moa extends Boid {
     // Skip it for species with their own dedicated sprite set (e.g. bush moa).
     const _tint = variant ? null : this.speciesConfig.tint;
     const _moving = this.vel.magSq() > 0.01;
+    // Mating holds a dedicated pose (frame 05) regardless of movement.
+    const _mating = this.currentState === MOA_STATE.MATING;
     const sprite = _tint
-      ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, this.isJuvenile(), _tint)
-      : EntitySprites.getMoaSprite(this.animTime, _moving, this.isJuvenile(), variant);
+      ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, _tint, _mating)
+      : EntitySprites.getMoaSprite(this.animTime, _moving, variant, _mating);
     if (!sprite) return;
     
     push();
@@ -1120,7 +1135,7 @@ class Moa extends Boid {
     // ring drawn in renderIndicators so it sits above trees.
     if (typeof SPECIES_HIGHLIGHT !== 'undefined' && SPECIES_HIGHLIGHT.has(this.speciesKey)) {
       const _hc = this.speciesConfig.highlightColor ||
-                  (this._vhl && this._vhl.color) || [255, 235, 120];
+                  (this._vhl && this._vhl.color) || MOA_HL_DEFAULT;
       const _pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.12);
       noStroke();
       fill(_hc[0], _hc[1], _hc[2], 55 + _pulse * 95);
@@ -1138,7 +1153,9 @@ class Moa extends Boid {
     // is edge-on (scaleX → 0) and squashes before opening out mirrored. The small
     // vertical stretch at |flip| → 0 is the bounce that makes the turn fun.
     const flip = (this._flip !== undefined) ? this._flip : 1;
-    scale(flip, 1 + (1 - Math.abs(flip)) * 0.18);
+    // MOA_ART_FACE_SIGN corrects for the art's native facing so +1 always faces
+    // right, whatever direction the sprite set is drawn in.
+    scale(flip * MOA_ART_FACE_SIGN, 1 + (1 - Math.abs(flip)) * 0.18);
     
     noTint();   // the sprite is already tinted (baked once); avoid a stray double-tint
     imageMode(CENTER);

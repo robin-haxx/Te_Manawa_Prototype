@@ -28,6 +28,12 @@ let currentFPS = 60;
 //   prefix        filename stem, e.g. 'Totara' -> Totara_Mature.png
 //   folder        optional subfolder under sprites/ (include trailing slash)
 //   growingFrames if set, loads <prefix>_Growing_01..NN.png as a growth sequence
+//   matureVariants if set, loads <prefix>_Size_00..NN-1.png; a mature plant picks
+//                 one at random (per instance) instead of the Mature/Thriving art
+//   sizeOnly      if set, the plant has NO seasonal state art: the Mature/Thriving/
+//                 Wilting/Dormant frames are never loaded and never shown — it plays
+//                 its growth sequence while immature, then holds its size variant for
+//                 good (no sprite-switching on dormancy/wilt/thrive). Needs matureVariants.
 //   anchor        'center' (default) or 'base' — 'base' plants the sprite's
 //                 bottom edge on the ground point, for art taller than it is wide
 //   scale         multiplier on the drawn footprint width
@@ -37,8 +43,10 @@ const PLANT_SPRITE_SETS = {
   fern:      { prefix: 'Fern' },
   // PROTOTYPE: rimu renders with Tōtara art. Art swap only — the 'rimu' key
   // still drives nutrition, seasonality, forest banding and level data.
+  // Tōtara has only size variants + a growth sequence (no seasonal state art), so
+  // sizeOnly keeps it on its size variant instead of switching frames.
   rimu:      { prefix: 'Totara', folder: 'Totara/', growingFrames: 4,
-               anchor: 'base', scale: 1.0 },
+               matureVariants: 3, sizeOnly: true, anchor: 'base', scale: 1.0 },
   beech:     { prefix: 'Beech' }
 };
 
@@ -52,8 +60,13 @@ function preload(){
     const dir = `sprites/${def.folder || ''}`;
     const set = {};
 
-    for (const state of PLANT_SPRITE_STATES) {
-      set[state.toLowerCase()] = loadImage(`${dir}${def.prefix}_${state}.png`);
+    // Seasonal state art (Mature/Thriving/Wilting/Dormant). Skipped for sizeOnly
+    // plants (tōtara), which never switch to a state frame — they hold their size
+    // variant — so those PNGs are neither loaded nor referenced.
+    if (!def.sizeOnly) {
+      for (const state of PLANT_SPRITE_STATES) {
+        set[state.toLowerCase()] = loadImage(`${dir}${def.prefix}_${state}.png`);
+      }
     }
 
     if (def.growingFrames) {
@@ -68,7 +81,21 @@ function preload(){
       }
     }
 
-    set.meta = { anchor: def.anchor || 'center', scale: def.scale || 1.0 };
+    // Mature-size variants: a grown plant renders one of these (chosen per
+    // instance) instead of the Mature/Thriving frame, for visual variety.
+    if (def.matureVariants) {
+      set.variants = [];
+      for (let i = 0; i < def.matureVariants; i++) {
+        const n = String(i).padStart(2, '0');
+        set.variants.push(loadImage(
+          `${dir}${def.prefix}_Size_${n}.png`,
+          () => {},
+          () => console.warn(`Could not load ${def.prefix}_Size_${n}.png`)
+        ));
+      }
+    }
+
+    set.meta = { anchor: def.anchor || 'center', scale: def.scale || 1.0, sizeOnly: !!def.sizeOnly };
     plantSprites[key] = set;
   }
 
@@ -85,7 +112,7 @@ function preload(){
 // ============================================
 const CONFIG = {
   // ===== ENGINE CONSTANTS (never change between levels) =====
-  version: '0.2',
+  version: '0.3',
 
   // Reference height is always 1080; width is computed from window aspect ratio
   referenceHeight: 1080,
@@ -176,7 +203,7 @@ const CONFIG = {
   // visitor path never hitches. At the default budget a morph completes in
   // ~30-60 frames — well inside morphMinMs before the next one can start.
   morphEnabled: true,
-  morphIntervalYears: 9000,   // re-bake once yearsBP has drifted this far from the baked land
+  morphIntervalYears: 12000,   // re-bake once yearsBP has drifted this far from the baked land
   morphMinMs: 1100,           // ...and at least this long since the last morph re-bake (throttle)
   morphBakeScale: 2,          // supersample for morph re-bakes (lower = cheaper + softer while moving)
   morphBudgetMs: 3,           // per-frame time slice for the incremental re-bake (60fps frame = 16.6ms)
@@ -207,6 +234,11 @@ const CONFIG = {
   elevationPower: 1.5,
   islandFalloff: 0.6,
   plantDensity: 0.001,
+  // Zoom the GENERATED WORLD out so more terrain area is visible on screen (the camera
+  // cover-fit is unchanged). 1 = off; 1.25 shows ~25% more area on all sides. The geo
+  // skeleton + coast + noise all scale down together (no stretching), and plant density
+  // scales by this so the world stays as lush. See TerrainGenerator (_viewF) / spawnPlants.
+  viewAreaGain: 1,
 
   initialMoaCount: 7,
   maxMoaPopulation: 60,
@@ -297,6 +329,8 @@ function applyLevelToConfig(levelDef) {
   CONFIG.islandFalloff = t.islandFalloff;
   if (t.geoBaseCeil != null) CONFIG.geoBaseCeil = t.geoBaseCeil;   // skeleton: procedural base ceiling (see terrain.js)
   if (t.geoEdgeMargin != null) CONFIG.geoEdgeMargin = t.geoEdgeMargin;   // skeleton: N/S edge falloff (see terrain.js)
+  CONFIG.geoTopMargin = (t.geoTopMargin != null) ? t.geoTopMargin : t.geoEdgeMargin;   // skeleton: TOP (far) edge falloff — thin so the north up-ramp fills the far edge (see terrain.js)
+  CONFIG.viewAreaGain = (t.viewAreaGain != null) ? t.viewAreaGain : 1;   // zoom the generated world out to show more area (see terrain.js _viewF)
 
   // Optional terrain features
   CONFIG.useLakes = levelDef.terrain.useLakes || false;
@@ -572,47 +606,87 @@ function initPlaceableColors() {
 // — tussock thriving, beech holding mature, fern wilting — rather than a
 // blanket shift.
 const PLANT_TYPES = {
-  tussock: { name: "Tussock", nutrition: 25, color: '#8ea040', size: 24, growthTime: 200,
+  tussock: { name: "Tussock", nutrition: 25, color: '#8ea040', size: 12, growthTime: 200,
     coldTolerance: 1.0,
     description: "Hardy grass that covers the high country" },
-  flax: { name: "Flax", nutrition: 35, color: '#487020', size: 26, growthTime: 280,
+  flax: { name: "Flax", nutrition: 35, color: '#487020', size: 13, growthTime: 280,
     coldTolerance: 0.7,
     description: "Harakeke: versatile, with sweet nectar" },
-  fern: { name: "Fern", nutrition: 30, color: '#228B22', size: 36, growthTime: 240,
+  fern: { name: "Fern", nutrition: 30, color: '#228B22', size: 18, growthTime: 240,
     coldTolerance: 0.1,
     description: "The iconic Ponga's fronds populate forests" },
-  rimu: { name: "Rimu", nutrition: 50, color: '#8B0000', size: 48, growthTime: 400,
+  rimu: { name: "Rimu", nutrition: 50, color: '#8B0000', size: 36, growthTime: 400,
     coldTolerance: 0.3,
     description: "Ancient podocarp with bright red fruit" },
-  beech: { name: "Beech", nutrition: 40, color: '#8b430f', size: 52, growthTime: 350,
+  beech: { name: "Beech", nutrition: 40, color: '#8b430f', size: 26, growthTime: 350,
     coldTolerance: 0.6,
     description: "Tawhai: produces mast seed in good years" },
-  kawakawa: { name: "Kawakawa", nutrition: 40, color: '#3d9a5e', size: 22, growthTime: 150,
+  kawakawa: { name: "Kawakawa", nutrition: 40, color: '#3d9a5e', size: 11, growthTime: 150,
     coldTolerance: 0.15,
     description: "Heart-shaped leaves with peppery fruit" },
-  patotara: { name: "Patotara", nutrition: 35, color: '#c94c5a', size: 28, growthTime: 160,
+  patotara: { name: "Patotara", nutrition: 35, color: '#c94c5a', size: 14, growthTime: 160,
     coldTolerance: 0.8,
     description: "Alpine shrub with summer berries" },
 
   // --- Glacial-flora (LGM) additions. Procedural blob-rendered (no sprites yet). ---
-  coprosma: { name: "Coprosma", nutrition: 30, color: '#5c7d3e', size: 22, growthTime: 190,
+  coprosma: { name: "Coprosma", nutrition: 30, color: '#5c7d3e', size: 11, growthTime: 190,
     coldTolerance: 0.85,
     description: "Divaricating shrub; hardy glacial browse with orange berries" },
-  dracophyllum: { name: "Dracophyllum", nutrition: 28, color: '#9a7b4f', size: 30, growthTime: 250,
+  dracophyllum: { name: "Dracophyllum", nutrition: 28, color: '#9a7b4f', size: 15, growthTime: 250,
     coldTolerance: 0.9,
     description: "Inaka grass-tree of the cold subalpine tops" },
-  matagouri: { name: "Matagouri", nutrition: 26, color: '#7a6f4a', size: 24, growthTime: 210,
+  matagouri: { name: "Matagouri", nutrition: 26, color: '#7a6f4a', size: 12, growthTime: 210,
     coldTolerance: 0.95,
     description: "Tūmatakuru: thorny shrub of the glacial outwash flats" },
 
   // --- Favoured, browse-resistant plants (planted via the palette) ---
-  lancewood: { name: "Juvenile Lancewood", nutrition: 34, color: '#6a5a33', size: 30, growthTime: 300,
+  lancewood: { name: "Juvenile Lancewood", nutrition: 34, color: '#6a5a33', size: 15, growthTime: 300,
     coldTolerance: 0.5,
     description: "Horoeka: tough and spiky when growing." },
-  speargrass: { name: "Speargrass", nutrition: 30, color: '#8f9a55', size: 26, growthTime: 260,
+  speargrass: { name: "Speargrass", nutrition: 30, color: '#8f9a55', size: 13, growthTime: 260,
     coldTolerance: 0.85,
     description: "Taramea: spiny herb of the hills" }
 };
+
+// ============================================
+// HABITAT HEALTH — the "quiet saturation" health readout
+// ============================================
+// A single scene-wide scalar (Game._habitatHealth, 0..1) drives how saturated the GROUND
+// looks: a healthy habitat shows its full authored colour; a mismanaged one quietly drains
+// toward SAT_FLOOR (never full grey — museum-ambient, not alarming). See
+// md/TEMANAWA_INTERACTION_HEALTH_PLAN.md. Authored here so weights live in ONE place.
+//
+// The health target combines an ASH-disturbance term (1 − _ashCover; an eruption greys the
+// ground, it recovers as the ash decays) with a REGIME-FIT term (step 2 — the split FOREST /
+// TUSSOCK growth buttons; forcing the wrong cover for the current climate drains it). Steps
+// 3–4 add a recruitment term (kererū seed dispersal). An undisturbed, well-managed map reads
+// full health, so the default look is untouched.
+const HEALTH = {
+  satFloor:         0.35,  // H=0 → saturate(0.35). Ground desaturates but keeps some colour.
+  healthEase:       0.02,  // per-frame ease of _habitatHealth toward its target (dt=1). Slow = calm.
+  satSlewPerFrame:  0.01,  // HARD cap on the saturate() change per frame — the photosensitivity
+                           //   backstop. 0.01/frame ≈ 0.6/s → a full 1.0→floor swing takes ~1.1 s
+                           //   (>500 ms, ≤3 luminance transitions/s; CLAUDE.md, BUILD_V3 §5.2).
+  groundOnly:       true,  // desaturate only the baked ground blit, not water/entities.
+
+  // Step 2 — regime fit: is the growth the visitor is forcing right for the current climate?
+  // Warm (FOREST) growth suits the interglacial, cold (TUSSOCK) growth suits the glacial. A
+  // mismatched press drains fit toward the floor; a matched press restores it; idle relaxes it
+  // back. Fit multiplies into the health target, so a wrong press quietly desaturates the land.
+  regimeFitFloor:     0.20,   // how far a sustained wrong-climate press can drain regime fit
+  regimeMismatchRate: 0.012,  // per-frame ease of fit toward the floor while mis-pressing
+  regimeMatchRate:    0.010,  // per-frame ease of fit toward 1 while pressing the right one
+  regimeRelaxRate:    0.004,  // per-frame ease of fit back toward 1 when no growth button is held
+
+  // Step 3 — recruitment: in the interglacial the forest should be regenerating via kererū
+  // seed dispersal. If there are no kererū to do it, recruitment stalls and the forest thins,
+  // so R falls; in the glacial the forest isn't recruiting anyway, so R relaxes back (no
+  // penalty). The STORM-overuse coupling that also stalls it lands in step 4.
+  recruitFloor:       0.35,   // how far stalled recruitment can drain the term
+  recruitDrainRate:   0.006,  // per-frame ease toward the floor while recruitment is stalled
+  recruitRecoverRate: 0.010   // per-frame ease back toward 1 while recruitment can proceed
+};
+if (typeof window !== 'undefined') window.HEALTH = HEALTH;   // live-tunable in the console, like LOOK / TM_TIME
 
 // ============================================
 // GAME MANAGER
@@ -627,6 +701,7 @@ class Game {
     this.activeSpecies = null;
 
     this.terrain = null;
+    this.water = null;        // animated water overlay (TeManawa_water.js); built with the terrain
     this._bakedYearsBP = 0;   // yearsBP the terrain was last (re)baked at — drives the morph
     this._lastMorphMs = 0;
     this.simulation = null;
@@ -700,6 +775,13 @@ class Game {
     }
 
     this.terrain.generate();
+
+    // Stamp the animated water overlay from the fresh geometry (river flow, eels,
+    // sea shimmer). A full build only — never on the cheap resetEcosystem() path,
+    // so the soft reset stays in its ~20 ms tier (§5.1).
+    if (!this.water) this.water = new WaterLayer();
+    this.water.build(this.terrain);
+
     this._bakedYearsBP = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
 
     this._updateViewTransform();
@@ -791,6 +873,7 @@ class Game {
       });
     }
     this.terrain.generate();          // same seed → same land; re-applies all of LOOK + relief
+    if (this.water) this.water.build(this.terrain);   // re-stamp water for the re-baked land
     this._updateViewTransform();
     const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
     console.log(`[look] terrain re-baked in ${ms.toFixed(0)}ms — tune LOOK / Projection, press B again`);
@@ -816,6 +899,12 @@ class Game {
     // Eruption ash state (disturb/regen, plan §2.1). A fresh living world carries no ash;
     // applyAsh() arms it after a rebuild when an eruption is being shown.
     this._ashCover = 0; this._ashFromYear = 0; this._ashDecayYears = 1; this._ashTier = null;
+
+    // Habitat-health readout (md/TEMANAWA_INTERACTION_HEALTH_PLAN.md). A fresh world starts
+    // healthy and fully saturated; the signal follows ash + regime-fit, so an undisturbed,
+    // well-managed world stays at full colour. Soft resets keep these (they ease on their
+    // own), so only the full init() reseeds them.
+    this._habitatHealth = 1; this._sceneSat = 1; this._regimeFit = 1; this._recruitment = 1;
 
     // Which eruption years have already fired this cycle — so an eruption fires ONCE as the
     // clock crosses its checkpoint (auto), and again only after a rebuild repositions the
@@ -899,7 +988,7 @@ class Game {
   _morphTick() {
     if (!CONFIG.morphEnabled || !this.terrain || !this.terrain.geo || typeof DeepTime === 'undefined') return;
     if (this.terrain.morphInProgress) {
-      this.terrain.morphStep(CONFIG.morphBudgetMs);
+      if (this.terrain.morphStep(CONFIG.morphBudgetMs)) this._onMorphComplete();
       return;
     }
     const yb = DeepTime.yearsBP;
@@ -909,8 +998,25 @@ class Game {
       this.terrain.morphBegin(yb, CONFIG.morphBakeScale);
       this._bakedYearsBP = yb;
       this._lastMorphMs = now;
-      this.terrain.morphStep(CONFIG.morphBudgetMs);
+      if (this.terrain.morphStep(CONFIG.morphBudgetMs)) this._onMorphComplete();
     }
+  }
+
+  // A deep-time morph re-bake just finished: the coastline has moved (the marine embayment
+  // receded, or a strait pulse flooded) and the gorge deepened, so both the living world and
+  // the animated water overlay must follow the NEW land. Runs at most once per CONFIG.morphMinMs
+  // (a completed job — never per frame) and always trails a full 4-buffer season bake, so it is
+  // far from the frame budget; update()/render() stay allocation-free.
+  //   · cullSubmergedPlants — drop plants the morph just put underwater
+  //   · water.reconcile     — ADD/REMOVE sea/river decals against the morphed water map so sea
+  //                           shimmer no longer lingers on cells that have emerged as dry land
+  //                           (and freshly-drowned cells from a strait pulse gain shimmer), while
+  //                           leaving every surviving decal exactly where it is. A full build()
+  //                           (which re-scatters positions) is reserved for hard scene changes —
+  //                           init / look re-bake / eruption.
+  _onMorphComplete() {
+    if (this.simulation) this.simulation.cullSubmergedPlants();
+    if (this.water) this.water.reconcile(this.terrain);
   }
 
   // ============================================
@@ -932,6 +1038,7 @@ class Game {
       this._bakedYearsBP = targetYear;
       this._lastMorphMs = (typeof millis === 'function') ? millis() : Date.now();
     }
+    if (this.water) this.water.build(this.terrain);             // re-stamp water to the morphed sea/river
     this.resetEcosystem();                                       // spawns against the morphed (target-year) biome map (also DeepTime.reset())
     if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);   // ...so re-seek after the rebuild (§3.4)
     this.applyAsh(eruption);
@@ -1000,6 +1107,73 @@ class Game {
     }
   }
 
+  // Habitat health → the "quiet saturation" readout. Eases _habitatHealth toward a target,
+  // then slews _sceneSat (the live saturate() factor) toward the mapped target with a hard
+  // per-frame cap so a whole-scene colour change can never land as a cut (photosensitivity).
+  // md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §1, §5. Allocation-free (hot path).
+  //
+  // STEP 1: the target is a PLACEHOLDER driven off _ashCover — the one existing disturbance
+  // signal that is grazing-independent and reads exactly 0 on an undisturbed map, so the
+  // DEFAULT look is untouched (health=1 → saturate(1) → the filter is never even set). An
+  // eruption greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
+  // as the ash decays. (A living-cover ratio was tried first but dips continuously as moa
+  // graze — normal churn, not ill health — leaving a healthy map wrongly desaturated.) Steps
+  // 2-4 replace `target` with regime-fit × recruitment (split-growth + kererū dispersal).
+  _updateHabitatHealth(dt) {
+    const H = (typeof HEALTH !== 'undefined') ? HEALTH : null;
+    if (!H) return;
+
+    // --- Regime fit: the split-growth lesson (plan §2). FOREST (warm) growth suits the
+    // interglacial, TUSSOCK (cold) growth suits the glacial. A mismatched press drains fit
+    // toward the floor; a matched press restores it; idle relaxes it back toward 1. ---
+    const nowMs = (typeof millis === 'function') ? millis() : 0;
+    const warmOn = this._tmGrowWarmUntil && nowMs < this._tmGrowWarmUntil;
+    const coldOn = this._tmGrowColdUntil && nowMs < this._tmGrowColdUntil;
+    const glacial = (this.seasonManager && this.seasonManager.getWinterness)
+      ? this.seasonManager.getWinterness() >= 0.5 : false;
+    if (this._regimeFit == null) this._regimeFit = 1;
+    const mismatched = (warmOn && glacial) || (coldOn && !glacial);
+    const matched    = (warmOn && !glacial) || (coldOn && glacial);
+    let rfTarget = 1, rfRate = H.regimeRelaxRate;
+    if (mismatched)   { rfTarget = H.regimeFitFloor; rfRate = H.regimeMismatchRate; }
+    else if (matched) { rfTarget = 1;                rfRate = H.regimeMatchRate; }
+    const rfStep = rfRate * (dt || 1);
+    this._regimeFit += (rfTarget - this._regimeFit) * (rfStep > 1 ? 1 : rfStep);
+    if (this._regimeFit < 0) this._regimeFit = 0; else if (this._regimeFit > 1) this._regimeFit = 1;
+
+    // --- Recruitment (plan §3): in the interglacial the forest should be regenerating via
+    // kererū seed dispersal. With no kererū to carry the large fruit, recruitment stalls and
+    // the forest thins, so R falls; in the glacial the forest isn't recruiting anyway, so R
+    // relaxes back. (Step 4 adds STORM-overuse grounding as a second way to stall it.) ---
+    if (this._recruitment == null) this._recruitment = 1;
+    let kereruAlive = 0;
+    const sim = this.simulation;
+    if (sim && sim.otherEntities && sim.otherEntities.kereru) {
+      const ks = sim.otherEntities.kereru;
+      for (let i = 0; i < ks.length; i++) if (ks[i] && ks[i].alive) kereruAlive++;
+    }
+    const recStalled = !glacial && kereruAlive === 0;
+    const recTarget = recStalled ? H.recruitFloor : 1;
+    const recRate = recStalled ? H.recruitDrainRate : H.recruitRecoverRate;
+    const recStep = recRate * (dt || 1);
+    this._recruitment += (recTarget - this._recruitment) * (recStep > 1 ? 1 : recStep);
+    if (this._recruitment < 0) this._recruitment = 0; else if (this._recruitment > 1) this._recruitment = 1;
+
+    // Health target: ash disturbance × regime fit × recruitment (all must be healthy for full colour).
+    let target = (1 - (this._ashCover || 0)) * this._regimeFit * this._recruitment;
+    target = target < 0 ? 0 : (target > 1 ? 1 : target);
+
+    // Ease the health scalar (slow, calm), then map to a saturation factor.
+    const ease = H.healthEase * (dt || 1);
+    this._habitatHealth += (target - this._habitatHealth) * (ease > 1 ? 1 : ease);
+    const wantSat = H.satFloor + (1 - H.satFloor) * this._habitatHealth;
+
+    // Slew _sceneSat toward wantSat, capped per frame — the hard photosensitivity backstop.
+    const cap = H.satSlewPerFrame * (dt || 1);
+    const d = wantSat - this._sceneSat;
+    this._sceneSat += (d > cap) ? cap : (d < -cap ? -cap : d);
+  }
+
   update(dt = 1) {
     // The HUD owns the deep-time multiplier and the transient button effects,
     // and returns the timeScale this frame should run at.
@@ -1010,9 +1184,15 @@ class Game {
 
     if (this.seasonManager.update(sdt)) this.onSeasonChange();
 
-    this.simulation.update(sdt);
+    // sdt = deep-time-warped life clock; dt = real frame clock. The sim runs life
+    // events (aging, breeding, growth) on sdt but fauna motion + animation on dt,
+    // so a 10x fast-forward morphs the world without turning the animals into a
+    // sped-up cartoon. Same decoupling the water and habitat-health already use.
+    this.simulation.update(sdt, dt);
+    if (this.water) this.water.update(dt);   // real-time flow, decoupled from the deep-time speed
     this._morphTick();
     this.updateAshCover();
+    this._updateHabitatHealth(dt);   // real dt, not sdt — the saturation ramp is a wall-clock effect
     this._checkAutoEruptions();
     this.updateNotifications(sdt);
     if (this.ui) this.ui.update(dt);
@@ -1100,7 +1280,28 @@ class Game {
     // The relief buffer already encodes the projection, so it draws directly.
     // Every entity in simulation.render() projects onto the SAME paint space via
     // Projection.groundY, so undistorted sprites sit on the lifted ground.
+    //
+    // Habitat-health "quiet saturation" (step 1, ground-only): desaturate ONLY the baked
+    // ground blit when _sceneSat has drained. The filter is a full-canvas Canvas2D op — the
+    // one real cost here — so it is set ONLY when sat < ~1 (never in the healthy common case),
+    // and reset immediately after the blit so water/washes/entities keep full colour. The
+    // filter string is cached on a 0.01 quantum so a health transition allocates at most once
+    // per step, not per frame ("never allocate in draw()"). terrain.render() only touches
+    // imageSmoothingEnabled, so the filter cleanly rides its image() calls.
+    const _sat = this._sceneSat;
+    const _desat = (typeof HEALTH !== 'undefined') && HEALTH.groundOnly &&
+                   _sat != null && _sat < 0.999 && drawingContext && ('filter' in drawingContext);
+    if (_desat) {
+      const _q = Math.round(_sat * 100);
+      if (this._satFilterQ !== _q) { this._satFilterQ = _q; this._satFilterStr = 'saturate(' + (_q / 100) + ')'; }
+      drawingContext.filter = this._satFilterStr;
+    }
     this.terrain.render();
+    if (_desat) drawingContext.filter = 'none';
+
+    // Animated water: river flow / eels / sea shimmer, over the baked ground and
+    // under the seasonal washes + animals. A few hundred small low-contrast decals.
+    if (this.water) this.water.render();
 
     // Glacial frost: a single cool haze over the ground (under the animals), scaling
     // with the glacial index (getWinterness) so it deepens through a glacial and lifts
@@ -1133,15 +1334,26 @@ class Game {
     // Over the terrain, under the animals. One static gradient rect (no
     // photosensitivity concern). LOOK.haze toggles it. 34VIEW §7.
     if (typeof LOOK !== 'undefined' && LOOK.haze && LOOK.hazeStrength > 0 && drawingContext.createLinearGradient) {
-      const _hz = color(LOOK.hazeColor);
-      const _hr = red(_hz) | 0, _hg = green(_hz) | 0, _hb = blue(_hz) | 0;
+      // The haze band is STATIC — it only changes when LOOK is retuned (authoring
+      // re-bake) or the projected footprint changes (rebuild/resize). Build the
+      // gradient once and cache it; rebuilding color() + createLinearGradient +
+      // two rgba template strings every frame was a per-frame allocation in the
+      // hottest function ("never allocate in draw()", CLAUDE.md).
       const _bandH = projH * LOOK.hazeHeight;
-      const _grad = drawingContext.createLinearGradient(0, 0, 0, _bandH);
-      _grad.addColorStop(0, `rgba(${_hr},${_hg},${_hb},${LOOK.hazeStrength})`);
-      _grad.addColorStop(1, `rgba(${_hr},${_hg},${_hb},0)`);
+      const _mw = this.terrain.mapWidth;
+      let _hc = this._hazeCache;
+      if (!_hc || _hc.col !== LOOK.hazeColor || _hc.str !== LOOK.hazeStrength ||
+          _hc.bandH !== _bandH || _hc.w !== _mw) {
+        const _hz = color(LOOK.hazeColor);
+        const _hr = red(_hz) | 0, _hg = green(_hz) | 0, _hb = blue(_hz) | 0;
+        const _grad = drawingContext.createLinearGradient(0, 0, 0, _bandH);
+        _grad.addColorStop(0, `rgba(${_hr},${_hg},${_hb},${LOOK.hazeStrength})`);
+        _grad.addColorStop(1, `rgba(${_hr},${_hg},${_hb},0)`);
+        _hc = this._hazeCache = { grad: _grad, col: LOOK.hazeColor, str: LOOK.hazeStrength, bandH: _bandH, w: _mw };
+      }
       drawingContext.save();
-      drawingContext.fillStyle = _grad;
-      drawingContext.fillRect(0, 0, this.terrain.mapWidth, _bandH);
+      drawingContext.fillStyle = _hc.grad;
+      drawingContext.fillRect(0, 0, _mw, _bandH);
       drawingContext.restore();
     }
 
@@ -1190,7 +1402,7 @@ class Game {
     if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
 
     // SHIFT+F toggles the terrain footprint. An authoring key, not a visitor
-    // one — the kiosk lockdown limits input to 1-4, so it cannot be reached on
+    // one — the kiosk lockdown limits input to 1-5, so it cannot be reached on
     // the wall. Costs a full rebuild, same as ?terrain=.
     if (k === 'F') {
       this.setTerrainFit(CONFIG.terrainFit === 'fit' ? 'square' : 'fit');
@@ -1335,9 +1547,14 @@ function scaleCanvasToFit() {
 function initializeRegistry() {
   REGISTRY.registerAnimalType('moa', {}, Moa);
   REGISTRY.registerAnimalType('eagle', {}, HaastsEagle);
-  
+  // Kererū — the large-seed disperser. Registered as its own base type + a single species,
+  // spawned via level.initialEntityCounts. Guarded so a missing kereru.js degrades gracefully.
+  if (typeof Kereru !== 'undefined') REGISTRY.registerAnimalType('kereru', {}, Kereru);
+
   for (const [key, config] of Object.entries(MOA_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
   for (const [key, config] of Object.entries(EAGLE_SPECIES)) REGISTRY.registerSpecies(key, 'eagle', config);
+  if (typeof Kereru !== 'undefined' && typeof KERERU_SPECIES !== 'undefined')
+    REGISTRY.registerSpecies('kereru', 'kereru', KERERU_SPECIES);
   for (const [key, config] of Object.entries(PLANT_TYPES)) REGISTRY.registerPlant(key, config);
   for (const [key, config] of Object.entries(PLACEABLES)) REGISTRY.registerPlaceable(key, config);
 

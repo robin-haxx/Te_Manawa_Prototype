@@ -5,10 +5,6 @@
 // Every knob for the "pixel topo map → cartoon illustration" ground, in ONE place.
 // All of it is applied during the season bake, never per frame.
 //
-// FAST ITERATION — no page reload: tweak a knob in the console (e.g. LOOK.shadeStrength,
-// LOOK.outlines = false, Projection.K for the 3/4 tilt), then press B to re-bake in place
-// (same land, no ecosystem reset). LOOK.dump() prints current settings; each toggle
-// isolates one move. Full workflow: md/TEMANAWA_DEVTOOLS.md.
 const LOOK = {
   // ---- on / off — flip a move off to see what it does ----
   posterize: true,   // flat cel tones (vs a smooth gradient ramp)
@@ -18,7 +14,7 @@ const LOOK = {
   shade:     true,   // slope shading of the lit tops
   haze:      true,   // atmospheric fade in the sky above the far ridge
   quiet:     true,   // desaturate the ground so the outlined sprites read first
-  reliefEdge: false,  // bold dark outline along relief steps/cliff tops (like the sprite outlines)
+  reliefEdge: true,  // bold dark outline along relief steps/cliff tops (like the sprite outlines)
   smoothScale: true, // display-time: anti-alias the baked ground as it scales to the panel.
                      //   true  = the supersampled bake is minified WITH smoothing, so ink AND
                      //           fill anti-alias together into edges that follow curves
@@ -27,12 +23,12 @@ const LOOK = {
   // ---- amounts (used only when the matching toggle is on) ----
   wobbleAmp:     0.05,  // border wander, in elevation units
   wobbleFreq:    0.12,   // spatial frequency of the wander
-  quietSat:      0.16,   // 0 = full colour ground, 1 = greyscale
+  quietSat:      0.2,   // 0 = full colour ground, 1 = greyscale
   quietContrast: 0.92,   // <1 compresses ground contrast toward mid-grey
-  shadeStrength: 50.0,   // slope-shading gain (feeds the cel bands below)
-  shadeSteps:    3,      // CEL bands: 0/1 = smooth gradient, 2–4 = flat toon steps (match the sprites)
-  shadeShadow:   0.68,   // darkest cel band (shadow side) — multiplier on the ground colour
-  shadeHigh:     1.22,   // lightest cel band (NW-lit highlight) — multiplier
+  shadeStrength: 70.0,   // slope-shading gain (feeds the cel bands below)
+  shadeSteps:    4,      // CEL bands: 0/1 = smooth gradient, 2–4 = flat toon steps (match the sprites)
+  shadeShadow:   0.3,   // darkest cel band (shadow side) — multiplier on the ground colour
+  shadeHigh:     1.32,   // lightest cel band (NW-lit highlight) — multiplier
   bakeScale:     3,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. render() draws
                          //   it under the 2.5× camera, so N>2.5 MINIFIES it — that downsample is
                          //   what anti-aliases ink+fill into curves (needs smoothScale). 3 is the
@@ -43,23 +39,97 @@ const LOOK = {
                          //   bakeScale — esp. Firefox, which is stricter than the Chrome kiosk. Press B.
   hazeStrength:  1,         // north-atmosphere overlay opacity at the top edge (0..1) — tune live, press B
   hazeHeight:    0.45,   // how far down the map the atmosphere fades (fraction of height)
-  outlineJitter: .25,   // hand-inked lineweight variation on the boundary ink (0 = uniform)
-  rangeRelief:   0.50,  // geo ranges: valley depth vs crest (0 = flat plateau; ~0.5 = deep forested valleys = mountain variation). Regenerate to apply.
-  rangeSpine:    0.45,  // geo ranges: crest concentration along the range's long (NE–SW) axis (0 = flat poly plateau; 1 = sharp central spine, flanks fall to foothills). Regenerate to apply.
+  outlineJitter: .35,   // hand-inked lineweight variation on the boundary ink (0 = uniform)
+  rangeRelief:   1.0,  // geo ranges: valley depth vs crest (0 = flat plateau; ~0.5 = deep forested valleys = mountain variation). Regenerate to apply.
+  rangeSpine:    0.95,  // geo ranges: crest concentration along the range's long (NE–SW) axis (0 = flat poly plateau; 1 = sharp central spine, flanks fall to foothills). Regenerate to apply.
+  rangeGain:     2.6,   // geo ranges: how hard uplift MULTIPLIES the existing ground (0 = no lift; higher = taller, more base-driven peaks). The ranges scale the plains' own spurs/valleys up into mountains rather than imposing a smooth crest template. Regenerate to apply.
+  rangeCeil:     0.25,  // geo ranges: where the soft height ceiling starts, as a fraction of the per-cell crest rH (lower = flatter tops / more compression, preserves more base shape; higher = peaks reach closer to the authored height). Regenerate to apply.
+  flipRangeAxis: true,  // geo ranges: mirror each range about its OWN centroid so its long (spine) axis leans along the OPPOSITE diagonal — the ranges run the other way without moving off their footprint. Centroid-preserving (nothing relocates). false = authored orientation. Regenerate to apply.
   riverWobble:   0.02,  // geo river: per-seed lateral meander off the SVG path (0 = follow it exactly)
-  riverIncise:   0.06,  // geo river: bed sits this far below the LOCAL ground (0..1 elevation), not down to sea level. Bounds the plunge crossing it. Regenerate (G/N) to apply.
-  riverSeaLevel: 0.04,  // geo river: the bed only sinks to this (the sea band) where the land is already near it — the coast. Upstream it rides the terrain. Regenerate to apply.
-  riverWaterT:   0.55,  // geo river: mask ≥ this reads as open WATER — the (narrow) blue thread. Raise = narrower water. Regenerate to apply (paint + walkability).
-  riverBankT:    0.22,  // geo river: mask in [riverBankT, riverWaterT) reads as exposed RIVERBED / bank (sandy shingle, walkable) framing the water. Lower = wider bed. Regenerate to apply.
-  coastEase:     1.4,   // coast: land-rise exponent off the shore (>1 = gentle shelf/beach; <1 = the old steep cliff). Tames harsh coastal drops. Higher is gentler but widens the near-sea-level zone (softer waterline); pull toward ~1.1 if the coastline reads mushy. Regenerate to apply.
-  coastSmooth:   1,     // coast: light smoothing passes over the low-elevation shelf ONLY (0 = off) — clears waterline speckle and blocky relief steps without touching plains or ranges. Regenerate to apply.
-  riverFrontJitter: 0.07, // geo river: low-freq wander of the emerging tip so the growing river tapers off naturally instead of ending on a straight line. Regenerate to apply.
-  riverEdgeNoise: 0.007,  // geo river: HIGH-frequency wobble on the channel edge (world frac) — breaks the authored polyline's smooth banks into a natural ragged waterline. Cached with the distance field, so it costs nothing per frame. 0 = off. Regenerate to apply.
+  riverIncise:   0.05,  // geo river: bed sits this far below the LOCAL ground (0..1 elevation), not down to sea level. Bounds the plunge crossing it. Lower = gentler gorge. Regenerate (G/N) to apply.
+  riverValleyWiden: 1.6,  // geo river: the INCISION valley is this many times wider than the water ribbon, with smooth shoulders — so the carved gorge is a gentle valley, not a jagged slot tracing the ragged (edge-noised) waterline. The water/bank PAINT stays narrow; only the terrain carve widens. Regenerate to apply.
+  riverSeaLevel: 0.3,  // geo river: the bed only sinks to this (the sea band) where the land is already near it — the coast. Upstream it rides the terrain. Regenerate to apply.
+  riverWaterT:   0.5,  // geo river: mask ≥ this reads as open WATER — the (narrow) blue thread. Raise = narrower water. Regenerate to apply (paint + walkability).
+  riverBankT:    0.32,  // geo river: mask in [riverBankT, riverWaterT) reads as exposed RIVERBED / bank (sandy shingle, walkable) framing the water. Lower = wider bed. Raised from 0.22 to trim the wide sand bands that pooled where tributaries meet the main (the confluence seam-fallback bank keys off this too). Only affects river banks — sea beaches are elevation-classified (coastal band). Regenerate to apply.
+  coastEase:     1,   // coast FALLOFF: land-rise exponent off the shore (>1 = gentle shelf/beach; <1 = the old steep cliff). This is knob (a) — how gently the land falls to the sea. Higher is gentler but widens the near-sea-level zone (softer waterline); pull toward ~1.1 if the coastline reads mushy. Regenerate to apply.
+  coastInland:   0.14,  // coast POSITION (knob b, uniform): how far inland (east, as a fraction of screen X) the FINAL western shoreline sits — raise to bring the coast inland / expose more sea. 0.02 = the original tight coast; useful range ~0.2–0.7. Added to the per-row meander, so the actual waterline sits a little east of this. The SEVERE early southern strait is the marine submergence (seaSWReach), which recedes by ~0.5 Ma to leave this final coast. Regenerate to apply.
+  coastInlandSouth: 0.1,  // coast POSITION (knob b, south bias): EXTRA inland reach added toward the south (v→1), 0 at the north edge → this many X-fractions at the south edge — so the southern/SW coast curves further in while the north stays put. This is the PERMANENT (present) curve; the strait's harsher early curve flattens onto it by ~0.5 Ma as seaSWReach recedes. Regenerate to apply.
+  coastSmooth:   3,     // coast: light smoothing passes over the low-elevation shelf ONLY (0 = off) — clears waterline speckle and blocky relief steps without touching plains or ranges. Regenerate to apply.
+  cliffSmooth:   0.16,  // DE-CLIFF: after the carve/uplift, ease any elevation step to a neighbour STEEPER than this (0..1 per cell) — kills the extremely harsh vertical "jumps" the 3/4 relief bake would otherwise paint as a tall dark wall (e.g. a bank against the strait, a channel edge drifted off the new ground mid-morph). Gentle relief — plains, range flanks — sits below the threshold and is untouched. 0 = off. Regenerate (G/N) to apply.
+  cliffSmoothPasses: 2, // DE-CLIFF: how many smoothing passes (more = softer, wider blend). Runs on the sim heightMap, deterministically, so the sliced morph stays identical to the synchronous one.
+  riverFrontJitter: 0.09, // geo river: low-freq wander of the emerging tip so the growing river tapers off naturally instead of ending on a straight line. Regenerate to apply.
+  riverEdgeNoise: 0.015,  // geo river: HIGH-frequency wobble on the channel edge (world frac) — breaks the authored polyline's smooth banks into a natural ragged waterline. Cached with the distance field, so it costs nothing per frame. 0 = off. Regenerate to apply.
   riverEdgeFreq:  26,     // geo river: spatial frequency of the edge noise. Higher = choppier banks.
-  tribHighlandThin: 1.6,  // tributaries: how fast the painted WATER/BED thins with elevation above the lowland (0.30). High ground carries only a thread (or bare gully) — a stream running downhill — instead of band-water and beaches perched on a ridge. 0 = off.
-  straitWidthMult: 3.0,   // main river is this many times wider at ~1 Ma (the Manawatū Strait). Narrows to 1× by straitCloseTo. Regenerate to apply.
-  seaRise:       0.20,  // EMERGENCE (deep time): at ~1 Ma the basin is a shallow-marine embayment. The flood is water RISING (attenuated by elevation, see seaFloodCeil), not the ground sinking, scaled by submergence and easing to 0 (present shoreline) by GEO_EPOCHS.emergeTo (~0.5 Ma). Tune live (press B/G/N).
-  seaFloodCeil:  0.42,  // EMERGENCE reach: the flood's lowering fades to nothing at this elevation — ground above it never submerges, so the eastern uplands stay legible land at 1 Ma instead of the whole map reading as a grey flood. Lower = flood hugs the coast; higher = deeper inundation. Tune live (press B/G/N).
+  tribHighlandThin: 1.1,  // tributaries: how fast the painted WATER/BED thins with elevation above the lowland (0.30). High ground carries only a thread (or bare gully) — a stream running downhill — instead of band-water and beaches perched on a ridge. 0 = off.
+  straitWidthMult: 6.0,   // main river is this many times wider at ~1 Ma (the Manawatū Strait). Narrows to 1× by straitCloseTo. Regenerate to apply.
+  seaRise:       0.10,  // EMERGENCE (deep time): at ~1 Ma the basin is a shallow-marine embayment. The flood is water RISING (attenuated by elevation, see seaFloodCeil), not the ground sinking, scaled by submergence and easing to 0 (present shoreline) by GEO_EPOCHS.emergeTo (~0.5 Ma). Tune live (press B/G/N).
+  seaFloodCeil:  1.,  // EMERGENCE reach: the flood's lowering fades to nothing at this elevation — ground above it never submerges, so the eastern uplands stay legible land at 1 Ma instead of the whole map reading as a grey flood. Lower = flood hugs the coast; higher = deeper inundation. Tune live (press B/G/N).
+  seaSWReach:    1.25,  // SW MARINE STRAIT (Axis A, positional): at ~1 Ma the Whanganui basin SW of the river is open sea — the strait. Regardless of elevation, the ground SW of a diagonal front (measured u+(1−v), so the lower-LEFT corner) is pulled fully under, then fills back into the normally-generated terrain by GEO_EPOCHS.emergeTo (~0.5 Ma). This is how far that full submergence reaches toward the NE; larger = more of the map starts drowned. Tune live (press B/G/N).
+  seaSWFeather:  0.7,  // SW MARINE STRAIT: softness of that diagonal front (0 = a hard shoreline). Its taper is what leaves the SE with intermittently more land — a basic 'land bridge'. Tune live (press B/G/N).
+
+  // ---- LOCALIZED SUBMERGENCE PATCH (deep time, Axis A, positional) -------------
+  // A single elliptical spot that starts fully DROWNED at ~1 Ma and fills back into the
+  // normally-generated terrain by ~0.5 Ma — the SAME emergence clock as the SW strait
+  // (GEO_EPOCHS.emergeTo, via geoTimeFactors().submergence), just confined to one place the
+  // SW diagonal front only half-covers. Use it to sink a stubborn island/shoal that should
+  // read as open water early and rise on its own by mid-window. Drowns to the mottled sea
+  // floor REGARDLESS of the generated elevation inside the core, easing out over the feather.
+  // Positional in (u,v): u = screen-X fraction (0 W → 1 E), v = screen-Y fraction (0 N → 1 S).
+  // Set patchSubRX (or patchSubRY) to 0 to disable. Tune live (press B/G/N).
+  patchSubU:       0.58,  // patch centre, horizontal (0 = west edge, 1 = east edge)
+  patchSubV:       0.72,  // patch centre, vertical (0 = north/top edge, 1 = south/bottom edge)
+  patchSubRX:      0.17,  // patch radius in u (half-width). 0 = OFF.
+  patchSubRY:      0.15,  // patch radius in v (half-height) — a touch larger than RX offsets the 3/4 vertical squash so the drowned area reads round on screen. 0 = OFF.
+  patchSubFeather: 0.9,   // soft taper (as a fraction of the radius) from full drown at the core edge out to dry land, on the W/N/S sides. Wider = more gradual shoreline. 0 = a hard shoreline. (The moa beach north of the patch stays land up to ~1.1.)
+  patchSubFeatherE: 1.4,  // EAST taper — separate, and much wider, because the patch's eastern edge runs UPHILL into the coast: a short taper there drops from sea floor straight to high land in a cell or two, which the 3/4 relief bake paints as a jagged cliff line. This lengthens the eastern grade so the land eases down into the water from further east (a beach slope, not a drop-off). Blended smoothly by direction (full east → patchSubFeather at N/S), so no seam. Keep ≥ patchSubFeather; too large starts eating the far-east hill. Tune live (press B/G/N).
+
+  // ---- SOUTH-HALF STRAIT (deep time, Axis A) ----------------------------------
+  // The SOUTHERN half of the map subsides into a marine strait, deepest at its pulse peak
+  // (~0.5 Ma), then the land returns by ~0.3 Ma — leaving the axial ranges (Tararua + Ruahine)
+  // as the N–S land bridge and the Manawatū a 'ghost' of the strait. The pulse TIMING is dated
+  // in GEO_EPOCHS.southSink*; these knobs are its SHAPE on the map. Positional in v (latitude).
+  southSinkLat:     0.38,  // where the strait's north shore begins, as a vertical fraction (0 = north edge, 1 = south). Ground south of this drowns; north of it is untouched. Lower = MORE of the south submerged. Tune live (press B/G/N).
+  southSinkFeather: 0.22,  // width of that shore ramp (in v). WIDE = the land eases under gradually (the brief's "not a sharp drop off at all"); small = a crisp coastline. Tune live (press B/G/N).
+  southSinkProtect: 1.0,   // how strongly the Tararua range mass RESISTS submergence (1 = the range footprint + foothills stay fully dry — the land bridge; 0 = the strait floods straight over it). Tune live (press B/G/N).
+  southSinkWobble:  0.05,  // meander the strait's north SHORE off the straight latitude line (in v), so the drowned area is not a square-edged patch. Also mottles the sea floor so it reads as varied open water. 0 = a straight, latitude-aligned coast. Tune live (press B/G/N).
+
+  // ---- NORTH UP-RAMP (the far/top edge) ---------------------------------------
+  // Raise the top of the SCREEN so the far edge is genuinely-higher generated terrain instead of
+  // a flat eased-plains smear. Pairs with the terrain's thinner TOP edge ease (config.geoTopMargin,
+  // authored in the level) so the raised land actually reaches the top. Applied in getElevation.
+  northLiftFrac:    0.22,  // fraction of the screen height (from the top) that ramps up. 0 = off.
+  northLiftAmt:     0.13,  // how much elevation to add at the very top edge (smoothstep to 0 at northLiftFrac). "Slightly higher" ≈ 0.10–0.18. Tune live (press B/G/N).
+
+  // ---- EAST DOWN-RAMP (the inland/east flank) ---------------------------------
+  // The island falloff peaks at the EAST edge, so noise "throws alpine across the whole east".
+  // This grades the eastern strip DOWN so the two ranges fall away into the inland / eastern
+  // Manawatū lowland instead of climbing to a bright plateau on the far side. Screen-space in x,
+  // uniform in latitude; applied in getElevation, so the range uplift (which MULTIPLIES this base)
+  // tapers with it. Regenerate / re-bake (B) to apply.
+  eastLowerFrac:    0.4,  // fraction of the screen WIDTH (from the right/east edge) that ramps down. 0 = off.
+  eastLowerAmt:     0.2,  // how much elevation to SUBTRACT at the very east edge (smoothstep to 0 at eastLowerFrac inland). Keep modest so the flank grades to hill/forest, not sea. Tune live (press B/G/N).
+
+  // ---- EAST→WEST STRAIT RETREAT (deep time) ------------------------------------
+  // The wide main-stem "strait" (straitWidthMult) closes two ways at once as the ranges rise:
+  //   1. it THINS uniformly over time — the old behaviour — over GEO_EPOCHS.straitClose* dates
+  //      (held full-wide before ~0.7 Ma, down to a plain river by ~0.25 Ma); and
+  //   2. its EASTERN end DRAWS BACK to the west over GEO_EPOCHS.straitRetreat* (~0.7→0.5 Ma),
+  //      revealing the narrow NORTHWARD river SOURCE (the stem's NE reach) as a river east of the
+  //      front while the western part is still a strait.
+  // The two multiply, so at ~0.7 Ma the strait stretches right across the screen, then narrows AND
+  // retreats east→west into the ordinary river. The knobs below are the RETREAT (reveal) front; the
+  // THINNING rate is straitWidthMult + the straitClose* dates. Governs the WATER paint + the carve,
+  // not any elevation flood. Positional in u — a clean N–S front. Tune live (B/G/N).
+  straitReachEarly:       1.00,  // eastern extent of the WIDE strait at/before straitRetreatFrom (~0.7 Ma), as a screen-X fraction from the WEST. 1.0 = wide right across the screen.
+  straitReachLate:        0.70,  // eastern extent at/after straitRetreatTo (~0.5 Ma). 0.70 = the retreat has bared the eastern 30% as the narrow NE source; the strait west of it keeps thinning away on the straitClose* schedule. Lower = the source is revealed further west.
+  straitRetreatFeather:   0.08,  // softness of the wide→narrow front (screen-X fraction). 0 = a hard step from strait to river.
+
+  // ---- MAIN NE-ARM RECESSION (deep time, GEO_EPOCHS.mainArm*) ------------------
+  // Early the main stem reaches inland to its NE source (flowing inland). Once the ranges rise the
+  // drainage flips: the flow reverses seaward (~0.6 Ma) and the inland (NE) reach dries back to LAND,
+  // gone by the narrow-river stage. Positional in downstream wPos (0 = SW mouth, 1 = NE source).
+  mainArmKeep:    0.55,  // main river: the seaward reach with wPos BELOW this survives; the NE reach ABOVE it dries to land at full recession. Lower = more of the NE removed (river ends further seaward). The authored NE arm is the last polyline segment, ~wPos 0.69→1.
+  mainArmFeather: 0.14,  // main river: width (in wPos) of the drying front's soft taper above mainArmKeep, so the arm fades to land instead of ending on a hard line.
 
   // ---- colours ----
   hazeColor:    '#20303a', // uniform tone the sky fades to (keeps the top streak-free)
@@ -80,6 +150,14 @@ class TerrainGenerator {
     this.biomes = biomes;
     this.biomeList = Object.values(biomes).sort((a, b) => a.minElevation - b.minElevation);
     this.seed = random(10000);
+
+    // VIEW ZOOM-OUT (config.viewAreaGain). Show more terrain AREA on screen without touching
+    // the camera or the cell budget: the generated world (base noise + coast + geo skeleton) is
+    // scaled DOWN by the linear factor _viewF so a wider window fits the same grid. 1 = off.
+    // Refreshed at generate() start so GEN live-edits + a G re-bake take effect. See getElevation
+    // (coord remap), _prepGeo (skeleton inset) and Simulation.spawnPlants (density scales with it).
+    this._viewGain = (config.viewAreaGain > 0) ? config.viewAreaGain : 1;
+    this._viewF = Math.sqrt(this._viewGain);
     
     // Typed arrays
     this.heightMap = null;
@@ -150,6 +228,10 @@ class TerrainGenerator {
     this._baseNoise = null;                     // seed field, cached so morphTo() need not re-run noise
     this._geoBaseCeil = (config.geoBaseCeil != null) ? config.geoBaseCeil : 0.5;  // with a skeleton, compress the procedural base below this so RANGES own the highs
     this._geoEdgeMargin = (config.geoEdgeMargin != null) ? config.geoEdgeMargin : 0.10;  // ease terrain down to plains within this fraction of the N/S edges (kills the 3/4 edge smear); 0 disables
+    // TOP (far) edge ease, separate from the bottom so the north up-ramp (LOOK.northLift*) can fill
+    // the far edge with real elevated terrain instead of a wide flat plains band. Thin by default;
+    // defaults to _geoEdgeMargin when the level doesn't author it (old symmetric behaviour).
+    this._geoTopMargin = (config.geoTopMargin != null) ? config.geoTopMargin : this._geoEdgeMargin;
     this._geoCache = null;                      // per-footprint distance/noise field; morphTo() re-applies only the time factors
     this._bakeScaleOverride = null;             // morph re-bakes use a reduced bakeScale (set transiently)
 
@@ -398,13 +480,29 @@ class TerrainGenerator {
     coastNoise += noise(warpedNy * 1.5 + this.seed, this.seed * 0.5) * 0.4;
     coastNoise += noise(warpedNy * 3 + this.seed * 1.5, warpedNx * 0.5) * 0.2;
     coastNoise += noise(x * 0.02 + this.seed * 2, y * 0.02 + this.seed * 2) * 0.1;
-    
-    const coastlinePosition = 0.02 + coastNoise * 0.4;
+
+    // How far inland (east, screen-X fraction) the FINAL western shoreline sits: a uniform
+    // base (coastInland) + an extra reach toward the south (coastInlandSouth·ny, 0 at the
+    // north edge → full at the south), on top of the per-row meander. This is the present
+    // coast; the strait's harsher early southern curve comes from the marine submergence
+    // (seaSWReach) and flattens onto this by ~0.5 Ma. See LOOK.coastInland / coastInlandSouth.
+    const inland = (typeof LOOK !== 'undefined' && LOOK.coastInland != null) ? LOOK.coastInland : 0.02;
+    const inlandSouth = (typeof LOOK !== 'undefined' && LOOK.coastInlandSouth != null) ? LOOK.coastInlandSouth : 0;
+    const coastlinePosition = inland + inlandSouth * ny + coastNoise * 0.4;
     
     let falloff;
     if (warpedNx < coastlinePosition) {
-      const seaDepth = (coastlinePosition - warpedNx) / coastlinePosition;
-      falloff = (1 - seaDepth) * 0.12;
+      const seaDepth = (coastlinePosition - warpedNx) / coastlinePosition;   // 0 at shore → 1 deep offshore
+      // Undulating shelf relief. Without it the submerged floor is a dead-flat ramp, so as
+      // the marine embayment recedes over deep time it surfaces in uniform sheets ("patches").
+      // Two octaves of relief, strongest in the shallows (squared taper) and fading to a
+      // smooth deep floor, make the emerging shelf read as natural sandbars and inlets and
+      // give the waterline real slope instead of a sharp step.
+      const shelf = ((noise(x * 0.018 + this.seed * 5, y * 0.018 + this.seed * 6) - 0.5)
+                   + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * 0.5) * 0.11;
+      const shallow = (1 - seaDepth) * (1 - seaDepth);
+      falloff = (1 - seaDepth) * 0.12 + shelf * shallow;
+      if (falloff < 0) falloff = 0;
     } else {
       const landProgress = (warpedNx - coastlinePosition) / (1 - coastlinePosition);
       // Ease the land UP off the shore. Exponent > 1 is convex — flat beach/shelf at the
@@ -412,17 +510,42 @@ class TerrainGenerator {
       // old 0.7 was concave: a steep wall right at the shore). LOOK.coastEase tunes it.
       const coastEase = (typeof LOOK !== 'undefined' && LOOK.coastEase != null) ? LOOK.coastEase : 1.4;
       falloff = 0.13 + Math.pow(landProgress, coastEase) * 0.87;
+      // Coastal-plain undulation near the shore (fading inland), so the just-emerged land
+      // carries the same natural relief as the shelf it rose from — no flat monotone apron.
       const ridgeNoise = noise(x * 0.012 + this.seed * 4, y * 0.012) * 0.2;
-      falloff += ridgeNoise * landProgress;
+      const nearShore = Math.exp(-landProgress * 6);
+      const shelf = ((noise(x * 0.018 + this.seed * 5, y * 0.018 + this.seed * 6) - 0.5)
+                   + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * 0.5) * 0.11;
+      falloff += ridgeNoise * landProgress + shelf * nearShore;
     }
     
-    const edgeSoftness = Math.pow(Math.sin(ny * Math.PI), 0.3);
+    // Clamp ny to [0,1] here: the VIEW ZOOM-OUT can hand this function coords a little past the
+    // map edge (ny slightly <0 or >1), and sin(ny·π) would then go negative → pow(neg,0.3)=NaN.
+    // Clamping keeps the coast's edge-fade profile (0 at the top/bottom edges → 1 mid-map) intact.
+    const nyE = ny < 0 ? 0 : ny > 1 ? 1 : ny;
+    const edgeSoftness = Math.pow(Math.sin(nyE * Math.PI), 0.3);
     falloff *= 0.6 + edgeSoftness * 0.4;
     
     return Math.max(0, Math.min(1, falloff));
   }
   
   getElevation(x, y) {
+
+    // North up-ramp / east down-ramp fractions are SCREEN-space (top / right of the frame), so
+    // capture the grid fractions BEFORE the view remap below moves x,y into geography space.
+    const gridNy = y / this.mapHeight;
+    const gridNx = x / this.mapWidth;
+
+    // VIEW ZOOM-OUT: sample the generated world at coords expanded about the map centre by
+    // _viewF, so the same grid shows a wider window (the land reads smaller = more area on
+    // screen). Everything downstream — fractalNoise, ridgeNoise, getIslandFalloff — inherits
+    // it from these reassigned x,y. _viewF === 1 (off) is the identity, so this is a no-op then.
+    const vf = this._viewF;
+    if (vf !== 1) {
+      const cx = this.mapWidth * 0.5, cy = this.mapHeight * 0.5;
+      x = cx + (x - cx) * vf;
+      y = cy + (y - cy) * vf;
+    }
 
     // changing falloff
     const base = this.fractalNoise(x, y);
@@ -450,6 +573,21 @@ class TerrainGenerator {
     // procedural base above a lowland/forest ceiling so noise no longer throws
     // alpine across the whole east. Ranges lift above this in _applyGeo.
     if (this.geo) elevation = TerrainGenerator._compressBase(elevation, this._geoBaseCeil);
+    // NORTH UP-RAMP: raise the top LOOK.northLiftFrac of the SCREEN smoothly by up to
+    // LOOK.northLiftAmt (max at the very top edge → 0 at northLiftFrac). This fills the far
+    // (north) edge with genuinely-higher generated terrain instead of a flat eased-plains band,
+    // and pairs with the thinner top edge ease (_geoTopMargin) so it actually shows. Screen-space
+    // via gridNy (captured pre-remap). Regenerate / re-bake (B) to apply.
+    const nAmt = (typeof LOOK !== 'undefined' && LOOK.northLiftAmt != null) ? LOOK.northLiftAmt : 0;
+    const nFrac = (typeof LOOK !== 'undefined' && LOOK.northLiftFrac != null) ? LOOK.northLiftFrac : 0;
+    elevation += TerrainGenerator._northLift(gridNy, nFrac, nAmt);
+    // EAST DOWN-RAMP: grade the right LOOK.eastLowerFrac of the SCREEN down by up to
+    // LOOK.eastLowerAmt (max at the east edge → 0 at eastLowerFrac inland), so the ranges fall
+    // away into the inland/eastern Manawatū instead of climbing to a bright plateau. Screen-space
+    // via gridNx (captured pre-remap). Regenerate / re-bake (B) to apply.
+    const eAmt = (typeof LOOK !== 'undefined' && LOOK.eastLowerAmt != null) ? LOOK.eastLowerAmt : 0;
+    const eFrac = (typeof LOOK !== 'undefined' && LOOK.eastLowerFrac != null) ? LOOK.eastLowerFrac : 0;
+    elevation -= TerrainGenerator._eastLower(gridNx, eFrac, eAmt);
     return Math.max(0, Math.min(1, elevation));
   }
 
@@ -481,6 +619,42 @@ class TerrainGenerator {
             }
           }
           arr[i] = e + (sum / n - e) * wgt;
+        }
+      }
+    }
+  }
+
+  // DE-CLIFF pass (LOOK.cliffSmooth): after the skeleton carve/uplift, ease ONLY the
+  // extremely harsh steps — a cell whose steepest 4-neighbour drop exceeds `cliffSmooth`
+  // (elevation per cell) — toward its neighbourhood. This is what the 3/4 relief bake would
+  // otherwise render as a tall dark wall (a bank against the low strait, a channel edge that
+  // has drifted off the new ground level mid-morph). The blend strength scales with how far
+  // the step exceeds the threshold and is capped, so a genuine cliff is softened, not
+  // flattened; gentler relief (plains, range flanks) sits under the threshold and is left
+  // alone. Runs on the CACHED heightMap deterministically — no seed/noise — so a sliced
+  // morph stays byte-identical to a synchronous one (the harness asserts this).
+  _smoothCliffs(arr, gc, gr) {
+    const thresh = (typeof LOOK !== 'undefined' && LOOK.cliffSmooth != null) ? LOOK.cliffSmooth : 0;
+    if (!(thresh > 0)) return;
+    const passes = Math.max(1, Math.round((typeof LOOK !== 'undefined' && LOOK.cliffSmoothPasses != null) ? LOOK.cliffSmoothPasses : 1));
+    if (!this._cliffTmp || this._cliffTmp.length !== arr.length) this._cliffTmp = new Float32Array(arr.length);
+    const tmp = this._cliffTmp;
+    for (let p = 0; p < passes; p++) {
+      tmp.set(arr);
+      let i = 0;
+      for (let row = 0; row < gr; row++) {
+        for (let col = 0; col < gc; col++, i++) {
+          const e = tmp[i];
+          let maxd = 0, sum = 0, n = 0;
+          if (row > 0)      { const ev = tmp[i - gc]; const d = e > ev ? e - ev : ev - e; if (d > maxd) maxd = d; sum += ev; n++; }
+          if (row < gr - 1) { const ev = tmp[i + gc]; const d = e > ev ? e - ev : ev - e; if (d > maxd) maxd = d; sum += ev; n++; }
+          if (col > 0)      { const ev = tmp[i - 1];  const d = e > ev ? e - ev : ev - e; if (d > maxd) maxd = d; sum += ev; n++; }
+          if (col < gc - 1) { const ev = tmp[i + 1];  const d = e > ev ? e - ev : ev - e; if (d > maxd) maxd = d; sum += ev; n++; }
+          if (maxd > thresh && n > 0) {
+            let w = (maxd - thresh) / maxd;             // 0 at the threshold → 1 for an infinite wall
+            if (w > 0.6) w = 0.6;                       // cap: soften, never fully flatten
+            arr[i] = e + (sum / n - e) * w;
+          }
         }
       }
     }
@@ -532,6 +706,28 @@ class TerrainGenerator {
     return this.heightMap[row * this.gridCols + col];
   }
   
+  // Water class at a world point, read from the paint-resolution classification
+  // the season bake produced: 0 land · 1 true sea (drawn flat) · 2 open river
+  // water (rides the terrain). Used by the animated water overlay to decide where
+  // to stamp flow/eel/shimmer decals. Returns 0 before the first bake.
+  waterTypeAt(x, y) {
+    const W = this._paintWater;
+    if (!W) return 0;
+    const S = this._paintScale, PW = this._paintW, PH = this._paintH;
+    let pc = Math.round(x * S); if (pc < 0) pc = 0; else if (pc >= PW) pc = PW - 1;
+    let pr = Math.round(y * S); if (pr < 0) pr = 0; else if (pr >= PH) pr = PH - 1;
+    return W[pr * PW + pc];
+  }
+
+  // The authored river polylines (normalised 0..1 in the geo viewBox), each
+  // { type, width, depth, pts }. The overlay maps pts to world via mapWidth/Height.
+  getRivers() { return this._geoRivers || []; }
+
+  // The main stem is authored SW-mouth → NE-source, so its overlay flow reads INLAND early. Once the
+  // ranges rise and the NE arm begins to recede (mainArm > 0, ~0.6 Ma) the drainage flips: the flow
+  // runs SEAWARD (toward the SW coast). The water overlay reads this to orient current/eel travel.
+  mainFlowReversed() { return !!(this._geoT && this._geoT.mainArm > 0); }
+
   getBiomeFromElevation(elevation) {
     // Guard the floor: marine emergence (seaLift) clamps large areas to exactly 0, and the
     // biome-border wobble then pushes those cells NEGATIVE — which matches no band and fell
@@ -634,6 +830,11 @@ class TerrainGenerator {
   // ============================================
   
   generate() {
+    // Refresh the view zoom-out factor from config first — before the base-noise loop and
+    // _prepGeo below both read it — so a live GEN.viewAreaGain edit + G re-bake takes effect.
+    this._viewGain = (this.config.viewAreaGain > 0) ? this.config.viewAreaGain : 1;
+    this._viewF = Math.sqrt(this._viewGain);
+
     // A full (re)generate supersedes any in-flight incremental morph: the job's
     // partial paint state is about to be rebuilt from scratch anyway. Its
     // half-painted back buffer goes back to the pool (or is freed) — not dropped.
@@ -710,21 +911,38 @@ class TerrainGenerator {
       upliftFrom:   1000000, upliftTo:    25000,   // ranges: nascent → mature
       incisionFrom: 1000000, incisionTo:  25000,   // river depth/banks: leads uplift, deepens late
       emergeFrom:   1000000, emergeTo:   500000,   // river: seaward strait → continuous source-to-sea
-      straitCloseFrom: 1000000, straitCloseTo: 600000,  // strait narrows to normal river width
-      tribEmergeFrom:   900000, tribEmergeTo:  500000    // tributaries appear source → main channel
+      straitCloseFrom: 700000, straitCloseTo: 250000,  // strait THINS to normal river width over this span (held full-wide before ~0.7 Ma, a river by ~0.25 Ma)
+      straitRetreatFrom: 700000, straitRetreatTo: 500000,  // EAST→WEST strait: the wide water's eastern end draws back to straitReachLate over this span (the source reveal)
+      tribEmergeFrom:   400000, tribEmergeTo:  200000,   // tributaries grow from their SOURCES (0.4 Ma) to reach the main channel (0.2 Ma) — no terrain effect before 0.4 Ma
+      tribEmergeEarlyFrom: 500000, tribEmergeEarlyTo: 400000,   // EARLY schedule for the eastmost tributary: grows from its source at 0.5 Ma, connected to the main by 0.4 Ma (as the others begin)
+      mainArmFrom:      600000, mainArmTo:     250000,   // main stem's NE INLAND arm recedes to land: flow flips inland→seaward at ~0.6 Ma, the arm gone by the narrow-river stage (~0.25 Ma). See LOOK.mainArmKeep.
+      // SOUTH-HALF STRAIT (Axis A, a pulse). The southern half of the map subsides into a
+      // marine strait — deepest at its peak, then the basin inverts and the land returns as
+      // the axial ranges lift. The Tararua range footprint stays a dry peninsula throughout
+      // (the N–S land bridge the piece illustrates). Four dates shape the pulse as a trapezoid,
+      // so it can be a sharp peak (Full == Hold) or a held strait (Full older than Hold):
+      //   From → Full   sink: 0 (normal land) → 1 (fully submerged)
+      //   Full … Hold   plateau at full submergence (none by default — Full == Hold)
+      //   Hold → To     rise: 1 → 0 (drains back to the normally-generated land)
+      // Defaults reproduce the user's brief exactly: sink across 1 Ma → 0.5 Ma (peak at 0.5 Ma),
+      // then rise back to normal by 0.3 Ma.
+      southSinkFrom: 1000000, southSinkFull: 500000, southSinkHold: 500000, southSinkTo: 300000
     };
   }
 
   // Deep-time SHAPE factors for an absolute yearsBP. All 0..1; yearsBP null → mature
   // present (1,1,1). Pure — a function of yearsBP + GEO_EPOCHS only, independent of the
   // window, so a date always maps to the same geological state.
-  //  · uplift    — range growth, eases in late (most axial uplift is late Quaternary).
+  //  · uplift    — range growth. The Ruahine/Tararua axial ranges rose mainly over the LAST
+  //                ~1 Ma (rapid uplift commenced c. 1 Ma; Ruahine ~1.3 mm/yr), so this is only
+  //                a GENTLE ease-in (pow 1.5) — the ranges climb steadily across the whole
+  //                window, not a late-window jump. Onset (upliftFrom) sits at the window open.
   //  · incision  — river DEPTH + bank sharpness; leads uplift (antecedent down-cutting) and accelerates late.
   //  · emergence — the CONNECTION front: at the emergeFrom date the Manawatū is only a
   //                seaward embayment (the strait closing over); the channel assembles from
   //                the coast inland, continuous by emergeTo.
   static geoTimeFactors(yearsBP) {
-    if (yearsBP == null) return { uplift: 1, incision: 1, emergence: 1, submergence: 0 };
+    if (yearsBP == null) return { uplift: 1, incision: 1, emergence: 1, submergence: 0, southSink: 0, mainArm: 1 };
     const E = TerrainGenerator.GEO_EPOCHS;
     const ramp = (from, to) => {                                    // 0 at/older than `from` → 1 at/younger than `to`
       const t = (from - yearsBP) / ((from - to) || 1);
@@ -735,9 +953,17 @@ class TerrainGenerator {
     const emg = ramp(E.emergeFrom, E.emergeTo);
     const sub = 1 - emg;                                            // inverse of the emerge ramp
     const sc = ramp(E.straitCloseFrom, E.straitCloseTo);
+    const srr = ramp(E.straitRetreatFrom, E.straitRetreatTo);   // 0 at/older than ~0.7 Ma → 1 at/younger than ~0.5 Ma
     const te = ramp(E.tribEmergeFrom, E.tribEmergeTo);
+    const teE = ramp(E.tribEmergeEarlyFrom, E.tribEmergeEarlyTo);   // eastmost tributary: earlier schedule
+    const ma = ramp(E.mainArmFrom, E.mainArmTo);                 // main NE arm recession: 0 at ~0.6 Ma → 1 by ~0.25 Ma
+    // SOUTH-HALF STRAIT pulse: rise (sink) 1 Ma → ~0.5 Ma, fall (drain) ~0.5 Ma → ~0.3 Ma.
+    const ssU = ramp(E.southSinkFrom, E.southSinkFull);         // 0 at 1 Ma → 1 by the full-submergence date
+    const ssD = ramp(E.southSinkHold, E.southSinkTo);           // 0 until the hold date → 1 once risen back
+    const ssUp = ssU * ssU * (3 - 2 * ssU);                     // smoothstep each leg so the shore eases, not jumps
+    const ssDn = ssD * ssD * (3 - 2 * ssD);
     return {
-      uplift:    up * up,                                           // eases in (most range growth is late)
+      uplift:    Math.pow(up, 1.5),                                 // gentle ease-in: axial ranges rise across ~the whole last 1 Ma (steady late-Quaternary uplift), not a late-window jump
       incision:  Math.min(1, 0.2 + 0.8 * Math.pow(inc, 1.2)),       // leads uplift, accelerates late
       emergence: emg * emg * (3 - 2 * emg),                         // smoothstep connection front (coast → source)
       // MARINE EMERGENCE (Axis A): shallow-sea basin at 1 Ma → land by ~emergeTo. Smoothstep
@@ -747,40 +973,87 @@ class TerrainGenerator {
       // STRAIT → RIVER: 1 at the old wide strait (1 Ma), 0 when closed to normal river width.
       // Scales the main stem's effective width via LOOK.straitWidthMult.
       straitFactor: 1 - sc * sc * (3 - 2 * sc),
-      // TRIBUTARY emergence: 0 at tribEmergeFrom → 1 at tribEmergeTo. Tributaries appear from
-      // their sources toward the main channel over this ramp (reversed wPos direction).
-      tribEmergence: te * te * (3 - 2 * te)
+      // TRIBUTARY emergence: 0 at tribEmergeFrom (0.4 Ma) → 1 at tribEmergeTo (0.2 Ma). Drives
+      // the growth front in _combineGeo/classify/paint: at 0 the tributary is ENTIRELY absent
+      // (no source nub — the land isn't affected yet), then it extends from its source (wPos 0)
+      // to the confluence (wPos 1) over this ramp. Direction is normalised in _prepGeo so this
+      // holds however the polyline was drawn.
+      tribEmergence: te * te * (3 - 2 * te),
+      // EARLY tributary emergence (the eastmost tributary, flagged rv.early in _prepGeo): same growth
+      // front, but grown 0.5→0.4 Ma instead of 0.4→0.2 Ma. Per-cell selection via the cache's wTribEarly.
+      tribEmergenceEarly: teE * teE * (3 - 2 * teE),
+      // EAST→WEST STRAIT RETREAT: 0 while the seaway still reaches across (≥~0.7 Ma) → 1 once it
+      // has pulled back to its held western reach (≤~0.5 Ma). Drives the reach lerp in the combine
+      // caller (LOOK.straitReachEarly→straitReachLate); smoothstepped so the shoreline eases, not jumps.
+      straitRetreat: srr * srr * (3 - 2 * srr),
+      // SOUTH-HALF STRAIT (Axis A): 0 (dry) at 1 Ma → 1 (fully submerged) at ~0.5 Ma → 0 (land back)
+      // by ~0.3 Ma. Scales the positional south-latitude mask in _combineGeo (via _southStrength),
+      // with the Tararua range subtracted out so it stays a dry peninsula. See GEO_EPOCHS.southSink*.
+      southSink: ssUp * (1 - ssDn),
+      // MAIN NE-ARM RECESSION (Axis, positional in downstream wPos): 0 (full inland arm, flowing
+      // inland) at ~0.6 Ma → 1 (the NE reach beyond LOOK.mainArmKeep dried to land, river flowing
+      // seaward) by ~0.25 Ma. Drives _mainArmPresence in the carve + paint, and the flow flip in the
+      // water overlay (reversed once mainArm > 0). Smoothstepped so the arm eases back, not jumps.
+      mainArm: ma * ma * (3 - 2 * ma)
     };
   }
 
   // Combine the geo field for one cell with the deep-time factors. Pure/static so
   // the cached morph path and the direct _applyGeo share it (no divergence), and
   // tools/bootcheck.js can assert it.
-  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil) {
+  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub) {
     const e0 = e;                                  // pre-range LOCAL ground — the level the river follows
-    if (rMask > 0) {
-      const crest = rH * uplift;                   // rH already carries the spine falloff (built per cell)
-      let massif = crest * (1 - relief * (1 - ridge)) + detail;
-      if (massif > 1) massif = 1;
-      if (massif > e) e += (massif - e) * rMask;   // ranges lift; never dig below the base
+    if (rMask > 0 && uplift > 0 && rH > 0) {
+      // RANGES scale the EXISTING ground instead of replacing it with a crest template.
+      // A gain — ramping with time (uplift) and range-mass (rMask), carved by ridge noise
+      // (relief) — MULTIPLIES the base elevation, so the plains' own spurs and valleys grow
+      // up into the mountains rather than a smooth triangular tent. A soft ceiling then eases
+      // the result toward the per-cell crest rH, so peaks approach — but never overshoot — the
+      // authored range height (keeping the snow line meaningful). rH carries the spine falloff.
+      const gain  = (rangeGain != null) ? rangeGain : 2.2;
+      const ceilK = (rangeCeil != null) ? rangeCeil : 0.45;
+      const carve = 1 - relief * (1 - ridge);      // 1 on ridge crests → deeper valleys as relief↑
+      const amp   = gain * uplift * rMask * carve; // 0 at rest → full at a mature range core
+      let lifted  = e * (1 + amp) + detail * rMask * uplift;
+      const knee = rH * ceilK, head = rH - knee;   // soft-ceiling: approach rH, never blow past it
+      if (head > 0 && lifted > knee) lifted = rH - head * Math.exp(-(lifted - knee) / head);
+      if (lifted > e) e = lifted;                  // ranges only ever lift, never dig below the base
     }
-    if (wMask > 0) {
+    if (wMask > 0 || wMaskM > 0) {
       // Emergence: the channel connects from the coast (wPos 0) inland (wPos 1) as the
       // drainage assembles — at ~1.1 Ma only a seaward embayment reads as water and the
       // upstream is still land (the Manawatū Strait closing over), continuous by mid-window.
       // `conn` is the connection front; `incision` then deepens/sharpens the incised channel.
       const FEATHER = 0.15;                        // soft width of the advancing front, in downstream units
-      let conn = (emergence - wPos + FEATHER) / FEATHER;
+      // Growth front. emergence 0 → OFF everywhere (even wPos 0, the source): a tributary that
+      // hasn't emerged yet leaves the land untouched — no persistent source nub. As emergence
+      // ramps 0→1 the front sweeps from the source (wPos 0) to past the confluence (wPos 1), so
+      // the channel grows source→main and is fully connected by emergence 1. Mains pass
+      // emergence 1.0, so this is >=1 for all wPos ≤ 1 — identical to the old formula for them.
+      let conn = (emergence * (1 + FEATHER) - wPos) / FEATHER;
       if (conn < 0) conn = 0; else if (conn > 1) conn = 1;
       conn = conn * conn * (3 - 2 * conn);
-      if (conn > 0) {
+      // Bed strength for the SELECTED river, plus an optional MAIN-stem fallback (wMaskM). Where a
+      // gated/thinned tributary OWNS this cell (nearest by margin) but the cell also sits inside the
+      // wide main channel, the tributary's own carve may be off (conn 0, pre-emergence) or shallow —
+      // leaving the cell standing proud of the carved main valley beside it, which the 3/4 relief bake
+      // paints as a fault-line "seam". The main is always fully connected (emergence 1 → conn 1), so
+      // bridge with its bed and take whichever carves DEEPER. This keeps the HEIGHT in step with the
+      // water/bank PAINT, which already bridges the same seam (the wMDist fallback in
+      // _rebuildBiomeMap / _paintGridPass1). wMaskM 0 (mains, and the harness's short call) = old path.
+      let bed = (wMask > 0) ? Math.min(1, wMask * (1.35 + 0.35 * incision)) * conn : 0;
+      let bedDepth = wDepth;
+      if (wMaskM > 0) {
+        const bedM = Math.min(1, wMaskM * (1.35 + 0.35 * incision));   // main stem: conn = 1
+        if (bedM > bed) { bed = bedM; bedDepth = wDepthM; }             // deeper carve wins; use its incision depth
+      }
+      if (bed > 0) {
         // Bed rides the LOCAL ground: it sits `incise` (deepening with time) below the
         // pre-range ground, and only sinks to the sea band where the land is already near
         // it — the coast. The gorge's DEPTH comes from the flanking ranges rising around
         // this channel (antecedence), so a cell crossing the water drops at most ~incise.
-        let surf = e0 - incise * wDepth * (0.4 + 0.6 * incision);
+        let surf = e0 - incise * bedDepth * (0.4 + 0.6 * incision);
         if (surf < sea) surf = sea;
-        const bed = Math.min(1, wMask * (1.35 + 0.35 * incision)) * conn;
         if (surf < e) e += (surf - e) * bed;       // only ever lower — cut through any range lift
       }
     }
@@ -799,7 +1072,120 @@ class TerrainGenerator {
         e -= seaLift * f * f * (3 - 2 * f);
       }
     }
+    // SW MARINE STRAIT (Axis A, positional). Distinct from the elevation-attenuated seaLift
+    // above: this drowns the lower-LEFT quadrant (the Whanganui basin, SW of the river)
+    // REGARDLESS of its generated elevation, so at ~1 Ma it reads as open sea — the strait.
+    // `swSub` (spatial SW mask × temporal submergence, from the caller) blends the ground
+    // into the sea band and eases back to 0 by ~0.5 Ma, so the quadrant fills out into the
+    // normally-generated terrain. Only ever lowers. Guarded so callers omitting it no-op.
+    // Drown TARGET: a per-cell mottled sea floor (from the caller, via the cached wobble field) so
+    // the submerged ground reads as varied open water like the shelf sea around it, NOT a dead-flat
+    // uniform slab. Clear of the sea/coast band (0.10) and the classify wobble so it stays sea; a
+    // caller that omits it (harness/older paths) falls back to the old flat 0.04.
+    const sf = (seaFloor > 0) ? seaFloor : 0.04;
+    if (swSub > 0) {
+      if (e > sf) e += (sf - e) * swSub;
+    }
+    // SOUTH-HALF STRAIT (Axis A, positional in v). The SOUTHERN half subsides into a marine
+    // strait over deep time (t.southSink pulse), so at its peak the low southern ground reads as
+    // open sea REGARDLESS of its generated elevation. `southSub` (south-latitude mask × the pulse
+    // × (1 − Tararua range protection), from the caller) blends the ground into the sea band with
+    // a wide, gradual shore — no sharp drop-off — and the protected Tararua footprint stays a dry
+    // peninsula (the N–S land bridge). Only ever lowers. Guarded so callers omitting it no-op.
+    if (southSub > 0) {
+      if (e > sf) e += (sf - e) * southSub;         // same mottled sea floor as the SW strait
+    }
+    // LOCALIZED SUBMERGENCE PATCH (Axis A, positional). A single elliptical spot drowned toward
+    // the same mottled sea floor as the straits above, on the emergence clock (LOOK.patchSub*).
+    // Fills a place the SW diagonal front only half-covers. Only ever lowers; a caller omitting it
+    // (harness/older paths) passes undefined → no-op.
+    if (patchSub > 0) {
+      if (e > sf) e += (sf - e) * patchSub;
+    }
     return e < 0 ? 0 : e > 1 ? 1 : e;
+  }
+
+  // Positional SW submergence strength for a cell: the spatial SW mask (1 in the lower-left,
+  // easing to 0 past a NE-ward diagonal front) × the temporal submergence (1 at ~1 Ma → 0 by
+  // emergeTo). Pure/static so the cached and harness paths share it and bootcheck can assert.
+  static _swStrength(u, v, sub, reach, feather) {
+    if (!(sub > 0)) return 0;
+    const dsw = u + (1 - v);                        // 0 at the SW corner (u=0,v=1) → 2 at the NE
+    let sp = (reach - dsw) / (feather > 0 ? feather : 1e-6);
+    sp = sp < 0 ? 0 : sp > 1 ? 1 : sp;
+    return sp * sp * (3 - 2 * sp) * sub;
+  }
+
+  // SOUTH-HALF submergence strength for a cell: a smooth south-ward latitude ramp — 0 north of
+  // `lat`, easing to 1 by `lat + feather` (a WIDE band, so the strait's north shore is a gradual
+  // slope, never a sharp drop-off) — × the temporal pulse `sink` (0 at 1 Ma → 1 at ~0.5 Ma → 0 by
+  // ~0.3 Ma). The caller then multiplies in the Tararua range protection. v is the vertical
+  // fraction (0 = north edge, 1 = south edge). Pure/static so the cached, on-the-fly and harness
+  // paths share it and tools/bootcheck.js can assert against it.
+  static _southStrength(v, sink, lat, feather) {
+    if (!(sink > 0)) return 0;
+    let sp = (v - lat) / (feather > 0 ? feather : 1e-6);
+    sp = sp < 0 ? 0 : sp > 1 ? 1 : sp;
+    return sp * sp * (3 - 2 * sp) * sink;
+  }
+
+  // LOCALIZED submergence strength for a cell: an elliptical mask centred at (cx,cy) with radii
+  // (rx,ry) — full (1) inside the core, smoothstepping to 0 across a taper beyond it — × the temporal
+  // submergence (1 at ~1 Ma → 0 by emergeTo). The taper width is DIRECTIONAL: `featherE` toward the
+  // east (increasing u, where the patch runs uphill into the coast — a wide grade avoids a cliff),
+  // blended smoothly to `feather` at N/S/W by the eastward cosine so there is no seam. featherE null/
+  // ≤0 falls back to feather (a plain symmetric ellipse — the harness's 8-arg call). rx/ry ≤ 0 or a 0
+  // pulse disables it (a clean no-op — the harness never sets submergence in its manual _geoT probes).
+  // Pure/static so the cached, on-the-fly and harness paths share it and bootcheck can assert.
+  static _patchStrength(u, v, sub, cx, cy, rx, ry, feather, featherE) {
+    if (!(sub > 0) || !(rx > 0) || !(ry > 0)) return 0;
+    const nx = (u - cx) / rx, ny = (v - cy) / ry;
+    const r = Math.sqrt(nx * nx + ny * ny);        // 0 at the centre, 1 at the core edge
+    if (r === 0) return sub;                        // dead centre — fully drowned, and avoids nx/r = 0/0
+    const fW = feather > 0 ? feather : 1e-6;
+    const fE = (featherE != null && featherE > fW) ? featherE : fW;
+    let eastness = nx / r;                          // cos of the angle from +u (east); ∈ [-1,1]
+    if (eastness < 0) eastness = 0;                 // bias only the east side
+    const ft = fW + (fE - fW) * eastness * eastness;
+    let sp = (1 + ft - r) / ft;                     // 1 inside the core → 0 by r = 1 + ft
+    sp = sp < 0 ? 0 : sp > 1 ? 1 : sp;
+    return sp * sp * (3 - 2 * sp) * sub;
+  }
+
+  // EAST→WEST STRAIT — the seaway's current eastward REACH (screen-X fraction from the west).
+  // retreat (t.straitRetreat) is 0 while it still reaches across (≥~0.7 Ma) → 1 once pulled back
+  // (≤~0.5 Ma), so reach eases from straitReachEarly to straitReachLate, then holds. Pure/static.
+  static _straitReach(retreat) {
+    const rE = (typeof LOOK !== 'undefined' && LOOK.straitReachEarly != null) ? LOOK.straitReachEarly : 1.0;
+    const rL = (typeof LOOK !== 'undefined' && LOOK.straitReachLate != null) ? LOOK.straitReachLate : 0.70;
+    const rt = (retreat > 0) ? (retreat > 1 ? 1 : retreat) : 0;
+    return rL + (rE - rL) * (1 - rt);
+  }
+
+  // EAST→WEST STRAIT — how WIDE the main stem is at column-fraction u: 1 (full strait width) west
+  // of the retreating front, smoothstepping to 0 (narrow river — the revealed NE source) at and
+  // east of the front (u = reach). `retreat` is t.straitRetreat: null/undefined means present-day/
+  // mature factors with no retreat in play (geoTimeFactors(null), and the harness's isolated
+  // shaping context) → treat as fully retreated (held western reach), so the pure uplift/incision
+  // tests are unaffected. Pure/static so the cached, on-the-fly and harness paths never diverge.
+  static _straitWideMask(u, retreat, feather) {
+    const reach = TerrainGenerator._straitReach(retreat == null ? 1 : retreat);
+    if (u >= reach) return 0;
+    let m = (feather > 0) ? (reach - u) / feather : 1;
+    if (m > 1) m = 1;
+    return m * m * (3 - 2 * m);
+  }
+
+  // EAST→WEST STRAIT — the main stem's combined open-water factor at column-fraction u (0 = a
+  // narrow river, 1 = the full straitWidthMult strait). Two things close the strait, and BOTH
+  // apply: `straitFactor` THINS it uniformly over time (the old behaviour — it "narrows like it
+  // used to", straitClose* dates), and the retreat mask draws its EASTERN end back to the west
+  // (revealing the NE source, straitReach*/straitRetreat* dates). 0 when the temporal factor is
+  // absent (present/mature, harness) so the isolated shaping tests see the plain river. Pure/static.
+  static _straitWide(u, straitFactor, retreat, feather) {
+    const sf = (straitFactor > 0) ? straitFactor : 0;
+    if (sf === 0) return 0;
+    return sf * TerrainGenerator._straitWideMask(u, retreat, feather);
   }
 
   // N/S edge falloff: within `margin` of the top/bottom edge, ease high terrain DOWN to
@@ -807,14 +1193,69 @@ class TerrainGenerator {
   // row's apron to the buffer edge, so a range truncated at the map edge (our ranges'
   // polys run off-frame to v<0 and v>1) smears vertically. Bringing the edge rows down
   // to plains gives those rows nothing tall to smear. Only ever lowers — plains and the
-  // carved river channel pass through untouched. Pure/static; margin 0 disables it.
-  static _nsEdgeFalloff(e, v, margin) {
-    if (!(margin > 0)) return e;
-    const d = v < 1 - v ? v : 1 - v;              // distance to nearest N/S edge, 0..0.5
-    if (d >= margin) return e;
-    const f0 = 1 - d / margin, f = f0 * f0 * (3 - 2 * f0);   // smoothstep, 1 at edge
-    const target = e < 0.22 ? e : 0.22;           // never raises (river/plains unchanged)
-    return e + (target - e) * f;
+  // carved river channel pass through untouched. Pure/static; a 0 margin disables that edge.
+  //
+  // ASYMMETRIC: `topMargin` (v→0, the far edge) can differ from `margin` (v→1, the near/front
+  // apron). A THIN top margin lets the north up-ramp fill the far edge with real elevated terrain
+  // instead of a wide flat plains band, while the front still eases for the reliefCropBottom. A
+  // 3-arg call keeps the old symmetric behaviour (topMargin defaults to margin), so the harness
+  // and any other caller are unaffected.
+  static _nsEdgeFalloff(e, v, margin, topMargin) {
+    const bm = (margin > 0) ? margin : 0;
+    const tm = (topMargin != null) ? (topMargin > 0 ? topMargin : 0) : bm;
+    let out = e;
+    // TOP (far) edge: ease TWO-WAY toward plains — raise a LOW far row UP so it meets the relief
+    // crop (no empty-headroom streak) and lower a truncated range DOWN (no vertical smear). Safe
+    // to raise here: no river reaches the north edge. This is what fills the far edge cleanly.
+    if (tm > 0 && v < tm) {
+      const f0 = 1 - v / tm, f = f0 * f0 * (3 - 2 * f0);
+      out += (0.22 - out) * f;
+    }
+    // NEAR (bottom/front) edge: ease DOWN only — never raise the carved river channel / coast here.
+    if (bm > 0) {
+      const d = 1 - v;
+      if (d < bm) {
+        const f0 = 1 - d / bm, f = f0 * f0 * (3 - 2 * f0);
+        const target = out < 0.22 ? out : 0.22;
+        out += (target - out) * f;
+      }
+    }
+    return out;
+  }
+
+  // NORTH UP-RAMP: extra elevation for the top `frac` of the SCREEN, smoothstepping from `amt` at
+  // the very top edge (gridNy 0) to 0 at gridNy = frac. Fills the far edge with real, slightly
+  // higher terrain (paired with a thin _geoTopMargin) instead of an eased-plains smear. Pure/static
+  // (gridNy is screen-space, captured before the view remap) so bootcheck can assert the shape.
+  static _northLift(gridNy, frac, amt) {
+    if (!(amt > 0) || !(frac > 0) || gridNy >= frac) return 0;
+    const tt = 1 - gridNy / frac;
+    return amt * tt * tt * (3 - 2 * tt);
+  }
+
+  // EAST DOWN-RAMP: lower the right `frac` of the SCREEN by up to `amt`, max at the east edge
+  // (gridNx → 1) easing to 0 at (1 − frac) inland — the flank where the ranges grade off toward
+  // the eastern Manawatū lowland. Mirror of _northLift on the x axis; the caller SUBTRACTS it.
+  // Pure/static.
+  static _eastLower(gridNx, frac, amt) {
+    if (!(amt > 0) || !(frac > 0) || gridNx <= 1 - frac) return 0;
+    const tt = (gridNx - (1 - frac)) / frac;   // 0 at the inland edge of the ramp → 1 at the east edge
+    return amt * tt * tt * (3 - 2 * tt);
+  }
+
+  // MAIN NE-ARM RECESSION presence multiplier (0..1) for a main-stem cell at downstream position
+  // `wPos` (0 = SW mouth, 1 = NE source). 1 = channel fully present; multiply the main's water/carve
+  // mask by it so the inland (high-wPos) reach fades to LAND as `mainArm` (deep time) ramps 0→1.
+  // Below `keep` the seaward river always survives; above keep+feather it dries fully at mainArm 1.
+  // Pure/static (a function of wPos + the time factor only) so the cached, on-the-fly and harness
+  // paths never diverge and tools/bootcheck.js can assert the shape.
+  static _mainArmPresence(wPos, mainArm, keep, feather) {
+    if (!(mainArm > 0) || wPos <= keep) return 1;
+    const span = (feather > 0) ? feather : 1e-6;
+    let t = (wPos - keep) / span;
+    if (t > 1) t = 1;
+    t = t * t * (3 - 2 * t);
+    return 1 - mainArm * t;
   }
 
   // Should the morph driver re-bake now? True once yearsBP has drifted past the
@@ -834,11 +1275,12 @@ class TerrainGenerator {
           detail = new Float32Array(n), wDist = new Float32Array(n), wBaseW = new Float32Array(n),
           wDepth = new Float32Array(n), wPos = new Float32Array(n);
     const wType = new Uint8Array(n);
+    const wTribEarly = new Uint8Array(n);   // 1 where the owning tributary is on the EARLY emergence schedule
     // Second candidate: the nearest MAIN-stem river, regardless of which river won
     // the margin. Where a TRIBUTARY owns a cell but its paint is gated off (not yet
     // emerged / highland-thinned), the classify passes fall back to this so the
     // strait's water/banks aren't cut along the selection seam. ~3 extra MB at sim res.
-    const wMDist = new Float32Array(n), wMBaseW = new Float32Array(n), wMPos = new Float32Array(n);
+    const wMDist = new Float32Array(n), wMBaseW = new Float32Array(n), wMPos = new Float32Array(n), wMDepth = new Float32Array(n);
     // Default wDist to Infinity so cells with no nearby river have no influence.
     wDist.fill(1e6);
     wMDist.fill(1e6);
@@ -883,9 +1325,11 @@ class TerrainGenerator {
           }
           let d = md;
           if (wob > 0) d += (noise(u * 7 + this.seed * 3, v * 7 + this.seed * 4) * 2 - 1) * wob;
-          // High-frequency edge noise: rags the waterline so banks don't trace the
-          // authored polyline as smooth curves. Cached — free at combine/paint time.
-          if (eAmp > 0) d += (noise(u * eFreq + this.seed * 17, v * eFreq + this.seed * 19) * 2 - 1) * eAmp;
+          // High-frequency edge noise: rags the waterline so banks don't trace the authored
+          // polyline as smooth curves. Cached — free at combine/paint time. Scaled by the
+          // channel's width vs the main stem, so a thin tributary gets a proportionally small
+          // wobble (a fixed 0.015 amplitude on a 0.02-wide trib shredded it into blocks).
+          if (eAmp > 0) d += (noise(u * eFreq + this.seed * 17, v * eFreq + this.seed * 19) * 2 - 1) * eAmp * (rv.width / this._mainRiverW);
           if (d < 0) d = 0;
           const w = rv.width || 0.045;
           const margin = d / w;
@@ -895,6 +1339,7 @@ class TerrainGenerator {
             wDist[idx] = d;
             wBaseW[idx] = w;
             wType[idx] = isTrib ? 1 : 0;
+            wTribEarly[idx] = (isTrib && rv.early) ? 1 : 0;
             wDepth[idx] = rv.depth != null ? rv.depth : 1;
             wPos[idx] = cumLen > 0 ? bestCumLen / cumLen : 0;
           }
@@ -903,6 +1348,7 @@ class TerrainGenerator {
             wMDist[idx] = d;
             wMBaseW[idx] = w;
             wMPos[idx] = cumLen > 0 ? bestCumLen / cumLen : 0;
+            wMDepth[idx] = rv.depth != null ? rv.depth : 1;   // for the carve seam fallback's incision target
           }
         }
         if (bestMargin < Infinity && jitter > 0) {
@@ -912,7 +1358,7 @@ class TerrainGenerator {
         idx++;
       }
     }
-    this._geoCache = { rMask, rH, ridge, detail, wDist, wBaseW, wType, wDepth, wPos, wMDist, wMBaseW, wMPos };
+    this._geoCache = { rMask, rH, ridge, detail, wDist, wBaseW, wType, wTribEarly, wDepth, wPos, wMDist, wMBaseW, wMPos, wMDepth };
   }
 
   // Normalise the geo data into the per-generate working form (filtered, defaulted).
@@ -921,19 +1367,70 @@ class TerrainGenerator {
   _prepGeo() {
     const g = this.geo;
     if (!g) { this._geoRanges = []; this._geoRivers = []; return; }
+    // VIEW ZOOM-OUT: shrink the whole skeleton toward the map centre by 1/_viewF (the inverse
+    // of getElevation's coord expansion, so the coast, river and ranges stay aligned), and scale
+    // each range's `spread` and each river's `width` to match — so the geography reads SMALLER on
+    // screen (more area) instead of stretching to refill it. _viewF === 1 makes `ins` the identity.
+    const s = 1 / (this._viewF || 1);
+    const ins = (p) => [0.5 + (p[0] - 0.5) * s, 0.5 + (p[1] - 0.5) * s];
+    const flipAxis = (typeof LOOK !== 'undefined' && LOOK.flipRangeAxis);
     this._geoRanges = (g.ranges || []).filter(r => r.poly && r.poly.length >= 3)
-      .map(r => TerrainGenerator._prepRange(r.height != null ? r.height : 0.85, r.spread || 0.14, r.poly));
+      .map(r => {
+        let poly = r.poly.map(ins);
+        if (flipAxis) poly = TerrainGenerator._flipRangeAxis(poly);   // run the ranges along the opposite diagonal (LOOK.flipRangeAxis)
+        return TerrainGenerator._prepRange(r.height != null ? r.height : 0.85, (r.spread || 0.14) * s, poly);
+      });
     this._geoRivers = (g.rivers || []).filter(rv => rv.pts && rv.pts.length >= 2)
       .map(rv => {
+        const pts = rv.pts.map(ins);
         let u0 = Infinity, u1 = -Infinity;
-        for (const p of rv.pts) { if (p[0] < u0) u0 = p[0]; if (p[0] > u1) u1 = p[0]; }
+        for (const p of pts) { if (p[0] < u0) u0 = p[0]; if (p[0] > u1) u1 = p[0]; }
         // Arc length for parametric position (wPos as distance along the polyline)
         let arcLen = 0;
-        for (let i = 0; i + 1 < rv.pts.length; i++) arcLen += Math.hypot(rv.pts[i+1][0] - rv.pts[i][0], rv.pts[i+1][1] - rv.pts[i][1]);
-        return { width: rv.width || 0.045, depth: rv.depth != null ? rv.depth : 1.0, pts: rv.pts,
+        for (let i = 0; i + 1 < pts.length; i++) arcLen += Math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1]);
+        return { width: (rv.width || 0.045) * s, depth: rv.depth != null ? rv.depth : 1.0, pts,
                  type: rv.type || 'main', arcLen,
                  u0, uSpan: (u1 - u0) > 1e-6 ? (u1 - u0) : 1e-6 };
       });
+    // Reference width (widest MAIN stem) so per-river edge raggedness scales with channel
+    // size: a thin tributary gets proportionally gentle banks, not the main's full-amplitude
+    // wobble (which shredded a 0.02-wide channel into blocky islands). Floored at 0.05.
+    this._mainRiverW = 0.05;
+    for (const rv of this._geoRivers) if (rv.type !== 'tributary' && rv.width > this._mainRiverW) this._mainRiverW = rv.width;
+
+    // DIRECTION NORMALISE. Emergence grows a tributary from its SOURCE (wPos 0) toward its
+    // confluence (wPos 1) — and the water overlay flows the same way. Both read the polyline in
+    // authored order, so a tributary drawn from the river UPWARD (confluence-first) would grow
+    // and flow backwards. Reverse any tributary whose first point is nearer a MAIN stem than its
+    // last, so the source always leads regardless of draw direction. arcLen/u0/uSpan are
+    // symmetric under reversal, so only pts flips. Deterministic → the sliced morph stays
+    // identical to the synchronous one.
+    const mains = this._geoRivers.filter(r => r.type !== 'tributary');
+    if (mains.length) {
+      for (const rv of this._geoRivers) {
+        if (rv.type !== 'tributary' || rv.pts.length < 2) continue;
+        const a = rv.pts[0], b = rv.pts[rv.pts.length - 1];
+        let dA = Infinity, dB = Infinity;
+        for (const m of mains) {
+          const da = TerrainGenerator._distToPolyline(m.pts, a[0], a[1]); if (da < dA) dA = da;
+          const db = TerrainGenerator._distToPolyline(m.pts, b[0], b[1]); if (db < dB) dB = db;
+        }
+        if (dA < dB) rv.pts.reverse();   // first point is the confluence → flip so the source leads
+      }
+    }
+
+    // PER-TRIBUTARY EMERGENCE: tag the EASTMOST tributary (its source — pts[0] after the normalise
+    // above — sits furthest east) so it grows on the EARLY schedule (GEO_EPOCHS.tribEmergeEarly*,
+    // ~0.5→0.4 Ma) instead of the default 0.4→0.2 Ma. Flagged here on the prepped rivers so it
+    // survives an svg2geo regen; carried per cell by _buildGeoCache (wTribEarly) and read as
+    // tribEmergenceEarly in the carve/paint. To move it to a different tributary, change the rule.
+    let eastTrib = null, eastX = -Infinity;
+    for (const rv of this._geoRivers) {
+      if (rv.type !== 'tributary' || rv.pts.length < 1) continue;
+      const sx = rv.pts[0][0];                       // source x (0..1)
+      if (sx > eastX) { eastX = sx; eastTrib = rv; }
+    }
+    if (eastTrib) eastTrib.early = true;
   }
 
   // Precompute a range's long axis via PCA over its polygon vertices. The principal
@@ -958,6 +1455,18 @@ class TerrainGenerator {
     return { height, spread, poly, cx, cy, perpX, perpY, halfW };
   }
 
+  // Mirror a range polygon about the VERTICAL line through its own centroid. Reflection
+  // negates the long-axis tilt (slope → −slope) while fixing the centroid, so the range's
+  // spine runs along the OPPOSITE diagonal but the footprint stays put — "flip the axis the
+  // ranges run along" without relocating them. Centroid-preserving, so every centroid-based
+  // assertion (southSink land-bridge protection, view-zoom position) is invariant. Pure/static.
+  static _flipRangeAxis(poly) {
+    let cx = 0;
+    for (const p of poly) cx += p[0];
+    cx /= poly.length;
+    return poly.map(p => [2 * cx - p[0], p[1]]);
+  }
+
   // Crest height multiplier for a cell: 1 on the range's spine axis, falling to
   // (1 − spine) at the flanks (halfW away), so the range reads as a ridge, not a plateau.
   // spine 0 → flat plateau (old behaviour). Pure/static.
@@ -978,35 +1487,102 @@ class TerrainGenerator {
     if (!c) { hm.set(base); return; }             // no skeleton → base field unchanged
     const t = this._geoT, up = t.uplift, inc = t.incision;
     const relief = (typeof LOOK !== 'undefined' && LOOK.rangeRelief != null) ? LOOK.rangeRelief : 0.45;
+    const rangeGain = (typeof LOOK !== 'undefined' && LOOK.rangeGain != null) ? LOOK.rangeGain : 2.2;
+    const rangeCeil = (typeof LOOK !== 'undefined' && LOOK.rangeCeil != null) ? LOOK.rangeCeil : 0.45;
     const incise = (typeof LOOK !== 'undefined' && LOOK.riverIncise != null) ? LOOK.riverIncise : 0.06;
     const sea = (typeof LOOK !== 'undefined' && LOOK.riverSeaLevel != null) ? LOOK.riverSeaLevel : 0.04;
     const seaRise = (typeof LOOK !== 'undefined' && LOOK.seaRise != null) ? LOOK.seaRise : 0;
     const seaLift = (t.submergence > 0 ? t.submergence : 0) * seaRise;   // Axis A: marine emergence
     const floodCeil = (typeof LOOK !== 'undefined' && LOOK.seaFloodCeil != null) ? LOOK.seaFloodCeil : 0.42;
-    // Strait: main stem widens by straitWidthMult at full straitFactor (1 Ma)
+    // Strait: the main stem is widened by straitWidthMult, but only WEST of the east→west retreat
+    // front (LOOK.straitReach*, driven by t.straitRetreat); east of it the stem is narrow — the
+    // revealed NE source. straitWide is a per-cell factor computed in the loop from u.
     const straitW = (typeof LOOK !== 'undefined' && LOOK.straitWidthMult != null) ? LOOK.straitWidthMult : 3.0;
-    const straitF = (t.straitFactor != null) ? t.straitFactor : 0;
+    const srFeather = (typeof LOOK !== 'undefined' && LOOK.straitRetreatFeather != null) ? LOOK.straitRetreatFeather : 0.08;
+    const straitRetreat = t.straitRetreat;
+    const straitF = (t.straitFactor != null) ? t.straitFactor : 0;   // temporal thinning
     const tribEmg = (t.tribEmergence != null) ? t.tribEmergence : 1;
+    const valleyWiden = (typeof LOOK !== 'undefined' && LOOK.riverValleyWiden != null) ? LOOK.riverValleyWiden : 2.4;
+    const swReach = (typeof LOOK !== 'undefined' && LOOK.seaSWReach != null) ? LOOK.seaSWReach : 1.15;
+    const swFeather = (typeof LOOK !== 'undefined' && LOOK.seaSWFeather != null) ? LOOK.seaSWFeather : 0.55;
+    const sub = (t.submergence > 0) ? t.submergence : 0;   // SW strait: 1 at ~1 Ma → 0 by ~0.5 Ma
+    // LOCALIZED SUBMERGENCE PATCH: a single elliptical spot on the same submergence clock (LOOK.patchSub*).
+    const patchU = (typeof LOOK !== 'undefined' && LOOK.patchSubU != null) ? LOOK.patchSubU : 0.58;
+    const patchV = (typeof LOOK !== 'undefined' && LOOK.patchSubV != null) ? LOOK.patchSubV : 0.72;
+    const patchRX = (typeof LOOK !== 'undefined' && LOOK.patchSubRX != null) ? LOOK.patchSubRX : 0;
+    const patchRY = (typeof LOOK !== 'undefined' && LOOK.patchSubRY != null) ? LOOK.patchSubRY : 0;
+    const patchFeather = (typeof LOOK !== 'undefined' && LOOK.patchSubFeather != null) ? LOOK.patchSubFeather : 0.45;
+    const patchFeatherE = (typeof LOOK !== 'undefined' && LOOK.patchSubFeatherE != null) ? LOOK.patchSubFeatherE : patchFeather;
+    // SOUTH-HALF strait pulse (Axis A): 0 at 1 Ma → 1 at ~0.5 Ma → 0 by ~0.3 Ma. Positional in v,
+    // with the Tararua range mass subtracted out (southProtect) so the range stays a dry peninsula.
+    const southSink = (t.southSink > 0) ? t.southSink : 0;
+    const southLat = (typeof LOOK !== 'undefined' && LOOK.southSinkLat != null) ? LOOK.southSinkLat : 0.45;
+    const southFeather = (typeof LOOK !== 'undefined' && LOOK.southSinkFeather != null) ? LOOK.southSinkFeather : 0.22;
+    const southProtect = (typeof LOOK !== 'undefined' && LOOK.southSinkProtect != null) ? LOOK.southSinkProtect : 1;
+    const southWob = (typeof LOOK !== 'undefined' && LOOK.southSinkWobble != null) ? LOOK.southSinkWobble : 0.05;
+    // Mottle the drowned SEA FLOOR and MEANDER the strait's north shore with the cached wobble field,
+    // so the submergence reads as varied open water with a natural (not latitude-straight) coast —
+    // not a flat square slab. Cached (deterministic) → the sliced morph stays identical to the sync one.
+    const seaWob = (southSink > 0 || sub > 0) ? this._simWobbleField() : null;
     const rMask = c.rMask, rH = c.rH, ridge = c.ridge, detail = c.detail;
-    const wDistArr = c.wDist, wBaseWArr = c.wBaseW, wTypeArr = c.wType, wDepthArr = c.wDepth, wPosArr = c.wPos;
-    const gr = this.gridRows, gc = this.gridCols, invr = 1 / gr, edgeMargin = this._geoEdgeMargin;
+    const wDistArr = c.wDist, wBaseWArr = c.wBaseW, wTypeArr = c.wType, wDepthArr = c.wDepth, wPosArr = c.wPos, wTribEarlyArr = c.wTribEarly;
+    const wMDistArr = c.wMDist, wMBaseWArr = c.wMBaseW, wMDepthArr = c.wMDepth, wMPosArr = c.wMPos;   // nearest MAIN stem — the carve seam fallback
+    const tribEmgE = (t.tribEmergenceEarly != null) ? t.tribEmergenceEarly : 1;   // eastmost tributary's early schedule
+    // MAIN NE-ARM recession (deep time): fade the main channel's water/carve where the inland reach dries.
+    const mainArm = (t.mainArm > 0) ? t.mainArm : 0;
+    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
+    const gr = this.gridRows, gc = this.gridCols, invr = 1 / gr, invc = 1 / gc, edgeMargin = this._geoEdgeMargin, topMargin = this._geoTopMargin;
     let i = 0;
     for (let row = 0; row < gr; row++) {
       const v = row * invr;
       for (let col = 0; col < gc; col++, i++) {
+        const u = col * invc;
+        const sWide = TerrainGenerator._straitWide(u, straitF, straitRetreat, srFeather);   // main-stem strait widening at this column
         // Compute time-varying river mask from cached distance
         const dist = wDistArr[i];
         let wMask = 0, cellEmg = 1;
         if (dist < 1) {                             // rough early-out (max baseW ~ 0.15 at strait)
           let effW = wBaseWArr[i];
-          if (wTypeArr[i] === 0) effW *= (1 + (straitW - 1) * straitF);   // main stem → strait
-          if (dist < effW) { const tt = 1 - dist / effW; wMask = tt * tt * (3 - 2 * tt); }
-          cellEmg = (wTypeArr[i] === 1) ? tribEmg : 1.0;                   // tributaries use their own emergence
+          if (wTypeArr[i] === 0) effW *= (1 + (straitW - 1) * sWide);   // main stem → strait: thins over time, and only WEST of the retreat front
+          // INCISION valley mask (drives _combineGeo's carve, NOT the water/bank paint):
+          // wider than the water ribbon with a smooth taper, so the gorge reads as a gentle
+          // valley with sloping shoulders instead of a jagged slot chasing the ragged
+          // (edge-noised) waterline. Water classification stays narrow (_rebuildBiomeMap).
+          const valleyW = effW * valleyWiden;
+          if (dist < valleyW) { const tt = 1 - dist / valleyW; wMask = tt * tt * (3 - 2 * tt); }
+          cellEmg = (wTypeArr[i] === 1) ? (wTribEarlyArr[i] ? tribEmgE : tribEmg) : 1.0;   // tributaries use their own emergence (early schedule for the eastmost)
+          // MAIN NE-ARM recession: fade the main carve where its inland (high-wPos) reach dries to land.
+          if (mainArm > 0 && wTypeArr[i] === 0 && wMask > 0) wMask *= TerrainGenerator._mainArmPresence(wPosArr[i], mainArm, mArmKeep, mArmFeather);
         }
-        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, wDepthArr[i], up, inc, relief, incise, sea, wPosArr[i], cellEmg, seaLift, floodCeil);
-        hm[i] = TerrainGenerator._nsEdgeFalloff(e, v, edgeMargin);
+        // MAIN-stem carve fallback: a tributary-owned cell that also lies inside the wide main valley
+        // takes the main's (deeper) bed, so a gated/thinned tributary leaves no un-carved ribbon
+        // standing proud of the strait beside it (the fault-line seam). Only for tributary cells (a
+        // main-owned cell already IS its own nearest main → wMaskM == wMask, a no-op), and only where
+        // the main valley reaches. Mirrors the water/bank seam fallback in _rebuildBiomeMap.
+        let wMaskM = 0, wDepthM = 1;
+        if (wTypeArr[i] === 1) {
+          const dM = wMDistArr[i];
+          const valleyWM = wMBaseWArr[i] * (1 + (straitW - 1) * sWide) * valleyWiden;
+          if (dM < valleyWM) {
+            const tt = 1 - dM / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = wMDepthArr[i];
+            if (mainArm > 0) wMaskM *= TerrainGenerator._mainArmPresence(wMPosArr[i], mainArm, mArmKeep, mArmFeather);   // fallback recedes with the arm too
+          }
+        }
+        const wv = seaWob ? seaWob[i] : 0;
+        const seaFloor = 0.02 + wv * 0.015;                   // mottled deep floor (~0.005–0.035, all sea)
+        const swSub = TerrainGenerator._swStrength(u, v, sub, swReach, swFeather);
+        let southSub = TerrainGenerator._southStrength(v + wv * southWob, southSink, southLat, southFeather);   // meander the shore off the straight latitude line
+        if (southSub > 0) { const pr = 1 - southProtect * rMask[i]; southSub *= pr > 0 ? pr : 0; }   // Tararua stays a dry peninsula
+        const patchSub = TerrainGenerator._patchStrength(u + wv * southWob, v, sub, patchU, patchV, patchRX, patchRY, patchFeather, patchFeatherE);   // meander the patch shore off a straight ellipse too
+        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, wDepthArr[i], up, inc, relief, incise, sea, wPosArr[i], cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub);
+        hm[i] = TerrainGenerator._nsEdgeFalloff(e, v, edgeMargin, topMargin);
       }
     }
+    // Ease the extremely harsh vertical steps the carve/uplift can leave (a bank against
+    // the low strait, a channel edge that drifted off the new ground mid-morph) so the 3/4
+    // relief bake doesn't paint them as a tall dark wall. Deterministic → morph stays sliced==sync.
+    this._smoothCliffs(hm, gc, gr);
   }
 
   // Reshape one cell directly (samples the field on the fly, off the cache — e.g.
@@ -1018,6 +1594,8 @@ class TerrainGenerator {
     const incise = (typeof LOOK !== 'undefined' && LOOK.riverIncise != null) ? LOOK.riverIncise : 0.06;
     const sea = (typeof LOOK !== 'undefined' && LOOK.riverSeaLevel != null) ? LOOK.riverSeaLevel : 0.04;
     const spine = (typeof LOOK !== 'undefined' && LOOK.rangeSpine != null) ? LOOK.rangeSpine : 0.45;
+    const rangeGain = (typeof LOOK !== 'undefined' && LOOK.rangeGain != null) ? LOOK.rangeGain : 2.2;
+    const rangeCeil = (typeof LOOK !== 'undefined' && LOOK.rangeCeil != null) ? LOOK.rangeCeil : 0.45;
     let rMask = 0, rH = 0;
     const R = this._geoRanges;
     for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > rMask) { rMask = m; rH = R[i].height * TerrainGenerator._spineHeight(R[i], u, v, spine); } }
@@ -1027,11 +1605,17 @@ class TerrainGenerator {
     const wob = (typeof LOOK !== 'undefined' && LOOK.riverWobble != null) ? LOOK.riverWobble : 0.02;
     const jitter = (typeof LOOK !== 'undefined' && LOOK.riverFrontJitter != null) ? LOOK.riverFrontJitter : 0.07;
     const straitW = (typeof LOOK !== 'undefined' && LOOK.straitWidthMult != null) ? LOOK.straitWidthMult : 3.0;
-    const straitF = (t.straitFactor != null) ? t.straitFactor : 0;
+    const srFeather = (typeof LOOK !== 'undefined' && LOOK.straitRetreatFeather != null) ? LOOK.straitRetreatFeather : 0.08;
+    const straitWide = TerrainGenerator._straitWide(u, (t.straitFactor != null ? t.straitFactor : 0), t.straitRetreat, srFeather);   // thins over time × (1 west of the retreat front → 0 east: revealed source)
     const tribEmg = (t.tribEmergence != null) ? t.tribEmergence : 1;
+    const valleyWiden = (typeof LOOK !== 'undefined' && LOOK.riverValleyWiden != null) ? LOOK.riverValleyWiden : 2.4;
+    const tribEmgE = (t.tribEmergenceEarly != null) ? t.tribEmergenceEarly : 1;   // eastmost tributary's early schedule
+    const mainArm = (t.mainArm > 0) ? t.mainArm : 0;   // MAIN NE-ARM recession (deep time)
+    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     let wMask = 0, wDepth = 0, wPos = 0, cellEmg = 1;
     const Rv = this._geoRivers;
-    let bestMargin = Infinity;
+    let bestMargin = Infinity, bestMainMargin = Infinity, mainD = Infinity, mainW = 0, mainDepth = 1, mainPos = 0, selIsTrib = false;
     for (let i = 0; i < Rv.length; i++) {
       const rv = Rv[i], pts = rv.pts;
       let md = Infinity, cumLen = 0, bestCumLen = 0;
@@ -1046,27 +1630,64 @@ class TerrainGenerator {
       if (wob > 0) d += (noise(u * 7 + this.seed * 3, v * 7 + this.seed * 4) * 2 - 1) * wob;
       const eAmp = (typeof LOOK !== 'undefined' && LOOK.riverEdgeNoise != null) ? LOOK.riverEdgeNoise : 0;
       const eFreq = (typeof LOOK !== 'undefined' && LOOK.riverEdgeFreq != null) ? LOOK.riverEdgeFreq : 26;
-      if (eAmp > 0) d += (noise(u * eFreq + this.seed * 17, v * eFreq + this.seed * 19) * 2 - 1) * eAmp;
+      if (eAmp > 0) d += (noise(u * eFreq + this.seed * 17, v * eFreq + this.seed * 19) * 2 - 1) * eAmp * (rv.width / (this._mainRiverW || 0.05));
       if (d < 0) d = 0;
       const w = rv.width || 0.045, margin = d / w;
+      const isTrib = (rv.type === 'tributary');
       if (margin < bestMargin) {
         bestMargin = margin;
-        const isTrib = (rv.type === 'tributary');
-        let effW = isTrib ? w : w * (1 + (straitW - 1) * straitF);
-        wMask = d < effW ? (1 - d / effW) : 0;
+        const effW = isTrib ? w : w * (1 + (straitW - 1) * straitWide);
+        const valleyW = effW * valleyWiden;   // INCISION valley (wide, smooth) — matches _applyGeoToHeightMap
+        wMask = d < valleyW ? (1 - d / valleyW) : 0;
         if (wMask > 0) wMask = wMask * wMask * (3 - 2 * wMask);
         wDepth = rv.depth != null ? rv.depth : 1;
         wPos = cumLen > 0 ? bestCumLen / cumLen : 0;
         if (jitter > 0) wPos += (noise(u * 4 + this.seed * 11, v * 4 + this.seed * 13) * 2 - 1) * jitter;
         if (wPos < 0) wPos = 0; else if (wPos > 1) wPos = 1;
-        cellEmg = isTrib ? tribEmg : 1.0;
+        cellEmg = isTrib ? (rv.early ? tribEmgE : tribEmg) : 1.0;
+        selIsTrib = isTrib;
+      }
+      if (!isTrib && margin < bestMainMargin) { bestMainMargin = margin; mainD = d; mainW = w; mainDepth = rv.depth != null ? rv.depth : 1; mainPos = cumLen > 0 ? bestCumLen / cumLen : 0; }
+    }
+    // MAIN NE-ARM recession: fade the selected main's own carve where its inland (high-wPos) reach dries.
+    if (mainArm > 0 && !selIsTrib && wMask > 0) wMask *= TerrainGenerator._mainArmPresence(wPos, mainArm, mArmKeep, mArmFeather);
+    // MAIN-stem carve fallback (mirrors _applyGeoToHeightMap): a tributary-SELECTED cell that also lies
+    // inside the wide main valley takes the main's (deeper) bed too, so a gated/thinned tributary leaves
+    // no un-carved ribbon standing proud of the strait beside it (the fault-line seam).
+    let wMaskM = 0, wDepthM = 1;
+    if (selIsTrib && mainD < Infinity) {
+      const valleyWM = mainW * (1 + (straitW - 1) * straitWide) * valleyWiden;
+      if (mainD < valleyWM) {
+        let tt = 1 - mainD / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = mainDepth;
+        if (mainArm > 0) wMaskM *= TerrainGenerator._mainArmPresence(mainPos, mainArm, mArmKeep, mArmFeather);   // fallback recedes with the arm
       }
     }
     const seaRise = (typeof LOOK !== 'undefined' && LOOK.seaRise != null) ? LOOK.seaRise : 0;
     const seaLift = (t.submergence > 0 ? t.submergence : 0) * seaRise;
     const floodCeil = (typeof LOOK !== 'undefined' && LOOK.seaFloodCeil != null) ? LOOK.seaFloodCeil : 0.42;
-    const out = TerrainGenerator._combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, t.uplift, t.incision, relief, incise, sea, wPos, cellEmg, seaLift, floodCeil);
-    return TerrainGenerator._nsEdgeFalloff(out, v, this._geoEdgeMargin);
+    const swReach = (typeof LOOK !== 'undefined' && LOOK.seaSWReach != null) ? LOOK.seaSWReach : 1.15;
+    const swFeather = (typeof LOOK !== 'undefined' && LOOK.seaSWFeather != null) ? LOOK.seaSWFeather : 0.55;
+    const swSub = TerrainGenerator._swStrength(u, v, (t.submergence > 0 ? t.submergence : 0), swReach, swFeather);
+    // SOUTH-HALF strait (Axis A): south-latitude mask × the pulse × (1 − Tararua range protection).
+    const southLat = (typeof LOOK !== 'undefined' && LOOK.southSinkLat != null) ? LOOK.southSinkLat : 0.45;
+    const southFeather = (typeof LOOK !== 'undefined' && LOOK.southSinkFeather != null) ? LOOK.southSinkFeather : 0.22;
+    const southProtect = (typeof LOOK !== 'undefined' && LOOK.southSinkProtect != null) ? LOOK.southSinkProtect : 1;
+    const southWob = (typeof LOOK !== 'undefined' && LOOK.southSinkWobble != null) ? LOOK.southSinkWobble : 0.05;
+    // Off-cache path (harness): a live-noise twin of the cached mottle/meander in _applyGeoToHeightMap.
+    const wv = ((t.southSink > 0) || (t.submergence > 0)) ? (noise(u * 8 + this.seed * 5, v * 8 + this.seed * 7) * 2 - 1) : 0;
+    const seaFloor = 0.02 + wv * 0.015;
+    let southSub = TerrainGenerator._southStrength(v + wv * southWob, (t.southSink > 0 ? t.southSink : 0), southLat, southFeather);
+    if (southSub > 0) { const pr = 1 - southProtect * rMask; southSub *= pr > 0 ? pr : 0; }   // Tararua stays a dry peninsula
+    // LOCALIZED SUBMERGENCE PATCH (Axis A): elliptical spot on the submergence clock (LOOK.patchSub*).
+    const patchU = (typeof LOOK !== 'undefined' && LOOK.patchSubU != null) ? LOOK.patchSubU : 0.58;
+    const patchV = (typeof LOOK !== 'undefined' && LOOK.patchSubV != null) ? LOOK.patchSubV : 0.72;
+    const patchRX = (typeof LOOK !== 'undefined' && LOOK.patchSubRX != null) ? LOOK.patchSubRX : 0;
+    const patchRY = (typeof LOOK !== 'undefined' && LOOK.patchSubRY != null) ? LOOK.patchSubRY : 0;
+    const patchFeather = (typeof LOOK !== 'undefined' && LOOK.patchSubFeather != null) ? LOOK.patchSubFeather : 0.45;
+    const patchFeatherE = (typeof LOOK !== 'undefined' && LOOK.patchSubFeatherE != null) ? LOOK.patchSubFeatherE : patchFeather;
+    const patchSub = TerrainGenerator._patchStrength(u + wv * southWob, v, (t.submergence > 0 ? t.submergence : 0), patchU, patchV, patchRX, patchRY, patchFeather, patchFeatherE);
+    const out = TerrainGenerator._combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, t.uplift, t.incision, relief, incise, sea, wPos, cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub);
+    return TerrainGenerator._nsEdgeFalloff(out, v, this._geoEdgeMargin, this._geoTopMargin);
   }
 
   // 1 inside a range, smooth falloff to 0 across `spread` outside it.
@@ -1180,18 +1801,31 @@ class TerrainGenerator {
     const wPosArr = C ? C.wPos : null;
     const wMDistArr = C ? C.wMDist : null;
     const wMBaseWArr = C ? C.wMBaseW : null;
+    const wMPosArr = C ? C.wMPos : null;
+    const wTribEarlyArr = C ? C.wTribEarly : null;
     const riverT = (typeof LOOK !== 'undefined' && LOOK.riverWaterT != null) ? LOOK.riverWaterT : 0.55;
     const riverBankT = (typeof LOOK !== 'undefined' && LOOK.riverBankT != null) ? LOOK.riverBankT : 0.30;
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
     const straitW = (typeof LOOK !== 'undefined' && LOOK.straitWidthMult != null) ? LOOK.straitWidthMult : 3.0;
-    const straitF = (_gt.straitFactor != null) ? _gt.straitFactor : 0;
+    // Main-stem width tracks the east→west retreat front (matches the carve in _applyGeoToHeightMap):
+    // wide west of the front, narrowing to the revealed river east of it.
+    const straitRetreat = _gt.straitRetreat;
+    const straitF = (_gt.straitFactor != null) ? _gt.straitFactor : 0;   // temporal thinning
+    const srFeather = (typeof LOOK !== 'undefined' && LOOK.straitRetreatFeather != null) ? LOOK.straitRetreatFeather : 0.08;
+    const invc = 1 / gridCols;
     const tribEmg = (_gt.tribEmergence != null) ? _gt.tribEmergence : 1;
+    const tribEmgE = (_gt.tribEmergenceEarly != null) ? _gt.tribEmergenceEarly : 1;   // eastmost tributary's early schedule
     const thin = (typeof LOOK !== 'undefined' && LOOK.tribHighlandThin != null) ? LOOK.tribHighlandThin : 1.6;
+    const mainArm = (_gt.mainArm > 0) ? _gt.mainArm : 0;   // MAIN NE-ARM recession (deep time)
+    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     const R_FEATHER = 0.15;
     let idx = 0;
     for (let row = 0; row < gridRows; row++) {
       for (let col = 0; col < gridCols; col++) {
+        const u = col * invc;
+        const straitWide = TerrainGenerator._straitWide(u, straitF, straitRetreat, srFeather);
         const elevation = this.heightMap[idx];
         const eClass = wob ? elevation + wob[idx] * w : elevation;
         let biome = this.getBiomeFromElevation(eClass);
@@ -1199,13 +1833,14 @@ class TerrainGenerator {
         if (wDistArr && this._waterBiome) {
           const dist = wDistArr[idx];
           let effW = wBaseWArr[idx];
-          if (wTypeArr[idx] === 0) effW *= (1 + (straitW - 1) * straitF);
+          if (wTypeArr[idx] === 0) effW *= (1 + (straitW - 1) * straitWide);
           let m = 0;
           if (dist < effW) { const tt = 1 - dist / effW; m = tt * tt * (3 - 2 * tt); }
+          if (mainArm > 0 && wTypeArr[idx] === 0 && m > 0) m *= TerrainGenerator._mainArmPresence(wPosArr ? wPosArr[idx] : 0, mainArm, mArmKeep, mArmFeather);   // NE arm dries to land
           if (m > 0) {
-            const cellEmg = (wTypeArr[idx] === 1) ? tribEmg : 1.0;
+            const cellEmg = (wTypeArr[idx] === 1) ? (wTribEarlyArr && wTribEarlyArr[idx] ? tribEmgE : tribEmg) : 1.0;
             const d = wPosArr ? wPosArr[idx] : 0;
-            const front = (cellEmg - d + R_FEATHER) / R_FEATHER;
+            const front = (cellEmg * (1 + R_FEATHER) - d) / R_FEATHER;   // grows source→confluence; 0 = absent (matches the carve)
             if (front > 0) {
               const fs = front >= 1 ? 1 : front * front * (3 - 2 * front);
               let wT = riverTeff + (1 - fs) * (1 - riverTeff);
@@ -1216,7 +1851,7 @@ class TerrainGenerator {
               // ponds or sand rings on ridge lines.
               if (wTypeArr[idx] === 1 && thin > 0 && eClass > 0.30) {
                 const hi = (eClass - 0.30) * thin;
-                wT += hi; bT += hi * 0.8;
+                wT += hi; bT += hi;   // bank thins WITH the water (a gully stream), not a widening sand ring
               }
               if (m >= wT) waterHit = true; else if (m >= bT) bedHit = true;
             }
@@ -1226,10 +1861,11 @@ class TerrainGenerator {
           // water/banks cut off along the straight margin-selection boundary.
           if (!waterHit && !bedHit && wTypeArr[idx] === 1 && wMDistArr) {
             const dM = wMDistArr[idx];
-            const effWM = wMBaseWArr[idx] * (1 + (straitW - 1) * straitF);
+            const effWM = wMBaseWArr[idx] * (1 + (straitW - 1) * straitWide);
             if (dM < effWM) {
               const tt = 1 - dM / effWM;
-              const mM = tt * tt * (3 - 2 * tt);
+              let mM = tt * tt * (3 - 2 * tt);
+              if (mainArm > 0) mM *= TerrainGenerator._mainArmPresence(wMPosArr ? wMPosArr[idx] : 0, mainArm, mArmKeep, mArmFeather);   // fallback recedes with the arm
               if (mM >= riverTeff) waterHit = true; else if (mM >= riverBankT) bedHit = true;
             }
           }
@@ -1371,6 +2007,14 @@ class TerrainGenerator {
       const fadeMs = (typeof CONFIG !== 'undefined' && CONFIG.morphFadeMs) || 600;
       this._morphFade = {
         buf: old,
+        // The glacial PHASE this retired buffer belongs to. The fade draws it at full
+        // as the crossfade base, which is only correct while that phase is still the
+        // one on screen. Deep time keeps moving during the >=500 ms fade and the
+        // glacial index oscillates across phase boundaries, so the current phase can
+        // step off this one mid-fade — then the base is a stale, wrong-phase, OLD-land
+        // buffer drawn at full, and the terrain flicks to that previous state for a
+        // frame. render() checks this key and retires the fade early if it happens.
+        key: seasonKey,
         t0: (typeof millis === 'function') ? millis() : Date.now(),
         ms: Math.max(500, fadeMs)   // photosensitivity: large changes ramp >= 500 ms
       };
@@ -1402,7 +2046,11 @@ class TerrainGenerator {
     const S = this._paintScale || 1;
     const w = Math.max(1, Math.round(this.mapWidth * S));
     const h = Math.max(1, (this._paintWorldH || this.mapHeight) * S);
-    if (buf.width === w && buf.height === h && this._bufPool.length < 3) {
+    if (buf.width === w && buf.height === h && this._bufPool.length < 2) {
+      // Cap 2 (was 3): a morph releases each retired buffer just before acquiring
+      // the next, so one pooled spare already gives a morph zero-alloc reuse; the
+      // second covers the crossfade's retired buffer landing back. Dropping the
+      // third reclaims ~8.8 MB of otherwise-idle GPU-backed canvas on the kiosk.
       this._bufPool.push(buf);
     } else if (typeof buf.remove === 'function') {
       buf.remove();
@@ -1561,6 +2209,8 @@ class TerrainGenerator {
     const C_wPos = C ? C.wPos : null;
     const C_wMDist = C ? C.wMDist : null;
     const C_wMBaseW = C ? C.wMBaseW : null;
+    const C_wMPos = C ? C.wMPos : null;
+    const C_wTribEarly = C ? C.wTribEarly : null;
     const riverT = (typeof LOOK !== 'undefined' && LOOK.riverWaterT != null) ? LOOK.riverWaterT : 0.55;
     const riverBankT = (typeof LOOK !== 'undefined' && LOOK.riverBankT != null) ? LOOK.riverBankT : 0.30;
     const riverColorElev = this._waterBiome
@@ -1570,13 +2220,22 @@ class TerrainGenerator {
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
     const straitW = (typeof LOOK !== 'undefined' && LOOK.straitWidthMult != null) ? LOOK.straitWidthMult : 3.0;
+    // Main-stem strait width: thins over time (straitFactor) and tracks the east→west retreat
+    // front, matching the sim carve/classify.
+    const straitRetreat = _gt.straitRetreat;
     const straitF = (_gt.straitFactor != null) ? _gt.straitFactor : 0;
+    const srFeather = (typeof LOOK !== 'undefined' && LOOK.straitRetreatFeather != null) ? LOOK.straitRetreatFeather : 0.08;
     const tribEmg = (_gt.tribEmergence != null) ? _gt.tribEmergence : 1;
+    const tribEmgE = (_gt.tribEmergenceEarly != null) ? _gt.tribEmergenceEarly : 1;   // eastmost tributary's early schedule
     const thin = (typeof LOOK !== 'undefined' && LOOK.tribHighlandThin != null) ? LOOK.tribHighlandThin : 1.6;
+    const mainArm = (_gt.mainArm > 0) ? _gt.mainArm : 0;   // MAIN NE-ARM recession (deep time)
+    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     const R_FEATHER = 0.15;
 
     const heightMap = this.heightMap;
     const GC = this.gridCols, GR = this.gridRows;
+    const invGC = 1 / GC;
 
     for (let pr = r0; pr < r1; pr++) {
       const wy = pr * invS;
@@ -1586,6 +2245,7 @@ class TerrainGenerator {
       for (let pc = 0; pc < PW; pc++) {
         const i = pr * PW + pc;
         const wx = pc * invS;
+        const straitWide = TerrainGenerator._straitWide(wx * invGC, straitF, straitRetreat, srFeather);
         let x0 = wx | 0; if (x0 > GC - 2) x0 = GC - 2 < 0 ? 0 : GC - 2; if (x0 < 0) x0 = 0;
         let fx = wx - x0; if (fx < 0) fx = 0; else if (fx > 1) fx = 1;
         const x1 = x0 + (GC > 1 ? 1 : 0);
@@ -1607,16 +2267,17 @@ class TerrainGenerator {
           const ni = (fy < 0.5 ? rowA : rowB) + (fx < 0.5 ? x0 : x1);
           const wt = C_wType[ni];          // 0 = main, 1 = tributary
           let effW = C_wBaseW[ni];
-          if (wt === 0) effW *= (1 + (straitW - 1) * straitF);
+          if (wt === 0) effW *= (1 + (straitW - 1) * straitWide);
           if (dist < effW) {
             const tt = 1 - dist / effW;
-            const m = tt * tt * (3 - 2 * tt);                                  // smoothstep mask
+            let m = tt * tt * (3 - 2 * tt);                                  // smoothstep mask
             // Bilinear position along polyline
             const p00 = C_wPos[rowA + x0], p10 = C_wPos[rowA + x1];
             const p01 = C_wPos[rowB + x0], p11 = C_wPos[rowB + x1];
             const pos = (p00 * (1 - fx) + p10 * fx) * (1 - fy) + (p01 * (1 - fx) + p11 * fx) * fy;
-            const cellEmg = (wt === 1) ? tribEmg : 1.0;
-            const front = (cellEmg - pos + R_FEATHER) / R_FEATHER;
+            if (mainArm > 0 && wt === 0) m *= TerrainGenerator._mainArmPresence(pos, mainArm, mArmKeep, mArmFeather);   // NE arm dries to land
+            const cellEmg = (wt === 1) ? (C_wTribEarly && C_wTribEarly[ni] ? tribEmgE : tribEmg) : 1.0;
+            const front = (cellEmg * (1 + R_FEATHER) - pos) / R_FEATHER;   // matches the carve/classify front
             if (front > 0) {
               const fs = front >= 1 ? 1 : front * front * (3 - 2 * front);
               let wT = riverTeff + (1 - fs) * (1 - riverTeff);
@@ -1625,7 +2286,7 @@ class TerrainGenerator {
               // narrows to a thread with elevation; no perched water/beach on ridges.
               if (wt === 1 && thin > 0 && eClass > 0.30) {
                 const hi = (eClass - 0.30) * thin;
-                wT += hi; bT += hi * 0.8;
+                wT += hi; bT += hi;   // bank thins WITH the water (a gully stream), not a widening sand ring
               }
               if (m >= wT) { biome = this._waterBiome; colorElev = riverColorElev; wa = 2; }
               else if (m >= bT && this._bedBiome) { biome = this._bedBiome; colorElev = bedColorElev; }
@@ -1638,10 +2299,16 @@ class TerrainGenerator {
             const dM00 = C_wMDist[rowA + x0], dM10 = C_wMDist[rowA + x1];
             const dM01 = C_wMDist[rowB + x0], dM11 = C_wMDist[rowB + x1];
             const dM = (dM00 * (1 - fx) + dM10 * fx) * (1 - fy) + (dM01 * (1 - fx) + dM11 * fx) * fy;
-            const effWM = C_wMBaseW[ni] * (1 + (straitW - 1) * straitF);
+            const effWM = C_wMBaseW[ni] * (1 + (straitW - 1) * straitWide);
             if (dM < effWM) {
               const tt2 = 1 - dM / effWM;
-              const mM = tt2 * tt2 * (3 - 2 * tt2);
+              let mM = tt2 * tt2 * (3 - 2 * tt2);
+              if (mainArm > 0 && C_wMPos) {
+                const pM00 = C_wMPos[rowA + x0], pM10 = C_wMPos[rowA + x1];
+                const pM01 = C_wMPos[rowB + x0], pM11 = C_wMPos[rowB + x1];
+                const posM = (pM00 * (1 - fx) + pM10 * fx) * (1 - fy) + (pM01 * (1 - fx) + pM11 * fx) * fy;
+                mM *= TerrainGenerator._mainArmPresence(posM, mainArm, mArmKeep, mArmFeather);   // fallback recedes with the arm
+              }
               if (mM >= riverTeff) { biome = this._waterBiome; colorElev = riverColorElev; wa = 2; }
               else if (mM >= riverBankT && this._bedBiome) { biome = this._bedBiome; colorElev = bedColorElev; }
             }
@@ -1806,8 +2473,8 @@ class TerrainGenerator {
         if (edge === 1 && LOOK.outlines) {
           const oc = this._getCachedColor(this.biomeArray[biomeA[i]].outlineColor || LOOK.outlineColor);
           let orr = red(oc), ogg = green(oc), obb = blue(oc);
-          if (jit > 0) {
-            const ink = 1 - jit * (1 - noise(pc * invS * 0.5 + this.seed, pr * invS * 0.5 + this.seed));
+          if (jit > 0) {// change outline width
+            const ink = 3 - jit * (3 - noise(pc * invS * 0.5 + this.seed, pr * invS * 0.5 + this.seed));
             orr = cr + (orr - cr) * ink; ogg = cg + (ogg - cg) * ink; obb = cb + (obb - cb) * ink;
           }
           cr = orr; cg = ogg; cb = obb;
@@ -1929,7 +2596,13 @@ class TerrainGenerator {
     const mf = this._morphFade;
     if (mf) {
       const nowMs = (typeof millis === 'function') ? millis() : Date.now();
-      const t = (nowMs - mf.t0) / mf.ms;
+      // Retire early if the visible glacial phase has stepped off the one this retired
+      // buffer belongs to (a boundary crossed / the index oscillated during the fade):
+      // its base would otherwise draw a stale wrong-phase OLD buffer at full and flick
+      // the terrain back to that state. Dropping to the live composite is correct — the
+      // right phase, at full — and per-morph land change is small, so no hard cut reads.
+      const stalePhase = this.seasonManager && mf.key != null && this.seasonManager.currentKey !== mf.key;
+      const t = stalePhase ? 1 : (nowMs - mf.t0) / mf.ms;
       if (t >= 1) {
         this._releaseBakeBuffer(mf.buf);
         this._morphFade = null;
@@ -1967,9 +2640,20 @@ class TerrainGenerator {
 
       // Draw next season with alpha — globalAlpha, not tint(), so p5 skips the
       // per-call tinted-canvas composite (#7). The buffers are opaque, so the
-      // crossfade is identical at a fraction of the cost. (Multiplied by the
-      // morph fade so a mid-fade season transition composites sensibly.)
-      _dc.globalAlpha = transitionProgress * fadeAlpha;
+      // crossfade is identical at a fraction of the cost.
+      //
+      // Alpha is the raw transitionProgress, NOT transitionProgress·fadeAlpha.
+      // The morph crossfade lives entirely between the retired buffer (drawn full,
+      // above) and the fresh CURRENT-phase land (drawn at fadeAlpha, above) — it is
+      // the current phase's own land morphing. The glacial-phase blend is a separate
+      // axis and must stay at its true weight throughout. Folding fadeAlpha in here
+      // collapsed the next-phase layer to ~0 the instant a morph swapped in, so the
+      // composite snapped from "current+next phases blended" to "pure current phase"
+      // (the old, warmer land) for the length of the fade — the terrain visibly
+      // flicked back to its previous state mid-morph. At fadeAlpha 0 this now leaves
+      // exactly the pre-swap composite (retired current·(1−tp) + next·tp), so the
+      // swap is seamless; the fresh current land then eases in underneath the blend.
+      _dc.globalAlpha = transitionProgress;
       image(this.seasonBuffers[nextKey], 0, 0, drawW, drawH);
     }
     _dc.globalAlpha = _ga;

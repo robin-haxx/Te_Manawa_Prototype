@@ -181,11 +181,11 @@ day. **Nothing on the visitor path may call `init()`.**
 
 ## Authoring keys
 
-Not reachable on the wall — the kiosk lockdown limits input to `1`–`4`.
+Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 
 | Key | |
 |---|---|
-| `1`–`4` | The four visitor buttons (deep time, growth, storm, eruption) |
+| `1`–`5` | The five visitor buttons (deep time, FOREST growth, TUSSOCK growth, storm, eruption) — FOREST helps in the interglacial, TUSSOCK in the glacial; the wrong one for the climate desaturates the scene |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` |
 | `B` / `G` / `N` | Dev tools: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. See `md/TEMANAWA_DEVTOOLS.md` |

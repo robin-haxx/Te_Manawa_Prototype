@@ -8,6 +8,16 @@ let placeableSprites = {
   loaded: false
 };
 
+// Static layout for the 3-4 overlapping ferns drawn on a `shelter` placeable.
+// Hoisted to module scope so renderTypeSpecific() doesn't rebuild an array of
+// four object literals every frame per shelter. Read-only — never mutated.
+const SHELTER_FERNS = [
+  { x: -14, y: -13, rot: -0.3, s: 32 },
+  { x:  15, y: -11, rot:  0.4, s: 30 },
+  { x:  0, y:  17, rot:  0.1, s: 34 },
+  { x: -13, y:  13, rot: -0.5, s: 28 }
+];
+
 function loadPlaceableSprites() {
   placeableSprites.cloud1 = loadImage('sprites/cloud1.png');
   placeableSprites.cloud2 = loadImage('sprites/cloud2.png');
@@ -486,15 +496,9 @@ class PlaceableObject {
         if (fernSprite) {
           imageMode(CENTER);
           
-          // 3-4 overlapping ferns at slight offsets and rotations
-          const ferns = [
-            { x: -14, y: -13, rot: -0.3, s: 32 },
-            { x:  15, y: -11, rot:  0.4, s: 30 },
-            { x:  0, y:  17, rot:  0.1, s: 34 },
-            { x: -13, y:  13, rot: -0.5, s: 28 }
-          ];
-          
-          for (const f of ferns) {
+          // 3-4 overlapping ferns at slight offsets and rotations (SHELTER_FERNS,
+          // hoisted to module scope — no per-frame array/object allocation here).
+          for (const f of SHELTER_FERNS) {
             push();
             translate(f.x, f.y);
             rotate(f.rot);

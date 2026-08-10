@@ -196,24 +196,23 @@ class SeasonManager {
   // UNIFIED LERP HELPER
   // ============================================
 
-  /** Value from the current phase, blended toward the next colder phase. */
-  _lerpSeasonal(getCurrentVal, getNextVal) {
-    const current = getCurrentVal();
-    if (this.transitionProgress > 0) {
-      return lerp(current, getNextVal(), this.transitionProgress);
-    }
-    return current;
-  }
+  // The seasonal getters below inline the current->next blend directly rather
+  // than routing through a _lerpSeasonal(thunk, thunk) helper. They run per-entity
+  // per-frame (moa hunger/migration, plant modifiers), and passing two arrow
+  // closures per call allocated ~1,400 short-lived functions/frame — the sim's
+  // single largest GC source. Inlined, they allocate nothing. The `next` read is
+  // guarded so it is only touched mid-transition. (getForestBand above shows the
+  // per-frame cache idiom for the parameterless global values, if this is ever
+  // hoisted to one snapshot/tick.)
 
   // ============================================
   // SNOW & WEATHER
   // ============================================
 
   getSnowLineElevation() {
-    return this._lerpSeasonal(
-      () => this.current.snowLine,
-      () => this.next.snowLine
-    );
+    const cur = this.current.snowLine;
+    if (this.transitionProgress > 0) return lerp(cur, this.next.snowLine, this.transitionProgress);
+    return cur;
   }
 
   isSeasonalSnow(elevation) {
@@ -260,17 +259,19 @@ class SeasonManager {
   // ============================================
 
   getPlantTypeModifier(plantType) {
-    return this._lerpSeasonal(
-      () => this.current.plantTypeModifiers?.[plantType] || 1.0,
-      () => this.next.plantTypeModifiers?.[plantType] || 1.0
-    );
+    const cur = this.current.plantTypeModifiers?.[plantType] || 1.0;
+    if (this.transitionProgress > 0) {
+      return lerp(cur, this.next.plantTypeModifiers?.[plantType] || 1.0, this.transitionProgress);
+    }
+    return cur;
   }
 
   getPlantModifier(biomeKey) {
-    return this._lerpSeasonal(
-      () => this.current.plantModifiers[biomeKey] || 1.0,
-      () => this.next.plantModifiers[biomeKey] || 1.0
-    );
+    const cur = this.current.plantModifiers[biomeKey] || 1.0;
+    if (this.transitionProgress > 0) {
+      return lerp(cur, this.next.plantModifiers[biomeKey] || 1.0, this.transitionProgress);
+    }
+    return cur;
   }
 
   // ============================================
@@ -278,17 +279,15 @@ class SeasonManager {
   // ============================================
 
   getHungerModifier() {
-    return this._lerpSeasonal(
-      () => this.current.hungerModifier,
-      () => this.next.hungerModifier
-    );
+    const cur = this.current.hungerModifier;
+    if (this.transitionProgress > 0) return lerp(cur, this.next.hungerModifier, this.transitionProgress);
+    return cur;
   }
 
   getMigrationStrength() {
-    return this._lerpSeasonal(
-      () => this.current.migrationStrength,
-      () => this.next.migrationStrength
-    );
+    const cur = this.current.migrationStrength;
+    if (this.transitionProgress > 0) return lerp(cur, this.next.migrationStrength, this.transitionProgress);
+    return cur;
   }
 
   getPreferredElevation() {

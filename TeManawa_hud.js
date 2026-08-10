@@ -1,7 +1,7 @@
 // ============================================================
 // TE MANAWA — INSTALLATION HUD
 // ------------------------------------------------------------
-// The deep-time timeline (top), the four buttons (bottom), and the
+// The deep-time timeline (top), the five buttons (bottom), and the
 // world-space effects the buttons produce.
 //
 // Phase 1.5: this was TeManawa_install.js, a monkey-patch layer that
@@ -9,7 +9,7 @@
 // at load time. The economy strip it was patching around is gone, so it
 // is now a normal module that Game and GameUI call into directly.
 //
-// Buttons respond to touch/mouse AND keys 1-4, so physical arcade
+// Buttons respond to touch/mouse AND keys 1-5, so physical arcade
 // microswitches can be mapped onto those keys without touching this file.
 //
 // Time model tunables live on window.TM_TIME.
@@ -18,8 +18,9 @@
 // The clock lives in TeManawa_time.js (DeepTime). What is left here is the
 // timing of the transient button effects.
 const TM_TIME = {
-  stormSeconds:  20,
-  growthSeconds:  8,
+  stormSeconds:    20,
+  growWarmSeconds:  8,    // forest growth pulse (interglacial-suited) — button 2
+  growColdSeconds:  8,    // open-country growth pulse (glacial-suited) — button 3
   ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
   ashPeak:      205,      // flash alpha at the peak (kept < 255 for headroom)
   erCooldownMs: 2000,     // minimum gap between eruptions — the anti-spam limit
@@ -33,6 +34,14 @@ const TM_TIME = {
   get fps()        { return DeepTime.fps; }
 };
 window.TM_TIME = TM_TIME;
+
+// Which plants each growth button matures, classified by the authored `coldTolerance`
+// (0 = tree fern, cold-sensitive → 1 = tussock, cold-hardy; PLANT_TYPES in sketch.js). The
+// FOREST button grows warm/forest cover (low tolerance), the TUSSOCK button grows cold-hardy
+// open country (high tolerance); mid-tolerance plants (e.g. flax 0.7) are neutral to both, so
+// neither press is a universal win. See md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §2.
+const TM_GROW = { warmMax: 0.65, coldMin: 0.75, step: 0.02 };
+window.TM_GROW = TM_GROW;
 
 const InstallHUD = {
   TOP_H: 88,
@@ -48,10 +57,18 @@ const InstallHUD = {
     { id: 'deep',   key: '1', label: '50,000 YEARS',
       action: () => DeepTime.pressDeep(),
       isActive: () => DeepTime.isDeep() },
-    { id: 'growth', key: '2', label: 'GROWTH',
-      action: (g) => { g._tmGrowthUntil = millis() + TM_TIME.growthSeconds * 1000; },
-      isActive: (g) => g._tmGrowthUntil && millis() < g._tmGrowthUntil },
-    { id: 'storm',  key: '3', label: 'STORM',
+    // GROWTH is split in two: the RIGHT one depends on the climate (plan §2). FOREST grows
+    // warm/forest cover (suits the interglacial); TUSSOCK grows cold-hardy open country (suits
+    // the glacial). Pressing the wrong one for the current climate drains habitat health and
+    // the scene quietly desaturates (Game._updateHabitatHealth); the maturation itself is the
+    // same per-set nudge (InstallHUD.update).
+    { id: 'growWarm', key: '2', label: 'FOREST',
+      action: (g) => { g._tmGrowWarmUntil = millis() + TM_TIME.growWarmSeconds * 1000; },
+      isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
+    { id: 'growCold', key: '3', label: 'TUSSOCK',
+      action: (g) => { g._tmGrowColdUntil = millis() + TM_TIME.growColdSeconds * 1000; },
+      isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
+    { id: 'storm',  key: '4', label: 'STORM',
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        InstallHUD.initStormCells(g); },
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
@@ -63,7 +80,7 @@ const InstallHUD = {
     // rate-limited by erCooldownMs and the flash ramps across a hold, keeping full-screen
     // luminance changes inside the photosensitivity budget (TEMANAWA_BUILD_V3.md §3). See
     // erDown/erUp/fireEruption/fireEruptionReseed/renderAshFlash.
-    { id: 'reset',  key: '4', label: 'ERUPTION',
+    { id: 'reset',  key: '5', label: 'ERUPTION',
       action: (g) => InstallHUD.erDown(g),   // press-down only arms the interaction
       onUp:   (g) => InstallHUD.erUp(g),     // release taps unless the hold already reseeded
       isActive: (g) => (g._tmErDownAt && !g._tmErFired) ||
@@ -169,18 +186,15 @@ const InstallHUD = {
     // back the scale the rest of the frame should run at.
     g.timeScale = DeepTime.update(dt);
 
-    // Growth pulse: nudge living plants toward full while active.
-    // Phase 6 repoints this at a per-cell growthPulse weighted by `wet`, so it
-    // does something different in every habitat (PLAN_V2 §4, finding #6).
-    if (g._tmGrowthUntil && millis() < g._tmGrowthUntil && g.simulation) {
-      const plants = g.simulation.plants;
-      if (plants) {
-        for (let i = 0; i < plants.length; i++) {
-          const p = plants[i];
-          if (p && p.alive && p.growth < 1) p.growth = Math.min(1, p.growth + 0.02);
-        }
-      }
-    }
+    // Growth pulse, split by climate suitability: FOREST matures warm/forest cover, TUSSOCK
+    // matures cold-hardy open country (classified by coldTolerance, TM_GROW). Both are the
+    // same per-plant nudge; the RIGHT choice for the current climate is taught by the health
+    // readout, not here (a wrong press desaturates via Game._updateHabitatHealth). The plants
+    // it matures against the climate get suppressed anyway by the existing forest-band /
+    // dormancy machinery, so a mismatched press is doubly futile.
+    const nowMs = millis();
+    if (g._tmGrowWarmUntil && nowMs < g._tmGrowWarmUntil) this._growPulse(g, true);
+    if (g._tmGrowColdUntil && nowMs < g._tmGrowColdUntil) this._growPulse(g, false);
 
     // Storm: map-wide hunt-breaker + drifting thunderheads while the window is open.
     if (g._tmStormUntil && millis() < g._tmStormUntil) {
@@ -197,6 +211,24 @@ const InstallHUD = {
     }
 
     return g.timeScale;
+  },
+
+  // Mature the climate-appropriate plants toward full while a growth button is held.
+  // warm=true → FOREST (coldTolerance <= TM_GROW.warmMax); warm=false → TUSSOCK
+  // (coldTolerance >= TM_GROW.coldMin). Allocation-free; skips plants of the other set.
+  _growPulse(g, warm) {
+    const plants = g.simulation && g.simulation.plants;
+    if (!plants) return;
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65, coldMin: 0.75, step: 0.02 };
+    for (let i = 0; i < plants.length; i++) {
+      const p = plants[i];
+      if (!p || !p.alive || p.growth >= 1) continue;
+      const def = TYPES ? TYPES[p.type] : null;
+      const ct = def ? def.coldTolerance : 0.5;
+      const inSet = warm ? (ct <= G.warmMax) : (ct >= G.coldMin);
+      if (inSet) p.growth = Math.min(1, p.growth + G.step);
+    }
   },
 
   // Mirrors HaastsEagle.checkStorms(): only eagles actually HUNTING get broken
@@ -339,16 +371,11 @@ const InstallHUD = {
   // ==========================================================
   // TIMELINE — visitor-facing, deliberately sparse
   // ----------------------------------------------------------
-  // A visitor gets forty seconds. They need three things: what year it is,
-  // where that sits in the span, and the two events that bookend the run.
-  // Nothing else.
+  // Visually geared towards a quick impression."What is the year shown?"
+  // Where is this in the overall timeline?, What is this showing me about the Manawatu?
+  // This could be geared better to show the geography at a glance.
   //
-  // The climate wave, the cold shading, the stage/MIS readout and the
-  // glacial markers were all here and have moved to the debug overlay
-  // (Debug.renderClimateStrip). They are instrumentation, not
-  // interpretation — a visitor cannot read a temperature curve at arm's
-  // length in forty seconds, and while it was on screen it was the busiest
-  // thing in the frame.
+  // Most mechanics under the hood are not shown in UI.
   //
   // What the climate DOES is still fully visible; it is meant to be read off
   // the land and the cast — tree ferns vanishing, tussock spreading, the moa
@@ -358,6 +385,46 @@ const InstallHUD = {
   // The uplift wedge stays: uplift is the takeaway (the river is older than
   // the mountains) and it is monotonic, so it needs no reading.
   // ==========================================================
+  // ---- cached HUD text -----------------------------------------------------
+  // p5 text() with the decorative fonts is the HUD's dominant per-frame cost —
+  // ~1.2 ms per bar, ~85% of each method (TEMANAWA_BUILD_V3.md §5). Almost every
+  // label is static (button names, key hints, eruption markers) or changes only
+  // occasionally (the rounded year). So each distinct string is rasterised ONCE
+  // into a small buffer and blitted thereafter. An LRU cap bounds memory and
+  // remove()s the evicted GPU buffer (the §2.3 createGraphics-leak rule): the
+  // rolling year string would otherwise accumulate a buffer every time it ticks.
+  _txtCache: new Map(),        // key -> { buf, tw, th }; insertion order = LRU
+  _txtCacheMax: 48,
+
+  _blitText(str, fontObj, tag, size, ah, av, x, y, col) {
+    const a = (col.length > 3) ? col[3] : 255;
+    const key = tag + size + '|' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a + '|' + str;
+    let e = this._txtCache.get(key);
+    if (e) { this._txtCache.delete(key); this._txtCache.set(key, e); }   // LRU touch
+    else {
+      push(); textFont(fontObj); textSize(size);
+      const tw = Math.max(1, Math.ceil(textWidth(str))); pop();
+      const th = Math.ceil(size * 1.35);
+      const buf = createGraphics(tw + 4, th + 4);
+      buf.clear(); buf.noStroke(); buf.fill(col[0], col[1], col[2], a);
+      buf.textFont(fontObj); buf.textSize(size); buf.textAlign(LEFT, TOP);
+      buf.text(str, 2, 2);
+      e = { buf, tw, th };
+      this._txtCache.set(key, e);
+      while (this._txtCache.size > this._txtCacheMax) {          // evict oldest, free its buffer
+        const k0 = this._txtCache.keys().next().value, old = this._txtCache.get(k0);
+        this._txtCache.delete(k0);
+        if (old && old.buf && old.buf.remove) old.buf.remove();
+      }
+    }
+    let dx = x, dy = y;
+    if (ah === CENTER) dx -= e.tw / 2; else if (ah === RIGHT) dx -= e.tw;
+    if (av === CENTER) dy -= e.th / 2; else if (av === BOTTOM) dy -= e.th;
+    else if (av === BASELINE) dy -= e.th * 0.8;
+    imageMode(CORNER); noTint();
+    image(e.buf, dx - 2, dy - 2);
+  },
+
   renderTimeline(ui, g, W, H) {
     const yr = DeepTime.yearsBP;
     const x0 = 48, w = W - 96;
@@ -365,9 +432,7 @@ const InstallHUD = {
     push();
     noStroke(); fill(14, 21, 19, 205); rect(0, 0, W, this.TOP_H);
     // ---- the year ------------------------------------------
-    fill(232, 240, 236); textAlign(CENTER, TOP);
-    push(); textFont(FreckleFace); textSize(26);
-    text(DeepTime.label(), W / 2, 10); pop();
+    this._blitText(DeepTime.label(), FreckleFace, 'freckle', 26, CENTER, TOP, W / 2, 10, [232, 240, 236]);
     // ---- axis ----------------------------------------------
     stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
     // ---- uplift: monotonic, no reading required ------------
@@ -384,17 +449,15 @@ const InstallHUD = {
     // The run opens and closes on the same kind of event. Glacial markers are
     // climate instrumentation and live in the debug overlay now — and LGM at
     // 30 ka sat ~13 px from Oruanui at 25.5 ka, so they overlapped permanently.
-    textSize(11);
     for (const m of DEEP_TIME_MARKERS) {
       if (m.kind !== 'eruption') continue;
       const mx = DeepTime.yearToX(m.yearsBP, x0, w);
       stroke(224, 138, 92, 210); strokeWeight(2);
       line(mx, ay - 5, mx, ay + 5);
-      noStroke(); fill(224, 138, 92, 225);
       // Anchor the end labels inward so they don't clip off the strip.
       const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
-      textAlign(atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM);
-      push(); textFont(OpenDyslexic); text(m.label, mx, ay - 8); pop();
+      this._blitText(m.label, OpenDyslexic, 'dys', 11,
+                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, ay - 8, [224, 138, 92, 225]);
     }
     // ---- playhead ------------------------------------------
     const px = DeepTime.yearToX(yr, x0, w);
@@ -402,9 +465,7 @@ const InstallHUD = {
     noStroke(); fill(255, 210, 120); circle(px, ay, 9);
     // ---- fast-forward --------------------------------------
     if (DeepTime.isDeep()) {
-      noStroke(); fill(255, 210, 120); textAlign(RIGHT, TOP); textSize(15);
-      push(); textFont(FreckleFace);
-      text('>> x' + DeepTime.timeScale.toFixed(1), x0 + w, 12); pop();
+      this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, TOP, x0 + w, 12, [255, 210, 120]);
     }
     pop();
   },
@@ -423,12 +484,9 @@ const InstallHUD = {
       else    { fill(30, 44, 38, 225); stroke(70, 110, 80); strokeWeight(1.5); }
       rect(bx, by, bw, bh, 12);
       this.drawIcon(b.id, bx + bw / 2, by + 30, on);
-      noStroke(); fill(on ? color(255, 226, 160) : color(220, 235, 225));
-      textAlign(CENTER, CENTER);
-      push(); textFont(FreckleFace); textSize(20);
-      text(b.label, bx + bw / 2, by + bh - 24); pop();
-      fill(120, 140, 130); textAlign(LEFT, TOP); textSize(12);
-      push(); textFont(OpenDyslexic); text(b.key, bx + 8, by + 6); pop();
+      this._blitText(b.label, FreckleFace, 'freckle', 20, CENTER, CENTER, bx + bw / 2, by + bh - 24,
+                     on ? [255, 226, 160] : [220, 235, 225]);
+      this._blitText(b.key, OpenDyslexic, 'dys', 12, LEFT, TOP, bx + 8, by + 6, [120, 140, 130]);
       ui._tmButtons.push({ x: bx, y: by, w: bw, h: bh, def: b });
     }
     pop();
@@ -441,10 +499,16 @@ const InstallHUD = {
     if (id === 'deep') {
       triangle(cx - 10, cy - 9, cx - 10, cy + 9, cx - 1, cy);
       triangle(cx + 1, cy - 9, cx + 1, cy + 9, cx + 10, cy);
-    } else if (id === 'growth') {
-      noFill(); stroke(c); strokeWeight(3); line(cx, cy + 10, cx, cy - 8);
+    } else if (id === 'growWarm') {          // FOREST — a little tree (trunk + canopy)
+      stroke(c); strokeWeight(3); line(cx, cy + 11, cx, cy - 3);
       fill(c); noStroke();
-      ellipse(cx - 6, cy, 10, 6); ellipse(cx + 6, cy - 4, 10, 6); circle(cx, cy - 10, 6);
+      ellipse(cx, cy - 8, 17, 15);
+    } else if (id === 'growCold') {          // TUSSOCK — a tuft of open-country grass
+      stroke(c); strokeWeight(2); noFill();
+      line(cx, cy + 11, cx - 9, cy - 8);
+      line(cx, cy + 11, cx - 4, cy - 11);
+      line(cx, cy + 11, cx + 2, cy - 11);
+      line(cx, cy + 11, cx + 8, cy - 7);
     } else if (id === 'storm') {
       fill(c); noStroke();
       ellipse(cx - 6, cy - 2, 14, 10); ellipse(cx + 5, cy - 2, 14, 10); ellipse(cx, cy - 6, 14, 10);

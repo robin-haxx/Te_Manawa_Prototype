@@ -55,12 +55,22 @@
     <script src="TeManawa_projection.js"></script>
     <script src="TeManawa_seasons.js"></script>
 
+    <!-- Animated water overlay + its texture loader. SpriteStrips loads one strip
+         PNG per animation (md/TEMANAWA_BUILD_V3.md §2.4); WaterLayer stamps river
+         flow / eels / sea shimmer over the baked terrain each frame, reading
+         Projection + terrain.waterTypeAt(). atlas before water (water uses it). -->
+    <script src="TeManawa_atlas.js"></script>
+    <script src="TeManawa_water.js"></script>
+
     <!-- Base classes -->
     <script src="TeManawa_boid.js"></script>
 
     <!-- Entities -->
     <script src="TeManawa_moa.js"></script>
     <script src="TeManawa_eagle.js"></script>
+    <!-- Kererū: the large-seed disperser (extends Boid; behave/update/render). Loads after
+         boid.js; disperses forest seedlings at runtime. md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §3 -->
+    <script src="TeManawa_kereru.js"></script>
     <script src="TeManawa_egg.js"></script>
     <script src="TeManawa_plant.js"></script>
     <script src="TeManawa_placeable.js"></script>
