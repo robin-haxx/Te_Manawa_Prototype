@@ -61,7 +61,8 @@ const KERERU_SPECIES = {
   feedRadius:       100,    // how far it will look for a fruiting tree
 
   // Frugivore crop / dispersal (all times in seconds; the class converts to frames)
-  cropCapacity:     3,      // large fruit carried per full crop → this many seed drops
+  cropCapacity:     1,      // fruit carried per full crop → it stops carrying quickly
+                            // after feeding (one drop, then it feeds again)
   feedSec:          5,      // perched feeding time to fill the crop
   disperseEverySec: 20,      // cadence of seed drops while carrying (LIFE clock → fast-forward fills in)
   restSec:          8,      // perched digest/rest between hops (this is why it perches so much)
@@ -154,11 +155,13 @@ class Kereru extends Boid {
   // LIFE CLOCK (warped dt): the frugivore loop, aging, breeding, survival.
   // ============================================================
   behave(sim, seasonManager, dt) {
-    // A live storm grounds the bird (it shelters). While grounded it does nothing
-    // but hunker — no feeding, dispersal or laying — so overusing STORM stalls
-    // recruitment (see the file header + INTERACTION_HEALTH_PLAN §4).
+    // A storm grounds the bird (it shelters): either an ACTIVE storm window, or sustained
+    // storm OVERUSE (g._stormOveruse — pressure above the line keeps the flock grounded BETWEEN
+    // storms too). While grounded it does nothing but hunker — no feeding, dispersal or laying
+    // — so overusing STORM stalls recruitment (file header + INTERACTION_HEALTH_PLAN §4).
     const g = (typeof game !== 'undefined') ? game : (sim && sim.game) || null;
-    this._grounded = !!(g && g._tmStormUntil && (typeof millis === 'function') && millis() < g._tmStormUntil);
+    const stormWindow = !!(g && g._tmStormUntil && (typeof millis === 'function') && millis() < g._tmStormUntil);
+    this._grounded = !!(g && (stormWindow || g._stormOveruse));
     if (this._grounded) {
       this.state = KERERU_STATE.SHELTER;
       this.maxSpeed = (this.speciesData?.config?.baseSpeed || 1.4) * 0.4;
@@ -379,7 +382,6 @@ class Kereru extends Boid {
     const perched = this.state === KERERU_STATE.FEEDING ||
                     this.state === KERERU_STATE.PERCHED ||
                     this.state === KERERU_STATE.SHELTER;
-    const dir = (this._flip >= 0) ? 1 : -1;          // horizontal facing (eased by Boid.updateFacing)
 
     push();
     translate(this.pos.x, gy);
@@ -391,15 +393,31 @@ class Kereru extends Boid {
     ellipse(3 * sf, 3 * sf, s * 1.5 * sf, s * 0.55 * sf);
     translate(0, -alt);
 
-    // Placeholder body: green-grey back, pale breast, small head. Perched → wings
-    // folded (a narrower, rounder body); flying → wings a touch broader.
-    const wing = perched ? 1.45 : 1.75;
-    fill(66, 90, 76);
-    ellipse(0, 0, s * wing, s * 1.05);                                 // body / wings
-    fill(236, 239, 233);
-    ellipse(dir * s * 0.30, s * 0.22, s * 0.85, s * 0.72);            // white waistcoat
-    fill(58, 80, 68);
-    ellipse(dir * s * 0.55, -s * 0.30, s * 0.62, s * 0.56);           // head
+    const sprite = (typeof EntitySprites !== 'undefined' && EntitySprites.getKereruSprite)
+      ? EntitySprites.getKereruSprite() : null;
+    if (sprite) {
+      // The art faces up-and-right; mirror horizontally for leftward travel using
+      // the eased lateral flip (+1 right, -1 left), passing through 0 edge-on with a
+      // small vertical bounce — the same turn-around idiom as the moa.
+      const flip = (this._flip !== undefined) ? this._flip : 1;
+      const drawW = s * 2.8;
+      const drawH = sprite.width > 0 ? drawW * (sprite.height / sprite.width) : drawW;
+      noTint();
+      imageMode(CENTER);
+      scale(flip, 1 + (1 - Math.abs(flip)) * 0.15);
+      image(sprite, 0, 0, drawW, drawH);
+    } else {
+      // Fallback glyph: green-grey back, pale breast, small head. Perched → wings
+      // folded (a narrower, rounder body); flying → wings a touch broader.
+      const dir = (this._flip >= 0) ? 1 : -1;
+      const wing = perched ? 1.45 : 1.75;
+      fill(66, 90, 76);
+      ellipse(0, 0, s * wing, s * 1.05);                               // body / wings
+      fill(236, 239, 233);
+      ellipse(dir * s * 0.30, s * 0.22, s * 0.85, s * 0.72);          // white waistcoat
+      fill(58, 80, 68);
+      ellipse(dir * s * 0.55, -s * 0.30, s * 0.62, s * 0.56);         // head
+    }
     pop();
 
     // Debug-only instrumentation (never in the ambient diorama — CLAUDE.md).

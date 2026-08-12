@@ -15,14 +15,24 @@ const PLANT_TYPE_ID = {
   dracophyllum: 8,
   matagouri: 9,
   lancewood: 10,
-  speargrass: 11
+  speargrass: 11,
+  kowhai: 12,
+  kahikatea: 13,
+  nikau: 14,
+  tawa: 15,
+  manuka: 16,
+  cabbagetree: 17
 };
 
 // Plants that use sprite rendering
-const SPRITE_PLANTS = new Set(['tussock', 'flax', 'fern', 'rimu', 'beech', 'patotara', 'lancewood']);
+const SPRITE_PLANTS = new Set(['tussock', 'flax', 'fern', 'rimu', 'beech', 'patotara', 'lancewood',
+  'kowhai', 'kahikatea', 'nikau', 'tawa', 'manuka', 'cabbagetree']);
 
-// Forest canopy trees subject to seasonal forest-band contraction
-const FOREST_TREES = new Set(['beech', 'rimu', 'fern']);
+// Forest canopy trees subject to seasonal forest-band contraction. Kahikatea and
+// tawa are canopy trees that retreat with the glacial forest; mānuka (open-ground
+// pioneer), nīkau (its low coldTolerance already sinks it in glacials) and cabbage
+// tree (open wetland margin) are deliberately NOT here.
+const FOREST_TREES = new Set(['beech', 'rimu', 'fern', 'kahikatea', 'tawa']);
 
 // Sprite reference - initialized from mauri_sketch.js
 let PLANT_SPRITES = null;

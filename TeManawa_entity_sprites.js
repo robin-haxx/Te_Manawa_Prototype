@@ -155,6 +155,9 @@ const EntitySprites = {
     // low- and hi-res sets. Overwritten from ART_SETS at load time.
     artAngle: 0.74
   },
+  // Kererū — a single placeholder frame (sprites/kereru0.png, faces up-and-right).
+  // Mirrored for leftward travel in Kereru.render; the 5-frame flight set lands later.
+  kereru: { sprite: null },
   loaded: false,
   loadAttempted: false,
 
@@ -244,11 +247,24 @@ const EntitySprites = {
     this.eagle.glide = this.eagle.fly[eagleArt.glideFrame];
     this.eagle.artAngle = eagleArt.artAngle;
 
+    // Kererū placeholder frame. The drawn-glyph fallback in Kereru.render covers a
+    // load failure (never a silent () => {} FAILURE handler — CLAUDE.md).
+    this.kereru.sprite = loadImage(
+      `${spritePath}kereru0.png`,
+      () => {},
+      () => console.warn('Could not load kereru0.png')
+    );
+
     this.loaded = true;
   },
 
   isValid(sprite) {
     return sprite && sprite.width > 0 && sprite.height > 0;
+  },
+
+  // Kererū placeholder frame, or null if it hasn't loaded (drawn-glyph fallback).
+  getKereruSprite() {
+    return this.isValid(this.kereru.sprite) ? this.kereru.sprite : null;
   },
 
   getMoaSprite(animTime, isMoving, variant = null, isMating = false) {

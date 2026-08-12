@@ -397,21 +397,7 @@ class TerrainGenerator {
   isSeasonalSnow(elevation) {
     return elevation >= this.getSnowLineElevation();
   }
-  
-  getSnowCoverage(elevation) {
-    if (!this._snowBiome) return 0;
-    const snowLine = this.getSnowLineElevation();
-    const permanentSnowLine = this._snowBiome.minElevation;
-    
-    if (elevation >= permanentSnowLine) return 1.0;
-    if (elevation >= snowLine) {
-      const range = permanentSnowLine - snowLine;
-      if (range <= 0) return 1.0;
-      return 0.4 + ((elevation - snowLine) / range) * 0.6;
-    }
-    return 0;
-  }
-  
+
   // ============================================
   // COORDINATE HELPERS
   // ============================================

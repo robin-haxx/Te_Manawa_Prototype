@@ -204,11 +204,7 @@ class EntityRegistry {
   getPlant(key) {
     return this.plantTypes.get(key);
   }
-  
-  getAllPlants() {
-    return Object.fromEntries(this.plantTypes);
-  }
-  
+
   // ==========================================
   // PLACEABLE REGISTRATION
   // ==========================================
@@ -223,11 +219,7 @@ class EntityRegistry {
   getPlaceable(key) {
     return this.placeables.get(key);
   }
-  
-  getAllPlaceables() {
-    return Object.fromEntries(this.placeables);
-  }
-  
+
   // ==========================================
   // BIOME REGISTRATION
   // ==========================================
@@ -240,11 +232,7 @@ class EntityRegistry {
   getBiome(key) {
     return this.biomes.get(key);
   }
-  
-  getAllBiomes() {
-    return Object.fromEntries(this.biomes);
-  }
-  
+
   // ==========================================
   // LEVEL REGISTRATION
   // ==========================================
@@ -259,16 +247,7 @@ class EntityRegistry {
   getLevel(key) {
     return this.levels.get(key);
   }
-  
-  getLevelList() {
-    return Array.from(this.levels.values()).map(level => ({
-      key: level.key,
-      name: level.name,
-      description: level.description,
-      difficulty: level.difficulty
-    }));
-  }
-  
+
   // ==========================================
   // UTILITIES
   // ==========================================

@@ -180,20 +180,6 @@ class AudioManager {
     return null;
   }
   
-  /**
-   * Stop a sound safely
-   */
-  _stopSound(sound) {
-    if (!sound) return;
-    try {
-      if (sound.isPlaying()) {
-        sound.stop();
-      }
-    } catch (e) {
-      console.warn('Error stopping sound:', e);
-    }
-  }
-  
   // ============================================
   // BACKGROUND MUSIC
   // ============================================
@@ -214,57 +200,9 @@ class AudioManager {
     }
   }
   
-  /**
-   * Stop background music
-   */
-  stopBackground() {
-    this._stopSound(this.sounds.background);
-    this._backgroundPlaying = false;
-  }
-  
-  /**
-   * Pause background music
-   */
-  pauseBackground() {
-    const sound = this.sounds.background;
-    if (sound && sound.isPlaying()) {
-      sound.pause();
-    }
-  }
-  
-  /**
-   * Resume background music
-   */
-  resumeBackground() {
-    if (!this.musicEnabled || !this.enabled) return;
-    
-    const sound = this.sounds.background;
-    if (sound && sound.isLoaded() && !sound.isPlaying() && this._backgroundPlaying) {
-      sound.play();
-    }
-  }
-  
-  /**
-   * Update background music volume (call when settings change)
-   */
-  updateBackgroundVolume() {
-    const sound = this.sounds.background;
-    if (sound && sound.isLoaded()) {
-      sound.setVolume(this._getVolume(true));
-    }
-  }
-  
   // ============================================
   // SOUND EFFECTS
   // ============================================
-  
-  /**
-   * Play tutorial tip sound
-   */
-  playTutorialTip() {
-    if (!this._checkCooldown('tutorialTip')) return;
-    this._playSound(this.sounds.tutorialTip, this._getVolume() * 0.6);
-  }
   
   /**
    * Play a random plant rustle sound
@@ -281,23 +219,12 @@ class AudioManager {
     this._playSound(sound, volume);
   }
 
-  playBoltStrike() {
-    this._playSound(this.sounds.boltStrike, this._getVolume() * 0.7);
-  }
-  
   /**
    * Play mating cheep sound
    */
   playMateCheep() {
     if (!this._checkCooldown('mateCheep')) return;
     this._playSound(this.sounds.mateCheep, this._getVolume() * 0.5);
-  }
-  
-  /**
-   * Play moa population milestone sound
-   */
-  playMoaMilestone() {
-    this._playSound(this.sounds.moaMilestone, this._getVolume() * 0.7);
   }
   
   /**
@@ -326,103 +253,6 @@ class AudioManager {
     this._playSound(this.sounds.eagleCatch, this._getVolume() * 0.8);
   }
   
-  /**
-   * Play win sound
-   */
-  playWin() {
-    // Stop background music for victory fanfare
-    this.stopBackground();
-    this._playSound(this.sounds.win, this._getVolume() * 0.9);
-  }
-  
-  /**
-   * Play loss sound
-   */
-  playLoss() {
-    // Stop background music for defeat sound
-    this.stopBackground();
-    this._playSound(this.sounds.loss, this._getVolume() * 0.8);
-  }
-  
-  // ============================================
-  // VOLUME & SETTINGS
-  // ============================================
-  
-  /**
-   * Set master volume
-   * @param {number} volume - 0.0 to 1.0
-   */
-  setMasterVolume(volume) {
-    this.masterVolume = constrain(volume, 0, 1);
-    this.updateBackgroundVolume();
-  }
-  
-  /**
-   * Set music volume
-   * @param {number} volume - 0.0 to 1.0
-   */
-  setMusicVolume(volume) {
-    this.musicVolume = constrain(volume, 0, 1);
-    this.updateBackgroundVolume();
-  }
-  
-  /**
-   * Set SFX volume
-   * @param {number} volume - 0.0 to 1.0
-   */
-  setSfxVolume(volume) {
-    this.sfxVolume = constrain(volume, 0, 1);
-  }
-  
-  /**
-   * Toggle all audio
-   */
-  toggleAudio() {
-    this.enabled = !this.enabled;
-    if (!this.enabled) {
-      this.stopBackground();
-    } else {
-      this.playBackground();
-    }
-    return this.enabled;
-  }
-  
-  /**
-   * Toggle music only
-   */
-  toggleMusic() {
-    this.musicEnabled = !this.musicEnabled;
-    if (!this.musicEnabled) {
-      this.stopBackground();
-    } else {
-      this.playBackground();
-    }
-    return this.musicEnabled;
-  }
-  
-  /**
-   * Toggle SFX only
-   */
-  toggleSfx() {
-    this.sfxEnabled = !this.sfxEnabled;
-    return this.sfxEnabled;
-  }
-  
-  /**
-   * Mute all audio temporarily (e.g., when tab loses focus)
-   */
-  mute() {
-    if (this.sounds.background && this.sounds.background.isPlaying()) {
-      this.sounds.background.setVolume(0);
-    }
-  }
-  
-  /**
-   * Unmute audio
-   */
-  unmute() {
-    this.updateBackgroundVolume();
-  }
 }
 
 // Global audio manager instance

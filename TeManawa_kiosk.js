@@ -191,6 +191,7 @@ const Kiosk = {
       g.timeScale = 1;
       g._tmDeepUntil = g._tmGrowWarmUntil = g._tmGrowColdUntil = g._tmStormUntil = 0;
       g._regimeFit = 1; g._recruitment = 1;
+      g._stormPressure = 0; g._stormOveruse = false;
       g._tmStormCells = null;
       g._tmBolt = null;
       if (g.notifications) g.notifications.length = 0;

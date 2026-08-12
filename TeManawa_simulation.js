@@ -331,10 +331,16 @@ class Simulation {
   // type the biome supports) near (x,y) at low growth so it visibly grows in. Returns the new
   // plant, or null if capped / no forest-capable spot found. See TeManawa_kereru.js.
   disperseSeed(x, y) {
-    const cap = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.maxLivePlants) || 900;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const cap = (M && M.maxLivePlants) || 900;
     if (this.plants.length >= cap) return null;
     const terrain = this.terrain;
     const warmMax = (typeof TM_GROW !== 'undefined') ? TM_GROW.warmMax : 0.65;
+    // Density gate: a large seed dropped into an already-dense stand rarely
+    // establishes, so dispersal only SUCCEEDS where the canopy is sparse. This is
+    // what stops a kererū carpeting one patch with seedlings.
+    const densR = (M && M.disperseDensityRadius) ?? 26;
+    const densMax = (M && M.disperseDensityMax) ?? 3;
     for (let tries = 0; tries < 6; tries++) {
       const a = random(TWO_PI), r = random(46);
       const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
@@ -347,6 +353,11 @@ class Simulation {
         if (d && d.coldTolerance <= warmMax) warm.push(t);
       }
       if (!warm.length) continue;
+      // Skip this site if the neighbourhood already holds enough live plants.
+      let live = 0;
+      const near = this.getNearbyPlants(px, py, densR);
+      for (let i = 0; i < near.length; i++) { if (near[i].alive && ++live >= densMax) break; }
+      if (live >= densMax) continue;
       const type = warm[(random() * warm.length) | 0];
       const p = new Plant(px, py, type, terrain, biome.key);
       p.growth = 0.06;               // a fresh seedling — grows in over time
@@ -762,7 +773,6 @@ class Simulation {
   getNearbyEggs(x, y, radius) { return this.eggGrid.getInRadius(x, y, radius); }
   getClosestPlant(x, y, radius, filter = null) { return this.plantGrid.getClosest(x, y, radius, filter); }
   getClosestMoa(x, y, radius, filter = null) { return this.moaGrid.getClosest(x, y, radius, filter); }
-  getClosestPlaceable(x, y, radius, filter = null) { return this.placeableGrid.getClosest(x, y, radius, filter); }
   // Query method for any entity type
   getNearbyOfType(type, x, y, radius) {
     const grid = this._dynamicGrids[type];
@@ -942,16 +952,30 @@ class Simulation {
   // terrain WITHOUT rebuilding the living world (only the eruption path does a full respawn),
   // so as the southern strait floods a cell, any plant standing on it was left stranded in the
   // sea (the "tree in the water" bug). Game calls this once each time a morph re-bake completes
-  // — cheap (≤1000 plants, one grid lookup each) and off the per-frame path. Compacts the list.
+  // — cheap (≤1000 plants, two lookups each) and off the per-frame path. Compacts the list.
+  //
+  // Two water tests, because the visitor sees the PAINTED ground, not the sim grid:
+  //   · waterTypeAt (paint resolution) is exactly what the season bake coloured as sea/river and
+  //     what the overlay stamps decals on. It is the finer, authoritative "is this pixel water".
+  //   · getBiomeAt (sim-grid resolution) is coarser; on its own it left plants standing on painted
+  //     water at the margin cells where the two classifications disagree (hundreds of such cells
+  //     every year — the stragglers that "persisted in the water" at the window end).
+  // The biome test also catches non-water-but-unwalkable ground (a plant stranded on the ice cap),
+  // which waterTypeAt does not, so keep both.
   cullSubmergedPlants() {
     const plants = this.plants, terrain = this.terrain;
     if (!plants.length || !terrain) return 0;
+    const hasWaterType = typeof terrain.waterTypeAt === 'function';
     let writeIdx = 0, culled = 0;
     for (let i = 0, len = plants.length; i < len; i++) {
       const p = plants[i];
       if (!p.alive) { culled++; continue; }                 // also drop any already-dead
+      // Painted-water test first: the pixel the visitor actually sees under the plant.
+      if (hasWaterType && terrain.waterTypeAt(p.pos.x, p.pos.y) !== 0) {
+        p.alive = false; culled++; continue;
+      }
       const biome = terrain.getBiomeAt(p.pos.x, p.pos.y);
-      if (biome && (biome.isWater || !biome.walkable)) {     // its ground is now open water — strand it no longer
+      if (biome && (biome.isWater || !biome.walkable)) {     // open water / ice — strand it no longer
         p.alive = false; culled++; continue;
       }
       plants[writeIdx++] = p;

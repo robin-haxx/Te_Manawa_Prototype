@@ -102,79 +102,6 @@ class Boid {
     return force;
   }
   
-  // Optimized alignment
-  align(nearbyBoids) {
-    const result = this._tempVec1;
-    result.set(0, 0);
-    
-    let count = 0;
-    const perceptionSq = this.perceptionRadiusSq;
-    const px = this.pos.x;
-    const py = this.pos.y;
-    
-    for (let i = 0, len = nearbyBoids.length; i < len; i++) {
-      const other = nearbyBoids[i];
-      if (!other.alive || other === this) continue;
-      
-      const dx = other.pos.x - px;
-      const dy = other.pos.y - py;
-      const distSq = dx * dx + dy * dy;
-      
-      if (distSq < perceptionSq) {
-        result.x += other.vel.x;
-        result.y += other.vel.y;
-        count++;
-      }
-    }
-    
-    if (count > 0) {
-      const invCount = 1 / count;
-      result.x *= invCount;
-      result.y *= invCount;
-      result.setMag(this.maxSpeed);
-      result.sub(this.vel);
-      result.limit(this.maxForce);
-    }
-    
-    return result;
-  }
-  
-  // Optimized cohesion
-  cohesion(nearbyBoids) {
-    const result = this._tempVec2;
-    result.set(0, 0);
-    
-    let count = 0;
-    const perceptionSq = this.perceptionRadiusSq;
-    const px = this.pos.x;
-    const py = this.pos.y;
-    
-    for (let i = 0, len = nearbyBoids.length; i < len; i++) {
-      const other = nearbyBoids[i];
-      if (!other.alive || other === this) continue;
-      
-      const dx = other.pos.x - px;
-      const dy = other.pos.y - py;
-      const distSq = dx * dx + dy * dy;
-      
-      if (distSq < perceptionSq) {
-        result.x += other.pos.x;
-        result.y += other.pos.y;
-        count++;
-      }
-    }
-    
-    if (count > 0) {
-      const invCount = 1 / count;
-      result.x *= invCount;
-      result.y *= invCount;
-      return this.seekPoint(result.x, result.y, 1);
-    }
-    
-    result.set(0, 0);
-    return result;
-  }
-  
   // Optimized seek using coordinates.
   // arriveRadius > 0 enables arrival: desired speed ramps down inside the
   // radius so the boid settles on the target instead of overshooting and
@@ -203,35 +130,6 @@ class Boid {
   // Vector-accepting seek (for compatibility)
   seek(target, urgency = 1, arriveRadius = 0) {
     return this.seekPoint(target.x, target.y, urgency, arriveRadius);
-  }
-  
-  // Optimized flee
-  fleePoint(tx, ty, radius = 100) {
-    const result = this._tempVec1;
-    const dx = this.pos.x - tx;
-    const dy = this.pos.y - ty;
-    const distSq = dx * dx + dy * dy;
-    const radiusSq = radius * radius;
-    
-    if (distSq < radiusSq && distSq > 0.0001) {
-      const d = Math.sqrt(distSq);
-      const urgency = 1 - (d / radius);
-      const speed = this.maxSpeed * (1 + urgency);
-      
-      result.set(dx, dy);
-      result.setMag(speed);
-      result.sub(this.vel);
-      result.limit(this.maxForce * 2);
-      
-      return result;
-    }
-    
-    result.set(0, 0);
-    return result;
-  }
-  
-  flee(target, radius = 100) {
-    return this.fleePoint(target.x, target.y, radius);
   }
   
   // Delta-time compatible wander — steers RELATIVE to the current heading

@@ -182,19 +182,6 @@ const Climate = {
       out[i] = { yearsBP: yr, g: this.glacialIndexAt(yr) };
     }
     return out;
-  },
-
-  // Glacial maxima inside a window — so the timeline can mark them and so the
-  // tuning can be checked against "about three breaths".
-  maxima(yearsStart, yearsEnd, n = 800) {
-    const s = this.sample(yearsStart, yearsEnd, n);
-    const peaks = [];
-    for (let i = 1; i < s.length - 1; i++) {
-      if (s[i].g > s[i - 1].g && s[i].g >= s[i + 1].g && s[i].g > 0.6) {
-        peaks.push({ yearsBP: s[i].yearsBP, g: s[i].g });
-      }
-    }
-    return peaks;
   }
 };
 

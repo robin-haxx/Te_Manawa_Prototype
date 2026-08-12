@@ -19,6 +19,12 @@
 // timing of the transient button effects.
 const TM_TIME = {
   stormSeconds:    20,
+  // STORM overuse (plan §4). Each press adds pressure that decays every frame; while it sits
+  // above the overuse line the kererū stay grounded BETWEEN storms and recruitment stalls, so
+  // SPAMMING storm desaturates while a single press stays cheap.
+  stormPressureAdd:   0.40,   // pressure a single press adds (0..1) — ~2 quick presses cross the line
+  stormPressureDecay: 0.999,  // per-frame decay (τ ≈ 17 s at 60 fps): one press bleeds off, spamming stacks
+  stormOveruseAt:     0.55,   // pressure above this = overuse (chronic grounding + recruitment stall)
   growWarmSeconds:  8,    // forest growth pulse (interglacial-suited) — button 2
   growColdSeconds:  8,    // open-country growth pulse (glacial-suited) — button 3
   ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
@@ -70,6 +76,7 @@ const InstallHUD = {
       isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
     { id: 'storm',  key: '4', label: 'STORM',
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
+                       g._stormPressure = Math.min(1, (g._stormPressure || 0) + TM_TIME.stormPressureAdd);
                        InstallHUD.initStormCells(g); },
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
     // Eruption is a press-and-hold TIME-NAVIGATION control between the volcanic events
@@ -185,6 +192,16 @@ const InstallHUD = {
     // DeepTime owns the clock and the eased multiplier; advance it and take
     // back the scale the rest of the frame should run at.
     g.timeScale = DeepTime.update(dt);
+
+    // Storm-overuse pressure (plan §4): each STORM press adds pressure (button action); it
+    // decays here every frame on the REAL dt. Above the overuse line the kererū stay grounded
+    // BETWEEN storms (Kereru.behave reads g._stormOveruse) and recruitment stalls
+    // (Game._updateHabitatHealth), so SPAMMING storm desaturates while one press stays cheap.
+    if (g._stormPressure > 0) {
+      g._stormPressure *= Math.pow(TM_TIME.stormPressureDecay, dt);
+      if (g._stormPressure < 1e-3) g._stormPressure = 0;
+    }
+    g._stormOveruse = (g._stormPressure || 0) > TM_TIME.stormOveruseAt;
 
     // Growth pulse, split by climate suitability: FOREST matures warm/forest cover, TUSSOCK
     // matures cold-hardy open country (classified by coldTolerance, TM_GROW). Both are the

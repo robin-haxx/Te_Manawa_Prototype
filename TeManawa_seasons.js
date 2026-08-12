@@ -88,9 +88,6 @@ const GLACIAL_PHASES = {
   }
 };
 
-// Back-compat alias in case any older reference still reads SEASONS.
-const SEASONS = GLACIAL_PHASES;
-
 // ============================================
 // MIGRATION COPY — keyed by glacial phase (co-design placeholder text)
 // ============================================
@@ -213,19 +210,6 @@ class SeasonManager {
     const cur = this.current.snowLine;
     if (this.transitionProgress > 0) return lerp(cur, this.next.snowLine, this.transitionProgress);
     return cur;
-  }
-
-  isSeasonalSnow(elevation) {
-    return elevation >= this.getSnowLineElevation();
-  }
-
-  getSnowCoverage(elevation) {
-    const snowLine = this.getSnowLineElevation();
-    const fullSnowLine = 0.9;
-
-    if (elevation >= fullSnowLine) return 1.0;
-    if (elevation >= snowLine) return map(elevation, snowLine, fullSnowLine, 0.3, 1.0);
-    return 0;
   }
 
   // Forest productive band — contracts as the glacial deepens (treeline drops,

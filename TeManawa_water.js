@@ -60,6 +60,7 @@ class WaterLayer {
       seaAlpha:         0.7,
       seaAnimSpeed:     0.05,   // slower than the river — the sea is calmer
       eelCount:         1,
+      eelsFromYear:     500000,  // eels are a deep-time feature: absent until the clock reaches 500 ka (yearsBP <= this)
       eelSize:          24,
       eelAlpha:         0.9,
       eelSpeed:         0.4,    // world px per update tick (real time, not sim time)
@@ -70,11 +71,21 @@ class WaterLayer {
 
   _on() { return this.enabled && !(typeof LOOK !== 'undefined' && LOOK.water === false); }
 
+  // Deep-time year in effect for eel presence. build()/reconcile() pass it explicitly (the year
+  // the terrain was just baked to); when omitted, fall back to the live clock. eels appear only
+  // once the clock has reached eelsFromYear (yearsBP <= 500 ka) — see _buildEels/reconcile.
+  _resolveYear(year) {
+    if (typeof year === 'number' && isFinite(year)) return year;
+    if (typeof DeepTime !== 'undefined' && typeof DeepTime.yearsBP === 'number') return DeepTime.yearsBP;
+    return -Infinity;   // no clock available — do not suppress eels
+  }
+  _eelsAllowed(year) { return this._resolveYear(year) <= (this.cfg.eelsFromYear ?? 500000); }
+
   // FULL (re)build — a hard scene change (init, look re-bake, eruption). Stamps a decal on
   // every slot that is water NOW, and re-seeds the eels. Decals get a fresh animation phase,
   // which is fine here: the whole scene is being replaced. For the gentle deep-time coastline
   // retreat use reconcile() instead, so surviving decals do not jump.
-  build(terrain) {
+  build(terrain, year) {
     this.terrain = terrain;
     this.decals.length = 0;
     this.eels.length = 0;
@@ -88,7 +99,7 @@ class WaterLayer {
       const s = slots[i];
       if (terrain.waterTypeAt(s.x, s.y) === s.needs) this.decals.push(this._mkDecal(s));
     }
-    this._buildEels(terrain);
+    this._buildEels(terrain, year);   // gated: no eels before 500 ka
     this._flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
     if (this._capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals} — some water left un-stamped`);
   }
@@ -100,15 +111,21 @@ class WaterLayer {
   // river/eel decals ride the terrain, so their elevation is refreshed to the new bed; sea is
   // always flat. Eels travel the always-present main river and are never stranded, so they are
   // left running. Allocation is limited to the add/remove delta.
-  reconcile(terrain) {
+  reconcile(terrain, year) {
     this.terrain = terrain;
     if (!terrain || typeof terrain.waterTypeAt !== 'function') return;
     const slots = this._ensureSlots(terrain);
 
-    // Flow flipped (deep time, ~0.6 Ma) — re-orient the eels to swim the new way. The current-decal
-    // angles come free from the recomputed slots (the flip is in _slotsKey); sea shimmer is untouched.
+    // Eels are a deep-time feature. reconcile() runs on every morph, so this is where eels wink IN
+    // as the clock crosses 500 ka (yearsBP <= eelsFromYear), and back OUT if a skip/reset jumps to
+    // an older year before it. Also re-orients on the ~0.6 Ma flow flip while eels are present.
     const rev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
-    if (rev !== this._flowRev) { this._flowRev = rev; this._buildEels(terrain); }
+    if (!this._eelsAllowed(year)) {
+      this.eels.length = 0;
+    } else if (this.eels.length === 0 || rev !== this._flowRev) {
+      this._buildEels(terrain, year);   // appear on crossing 500 ka, or re-seed swimming the flipped flow
+    }
+    this._flowRev = rev;
 
     // Index the live decals by their slot id so survivors can be reused in place.
     const have = new Map();
@@ -281,8 +298,9 @@ class WaterLayer {
 
   // (Re)seed the eels on the MAIN river(s). Separated from build() so reconcile() can leave the
   // running eels alone — the main river is always present, so an eel is never stranded on land.
-  _buildEels(terrain) {
+  _buildEels(terrain, year) {
     this.eels.length = 0;
+    if (!this._eelsAllowed(year)) return;   // eels are a post-500 ka feature — none before then
     const mapW = terrain.mapWidth, mapH = terrain.mapHeight, cfg = this.cfg;
     const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
     const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());   // eels swim with the flipped flow

@@ -207,15 +207,44 @@ species (mat, reed, tussock, scrub) = **45**.
 **Footprint rule** (`..._PLAN_V2.md` §6.1): `h2` at 64², `h3` at 96², `h4` at 234×500
 with `anchor: 'base'`. `h4` sorts above `h3`.
 
-**In hand: 11.** `Totara` is complete (4 states + 4 growing at 234×500 — covers its 5).
-`Beech` (4 states at 96²) covers its 3. `Flax` = harakeke (4 states at 64²) covers its
-3. **New plant assets: 34.**
+**Art move in progress — the dedicated-folder look.** The incoming art lands per
+species in `sprites/<Species>/`, and is wired into `PLANT_SPRITE_SETS`
+(`TeManawa_sketch.js`) as it arrives. **Policy while a folder holds one frame:** wire
+it `single` — that one frame draws for every seasonal state (Mature/Thriving/Wilting/
+Dormant all resolve to it) — until its full state set is drawn. `single` is not for
+`sizeOnly` plants (tōtara has its own variant path). This is the "1 asset, all states"
+stand-in, not the final look.
 
-`Fern`, `Patotara` and `Lancewood` are drawn but are not on the list. `Fern` is the
-closest thing to a mamaku placeholder and is worth keeping wired until mamaku arrives;
-`Patotara` and `Lancewood` should be retired from `PLANT_SPRITE_SETS`. `Rimu` (4 states
-at 96²) is now cut — retire it too, and note it is currently *aliased to Tōtara art*
-anyway, so nothing on screen changes.
+**Folder art in hand (12 folders):**
+
+| Folder | Sim plant type | Native px | Wired | State |
+|---|---|---|---|---|
+| `Totara/` | `rimu` (tōtara art) | 526×920 | ✓ | complete — 4 growing + 3 size variants, `sizeOnly` |
+| `Tussock/` | `tussock` | 143×82 | ✓ `single` | one frame, all states |
+| `Flax/` | `flax` (harakeke) | 175×193 | ✓ `single` | one frame, all states |
+| `TreeFern/` | `fern` (mamaku/ponga stand-in) | 183×227 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Beech/` | `beech` (black beech, tawhai) | 329×517 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Kowhai/` | `kowhai` (**new type** — Lowland + Podocarp) | 394×417 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Manuka/` | `manuka` (**new** — Lowland + Subalpine) | 439×503 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Kahikatea/` | `kahikatea` (**new** — Podocarp) | 359×968 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Nikau/` | `nikau` (**new** — Podocarp) | 143×359 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Tawa/` | `tawa` (**new** — Podocarp + Montane) | 372×545 | ✓ `single`, `anchor: base` | one frame, all states |
+| `CabbageTree/` | `cabbagetree` (**new** — tī kōuka, Lowland) | 160×281 | ✓ `single`, `anchor: base` | one frame, all states |
+| `Epiphytes/` | — (epiphytes) | 133×123 | **deferred** | going into individual trees' art by hand, not a plant type |
+
+`Totara` is complete (covers tōtara's tier-S 5). **Eleven of the twelve folders are now
+live plant types** — the six podocarp/lowland/subalpine species above joined `rimu`,
+`tussock`, `flax`, `fern` and `beech`. Habitats follow the research and are set in the
+level scaffold biomes (see the `plantTypes` comment there). `Epiphytes/` is intentionally
+NOT a plant type — those go into individual trees' artwork by hand. **New plant assets
+remaining: ~21** (per-state sets to replace the ten `single` stand-ins — Tussock, Flax,
+TreeFern, Beech, Kōwhai, Mānuka, Kahikatea, Nīkau, Tawa, Cabbage tree — incl. kōwhai's
+tier-K flowering frame, plus the palette micro-textures).
+
+**Superseded root files.** The old root `Beech_*`, `Fern_*`, `Flax_*` and `Tussock_*`
+state files (and `Rimu_*`, aliased to tōtara) are no longer referenced now those keys
+point at their folders; they are left in `sprites/` for reference, not deleted.
+`Patotara` and `Lancewood` were never in `PLANT_SPRITE_SETS` and render procedurally.
 
 ### 4.2 Fauna — 64 assets
 

@@ -162,6 +162,12 @@ fruited** tree (`coldTolerance ≤ TM_GROW.warmMax`, the same set `disperseSeed`
 the whole loop follows the climate for free: abundant in the forested interglacial,
 thinning in the glacial when the canopy contracts and the birds can't feed.
 
+**A dropped seed only establishes where the canopy is sparse.** `disperseSeed` runs a
+**density gate** — a candidate site is skipped if it already holds `disperseDensityMax`
+live plants within `disperseDensityRadius` (defaults 3 / 26 px). With `cropCapacity` now
+**1**, a kererū stops carrying almost immediately after feeding (one drop, then it feeds
+again), so the two together keep the forest from being carpeted with seedlings.
+
 **State machine:** `KERERU_STATE` = `FLYING · FEEDING · PERCHED · SHELTER`. Flight legs
 are short by construction — it only ever seeks a nearby tree (`feedRadius`) or a short hop
 (`hopRadius`), never the eagle's map-wide patrol/relocate.
@@ -181,7 +187,7 @@ recruitment term keys off kererū being *alive*, not actively dispersing).
 
 | field | val | field | val |
 |---|:-:|---|:-:|
-| `baseSpeed` | 0.6 | `cropCapacity` | 3 |
+| `baseSpeed` | 0.6 | `cropCapacity` | 1 |
 | `size` | 6 | `feedSec` | 5 |
 | `cruiseAlt` / `perchAlt` | 24 / 5 | `disperseEverySec` | 5 |
 | `hopRadius` | 50 | `restSec` | 4 |
@@ -189,11 +195,13 @@ recruitment term keys off kererū being *alive*, not actively dispersing).
 | `maxHunger` | 100 | `eggCooldownSec` | 35 |
 | `starveSec` | 18 | `mateRadius` | 200 |
 
-**Render:** placeholder glyph (green-grey back, pale breast, small head); wings fold when
-perched, juveniles draw smaller, altitude eases so take-off/landing never pops. Drawn in
-the flyer layer (above the ground plane, with the eagles). Debug-only pips show carried
-fruit + sex/juvenile. The 5-frame flight sprite + perched frame drop in later via
-`EntitySprites` (`TEMANAWA_SPRITE_BRIEF.md`).
+**Render:** `sprites/kereru0.png` (`EntitySprites.getKereruSprite`) — a single
+placeholder frame that faces up-and-right, mirrored via the eased lateral flip for
+leftward travel; falls back to a drawn glyph (green-grey back, pale breast) if the image
+fails to load. Juveniles draw smaller, altitude eases so take-off/landing never pops.
+Drawn in the flyer layer (above the ground plane, with the eagles). Debug-only pips show
+carried fruit + sex/juvenile. The full 5-frame flight + perched set drops in later
+(`TEMANAWA_SPRITE_BRIEF.md`).
 
 **Coupling to habitat health** (`Game._updateHabitatHealth`, `TeManawa_sketch.js`): in a
 non-glacial, **zero live kererū drains recruitment** → the scene desaturates; a storm

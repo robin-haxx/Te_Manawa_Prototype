@@ -5,11 +5,17 @@
 // BOOTS and the ecosystem runs. This is NOT the Manawatū design —
 // the real scene (deep-time terrain morph, the four North Island
 // moa, Eyles' harrier / kērangi, timeline + four buttons, square/
-// portrait layout) is authored per TEMANAWA_PLAN.md. Species,
+// portrait layout) is authored per TEMANAWA_PLAN.md. Spec1ies,
 // biomes and placeables below reuse existing engine keys so the
 // registry validates. No win/loss: one never-true goal keeps the
 // run in PLAYING indefinitely.
 // ============================================================
+
+var cols_sea = ['#1a3a52','#1e4d6b','#236384'];
+
+
+
+
 
 const LEVEL_TEMANAWA_SCAFFOLD = {
   id: 'temanawa_scaffold',
@@ -17,7 +23,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   unlockCondition: null,
 
   terrain: {
-    noiseScale: 0.007, octaves: 4, persistence: 0.35, lacunarity: 3.0,
+    noiseScale: 0.007, octaves: 3, persistence: 0.35, lacunarity: 3.0,
     ridgeInfluence: 1.6, elevationPower: 1.2, islandFalloff: 0.1,
     plantDensity: 0.01, useLakes: false,
     // Geography skeleton present: compress the procedural base above this so the
@@ -92,26 +98,38 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // boundaries (md/TEMANAWA_34VIEW_PLAN.md §7) — it replaces contour lines as the
   // ground's linework. `contourColor` is now unused (contours retired) but kept
   // so nothing downstream that still reads it breaks.
+      // plantTypes is picked UNIFORMLY per array entry at spawn (simulation.js
+    // spawnPlants): a type's SHARE of the array is its spawn frequency, and
+    // repeating a type weights it up. Habitats follow the research — Lowland is
+    // open grass/scrub/wetland margin (tussock, flax, cabbage tree, mānuka scrub,
+    // scattered kōwhai); Podocarp is closed lowland forest (rimu/kahikatea/tawa
+    // canopy, nīkau + tree-fern understory, kōwhai on the margin). Kōwhai sits in
+    // both but stays more common in the lowland — 1/5 of grassland vs 1/6 of the
+    // richer podocarp mix, and the lowland band is wider so it holds more plants.
+
+
+  
+
   biomes: {
     //'#000000', '#000000', '#000000'
     sea:       { key:'sea',       name:"Sea",             minElevation:0,    maxElevation:0.10,
-                 colors:['#1a3a52','#1e4d6b','#236384'], contourColor:'#0f2533', outlineColor:'#9aaab5',
+                 colors:cols_sea, contourColor:'#0f2533', outlineColor:'#9aaab5',
                  walkable:false, canHavePlants:false, canPlace:false },
     coastal:   { key:'coastal',   name:"Coast",           minElevation:0.10, maxElevation:0.15,
                  colors:['#c2b280','#d4c794','#e6dca8'], contourColor:'#8a7d5a', outlineColor:'#d2c8af',
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
                  colors:['#e6dca8', '#c8d697', '#789762'], contourColor:'#2d3a27', outlineColor:'#313e2d',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:['#2d5a3d','#346644','#3b724b'], contourColor:'#1e3d29', outlineColor:'#28452e',
-                 walkable:true,  canHavePlants:true, plantTypes:['fern','rimu'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['rimu','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740', outlineColor:'#203025',
-                 walkable:true,  canHavePlants:true, plantTypes:['beech','fern'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['beech','fern','tawa'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
                  colors:['#809a59','#a4b56d','#85a15c'], contourColor:'#bfcda8', outlineColor:'#2b2f25',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','manuka'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
                  colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c', outlineColor:'#5c6b55',
                  walkable:false, canHavePlants:false, canPlace:false },
@@ -140,7 +158,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // ==========================================================
   // MECHANICS — opt-in behaviours read via LEVEL_MECHANICS (sketch.js loadLevel).
   // ----------------------------------------------------------
-  // FOREST CONTRACTION (plan §1.3). Canopy trees (beech/rimu/fern) whose elevation
+  // FOREST CONTRACTION (plan §1.3). Canopy trees (beech/rimu/fern/kahikatea/tawa;
+  // FOREST_TREES in TeManawa_plant.js) whose elevation
   // falls outside the forest band are suppressed, so the forest visibly retreats
   // downslope as the GLACIAL deepens and climbs back through the interglacial. The
   // band is keyed by glacial phase and lerped smoothly by the deep-time glacial
@@ -156,6 +175,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   mechanics: {
     forestContraction: true,
     maxLivePlants: 900,                          // cap for kererū seed dispersal (≤1000 live-plant budget)
+    disperseDensityRadius: 26,                   // a kererū seed only establishes where the canopy is
+    disperseDensityMax: 3,                       // sparse: < this many live plants within the radius
     kereruMaxPopulation: 16,                     // flock cap (breeding stops at it); founders spawn 8
     kereruPopulationFloor: 2,                    // never starve below this — keeps a disperser alive so
                                                  // the interglacial forest can always recruit again

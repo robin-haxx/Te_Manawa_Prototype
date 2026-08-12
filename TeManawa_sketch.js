@@ -27,6 +27,11 @@ let currentFPS = 60;
 //
 //   prefix        filename stem, e.g. 'Totara' -> Totara_Mature.png
 //   folder        optional subfolder under sprites/ (include trailing slash)
+//   single        provisional stand-in: the exact filename within `folder` to load
+//                 ONCE and draw for every seasonal state (Mature/Thriving/Wilting/
+//                 Dormant all resolve to it). For dedicated-folder art that has
+//                 arrived as one frame; per-state art replaces it later. Mutually
+//                 exclusive with prefix's per-state loading. Not for sizeOnly plants.
 //   growingFrames if set, loads <prefix>_Growing_01..NN.png as a growth sequence
 //   matureVariants if set, loads <prefix>_Size_00..NN-1.png; a mature plant picks
 //                 one at random (per instance) instead of the Mature/Thriving art
@@ -37,17 +42,39 @@ let currentFPS = 60;
 //   anchor        'center' (default) or 'base' — 'base' plants the sprite's
 //                 bottom edge on the ground point, for art taller than it is wide
 //   scale         multiplier on the drawn footprint width
+//
+// Art-move status: the dedicated per-species folders (sprites/<Species>/) are the
+// incoming look. As each lands it is wired here `single` — one frame for every
+// state — until its full state set is drawn. See md/TEMANAWA_BUILD_V3.md §4.1.
+// Species with a folder but no sim plant type yet (Manuka, Kahikatea, Nikau, Tawa,
+// CabbageTree, Epiphytes) are art-in-hand only; they wire up when the type does.
 const PLANT_SPRITE_SETS = {
-  tussock:   { prefix: 'Tussock' },
-  flax:      { prefix: 'Flax' },
-  fern:      { prefix: 'Fern' },
+  // Dedicated-folder art, one frame standing in for every state (single). The
+  // old root Tussock_/Flax_/Fern_ state files are superseded and left in place.
+  tussock:   { folder: 'Tussock/',  single: 'Tussocks_Sprite_00001.png' },
+  flax:      { folder: 'Flax/',     single: 'Flax_Mature.png' },
+  // fern is the mamaku/ponga tree-fern stand-in; its art has a trunk, so base-anchor.
+  fern:      { folder: 'TreeFern/', single: 'TreeFern_Mature.png', anchor: 'base' },
   // PROTOTYPE: rimu renders with Tōtara art. Art swap only — the 'rimu' key
   // still drives nutrition, seasonality, forest banding and level data.
   // Tōtara has only size variants + a growth sequence (no seasonal state art), so
   // sizeOnly keeps it on its size variant instead of switching frames.
   rimu:      { prefix: 'Totara', folder: 'Totara/', growingFrames: 4,
                matureVariants: 3, sizeOnly: true, anchor: 'base', scale: 1.0 },
-  beech:     { prefix: 'Beech' }
+  // beech (black beech, tawhai) — dedicated-folder art has a trunk, so base-anchor.
+  // Superseded its four root state files.
+  beech:     { folder: 'Beech/', single: 'Beech_Mature.png', anchor: 'base' },
+  // kōwhai — small flowering tree, base-anchor. Lives in Lowland + Podocarp
+  // (level scaffold); single-asset stand-in until its flowering state is drawn.
+  kowhai:    { folder: 'Kowhai/', single: 'Kowhai_Mature.png', anchor: 'base' },
+  // Dedicated-folder species below — all upright, so base-anchor. Single-asset
+  // stand-ins; habitats are set in the level scaffold biomes. (Epiphytes are NOT
+  // wired — they go into individual trees' art by hand.)
+  kahikatea:   { folder: 'Kahikatea/',  single: 'Kahikatea_Mature.png',  anchor: 'base' },
+  nikau:       { folder: 'Nikau/',      single: 'Nikau_Mature.png',      anchor: 'base' },
+  tawa:        { folder: 'Tawa/',       single: 'Tawa_Mature.png',       anchor: 'base' },
+  manuka:      { folder: 'Manuka/',     single: 'Manuka_Mature.png',     anchor: 'base' },
+  cabbagetree: { folder: 'CabbageTree/', single: 'CabbageTree_Mature.png', anchor: 'base' }
 };
 
 const PLANT_SPRITE_STATES = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
@@ -60,10 +87,22 @@ function preload(){
     const dir = `sprites/${def.folder || ''}`;
     const set = {};
 
+    // Provisional single-asset stand-in: load one frame and alias every seasonal
+    // state to it (loadImage is not deduped, so alias — do not reload four times).
+    // State selection in _getSpriteState still runs; every state just resolves to
+    // this one image until the full state set is drawn.
+    if (def.single) {
+      const img = loadImage(
+        `${dir}${def.single}`,
+        () => {},
+        () => console.warn(`Could not load ${def.single}`)
+      );
+      for (const state of PLANT_SPRITE_STATES) set[state.toLowerCase()] = img;
+
     // Seasonal state art (Mature/Thriving/Wilting/Dormant). Skipped for sizeOnly
     // plants (tōtara), which never switch to a state frame — they hold their size
     // variant — so those PNGs are neither loaded nor referenced.
-    if (!def.sizeOnly) {
+    } else if (!def.sizeOnly) {
       for (const state of PLANT_SPRITE_STATES) {
         set[state.toLowerCase()] = loadImage(`${dir}${def.prefix}_${state}.png`);
       }
@@ -361,24 +400,6 @@ function applyLevelToConfig(levelDef) {
 }
 
 // ============================================
-// COLOR UTILITIES 
-// ============================================
-function fillColor(colorArray, alphaOverride = null) {
-  if (!colorArray) { fill(128); return; }
-  const a = alphaOverride ?? colorArray[3];
-  a !== undefined
-    ? fill(colorArray[0], colorArray[1], colorArray[2], a)
-    : fill(colorArray[0], colorArray[1], colorArray[2]);
-}
-
-function strokeColor(colorArray) {
-  if (!colorArray) { stroke(128); return; }
-  colorArray.length === 4
-    ? stroke(colorArray[0], colorArray[1], colorArray[2], colorArray[3])
-    : stroke(colorArray[0], colorArray[1], colorArray[2]);
-}
-
-// ============================================
 // PRE-CACHED COLORS (UI Palette)
 // ============================================
 const CACHED_COLORS = {};
@@ -645,7 +666,54 @@ const PLANT_TYPES = {
     description: "Horoeka: tough and spiky when growing." },
   speargrass: { name: "Speargrass", nutrition: 30, color: '#8f9a55', size: 13, growthTime: 260,
     coldTolerance: 0.85,
-    description: "Taramea: spiny herb of the hills" }
+    description: "Taramea: spiny herb of the hills" },
+
+  // Kōwhai (Sophora) — small flowering lowland/riparian tree, spreads into the
+  // podocarp margin. coldTolerance 0.45 (< warmMax) makes it a warm, kererū-
+  // dispersable type, so it recruits in the interglacial. Not in FOREST_TREES,
+  // so the forest-band contraction does not suppress it. Single-asset art for
+  // now; the flowering (spring gold) state comes with its own frame later.
+  kowhai: { name: "Kōwhai", nutrition: 38, color: '#cba33c', size: 48, growthTime: 300,
+    coldTolerance: 0.45,
+    description: "Kōwhai: spring-gold flowers, a lowland nectar tree" },
+
+  // --- Dedicated-folder species (single-asset art). Habitats set in the level
+  //     scaffold biomes; coldTolerance vs warmMax(0.65)/coldMin(0.75) decides
+  //     which growth button matures them and whether kererū disperse them. ---
+
+  // Kahikatea (Dacrycarpus) — the tallest NZ tree, wet lowland podocarp forest.
+  // Warm canopy tree (coldTolerance 0.35): kererū-dispersed, and in FOREST_TREES
+  // so it retreats with the glacial forest.
+  kahikatea: { name: "Kahikatea", nutrition: 48, color: '#556b3d', size: 36, growthTime: 420,
+    coldTolerance: 0.35,
+    description: "Kahikatea: the tallest tree, of wet lowland forest" },
+
+  // Nīkau (Rhopalostylis) — the world's southernmost palm; frost-tender lowland
+  // forest. Low coldTolerance 0.2 sinks it hard in glacials (its range collapse);
+  // warm, so kererū carry its red fruit. Understory, not FOREST_TREES.
+  nikau: { name: "Nīkau", nutrition: 40, color: '#3f7d42', size: 20, growthTime: 380,
+    coldTolerance: 0.2,
+    description: "Nīkau: the world's southernmost palm, red-fruited" },
+
+  // Tawa (Beilschmiedia) — broadleaf canopy of lowland-to-montane forest, and the
+  // classic large-fruited tree kererū disperse. Warm canopy (0.4), in FOREST_TREES.
+  tawa: { name: "Tawa", nutrition: 45, color: '#3d5f36', size: 30, growthTime: 400,
+    coldTolerance: 0.4,
+    description: "Tawa: broadleaf canopy whose plum fruit needs kererū" },
+
+  // Mānuka (Leptospermum) — hardy light-demanding pioneer scrub, lowland to
+  // subalpine. coldTolerance 0.7 is NEUTRAL to both growth buttons (like flax) —
+  // a pioneer, neither climax forest nor alpine tussock. Not in FOREST_TREES.
+  manuka: { name: "Mānuka", nutrition: 22, color: '#6a7b4a', size: 24, growthTime: 180,
+    coldTolerance: 0.7,
+    description: "Mānuka: hardy pioneer scrub with white tea-tree flowers" },
+
+  // Tī kōuka / cabbage tree (Cordyline) — open, damp lowland and wetland margins;
+  // hardy and frost-tolerant but light-demanding, so open country not closed
+  // forest. Warm-hardy 0.6; bird-dispersed. Not in FOREST_TREES.
+  cabbagetree: { name: "Tī Kōuka", nutrition: 32, color: '#7a8a4e', size: 22, growthTime: 260,
+    coldTolerance: 0.6,
+    description: "Tī kōuka: the cabbage tree of open, wet ground" }
 };
 
 // ============================================
@@ -780,7 +848,7 @@ class Game {
     // sea shimmer). A full build only — never on the cheap resetEcosystem() path,
     // so the soft reset stays in its ~20 ms tier (§5.1).
     if (!this.water) this.water = new WaterLayer();
-    this.water.build(this.terrain);
+    this.water.build(this.terrain, (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : undefined);
 
     this._bakedYearsBP = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
 
@@ -873,7 +941,7 @@ class Game {
       });
     }
     this.terrain.generate();          // same seed → same land; re-applies all of LOOK + relief
-    if (this.water) this.water.build(this.terrain);   // re-stamp water for the re-baked land
+    if (this.water) this.water.build(this.terrain, (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : undefined);   // re-stamp water for the re-baked land
     this._updateViewTransform();
     const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
     console.log(`[look] terrain re-baked in ${ms.toFixed(0)}ms — tune LOOK / Projection, press B again`);
@@ -905,6 +973,7 @@ class Game {
     // well-managed world stays at full colour. Soft resets keep these (they ease on their
     // own), so only the full init() reseeds them.
     this._habitatHealth = 1; this._sceneSat = 1; this._regimeFit = 1; this._recruitment = 1;
+    this._stormPressure = 0; this._stormOveruse = false;
 
     // Which eruption years have already fired this cycle — so an eruption fires ONCE as the
     // clock crosses its checkpoint (auto), and again only after a rebuild repositions the
@@ -1016,7 +1085,7 @@ class Game {
   //                           init / look re-bake / eruption.
   _onMorphComplete() {
     if (this.simulation) this.simulation.cullSubmergedPlants();
-    if (this.water) this.water.reconcile(this.terrain);
+    if (this.water) this.water.reconcile(this.terrain, (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : undefined);
   }
 
   // ============================================
@@ -1038,7 +1107,7 @@ class Game {
       this._bakedYearsBP = targetYear;
       this._lastMorphMs = (typeof millis === 'function') ? millis() : Date.now();
     }
-    if (this.water) this.water.build(this.terrain);             // re-stamp water to the morphed sea/river
+    if (this.water) this.water.build(this.terrain, targetYear);  // re-stamp water to the morphed sea/river (eels gated by targetYear)
     this.resetEcosystem();                                       // spawns against the morphed (target-year) biome map (also DeepTime.reset())
     if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);   // ...so re-seek after the rebuild (§3.4)
     this.applyAsh(eruption);
@@ -1141,10 +1210,11 @@ class Game {
     this._regimeFit += (rfTarget - this._regimeFit) * (rfStep > 1 ? 1 : rfStep);
     if (this._regimeFit < 0) this._regimeFit = 0; else if (this._regimeFit > 1) this._regimeFit = 1;
 
-    // --- Recruitment (plan §3): in the interglacial the forest should be regenerating via
-    // kererū seed dispersal. With no kererū to carry the large fruit, recruitment stalls and
-    // the forest thins, so R falls; in the glacial the forest isn't recruiting anyway, so R
-    // relaxes back. (Step 4 adds STORM-overuse grounding as a second way to stall it.) ---
+    // --- Recruitment (plan §3–4): in the interglacial the forest should be regenerating via
+    // kererū seed dispersal. It stalls (R falls, forest thins) when there is NO kererū to carry
+    // the large fruit, OR when sustained STORM overuse (this._stormOveruse) keeps the flock
+    // grounded so they cannot disperse. In the glacial the forest isn't recruiting anyway, so R
+    // relaxes back. A single storm doesn't cross the overuse line, so it stays cheap. ---
     if (this._recruitment == null) this._recruitment = 1;
     let kereruAlive = 0;
     const sim = this.simulation;
@@ -1152,7 +1222,7 @@ class Game {
       const ks = sim.otherEntities.kereru;
       for (let i = 0; i < ks.length; i++) if (ks[i] && ks[i].alive) kereruAlive++;
     }
-    const recStalled = !glacial && kereruAlive === 0;
+    const recStalled = !glacial && (kereruAlive === 0 || this._stormOveruse);
     const recTarget = recStalled ? H.recruitFloor : 1;
     const recRate = recStalled ? H.recruitDrainRate : H.recruitRecoverRate;
     const recStep = recRate * (dt || 1);

@@ -291,8 +291,15 @@ before every commit.
    the health target alongside ash and regime-fit. Placeholder art (drawn glyph — dark back, white
    waistcoat); the 5-frame flight sprite drops in later. Harness assertion added (§8): spawn,
    cap-guarded dispersal of a warm seedling, and recruitment stalling without kererū.
-4. **Storm coupling.** Storm-pressure accumulator; kererū grounding; the overuse→dispersal→`R`
-   chain. Keep the existing eagle distraction.
+4. **Storm coupling. — ✅ BUILT.** A decaying **storm-pressure accumulator** (`Game._stormPressure`):
+   each STORM press adds `TM_TIME.stormPressureAdd` (0.40); it decays every frame in
+   `InstallHUD.update` (`stormPressureDecay` 0.999, τ≈17 s) and derives `Game._stormOveruse` above
+   `stormOveruseAt` (0.55). While overused, `Kereru.behave` keeps the flock grounded **between**
+   storms (not just the active window), and the recruitment term `recStalled` gains an overuse
+   clause, so sustained spamming stalls dispersal → the scene desaturates. **A single press stays
+   below the line — cheap.** The existing eagle distraction (moa reprieve) is unchanged, so STORM
+   is now genuinely double-edged. Cleared on the attract reset; harness assertion added (§8): one
+   press isn't overuse, spamming crosses the line and drains recruitment, pressure decays back.
 5. **Tune + accessibility.** `SAT_FLOOR`, ease/slew rates, the mismatch notch, photosensitivity
    verification; decide whole-scene vs ground-only from the step-1 profile.
 6. **Verify (§8).**

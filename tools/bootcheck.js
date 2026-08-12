@@ -278,6 +278,10 @@ try{
       'kererū implement behave/update/render (otherEntities contract)');
 
   // dispersal grows the plant population by one, near forest, as a low-growth warm seedling.
+  // (relax the density gate here — this asserts the recruit mechanic, the gate is tested below)
+  const M = vm.runInContext('LEVEL_MECHANICS', ctx);
+  const savedDensMax = M ? M.disperseDensityMax : undefined;
+  if(M) M.disperseDensityMax = 1e9;
   const n0 = sim.plants.length;
   let planted=null;
   for(let i=0;i<sim.plants.length && !planted;i++){
@@ -289,6 +293,22 @@ try{
     chk(sim.plants.length===n0+1, 'dispersal grows the plant population by one');
     chk(planted.growth<0.2, 'a dispersed seed starts as a low-growth seedling');
     chk(PT[planted.type] && PT[planted.type].coldTolerance<=0.65, 'kererū disperse a warm/forest (large-fruited) type');
+  }
+  if(M) M.disperseDensityMax = savedDensMax;
+
+  // density gate: a drop into an already-dense stand is refused — only sparse canopy recruits.
+  if(M){
+    const Plant_=vm.runInContext('Plant',ctx);
+    const sR=M.disperseDensityRadius, sMax=M.disperseDensityMax, keep=sim.plants.length;
+    M.disperseDensityRadius=70; M.disperseDensityMax=3;
+    let host=null;
+    for(let i=0;i<sim.plants.length && !host;i++){ const p=sim.plants[i],d=PT[p.type]; if(p.alive&&d&&d.coldTolerance<=0.65) host=p; }
+    if(host){
+      for(let q=0;q<12;q++) sim.plants.push(new Plant_(host.pos.x, host.pos.y, host.type, sim.terrain, host.biomeKey));
+      sim.updateSpatialGrids();                                          // refresh the plant grid so the gate sees them
+      chk(sim.disperseSeed(host.pos.x, host.pos.y)===null, 'dispersal is refused in a dense stand (density gate)');
+    }
+    sim.plants.length=keep; M.disperseDensityRadius=sR; M.disperseDensityMax=sMax; sim.updateSpatialGrids();
   }
 
   // the live-plant cap is enforced HERE (the only place plants grow at runtime).
@@ -331,6 +351,45 @@ try{
   console.log(fail? `kererū: ${fail} FAILURES`
     : 'kererū: dispersal grows the forest (cap-guarded); recruitment stalls without them');
 }catch(e){ console.log('KERERU FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- storm overuse: the STORM cost (plan §4) ----------------------------------
+// Each STORM press adds decaying pressure; above the overuse line the kererū stay grounded
+// BETWEEN storms and interglacial recruitment stalls, so the scene desaturates. A SINGLE press
+// stays below the line (cheap); spamming crosses it; leaving it alone decays it away.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const H=vm.runInContext('InstallHUD',ctx), TM=vm.runInContext('TM_TIME',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // one press: pressure rises but stays below the overuse line
+  G._stormPressure=0; G._stormOveruse=false;
+  G.handleKey('4');
+  chk(G._stormPressure>0 && G._stormPressure<=TM.stormOveruseAt, 'one STORM press adds pressure below the overuse line');
+  H.update(G,1);
+  chk(!G._stormOveruse, 'a single STORM press is NOT overuse (stays cheap)');
+
+  // spam: repeated presses cross the line → overuse
+  for(let i=0;i<3;i++) G.handleKey('4');
+  H.update(G,1);
+  chk(G._stormOveruse, 'repeated STORM presses cross the overuse line (kererū grounded between storms)');
+
+  // overuse stalls interglacial recruitment even WITH kererū present — the STORM cost
+  DT.seekTo(122000); G.seasonManager.update(1);
+  G._stormOveruse=true; G._recruitment=1;
+  for(let i=0;i<120;i++) G._updateHabitatHealth(1);
+  chk(G._recruitment<0.9, 'storm overuse stalls recruitment with kererū present → the scene desaturates');
+  G._stormOveruse=false; G._recruitment=1;
+  for(let i=0;i<60;i++) G._updateHabitatHealth(1);
+  chk(G._recruitment>0.95, 'recruitment recovers once overuse subsides');
+
+  // pressure decays back below the line when STORM is left alone
+  G._stormPressure=1; for(let i=0;i<1200;i++) H.update(G,1);
+  chk(G._stormPressure<TM.stormOveruseAt, 'storm pressure decays below the overuse line when left alone');
+
+  G._stormPressure=0; G._stormOveruse=false; G._recruitment=1; DT.reset();
+  console.log(fail? `storm overuse: ${fail} FAILURES`
+    : 'storm overuse: spamming grounds the kererū + stalls recruitment; one press stays cheap; pressure decays');
+}catch(e){ console.log('STORM-OVERUSE FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- auto-eruptions + attract returns to the last eruption --------------
 // Eruptions fire ONCE as the clock CROSSES each checkpoint while playing forward (no button
@@ -1247,10 +1306,20 @@ const g=vm.runInContext('game',ctx);
 {
   const G = vm.runInContext('game', ctx), SS = vm.runInContext('SpriteStrips', ctx);
   let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
-  const w = G.water;
+  const w = G.water, T = G.terrain;
   chk(!!w, 'game.water exists after a full build');
   chk(SS && SS.has('water_current') && SS.has('sea_shimmer') && SS.has('eel_swim'),
       'placeholder strips registered for every water animation');
+
+  // eels are a deep-time feature — absent before 500 ka, present at/after it (WaterLayer gates on
+  // the year, not the land shape). Build on each side of the gate with the year passed explicitly,
+  // morphing the land to match so the seeded eel has a wet main stem to sit on.
+  T.morphTo(900000, 1); w.build(T, 900000);
+  chk(w.eels.length === 0, 'no eels before 500 ka (build @ 900 ka)');
+  T.morphTo(500000, 1); w.build(T, 500000);
+  chk(w.eels.length >= 1, 'eels appear once the clock reaches 500 ka');
+  T.morphTo(300000, 1); w.build(T, 300000);   // a firmly post-gate year for the travel checks below
+
   chk(w && (w.decals.length + w.eels.length) > 0, 'water placed decals/eels from the geometry');
   chk(!w || w.decals.length <= w.cfg.maxDecals, 'decal count stays within maxDecals');
   chk(!w || w.eels.length <= w.cfg.eelCount, 'eel count stays within the configured count');
@@ -1264,7 +1333,7 @@ const g=vm.runInContext('game',ctx);
   FRAME(ctx.draw);   // render the overlay once more through the full frame
   chk(_errors.length === preErr, 'water update + render raised no console.error');
   console.log(fail ? `water: ${fail} FAILURES`
-    : `water: ${w ? w.decals.length + ' decals, ' + w.eels.length + ' eels' : 'none'}, animates + renders clean`);
+    : `water: ${w ? w.decals.length + ' decals, ' + w.eels.length + ' eels (gated <=500 ka)' : 'none'}, animates + renders clean`);
 }
 
 const K=vm.runInContext('Kiosk',ctx), D=vm.runInContext('Debug',ctx);
@@ -1331,11 +1400,14 @@ console.log('  playTime  ', g.playTime.toFixed(0));
 
   // (b) eels stay on water across deep time — including the window end, where the
   //     NE arm has dried. waterTypeAt: 0 land · 1 sea · 2 river; only 0 is illegal.
+  //     Build at a post-500 ka year (yearsEnd) so eels are present to test (gated feature).
   const eelsAllWet = () => { for (const e of w.eels) if (T.waterTypeAt(e._x, e._y) === 0) return false; return true; };
+  T.morphTo(500000, 1); w.build(T, 500000);              // seed eels on the deep-time river
   for (let i = 0; i < 80; i++) w.update(1);
-  chk(eelsAllWet(), 'eels stay on water at the window start');
+  chk(w.eels.length >= 1, 'eels are present past 500 ka to exercise');
+  chk(eelsAllWet(), 'eels stay on water once present');
 
-  T.morphTo(DT.yearsEnd, 1); w.build(T);                  // 25.5 ka — NE arm long dry
+  T.morphTo(DT.yearsEnd, 1); w.build(T, DT.yearsEnd);    // 25.5 ka — NE arm long dry
   let pathLand = 0;
   if (w.eels.length) {
     const p = w.eels[0].path, probe = { _x: 0, _y: 0, _angle: 0 };
@@ -1344,8 +1416,26 @@ console.log('  playTime  ', g.playTime.toFixed(0));
   for (let i = 0; i < 400; i++) w.update(1);
   chk(eelsAllWet(), 'eels never swim onto the dried NE arm at the window end');
 
+  // (c) plants are never left standing on painted WATER after a morph + cull. Spawn a fresh field
+  //     on the window-start land, then morph forward and cull at each step exactly as the live
+  //     pipeline does (Game._onMorphComplete → cullSubmergedPlants). The visitor sees the PAINTED
+  //     ground, so the check is against waterTypeAt (paint res); the coarser getBiomeAt used to
+  //     leave margin-cell stragglers standing in the sea at the window end (the reported bug).
+  DT.reset(); T.morphTo(DT.yearsStart, 1);
+  const S = g.simulation;
+  S.plants.length = 0; S.spawnPlants();
+  const spawned = S.plants.length;
+  let onWater = 0;
+  for (const yr of [900000, 600000, 349000, 150000, DT.yearsEnd]) {
+    T.morphTo(yr, 1);
+    S.cullSubmergedPlants();
+    for (const p of S.plants) if (p.alive && T.waterTypeAt(p.pos.x, p.pos.y) !== 0) onWater++;
+  }
+  chk(onWater === 0, `no plant left standing on painted water after morph+cull (found ${onWater} of ${spawned} spawned)`);
+
   console.log(fail ? `land/water discipline: ${fail} FAILURES`
-    : `land/water discipline: moa ejected off water, eels stay wet (${pathLand}/51 of the end-state path dried to land)`);
+    : `land/water discipline: moa ejected off water, eels stay wet & gated <=500 ka, no plant on painted water `
+      + `(${pathLand}/51 of the end-state path dried to land)`);
 }
 
 if(_errors.length){ console.log('--- console.error during run ---'); _errors.slice(0,10).forEach(e=>console.log('  ',e)); }
