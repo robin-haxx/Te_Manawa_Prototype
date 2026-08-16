@@ -1,8 +1,11 @@
 // ============================================
-// HAAST'S EAGLE CLASS
+// EYLES' HARRIER (KĒRANGI) CLASS
+// The North Island apex avian predator — a giant harrier, not Haast's eagle.
+// The base type key stays 'eagle' throughout the engine (mechanical, not
+// visitor-facing); only the identity is the harrier's. See TeManawa_species_data.js.
 // ============================================
 
-class HaastsEagle extends Boid {
+class EylesHarrier extends Boid {
   constructor(x, y, terrain, config = null, speciesData = null) {
     super(x, y, terrain);
     
@@ -32,6 +35,7 @@ class HaastsEagle extends Boid {
     this.huntSearchTimer = 0;
     this.huntSearchTimeout = 300;
     this.lastTargetTime = 0;
+    this._chaseTimer = 0;   // time spent locked on one prey; gives up a fruitless chase
     this._huntEventFired = false;
     
     // Hunger
@@ -318,7 +322,7 @@ class HaastsEagle extends Boid {
       const dx = p.pos.x - this.pos.x;
       const dy = p.pos.y - this.pos.y;
       
-      if (dx * dx + dy * dy < p.radius * p.radius && this.hunting) {
+      if (dx * dx + dy * dy < p.radius * p.radius) {
         this.distractedBy = p;
         this.distractedTimer = 180;
         this.hunting = false;
@@ -402,54 +406,60 @@ class HaastsEagle extends Boid {
   hunt(simulation, dt = 1) {
     this.maxSpeed = this.huntSpeed;
     
-    const nearbyMoas = simulation.getNearbyMoas(this.pos.x, this.pos.y, this.huntRadius);
-    
+    // Surplus-aware scan across BOTH grazers and forest flyers. The harrier only
+    // ever crops a species that is OVER its comfortable target (a booming kererū
+    // flock, a fast-breeding moa); anything at or below target is left alone to
+    // recover. So predation is pure feedback on overabundance — it thins booms and
+    // never drives a species down, which is exactly what an ambient sim wants. When
+    // nothing is over-target the harrier finds no prey and simply keeps patrolling.
+    const nearbyPrey = simulation.getHuntablePrey(this.pos.x, this.pos.y, this.huntRadius);
+
     let nearestDistSq = Infinity;
-    let nearestEff = Infinity;
-    let nearestMoa = null;
+    let bestEff = Infinity;
+    let nearestPrey = null;
     const px = this.pos.x, py = this.pos.y;
 
     const _M = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS) ? LEVEL_MECHANICS : {};
-    const _preyThreshold = _M.eaglePreyPopThreshold ?? 12;
-    const _scarcePenalty = _M.eagleScarcePreyPenalty ?? 6;
+    const _overBonus = _M.eagleSurplusBonus ?? 4;
 
-    for (let i = 0; i < nearbyMoas.length; i++) {
-      const moa = nearbyMoas[i];
-      if (!moa.alive) continue;
-      if (simulation.isSpeciesProtected && simulation.isSpeciesProtected(moa.speciesKey)) continue; // never target a protected floor species
-      if (moa.inShelter && this.target !== moa) continue;
-      if (moa.eagleResistance > 0 && random() < moa.eagleResistance) continue;
-      // Camouflage: chance the eagle simply doesn't spot this moa during a
-      // scan. Once a moa IS spotted (current target) camo no longer hides it —
-      // camouflage makes prey harder to find, not harder to chase.
-      if (moa.camouflage > 0 && this.target !== moa && random() < moa.camouflage) continue;
+    for (let i = 0; i < nearbyPrey.length; i++) {
+      const prey = nearbyPrey[i];
+      if (!prey.alive) continue;
+      if (simulation.isPreyProtected(prey)) continue;                 // never crop below the floor
+      if (prey.inShelter && this.target !== prey) continue;           // moa in cover (flyers: field undefined → no-op)
+      if (prey.eagleResistance > 0 && random() < prey.eagleResistance) continue;
+      // Camouflage makes prey harder to FIND, not harder to chase: once it's the
+      // current target, camo no longer hides it.
+      if (prey.camouflage > 0 && this.target !== prey && random() < prey.camouflage) continue;
 
-      const dx = moa.pos.x - px;
-      const dy = moa.pos.y - py;
+      const dx = prey.pos.x - px;
+      const dy = prey.pos.y - py;
       const dSq = dx * dx + dy * dy;
 
-      // Prefer abundant prey: a species at/below the threshold is "protected" —
-      // its members feel much farther away, so eagles crop common species and
-      // spare rare ones (this breaks the moa death-spiral when things turn cold).
-      let eff = dSq;
-      if (this.emergent && simulation.getCachedSpeciesCount &&
-          simulation.getCachedSpeciesCount(moa.speciesKey) <= _preyThreshold) {
-        eff *= _scarcePenalty;
-      }
+      const key = prey.speciesKey;
+      const count = simulation.getCachedSpeciesCount(key);
+      const surplus = count - simulation._speciesTarget(key);
+      // Crop the SURPLUS only. A species at or below its comfortable target is
+      // left entirely alone (surplus <= 0 → skip), so predation never pins a
+      // struggling kind at its floor — it only ever removes the overshoot. Among
+      // over-target prey, prefer the most-over-target and nearest.
+      if (surplus <= 0) continue;
+      const weight = (count - simulation._speciesFloor(key)) + _overBonus * surplus;
+      const eff = dSq / (weight > 0.5 ? weight : 0.5);
 
-      if (eff < nearestEff) {
-        nearestEff = eff;
+      if (eff < bestEff) {
+        bestEff = eff;
         nearestDistSq = dSq;   // keep the TRUE distance for the catch check
-        nearestMoa = moa;
+        nearestPrey = prey;
       }
     }
-    
-    if (nearestMoa) {
+
+    if (nearestPrey) {
       const hadNoTarget = this.target === null;
 
       this.state = 'hunting';
       this.hunting = true;
-      this.target = nearestMoa;
+      this.target = nearestPrey;
       this.huntSearchTimer = 0;
       this.lastTargetTime = frameCount;
 
@@ -458,16 +468,28 @@ class HaastsEagle extends Boid {
         this._huntEventFired = true;
         if (audioManager) audioManager.playEagleHunt();
       }
-      
+
+      // Give up a chase that has dragged on without closing — break off and rest a
+      // beat rather than tailing an evasive bird forever (a real harrier gives up).
+      if (hadNoTarget) this._chaseTimer = 0;
+      this._chaseTimer += dt;
+      if (this._chaseTimer > (_M.eagleMaxChase ?? 420)) {
+        this._chaseTimer = 0;
+        this.hunting = false; this.target = null; this.huntSearchTimer = 0;
+        this._huntEventFired = false;
+        this.state = 'resting'; this.restTimer = this.restDuration * 0.5;
+        return;
+      }
+
       // Pursue with prediction
       this._targetVec.set(
-        nearestMoa.pos.x + nearestMoa.vel.x * 12,
-        nearestMoa.pos.y + nearestMoa.vel.y * 12
+        nearestPrey.pos.x + nearestPrey.vel.x * 12,
+        nearestPrey.pos.y + nearestPrey.vel.y * 12
       );
       this.applyForce(this.seek(this._targetVec, 1.4));
-      
+
       if (nearestDistSq < this.catchRadiusSq) {
-        simulation.handleEagleCatch(this, nearestMoa);
+        simulation.handleEagleCatch(this, nearestPrey);
       }
     } else {
       this.huntSearchTimer += dt;
@@ -696,7 +718,7 @@ class HaastsEagle extends Boid {
       // Laying is costly — the parent must hunt again soon.
       this.hunger = Math.min(this.maxHunger, this.hunger + 25);
       if (simulation.game) {
-        simulation.game.addNotification('A Pouākai pair nests — an egg is laid.', 'info');
+        simulation.game.addNotification('A kērangi pair nests — an egg is laid.', 'info');
       }
     }
   }
@@ -719,10 +741,12 @@ class HaastsEagle extends Boid {
       translate(this.pos.x, Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y)));
 
       const _alt = this._altitude || 0;
-      const _sf = 1 - Math.min(0.55, _alt / 70);   // higher bird → smaller, fainter shadow
-      noStroke();
-      fill(0, 0, 0, (isActiveHunt ? 35 : 25) * _sf);
-      ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5 * _sf, this.wingspan * 0.6 * _sf);
+      if (CONFIG.drawShadows) {
+        const _sf = 1 - Math.min(0.55, _alt / 70);   // higher bird → smaller, fainter shadow
+        noStroke();
+        fill(0, 0, 0, (isActiveHunt ? 35 : 25) * _sf);
+        ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5 * _sf, this.wingspan * 0.6 * _sf);
+      }
 
       translate(0, -_alt);   // lift body to altitude (undistorted; 0 when diving/resting)
 

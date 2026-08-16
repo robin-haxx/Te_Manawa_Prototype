@@ -1,13 +1,9 @@
 // ============================================================
 // TE MANAWA — UI HOST
 // ------------------------------------------------------------
-// Phase 1.5 replacement for the 44 kB Mauri GameUI.
-//
-// delegates on-screen HUD to InstallHUD, which draws the deep-time timeline
-// and the four buttons.
-//
-// Kept deliberately thin. If something here grows past a screen it
-// probably belongs in InstallHUD or Debug instead.
+// Thin host: delegates the on-screen HUD to InstallHUD (deep-time timeline +
+// the five buttons) and owns only the debug message strip. Keep it thin — if
+// something here grows past a screen it probably belongs in InstallHUD or Debug.
 // ============================================================
 
 class GameUI {
@@ -55,14 +51,33 @@ class GameUI {
     const W = this.config.canvasWidth;
     const H = this.config.canvasHeight;
 
+    const debug = (typeof Debug !== 'undefined' && Debug.enabled);
+
     InstallHUD.renderWorldLayer(g, W, H);   // storm cells — under the strips
-    InstallHUD.renderTimeline(this, g, W, H);
-    InstallHUD.renderButtons(this, g, W, H);
 
-    if (typeof Debug !== 'undefined' && Debug.enabled) this.renderMessages(W, H);
-    InstallHUD.renderAshFlash(g, W, H);     // over everything
+    // The on-screen buttons are a DEBUG twin of the wall's physical buttons, so they only
+    // show with the overlay. Visitors get the clean layout: the deep-time axis on a thin
+    // strip at the bottom (where the buttons used to be) and the year floated large and
+    // high (see the InstallHUD renderVisitor* comments).
+    if (debug) {
+      InstallHUD.renderTimeline(this, g, W, H);
+      InstallHUD.renderButtons(this, g, W, H);
+    } else {
+      this._tmButtons = [];                 // nothing clickable off-debug
+      InstallHUD.renderVisitorTimeline(g, W, H);
+      InstallHUD.renderVisitorYear(g, W, H);
+    }
 
-    if (typeof Debug !== 'undefined' && Debug.enabled) Debug.render(g, W, H);
+    // The ambient LED colour band frames the scene at all times — over the HUD strips (so
+    // the bottom band lights the timeline / button row like a bezel) but under the debug
+    // panels, which must stay readable.
+    InstallHUD.renderEdgeGlow(g, W, H);
+
+    if (debug) this.renderMessages(W, H);
+    InstallHUD.renderAshFlash(g, W, H);     // white wash — over everything
+    InstallHUD.renderAshCloud(g, W, H);     // ...and the rolling ash cover rides on top of it
+
+    if (debug) Debug.render(g, W, H);
   }
 
   renderMessages(W, H) {

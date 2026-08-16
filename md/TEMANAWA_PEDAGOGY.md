@@ -4,7 +4,7 @@
 running build, and what is left to build to turn the prototype into an installed exhibit.**
 
 This is a descriptive and forward-looking document, not a new authority. Where it meets a
-design decision it reads *under* `TEMANAWA_PLAN_V2.md` (the spine); where it describes the
+design decision it reads *under* `TEMANAWA_PLAN_V3.md` (the spine); where it describes the
 build it defers to the code. Its job is to hold, in one place, the answer to two questions
 a curator will ask: *what does the wall teach today,* and *what is between here and opening
 night.*
@@ -18,7 +18,7 @@ The installation teaches under hard constraints, and they decide everything belo
 - **Unattended.** No operator, no network, no attract screen, no "touch to begin." A
   visitor walks up to a living diorama already mid-simulation (`TeManawa_kiosk.js`).
 - **Forty seconds, from a distance, at a glance.** The governing principle
-  (`TEMANAWA_PLAN_V2.md` §0.1): *a cartoon seen from above, not a survey of the Manawatū.*
+  (`TEMANAWA_PLAN_V3.md` §0.1): *a cartoon seen from above, not a survey of the Manawatū.*
   Every fact must survive being read from across a gallery in under a minute.
 - **No reading required.** This is a design rule the code states out loud. Three layers
   that "used to be visible to visitors are now debug-only, because each was instrumentation
@@ -48,7 +48,7 @@ land is the geological takeaway: **the river is older than the mountains.**
 
 A fact reaches the visitor **explicitly** (a label or number they read) or **implicitly**
 (a visual change they infer). "Status" is how completely the mechanism is built *now* — the
-prototype runs well ahead of the phase ledger in `TEMANAWA_PLAN_V2.md` §8 in some places and
+prototype runs well ahead of the phase ledger in `TEMANAWA_PLAN_V3.md` §8 in some places and
 behind its intent in others (§3, §4).
 
 | Natural-history fact | How it reaches the visitor | Mode | Status |
@@ -60,7 +60,7 @@ behind its intent in others (§3, §4).
 | The basin was once sea | At ~1 Ma the south is a marine strait/embayment; the river assembles coast-inland and is through-flowing by ~0.5 Ma; the Tararua footprint emerges as a N–S land bridge | Implicit | **Live** |
 | Sea level moved with the ice | Coastline walks in and out with `glacialIndex`; drowned cells cull their plants | Implicit | **Live** (coast/dune detail stubbed) |
 | The climate swung cold and warm, repeatedly | Frost haze deepens; snow line drops; forest contracts *downslope* then climbs back; plants wilt/go dormant; the ambient audio bed shifts at each phase | Implicit | **Live** |
-| Cold is a *different* world, not an empty one | The cast and cover are meant to change over — "cold is busier, not emptier" (`PLAN_V2` §5.3) | Implicit | **Partial** — see §4 |
+| Cold is a *different* world, not an empty one | The cast and cover are meant to change over — "cold is busier, not emptier" (`PLAN_V3` §5) | Implicit | **Partial** — see §4 |
 | An apex predator hunted the moa | A raptor patrols, dives, and catches moa; storms break off the hunt | Implicit | **Live** (identity unresolved — §4) |
 | Eruptions reset the forest, then it returns | Ash greys the ground and kills canopy hardest; the land greens back over sim-years | Implicit | **Live** (wetland "bloom" deferred) |
 | Your management helps or harms the land | Wrong growth button for the climate quietly desaturates the scene toward a tired floor | Implicit | **Live** (placeholder health target) |
@@ -126,9 +126,9 @@ by design — the first thing a visitor perceives is a world already in motion.
 
 ## 3. Where the build stands versus the plan
 
-The prototype does **not** map cleanly onto the `PLAN_V2.md` §8 phase ledger, and a
-contributor reading only that ledger will get the state wrong. Two later tracks have landed
-work the ledger still lists as pending:
+The prototype runs ahead of the original phase ledger in some places and behind in others
+(`PLAN_V3.md` §13 is the honest status). Two later tracks have landed work the ledger still
+listed as pending:
 
 - **`TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` §4 reports steps 1–7 built and harness-green:** the
   season→glacial rebind, the climate table extended to 1 Ma, forest contraction, emergence
@@ -150,7 +150,7 @@ remaining pedagogy lives.
 
 - **The cast-as-legend is the core device, and it is not operational yet.** "The moa cast
   changes with the climate" is finding #3 and the intended way a visitor reads the vegetation
-  without text (`PLAN_V2.md` §3, §5.3). But only **Upland Moa** and **one raptor** are
+  without text (`PLAN_V3.md` §5). But only **Upland Moa** and **one raptor** are
   actually spawned; the other eight moa and the *Dinornis* dimorphism pair are fully defined
   in `TeManawa_species_data.js` and never instantiated. There is currently **no species
   turnover to read.** Turning this on (Phase 7) is the highest-leverage teaching work left.
@@ -165,14 +165,12 @@ remaining pedagogy lives.
   ever names things (§5F).
 - **The scene is a systems-check placeholder.** `levels/level_temanawa_scaffold.js` says so
   in its header: *"This is NOT the Manawatū design."*
-- **Accuracy flag — the apex predator's identity is conflated, and it matters.** The design
-  intends **Eyles' harrier / kērangi** — a compact forest-edge *disher*, at home in the cold
-  (`PLAN_V2.md` §5.2; the scaffold header). The running code instead carries **Haast's eagle
-  / *Hieraaetus moorei*** in the species data, **EylesHarrier** art in the sprite folder, and
-  **Pouākai** in every notification. These are three different birds with three different
-  behaviours (Haast's soars; the harrier dashes — the plan flags the inherited soaring as
-  wrong). Until this is resolved the installation is positioned to teach a *wrong* natural-history
-  fact, so it should be fixed before the cast is expanded.
+- **Accuracy flag — RESOLVED.** The apex predator is now **Eyles' harrier / kērangi** (*Circus
+  teauteensis*) consistently across species data, the `EylesHarrier` class, notification text
+  (*kērangi*, not *Pouākai*) and art (`sprites/EylesHarrier/`). The installation no longer
+  positions a South-Island eagle as the North Island's apex predator. **One piece remains:** the
+  flight *behaviour* is still the inherited soaring model — retune it toward the harrier's low
+  quartering dash when the (delicately balanced) predator model is next touched.
 
 ---
 
@@ -197,7 +195,7 @@ rather than empty.
 ### C. Make the aftermath teach (Phase 6 — disturbance)
 The best teaching structure in the research is invisible at kiosk speed: three of four
 recovery times are instantaneous. `disturb()` plus the **`warp` local clock** stretches each
-aftermath to a few visible seconds (`PLAN_V2.md` §3.4), and wires the buttons to
+aftermath to a few visible seconds (`PLAN_V3.md` §9), and wires the buttons to
 habitat-appropriate effects — storm buries dune plants ESE and they grow back into it (#5);
 eruption blooms the swamps (#4, which still needs a wetland biome, deferred per
 `DEEPTIME_ECOLOGY_PLAN.md` §4).
@@ -219,7 +217,7 @@ precondition has landed).
 ### F. Interpretation and mana whenua co-design
 The timeline marker text, the phase and migration narration, and any naming are **explicit
 placeholders** in the code awaiting co-design (`TeManawa_time.js`, `TeManawa_seasons.js`).
-Decisions still open (`PLAN_V2.md` §10): whether to **acknowledge the absences** with a single
+Decisions still open (`PLAN_V3.md` §16): whether to **acknowledge the absences** with a single
 quiet end-card (the strongest material in the research — 97% of the wetland gone), the story
 framing, and any use of the Te Ahu a Tūranga bone story. This is a curatorial track, and it is
 what would let the mute interpretive layer (§4) finally speak.
@@ -259,7 +257,7 @@ visitor can read them in forty seconds without being asked to read at all.
 
 ---
 
-**Reference:** `TEMANAWA_PLAN_V2.md` (spine) · `TEMANAWA_BUILD_V3.md` (manifest, budgets) ·
+**Reference:** `TEMANAWA_PLAN_V3.md` (spine) · `TEMANAWA_BUILD_V3.md` (manifest, budgets) ·
 `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` (climate/eruption build) ·
 `TEMANAWA_INTERACTION_HEALTH_PLAN.md` (buttons, health) · `TEMANAWA_GEOGRAPHY.md` (the land
 morph) · `TEMANAWA_34VIEW_PLAN.md` (the look).

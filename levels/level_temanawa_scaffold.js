@@ -4,18 +4,22 @@
 // Minimal VALID ambient level whose only job is to prove the fork
 // BOOTS and the ecosystem runs. This is NOT the Manawatū design —
 // the real scene (deep-time terrain morph, the four North Island
-// moa, Eyles' harrier / kērangi, timeline + four buttons, square/
-// portrait layout) is authored per TEMANAWA_PLAN.md. Spec1ies,
+// moa, Eyles' harrier / kērangi, timeline + five buttons, square/
+// portrait layout) is authored per TEMANAWA_PLAN_V3.md. Species,
 // biomes and placeables below reuse existing engine keys so the
 // registry validates. No win/loss: one never-true goal keeps the
 // run in PLAYING indefinitely.
 // ============================================================
-
-var cols_sea = ['#1a3a52','#1e4d6b','#236384'];
-
-
-
-
+const habitatCols = {
+sea : ['#1a3a52','#1e4d6b','#236384'],
+coastal: ['#c2b280','#d4c794','#e6dca8'],
+grassland:['#e6dca8', '#c8d697', '#789762'],
+podocarp: ['#2d5a3d','#346644','#3b724b'],
+montane: ['#4a7c59','#528764','#5a926f'],
+subalpine:['#809a59','#a4b56d','#85a15c'],
+alpine: ['#8b8b8b','#9a9a9a','#a9a9a9'],
+snow: ['#e8e8e8','#f0f0f0','#ffffff']
+};
 
 const LEVEL_TEMANAWA_SCAFFOLD = {
   id: 'temanawa_scaffold',
@@ -60,8 +64,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // BIOMES — the single source of truth for the ground look.
   // ----------------------------------------------------------
   // TerrainGenerator is constructed with this table. It is the ONLY place
-  // ground colour is authored; there is no engine-side copy to keep in sync
-  // (there used to be one in sketch.js, and it silently won nothing).
+  // ground colour is authored; there is no engine-side copy to keep in sync — a
+  // duplicate once existed and silently rendered nothing (see MISTAKES.md).
   //
   //   minElevation / maxElevation
   //       The band, over normalised elevation 0-1. Bands are scanned lowest
@@ -98,57 +102,72 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // boundaries (md/TEMANAWA_34VIEW_PLAN.md §7) — it replaces contour lines as the
   // ground's linework. `contourColor` is now unused (contours retired) but kept
   // so nothing downstream that still reads it breaks.
-      // plantTypes is picked UNIFORMLY per array entry at spawn (simulation.js
-    // spawnPlants): a type's SHARE of the array is its spawn frequency, and
-    // repeating a type weights it up. Habitats follow the research — Lowland is
-    // open grass/scrub/wetland margin (tussock, flax, cabbage tree, mānuka scrub,
-    // scattered kōwhai); Podocarp is closed lowland forest (rimu/kahikatea/tawa
-    // canopy, nīkau + tree-fern understory, kōwhai on the margin). Kōwhai sits in
-    // both but stays more common in the lowland — 1/5 of grassland vs 1/6 of the
-    // richer podocarp mix, and the lowland band is wider so it holds more plants.
-
-
-  
+  //
+  // plantTypes is picked UNIFORMLY per array entry at spawn (simulation.js
+  // spawnPlants): a type's SHARE of the array is its spawn frequency, and
+  // repeating a type weights it up. Habitats follow the research — Lowland is
+  // open grass/scrub/wetland margin (tussock, flax, cabbage tree, mānuka scrub,
+  // scattered kōwhai); Podocarp is closed lowland forest (rimu/kahikatea/tawa
+  // canopy, nīkau + tree-fern understory, kōwhai on the margin). Kōwhai sits in
+  // both but stays more common in the lowland — 1/5 of grassland vs 1/6 of the
+  // richer podocarp mix, and the lowland band is wider so it holds more plants.
 
   biomes: {
-    //'#000000', '#000000', '#000000'
     sea:       { key:'sea',       name:"Sea",             minElevation:0,    maxElevation:0.10,
-                 colors:cols_sea, contourColor:'#0f2533', outlineColor:'#9aaab5',
+                 colors:habitatCols.sea, contourColor:'#0f2533', outlineColor:habitatCols.sea[2],
                  walkable:false, canHavePlants:false, canPlace:false },
     coastal:   { key:'coastal',   name:"Coast",           minElevation:0.10, maxElevation:0.15,
-                 colors:['#c2b280','#d4c794','#e6dca8'], contourColor:'#8a7d5a', outlineColor:'#d2c8af',
+                 colors:habitatCols.coastal, contourColor:'#8a7d5a', outlineColor:'#c2b280',
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
-                 colors:['#e6dca8', '#c8d697', '#789762'], contourColor:'#2d3a27', outlineColor:'#313e2d',
+                 colors:habitatCols.grassland, contourColor:'#2d3a27', outlineColor:'#789762',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
-                 colors:['#2d5a3d','#346644','#3b724b'], contourColor:'#1e3d29', outlineColor:'#28452e',
+                 colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#3b724b',
                  walkable:true,  canHavePlants:true, plantTypes:['rimu','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
-                 colors:['#4a7c59','#528764','#5a926f'], contourColor:'#335740', outlineColor:'#203025',
+                 colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#5a926f',
                  walkable:true,  canHavePlants:true, plantTypes:['beech','fern','tawa'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
-                 colors:['#809a59','#a4b56d','#85a15c'], contourColor:'#bfcda8', outlineColor:'#2b2f25',
+                 colors:habitatCols.subalpine, contourColor:'#bfcda8', outlineColor:'#85a15c',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','manuka'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
-                 colors:['#8b8b8b','#9a9a9a','#a9a9a9'], contourColor:'#5c5c5c', outlineColor:'#5c6b55',
+                 colors:habitatCols.alpine, contourColor:'#5c5c5c', outlineColor:'#a9a9a9',
                  walkable:false, canHavePlants:false, canPlace:false },
     snow:      { key:'snow',      name:"Snow",            minElevation:0.90, maxElevation:1.0,
-                 colors:['#e8e8e8','#f0f0f0','#ffffff'], contourColor:'#b0b0b0', outlineColor:'#9aa6ad',
+                 colors:habitatCols.snow, contourColor:'#b0b0b0', outlineColor:'#9aa6ad',
                  walkable:false, canHavePlants:false, canPlace:false }
   },
 
   species: {
-    moa: ['upland_moa'],
-    eagle: ['haasts_eagle']
+    // The goose registers under the `moa` base type (own Goose class) so it lives in
+    // the moa list and shares the grazer engine — hence it belongs in this list too.
+    moa: ['upland_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'heavy_footed_moa', 'giant_goose', 'north_island_takahe'],
+    eagle: ['eyles_harrier']
   },
   startingSpecies: 'upland_moa',
 
-  initialEntityCounts: { moa: 15, eagle: 3, kereru: 8 },
+  // Multi-species founder spawn (used instead of startingSpecies when present).
+  // A mix of forest and OPEN-COUNTRY grazers so the cold-phase reading works: the
+  // goose + plains/coastal moa (all `openCountry`) fill the lowland when the visitor
+  // grows TUSSOCK in a glacial, while the forest moa hold the interglacial.
+  initialSpeciesDistribution: {
+    upland_moa:       3,   // small cold-forest moa (not open-country)
+    little_bush_moa:  3,   // forest floor (not open-country)
+    stout_legged_moa: 3,   // coastal-to-lowland grazer (open-country)
+    mantells_moa:     2,   // lowland grazer (open-country)
+    heavy_footed_moa: 2,   // lowland flats specialist (open-country)
+    giant_goose:      5,   // North Island goose — open grassland/coast (open-country)
+    north_island_takahe: 3 // mōho — territorial rail of grassland/scrub/forest margin (open-country)
+  },
 
-  // Timings only — the economy is gone (Phase 1.5). startingMauri and
-  // the placeable toolbar no longer exist. (`seasonDuration` is vestigial: the
-  // cold cycle is driven by the deep-time glacial index now, not a frame timer.)
+  // kōkako + huia are flighted forest birds (their own otherEntities lists, like the
+  // kererū). Huia spawn as bonded pairs, so an even count = whole pairs.
+  initialEntityCounts: { moa: 15, eagle: 3, kereru: 8, kokako: 6, huia: 4 },
+
+  // Timings only — the economy is gone; startingMauri and the placeable toolbar
+  // no longer exist. (`seasonDuration` is vestigial: the cold cycle is driven by
+  // the deep-time glacial index now, not a frame timer.)
   economy: {
     seasonDuration: 2100, eggIncubationTime: 600,
     securityTimeToLay: 100, securityTimeVariation: 300,
@@ -158,7 +177,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // ==========================================================
   // MECHANICS — opt-in behaviours read via LEVEL_MECHANICS (sketch.js loadLevel).
   // ----------------------------------------------------------
-  // FOREST CONTRACTION (plan §1.3). Canopy trees (beech/rimu/fern/kahikatea/tawa;
+  // FOREST CONTRACTION. Canopy trees (beech/rimu/fern/kahikatea/tawa;
   // FOREST_TREES in TeManawa_plant.js) whose elevation
   // falls outside the forest band are suppressed, so the forest visibly retreats
   // downslope as the GLACIAL deepens and climbs back through the interglacial. The
@@ -170,16 +189,80 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   //                  gone. Matches the LGM record for the lower North Island
   //                  (grassland/shrubland/herbfield, forest surviving in refugia).
   // The painted GROUND colour still reads the static elevation bands; shifting the
-  // baked treeline per phase is a follow-up (see plan §1.3 / build note).
+  // baked treeline per phase is a follow-up.
   // ==========================================================
   mechanics: {
     forestContraction: true,
+
+    // OPEN-COUNTRY TUSSOCK BOOST. The goose and the plains/coastal moa (species
+    // flagged `openCountry`) favour lowland grassland/scrub/coast, and get a small
+    // population lift while the visitor grows TUSSOCK in a GLACIAL — the matched cold
+    // regime (Game._tussockFlush). It reads as "cold is busier, not emptier"
+    // (md/TEMANAWA_ECOLOGY_FAUNA.md). Bounded by the population caps below, so it is
+    // only ever a nudge. Wired in Moa.behave (hunger relief) + _resetAfterMating
+    // (breeding cooldown); see TeManawa_goose.js.
+    openCountryTussockBoost:      true,
+    openCountryBoostHungerRelief: 0.04,   // per-tick hunger shaved while the flush holds (≈ offsets base hunger)
+    openCountryBoostCooldownMult: 0.7,    // open-country grazers breed ~30% faster during the flush
+
     maxLivePlants: 900,                          // cap for kererū seed dispersal (≤1000 live-plant budget)
     disperseDensityRadius: 26,                   // a kererū seed only establishes where the canopy is
     disperseDensityMax: 3,                       // sparse: < this many live plants within the radius
     kereruMaxPopulation: 16,                     // flock cap (breeding stops at it); founders spawn 8
     kereruPopulationFloor: 2,                    // never starve below this — keeps a disperser alive so
                                                  // the interglacial forest can always recruit again
+    moaPopulationFloor: 2,                         // per-species minimum — species at/below this can't
+                                                   // be hunted or starved, so no moa species goes extinct
+
+    // ==========================================================
+    // ECOLOGY FEEDBACK — surplus-aware harrier + per-species carrying targets +
+    // a rare last-resort safety net. The intent (per the design chat): this is an
+    // ambient sim, so populations should INCREASE and DECLINE as interaction
+    // feedback and never truly go extinct. Three levers work together:
+    //   1. the harrier hunts whatever is most abundant (moa OR forest flyer),
+    //      weighted by surplus over target, and never touches a species at its
+    //      floor — so it crops booms and spares the scarce (TeManawa_eagle.js hunt);
+    //   2. every species breeds up to its `target` then only trickles, so no fast
+    //      breeder monopolises the shared moa cap (Moa._computeBreedDensityFactor /
+    //      Kereru._tryReproduce);
+    //   3. autoRefound re-seeds a species only if it gets STUCK (down to one bird,
+    //      or all one sex, at/below floor) for a sustained spell — a backstop, not
+    //      the mechanism. stats.refounds counts it; if it fires often the base
+    //      dynamics are too harsh and we move to rate-based regulation.
+    // ==========================================================
+    speciesCarryingTargets: true,
+    speciesBreedKnee:    0.7,    // breed freely below 0.7×target, taper to target
+    speciesSuppressFloor: 0.1,   // courtship-start probability once at/over target (a trickle)
+    speciesOverTargetLay: 0.12,  // grazer lay-through rate once at/over target (the brake that bites)
+    recoveryBreedFrac:   0.6,    // a species below 0.6×target breeds at a relaxed hunger gate (Allee aid)
+    recoveryMatingHungerMult: 1.6,// how much the hunger gate relaxes while recovering
+    flyerTargetFrac:     0.6,    // fallback flyer target = 0.6×maxPopulation (when not listed below)
+    flyerOverTargetBreed: 0.15,  // over-target flyers only lay 15% of the time
+    eagleSurplusBonus:   4,      // how strongly the harrier prefers over-target prey
+    eagleMaxChase:       420,    // ticks locked on one prey before the harrier gives up (less fruitless chasing)
+    flyerFleeMult:       1.15,   // flee speed = baseSpeed×this — kept BELOW the harrier's 0.6 hunt speed so chases resolve
+
+    // target = comfortable population (harrier crops above it, breeding tapers to it);
+    // floor = protected minimum (never hunted/starved below it). Targets sum to ~38
+    // grazers + ~22 flyers, well under the shared 60-moa cap and the flyer caps.
+    speciesTargets: {
+      upland_moa:          { target: 6, floor: 2 },
+      little_bush_moa:     { target: 6, floor: 2 },
+      stout_legged_moa:    { target: 5, floor: 2 },
+      mantells_moa:        { target: 4, floor: 2 },
+      heavy_footed_moa:    { target: 4, floor: 2 },
+      giant_goose:         { target: 8, floor: 3 },
+      north_island_takahe: { target: 5, floor: 2 },
+      kereru:              { target: 10, floor: 3 },
+      kokako:              { target: 6, floor: 2 },
+      huia:                { target: 6, floor: 2 }
+    },
+
+    autoRefound:          true,
+    refoundCheckInterval: 300,   // check cadence (sim-clock dt)
+    refoundDelay:         2400,  // sustained "stuck" time before the safety net fires
+
+    eruptionPlantFloor: 0.15,                      // at least 15% of plants survive any eruption
     forestBand: { min: 0.12, max: 0.80 },        // default / interglacial fallback
     forestBandByStage: {
       interglacial: { min: 0.12, max: 0.80 },

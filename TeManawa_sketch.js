@@ -35,6 +35,9 @@ let currentFPS = 60;
 //   growingFrames if set, loads <prefix>_Growing_01..NN.png as a growth sequence
 //   matureVariants if set, loads <prefix>_Size_00..NN-1.png; a mature plant picks
 //                 one at random (per instance) instead of the Mature/Thriving art
+//   growFromVariant index into the loaded Size variants to reuse as the (single)
+//                 growth frame, for a plant that grows in one of its size looks
+//                 rather than a dedicated Growing_ sequence
 //   sizeOnly      if set, the plant has NO seasonal state art: the Mature/Thriving/
 //                 Wilting/Dormant frames are never loaded and never shown — it plays
 //                 its growth sequence while immature, then holds its size variant for
@@ -52,7 +55,11 @@ const PLANT_SPRITE_SETS = {
   // Dedicated-folder art, one frame standing in for every state (single). The
   // old root Tussock_/Flax_/Fern_ state files are superseded and left in place.
   tussock:   { folder: 'Tussock/',  single: 'Tussocks_Sprite_00001.png' },
-  flax:      { folder: 'Flax/',     single: 'Flax_Mature.png' },
+  // Harakeke — two size variations (Flax_Size_00/01). A mature plant picks one at
+  // random per instance; while immature it grows in the smaller Size_00 look
+  // (growFromVariant). Flax_Mature stands in for the wilting/dormant states.
+  flax:      { folder: 'Flax/',     single: 'Flax_Mature.png', prefix: 'Flax',
+               matureVariants: 2, growFromVariant: 0 },
   // fern is the mamaku/ponga tree-fern stand-in; its art has a trunk, so base-anchor.
   fern:      { folder: 'TreeFern/', single: 'TreeFern_Mature.png', anchor: 'base' },
   // PROTOTYPE: rimu renders with Tōtara art. Art swap only — the 'rimu' key
@@ -134,12 +141,31 @@ function preload(){
       }
     }
 
-    set.meta = { anchor: def.anchor || 'center', scale: def.scale || 1.0, sizeOnly: !!def.sizeOnly };
+    // Growing look sourced from a mature-size variant, for a plant with no
+    // dedicated Growing_ sequence: it grows in the chosen variant (shrunk by
+    // `growth`), then holds a random variant once mature. Aliases the already-
+    // loaded variant as a single growth frame — no reload.
+    if (def.growFromVariant != null && set.variants && set.variants[def.growFromVariant]) {
+      set.growing = [set.variants[def.growFromVariant]];
+    }
+
+    // All plant art is now side-on (upright billboards), so it stands on its
+    // ground point — base-anchored by default. `anchor:'center'` is only for the
+    // legacy top-down crowns, of which none remain. See Plant.render offsetY.
+    set.meta = { anchor: def.anchor || 'base', scale: def.scale || 1.0, sizeOnly: !!def.sizeOnly };
     plantSprites[key] = set;
   }
 
   loadPlaceableSprites();
   loadEntitySprites();
+
+  // Environmental water strips — single-frame fallback art for the eel and river
+  // current. Registered here so they win over SpriteStrips.ensurePlaceholders()
+  // (which only fills gaps) when WaterLayer.build() runs after setup. Sea shimmer
+  // and glints stay on their placeholders until that art lands.
+  SpriteStrips.loadStrip('eel_swim',      'sprites/Environmental/Eels_Swimming.png',           1);
+  SpriteStrips.loadStrip('water_current', 'sprites/Environmental/RiverFlow_Flowing_00001.png', 1);
+
   preloadAudio();
 }
 
@@ -156,9 +182,21 @@ const CONFIG = {
   // Reference height is always 1080; width is computed from window aspect ratio
   referenceHeight: 1080,
 
-  // Canvas dimensions (set by recalculateLayout, defaults to 16:9)
+  // Canvas dimensions (set by recalculateLayout, defaults to 16:9). These are the
+  // LOGICAL 1080-space dimensions everything is authored in (viewZoom, HUD, gallery).
   canvasWidth: 1920,
   canvasHeight: 1080,
+
+  // ===== SPLIT-RESOLUTION PIPELINE =====
+  // The backing canvas is spriteSupersample× the logical size, and a single global
+  // scale(SS) in draw() renders sprites + HUD at that higher resolution (the source
+  // PNGs carry 2-4× the detail — see the plant gallery). The TERRAIN, by contrast, is
+  // composited into a 1080 offscreen buffer (Game._terrainLayer) and blitted up as one
+  // quad, so its per-pixel cost — the season blit, water decals, washes and the
+  // saturate() health filter — stays pinned at 1080. See draw()/Game.render().
+  //   SS = 1 → exactly the old single-1080-canvas behaviour (safe fallback).
+  //   SS = 2 → 4K-native sprites. ?sprites=1|2|3 overrides at startup.
+  spriteSupersample: 2,
 
   // Game area (set by recalculateLayout)
   gameAreaX: 0,
@@ -191,23 +229,27 @@ const CONFIG = {
   zoom: 1,
   debugMode: false,
 
+  // Elliptical drop shadows under entities (moa, eagle, kererū, egg, plants).
+  // Off by default. The flight shadows (eagle, kererū) also sell height at 3/4 —
+  // with this off, flying birds read flatter against the ground.
+  drawShadows: false,
+
   // ===== PLAY AREA =====
   // mapGrid is the CELL BUDGET, not the width: the grid holds mapGrid² cells in
   // both terrain modes. This is the single most expensive number in the project —
-  // the terrain bake is one pixel per cell, and Phase 4's four ecology fields are
-  // one float per cell each.
+  // the terrain bake is one pixel per cell, and each per-cell ecology field is one
+  // float per cell.
   //
-  // 512 is chosen to preserve the existing plant/moa density tuning (the old
-  // portrait map was ~432x768 = 332k cells; 512^2 = 262k). TEMANAWA_BUILD_V3.md
-  // §5.2 sets the long-term limit at 256 — drop to 256 in Phase 3, when the
-  // interval re-bake lands, and retune plantDensity and spawn counts at the same
-  // time. Until then there is no per-interval bake, so 512 costs nothing per frame.
+  // 512 preserves the existing plant/moa density tuning (the old portrait map was
+  // ~432×768 = 332k cells; 512² = 262k). TEMANAWA_BUILD_V3.md §5.2 sets the
+  // long-term limit at 256 — it can now drop to 256, retuning plantDensity and
+  // spawn counts at the same time.
   mapGrid: 512,
 
   // ===== TERRAIN FOOTPRINT MODE =====
-  //   'square'  Phase 1.5 behaviour: a mapGrid × mapGrid world, letterboxed into
-  //             the panel. Predictable and matches square authored art, but on
-  //             the 9:16 kiosk it leaves ~44% of the screen as background.
+  //   'square'  a mapGrid × mapGrid world, letterboxed into the panel. Predictable
+  //             and matches square authored art, but on the 9:16 kiosk it leaves
+  //             ~44% of the screen as background.
   //   'fit'     the world takes the screen's aspect at the SAME cell count, so it
   //             fills the panel edge to edge for the same simulation cost.
   //             1080×1920 -> 384×682 cells. See TerrainGenerator.gridFor().
@@ -347,9 +389,8 @@ function applyLevelToConfig(levelDef) {
   // View & calendar (per-level, with engine defaults for levels that omit them)
   CONFIG.zoom = (levelDef.zoom != null) ? levelDef.zoom : 2.5;
   CONFIG.mapGrid = (levelDef.mapGrid != null) ? levelDef.mapGrid : 512;
-  // A level may prefer one footprint mode (authored square heightmaps will want
-  // 'square' once Phase 3 lands), but a mode already chosen by URL or by hand
-  // wins — otherwise loadLevel would silently undo it.
+  // A level may prefer one footprint mode, but a mode already chosen by URL or by
+  // hand wins — otherwise loadLevel would silently undo it.
   if (levelDef.terrainFit != null && !CONFIG._terrainFitPinned) {
     CONFIG.terrainFit = levelDef.terrainFit;
   }
@@ -618,103 +659,6 @@ function initPlaceableColors() {
   }
 }
 
-// ============================================
-// PLANT DEFINITIONS
-// ============================================
-// coldTolerance: 0 = most cold-sensitive (tree ferns), 1 = fully cold-hardy
-// (tussock, glacial shrubs). Modulates dormancy chance and the effective
-// modifier that drives sprite state, so a glacial produces varied composition
-// — tussock thriving, beech holding mature, fern wilting — rather than a
-// blanket shift.
-const PLANT_TYPES = {
-  tussock: { name: "Tussock", nutrition: 25, color: '#8ea040', size: 12, growthTime: 200,
-    coldTolerance: 1.0,
-    description: "Hardy grass that covers the high country" },
-  flax: { name: "Flax", nutrition: 35, color: '#487020', size: 13, growthTime: 280,
-    coldTolerance: 0.7,
-    description: "Harakeke: versatile, with sweet nectar" },
-  fern: { name: "Fern", nutrition: 30, color: '#228B22', size: 18, growthTime: 240,
-    coldTolerance: 0.1,
-    description: "The iconic Ponga's fronds populate forests" },
-  rimu: { name: "Rimu", nutrition: 50, color: '#8B0000', size: 36, growthTime: 400,
-    coldTolerance: 0.3,
-    description: "Ancient podocarp with bright red fruit" },
-  beech: { name: "Beech", nutrition: 40, color: '#8b430f', size: 26, growthTime: 350,
-    coldTolerance: 0.6,
-    description: "Tawhai: produces mast seed in good years" },
-  kawakawa: { name: "Kawakawa", nutrition: 40, color: '#3d9a5e', size: 11, growthTime: 150,
-    coldTolerance: 0.15,
-    description: "Heart-shaped leaves with peppery fruit" },
-  patotara: { name: "Patotara", nutrition: 35, color: '#c94c5a', size: 14, growthTime: 160,
-    coldTolerance: 0.8,
-    description: "Alpine shrub with summer berries" },
-
-  // --- Glacial-flora (LGM) additions. Procedural blob-rendered (no sprites yet). ---
-  coprosma: { name: "Coprosma", nutrition: 30, color: '#5c7d3e', size: 11, growthTime: 190,
-    coldTolerance: 0.85,
-    description: "Divaricating shrub; hardy glacial browse with orange berries" },
-  dracophyllum: { name: "Dracophyllum", nutrition: 28, color: '#9a7b4f', size: 15, growthTime: 250,
-    coldTolerance: 0.9,
-    description: "Inaka grass-tree of the cold subalpine tops" },
-  matagouri: { name: "Matagouri", nutrition: 26, color: '#7a6f4a', size: 12, growthTime: 210,
-    coldTolerance: 0.95,
-    description: "Tūmatakuru: thorny shrub of the glacial outwash flats" },
-
-  // --- Favoured, browse-resistant plants (planted via the palette) ---
-  lancewood: { name: "Juvenile Lancewood", nutrition: 34, color: '#6a5a33', size: 15, growthTime: 300,
-    coldTolerance: 0.5,
-    description: "Horoeka: tough and spiky when growing." },
-  speargrass: { name: "Speargrass", nutrition: 30, color: '#8f9a55', size: 13, growthTime: 260,
-    coldTolerance: 0.85,
-    description: "Taramea: spiny herb of the hills" },
-
-  // Kōwhai (Sophora) — small flowering lowland/riparian tree, spreads into the
-  // podocarp margin. coldTolerance 0.45 (< warmMax) makes it a warm, kererū-
-  // dispersable type, so it recruits in the interglacial. Not in FOREST_TREES,
-  // so the forest-band contraction does not suppress it. Single-asset art for
-  // now; the flowering (spring gold) state comes with its own frame later.
-  kowhai: { name: "Kōwhai", nutrition: 38, color: '#cba33c', size: 48, growthTime: 300,
-    coldTolerance: 0.45,
-    description: "Kōwhai: spring-gold flowers, a lowland nectar tree" },
-
-  // --- Dedicated-folder species (single-asset art). Habitats set in the level
-  //     scaffold biomes; coldTolerance vs warmMax(0.65)/coldMin(0.75) decides
-  //     which growth button matures them and whether kererū disperse them. ---
-
-  // Kahikatea (Dacrycarpus) — the tallest NZ tree, wet lowland podocarp forest.
-  // Warm canopy tree (coldTolerance 0.35): kererū-dispersed, and in FOREST_TREES
-  // so it retreats with the glacial forest.
-  kahikatea: { name: "Kahikatea", nutrition: 48, color: '#556b3d', size: 36, growthTime: 420,
-    coldTolerance: 0.35,
-    description: "Kahikatea: the tallest tree, of wet lowland forest" },
-
-  // Nīkau (Rhopalostylis) — the world's southernmost palm; frost-tender lowland
-  // forest. Low coldTolerance 0.2 sinks it hard in glacials (its range collapse);
-  // warm, so kererū carry its red fruit. Understory, not FOREST_TREES.
-  nikau: { name: "Nīkau", nutrition: 40, color: '#3f7d42', size: 20, growthTime: 380,
-    coldTolerance: 0.2,
-    description: "Nīkau: the world's southernmost palm, red-fruited" },
-
-  // Tawa (Beilschmiedia) — broadleaf canopy of lowland-to-montane forest, and the
-  // classic large-fruited tree kererū disperse. Warm canopy (0.4), in FOREST_TREES.
-  tawa: { name: "Tawa", nutrition: 45, color: '#3d5f36', size: 30, growthTime: 400,
-    coldTolerance: 0.4,
-    description: "Tawa: broadleaf canopy whose plum fruit needs kererū" },
-
-  // Mānuka (Leptospermum) — hardy light-demanding pioneer scrub, lowland to
-  // subalpine. coldTolerance 0.7 is NEUTRAL to both growth buttons (like flax) —
-  // a pioneer, neither climax forest nor alpine tussock. Not in FOREST_TREES.
-  manuka: { name: "Mānuka", nutrition: 22, color: '#6a7b4a', size: 24, growthTime: 180,
-    coldTolerance: 0.7,
-    description: "Mānuka: hardy pioneer scrub with white tea-tree flowers" },
-
-  // Tī kōuka / cabbage tree (Cordyline) — open, damp lowland and wetland margins;
-  // hardy and frost-tolerant but light-demanding, so open country not closed
-  // forest. Warm-hardy 0.6; bird-dispersed. Not in FOREST_TREES.
-  cabbagetree: { name: "Tī Kōuka", nutrition: 32, color: '#7a8a4e', size: 22, growthTime: 260,
-    coldTolerance: 0.6,
-    description: "Tī kōuka: the cabbage tree of open, wet ground" }
-};
 
 // ============================================
 // HABITAT HEALTH — the "quiet saturation" health readout
@@ -755,6 +699,62 @@ const HEALTH = {
   recruitRecoverRate: 0.010   // per-frame ease back toward 1 while recruitment can proceed
 };
 if (typeof window !== 'undefined') window.HEALTH = HEALTH;   // live-tunable in the console, like LOOK / TM_TIME
+
+// ============================================
+// SAND FLUX — the coastal dune engine (TEMANAWA_ECOLOGY_COAST.md §10)
+// ============================================
+// "Wind is not an event, it's the background field." The NW wind is ALWAYS on and never changes
+// direction; its STRENGTH rises non-linearly into a glacial (§10D). sandFlux = windStrength ×
+// exposedSandFraction, and the whole dune system is one feedback line: vegetation cover REDUCES
+// sand flux, sand flux BURIES vegetation (§10A). We express that with the machinery already here:
+//   • windStrength   ← the glacial index (seasonManager.getWinterness()).
+//   • exposedSand     ← climate openness (cold = thin cover) + the disturbance the visitor drives
+//                       (wrong FOREST/TUSSOCK regime, eruption ash, storm spam).
+//   • burial          ← wind × the DISTURBANCE part only, drained from habitat health. Keying it to
+//                       disturbance (not the climate baseline) keeps "well-managed + undisturbed =
+//                       full health" intact, while mismanagement bites hardest when the wind is up.
+// Game._sandFlux (0..1) is the physical quantity, eased slowly and mirrored onto terrain._sandFlux
+// for a future bake-reach hook (an active field surging the sand colour further inland).
+const SANDFLUX = {
+  windBase:     0.35,   // baseline NW wind strength (always on) — even a warm interglacial has some flux
+  windGamma:    1.6,    // wind rises NON-linearly into a glacial: windStrength = windBase + (1−windBase)·winterness^γ
+  openBase:     0.55,   // bare-sand exposure from CLIMATE alone at full glacial (thin cold cover); 0 in the interglacial
+  wRegime:      0.60,   // extra exposure when the WRONG cover is forced for the climate (× (1 − regimeFit))
+  wAsh:         0.50,   // extra exposure from eruption ash stripping the cover (× ashCover)
+  wStorm:      0.50,   // transient exposure spike from storm pressure — "advance the dune a step" (§10B; × _stormPressure)
+  ease:         0.03,   // per-frame ease of _sandFlux toward its target (dt=1). Slow = a calm, deep-time drift.
+  burialWeight: 0.18    // how hard an ACTIVE, mismanaged dunefield drains habitat health (sand burying coastal veg, §10C)
+};
+if (typeof window !== 'undefined') window.SANDFLUX = SANDFLUX;
+
+// ============================================
+// STORM habitat effects (TEMANAWA_ECOLOGY_COAST.md §10B–C)
+// ============================================
+// "A storm winds the succession clock backwards, and it does so unevenly." One button, a
+// different effect by HABITAT and SPECIES (Game.applyStormToPlants, fired once per press):
+//   • snap the inland EMERGENTS — tall canopy podocarps/beech catch the wind and are thrown;
+//   • salt-burn + bury the seaward margin — low coastal plants, ASYMMETRIC by species (§10C):
+//       soft, non-rhizomatous species are knocked back; hardy open/dune binders ride it out.
+// (The dune "advance a step" + blow-out exposure land through the sand-flux surge, already wired
+// to _stormPressure; foredune binders like spinifex/pīngao are colour, not entities, so §10C's
+// "thrives on burial" maps onto the hardy open species that DO exist.) Scaled by wind strength,
+// so a glacial gale bites hardest (§10D). Live-tunable, like HEALTH / SANDFLUX.
+const STORM_EMERGENT = new Set(['rimu', 'kahikatea', 'tawa', 'beech']);                 // killed when tall (leave gaps)
+const STORM_HARDY    = new Set(['tussock', 'flax', 'manuka', 'matagouri', 'speargrass', // ride it out / thrive (§10C)
+                                'patotara', 'coprosma', 'dracophyllum']);
+const STORM_SOFT     = new Set(['cabbagetree', 'kowhai', 'nikau', 'fern', 'kawakawa', 'lancewood']); // buried out (§10C)
+const STORMFX = {
+  coastalHi:         0.24,  // elevation below which a plant sits in the salt-burn / dune-slack seaward zone
+  coastalDmg:        0.85,  // peak coastal storm damage (salt-burn + lee burial) right at the waterline
+  emergentDmg:       0.60,  // peak windthrow damage to a fully-grown inland emergent (the 1936 gale "halved" them)
+  emergentMinGrowth: 0.50,  // only trees taller than this catch the wind; short ones ride it out
+  killThresh:        0.50,  // windthrow damage above this UPROOTS an emergent (alive=false → regrows) vs a growth knockback
+  softVuln:          1.00,  // salt/burial vulnerability of soft, non-rhizomatous species (§10C buried out)
+  midVuln:           0.50,  // default species vulnerability
+  hardyVuln:         0.12,  // rhizomatous binders / cold-hardy open species — ride out the storm (§10C thrive/tolerate)
+  minGrowth:         0.08   // growth floor after a knockback (never fully to zero unless an emergent is uprooted)
+};
+if (typeof window !== 'undefined') window.STORMFX = STORMFX;
 
 // ============================================
 // GAME MANAGER
@@ -896,7 +896,7 @@ class Game {
 
     this.init();
 
-    // A full init can block the main thread for several seconds (the Phase 3 bake).
+    // A full init can block the main thread for several seconds (the terrain bake).
     // Stamp the kiosk heartbeat so a LEGITIMATE long rebuild is never mistaken for
     // a stall — otherwise a desktop resize (DevTools opening counts) triggers the
     // watchdog's hard reload right after the rebuild finishes.
@@ -967,13 +967,16 @@ class Game {
     // Eruption ash state (disturb/regen, plan §2.1). A fresh living world carries no ash;
     // applyAsh() arms it after a rebuild when an eruption is being shown.
     this._ashCover = 0; this._ashFromYear = 0; this._ashDecayYears = 1; this._ashTier = null;
+    this._ashCloudUntil = 0; this._ashCloudMode = 'tap';   // eruption sprite cover (InstallHUD.renderAshCloud)
 
     // Habitat-health readout (md/TEMANAWA_INTERACTION_HEALTH_PLAN.md). A fresh world starts
     // healthy and fully saturated; the signal follows ash + regime-fit, so an undisturbed,
     // well-managed world stays at full colour. Soft resets keep these (they ease on their
     // own), so only the full init() reseeds them.
     this._habitatHealth = 1; this._sceneSat = 1; this._regimeFit = 1; this._recruitment = 1;
+    this._tussockFlush = false;   // TUSSOCK-in-glacial flush → open-country grazer lift (set in _updateHabitatHealth)
     this._stormPressure = 0; this._stormOveruse = false;
+    this._sandFlux = 0; this._sandBurial = 0; this._duneSurge = 0;   // coastal dune engine (SANDFLUX / _updateSandFlux)
 
     // Which eruption years have already fired this cycle — so an eruption fires ONCE as the
     // clock crosses its checkpoint (auto), and again only after a rebuild repositions the
@@ -1089,10 +1092,10 @@ class Game {
   }
 
   // ============================================
-  // ERUPTION DISTURBANCE — ash clear + slow regen (plan §2.1 / §6)
+  // ERUPTION DISTURBANCE — ash clear + slow regen
   // ============================================
   // Land on an eruption event: rebuild the living world (soft regen — which resets the
-  // clock, so re-seek AFTER, per §3.4), morph the terrain to that year under the ash flash,
+  // clock, so re-seek AFTER), morph the terrain to that year under the ash flash,
   // then apply the ash clearing. The clock plays on and the land greens back as ash decays.
   // Used by the Eruption button for BOTH revert (previous event) and skip (next event).
   applyEruptionAt(targetYear, eruption) {
@@ -1114,9 +1117,6 @@ class Game {
     this._autoPrevYear = targetYear;                             // the auto-check must not re-fire the event we just placed
   }
 
-  // Knock the cast back and arm the ash cover for the event's tier. Canopy (FOREST_TREES)
-  // takes the full clearFraction; other plants a lighter share. Killed plants recover on
-  // their existing regrowth timers as the ash clears — no wetland bloom (no wetland biome yet).
   applyAsh(eruption) {
     const T = (typeof DeepTime !== 'undefined' && DeepTime.TIERS) || null;
     const tier = (T && eruption && T[eruption.tier]) || (T && T.major) || { clearFraction: 0.6, decayYears: 18000 };
@@ -1126,25 +1126,47 @@ class Game {
     this._ashTier = eruption ? eruption.tier : 'major';
     const plants = this.simulation && this.simulation.plants;
     if (plants) {
-      const canopy = (typeof FOREST_TREES !== 'undefined') ? FOREST_TREES : null;
+      const PT = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+      const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+      const floorFrac = (M && M.eruptionPlantFloor != null) ? M.eruptionPlantFloor : 0.15;
+
+      let aliveCount = 0;
+      for (let i = 0; i < plants.length; i++) {
+        if (plants[i] && plants[i].alive) aliveCount++;
+      }
+      const floor = Math.ceil(aliveCount * floorFrac);
+      let killed = 0;
+      const maxKills = aliveCount - floor;
+
       for (let i = 0; i < plants.length; i++) {
         const p = plants[i];
         if (!p || !p.alive) continue;
-        const frac = (canopy && canopy.has(p.type)) ? tier.clearFraction : tier.clearFraction * 0.6;
-        if (Math.random() < frac) { p.alive = false; p.growth = 0; p.regrowthTimer = 0; }
+        if (killed >= maxKills) break;
+        const def = PT ? PT[p.type] : null;
+        const vuln = (def && def.ashVulnerability != null) ? def.ashVulnerability : 0.5;
+        if (Math.random() < tier.clearFraction * vuln) {
+          p.alive = false; p.growth = 0; p.regrowthTimer = 0;
+          killed++;
+        }
       }
     }
-    if (eruption && this._firedEruptions) this._firedEruptions.add(eruption.yearsBP);   // fired once per cycle
+    if (eruption && this._firedEruptions) this._firedEruptions.add(eruption.yearsBP);
   }
 
   // Fire an eruption IN PLACE — the ambient-timeline path. No seek, no soft-regen (the
   // living world carries on): just the ash clearing on the current cast plus a gentle,
   // photosensitivity-safe ramped flash. Used by _checkAutoEruptions as the clock crosses
   // each checkpoint, so the visitor sees the eruptions happen without touching the button.
+  // The full takeover — screen-shake rumble + the rolling ash-cloud sprite — fires here
+  // too (same _ashCloudUntil window the button arms), so a timeline eruption reads as an
+  // event, not just a quiet ground wash. 'tap' envelope: roll-in, hang, fade, no charge.
   _fireEruptionInPlace(eruption) {
     if (typeof TM_TIME !== 'undefined' && typeof millis === 'function') {
-      this._tmAshUntil = millis() + TM_TIME.ashMillis;
+      const now = millis();
+      this._tmAshUntil = now + TM_TIME.ashMillis;
       this._tmAshMode  = 'tap';                    // a single rise-and-fall, no charge, no strobe
+      this._ashCloudUntil = now + TM_TIME.cloudMillis;   // rumble (shake) + ash-cloud sprite takeover
+      this._ashCloudMode  = 'tap';
     }
     this.applyAsh(eruption);                        // ashCover + tiered knock-back; marks it fired
   }
@@ -1176,23 +1198,121 @@ class Game {
     }
   }
 
+  // SAND FLUX model (TEMANAWA_ECOLOGY_COAST.md §10A/§10D) — pure, so tools/bootcheck.js can
+  // assert its monotonicities. windStrength rises non-linearly with the glacial index; exposed
+  // sand = climate openness + visitor-driven disturbance; flux = wind × exposed; `excess` is the
+  // DISTURBANCE-only exposure (what the visitor is responsible for), used for the burial drain so
+  // a well-managed, undisturbed map is never penalised regardless of climate.
+  // Fixed NW wind (TEMANAWA_ECOLOGY_COAST.md §1) — always on, strength rising non-linearly with
+  // the glacial index. Shared by the sand-flux model and the storm's habitat effects. Pure.
+  static _windStrength(winterness, cfg) {
+    let w = winterness; if (w < 0) w = 0; else if (w > 1) w = 1;
+    return cfg.windBase + (1 - cfg.windBase) * Math.pow(w, cfg.windGamma);
+  }
+
+  static _sandFluxModel(winterness, regimeFit, ashCover, stormPressure, cfg) {
+    let w = winterness; if (w < 0) w = 0; else if (w > 1) w = 1;
+    const wind = Game._windStrength(w, cfg);
+    const fit = (regimeFit == null) ? 1 : (regimeFit < 0 ? 0 : regimeFit > 1 ? 1 : regimeFit);
+    let excess = cfg.wRegime * (1 - fit) + cfg.wAsh * (ashCover || 0) + cfg.wStorm * (stormPressure || 0);
+    if (excess < 0) excess = 0; else if (excess > 1) excess = 1;
+    let exposed = cfg.openBase * w + excess;
+    if (exposed < 0) exposed = 0; else if (exposed > 1) exposed = 1;
+    let flux = wind * exposed;
+    if (flux < 0) flux = 0; else if (flux > 1) flux = 1;
+    return { wind, exposed, excess, flux };
+  }
+
+  // Ease _sandFlux toward the model target and compute the burial drain that closes the
+  // sand↔vegetation loop into the habitat-health readout. Runs AFTER updateAshCover (reads
+  // _ashCover) and BEFORE _updateHabitatHealth (which reads _sandBurial). Allocation-free.
+  _updateSandFlux(dt) {
+    const C = (typeof SANDFLUX !== 'undefined') ? SANDFLUX : null;
+    if (!C) return;
+    if (this._sandFlux == null) this._sandFlux = 0;
+    if (this._duneSurge == null) this._duneSurge = 0;
+    const wint = (this.seasonManager && this.seasonManager.getWinterness) ? this.seasonManager.getWinterness() : 0;
+    const m = Game._sandFluxModel(wint, this._regimeFit, this._ashCover, this._stormPressure, C);
+    const e = C.ease * (dt || 1); const k = e > 1 ? 1 : e;
+    this._sandFlux += (m.flux - this._sandFlux) * k;
+    if (this._sandFlux < 0) this._sandFlux = 0; else if (this._sandFlux > 1) this._sandFlux = 1;
+    // Disturbance-driven, wind-scaled sand mobilisation — the quantity that BOTH buries coastal
+    // vegetation (drained from health) AND surges the sand-colour reach inland at the next re-bake.
+    // Eased so a re-bake samples a calm value; 0 on a managed, undisturbed coast (any climate).
+    const surge = m.wind * m.excess;
+    this._duneSurge += (surge - this._duneSurge) * k;
+    if (this._duneSurge < 0) this._duneSurge = 0; else if (this._duneSurge > 1) this._duneSurge = 1;
+    this._sandBurial = C.burialWeight * surge;
+    // Mirror onto the terrain: _sandFlux (debug readout) + _duneSurge (read at bake time to extend the reach).
+    if (this.terrain) { this.terrain._sandFlux = this._sandFlux; this.terrain._duneSurge = this._duneSurge; }
+  }
+
+  // STORM damage to ONE plant (0..1), by habitat + species (TEMANAWA_ECOLOGY_COAST.md §10B–C).
+  // Two channels, the worse one wins: (A) snap inland EMERGENTS — tall canopy trees catch the wind;
+  // (B) salt-burn + lee burial on the low seaward margin, asymmetric by species (soft buried out,
+  // hardy binders ride it out). Scaled by wind strength, so a glacial gale bites hardest. Pure, so
+  // tools/bootcheck.js can assert the asymmetry (emergent-tall > soft-coastal > hardy > inland/short).
+  static _stormPlantDamage(type, growth, elevation, wind, cfg) {
+    let dmg = 0;
+    // (A) snap the inland emergents — only trees taller than emergentMinGrowth catch the wind.
+    if (STORM_EMERGENT.has(type) && growth > cfg.emergentMinGrowth) {
+      const tall = (growth - cfg.emergentMinGrowth) / (1 - cfg.emergentMinGrowth);
+      const d = cfg.emergentDmg * tall * wind;
+      if (d > dmg) dmg = d;
+    }
+    // (B) coastal salt-burn + lee burial — strongest at the waterline, fading up/inland; by species.
+    if (elevation < cfg.coastalHi) {
+      let zone = 1 - elevation / cfg.coastalHi; if (zone < 0) zone = 0;
+      const vuln = STORM_HARDY.has(type) ? cfg.hardyVuln : (STORM_SOFT.has(type) ? cfg.softVuln : cfg.midVuln);
+      const d = cfg.coastalDmg * zone * vuln * wind;
+      if (d > dmg) dmg = d;
+    }
+    return dmg > 1 ? 1 : dmg;
+  }
+
+  // Apply one storm's habitat effects across the plant field (fired once per STORM press, from the
+  // HUD button). Emergents past killThresh are windthrown (alive=false → they regrow, leaving a
+  // canopy gap); everything else is knocked back down the succession clock. Allocation-free; uses
+  // random() for the windthrow roll (a one-shot impulse, never on the morph/determinism path).
+  applyStormToPlants(strength = 1) {
+    const C = (typeof STORMFX !== 'undefined') ? STORMFX : null;
+    if (!C || !this.simulation || !this.simulation.plants) return 0;
+    const wint = (this.seasonManager && this.seasonManager.getWinterness) ? this.seasonManager.getWinterness() : 0;
+    const wind = Game._windStrength(wint, (typeof SANDFLUX !== 'undefined') ? SANDFLUX : { windBase: 0.35, windGamma: 1.6 });
+    const plants = this.simulation.plants;
+    let thrown = 0, knocked = 0;
+    for (let i = 0; i < plants.length; i++) {
+      const p = plants[i];
+      if (!p || !p.alive) continue;
+      const dmg = Game._stormPlantDamage(p.type, p.growth, p.elevation, wind, C) * strength;
+      if (dmg <= 0.001) continue;
+      if (STORM_EMERGENT.has(p.type) && dmg > C.killThresh && Math.random() < dmg) {
+        p.alive = false; p.growth = 0; p.regrowthTimer = 0; thrown++;   // windthrown — regrows from bare
+      } else {
+        const g = p.growth * (1 - dmg);
+        p.growth = g < C.minGrowth ? C.minGrowth : g;
+        knocked++;
+      }
+    }
+    return thrown + knocked;
+  }
+
   // Habitat health → the "quiet saturation" readout. Eases _habitatHealth toward a target,
   // then slews _sceneSat (the live saturate() factor) toward the mapped target with a hard
   // per-frame cap so a whole-scene colour change can never land as a cut (photosensitivity).
   // md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §1, §5. Allocation-free (hot path).
   //
-  // STEP 1: the target is a PLACEHOLDER driven off _ashCover — the one existing disturbance
-  // signal that is grazing-independent and reads exactly 0 on an undisturbed map, so the
-  // DEFAULT look is untouched (health=1 → saturate(1) → the filter is never even set). An
-  // eruption greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
-  // as the ash decays. (A living-cover ratio was tried first but dips continuously as moa
-  // graze — normal churn, not ill health — leaving a healthy map wrongly desaturated.) Steps
-  // 2-4 replace `target` with regime-fit × recruitment (split-growth + kererū dispersal).
+  // Health = ash disturbance × regime fit × recruitment. The ash term is grazing-
+  // independent and reads exactly 0 on an undisturbed map, so the DEFAULT look is
+  // untouched (health=1 → saturate(1) → the filter is never even set). An eruption
+  // greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
+  // as the ash decays. Health is NOT a living-cover ratio — that was tried and
+  // desaturated healthy maps as moa grazed; see MISTAKES.md.
   _updateHabitatHealth(dt) {
     const H = (typeof HEALTH !== 'undefined') ? HEALTH : null;
     if (!H) return;
 
-    // --- Regime fit: the split-growth lesson (plan §2). FOREST (warm) growth suits the
+    // --- Regime fit: the split-growth lesson. FOREST (warm) growth suits the
     // interglacial, TUSSOCK (cold) growth suits the glacial. A mismatched press drains fit
     // toward the floor; a matched press restores it; idle relaxes it back toward 1. ---
     const nowMs = (typeof millis === 'function') ? millis() : 0;
@@ -1203,6 +1323,11 @@ class Game {
     if (this._regimeFit == null) this._regimeFit = 1;
     const mismatched = (warmOn && glacial) || (coldOn && !glacial);
     const matched    = (warmOn && !glacial) || (coldOn && glacial);
+    // Open-country tussock flush: TUSSOCK grown in a glacial (the matched cold
+    // regime). Shared once per frame so the grazer code (Moa.behave) doesn't
+    // recompute the regime/millis per bird — the goose and the plains/coastal moa
+    // read it for a small population lift ("cold is busier"; ECOLOGY_FAUNA).
+    this._tussockFlush = !!(coldOn && glacial);
     let rfTarget = 1, rfRate = H.regimeRelaxRate;
     if (mismatched)   { rfTarget = H.regimeFitFloor; rfRate = H.regimeMismatchRate; }
     else if (matched) { rfTarget = 1;                rfRate = H.regimeMatchRate; }
@@ -1210,7 +1335,7 @@ class Game {
     this._regimeFit += (rfTarget - this._regimeFit) * (rfStep > 1 ? 1 : rfStep);
     if (this._regimeFit < 0) this._regimeFit = 0; else if (this._regimeFit > 1) this._regimeFit = 1;
 
-    // --- Recruitment (plan §3–4): in the interglacial the forest should be regenerating via
+    // --- Recruitment: in the interglacial the forest should be regenerating via
     // kererū seed dispersal. It stalls (R falls, forest thins) when there is NO kererū to carry
     // the large fruit, OR when sustained STORM overuse (this._stormOveruse) keeps the flock
     // grounded so they cannot disperse. In the glacial the forest isn't recruiting anyway, so R
@@ -1231,6 +1356,10 @@ class Game {
 
     // Health target: ash disturbance × regime fit × recruitment (all must be healthy for full colour).
     let target = (1 - (this._ashCover || 0)) * this._regimeFit * this._recruitment;
+    // Dune BURIAL (COAST §10A/§10C): an ACTIVE, mismanaged dunefield buries coastal vegetation,
+    // draining the readout — the "sand flux buries vegetation" half of the feedback. Keyed to the
+    // disturbance-driven flux only (see _updateSandFlux), so a well-managed map is never penalised.
+    if (this._sandBurial) target *= (1 - this._sandBurial);
     target = target < 0 ? 0 : (target > 1 ? 1 : target);
 
     // Ease the health scalar (slow, calm), then map to a saturation factor.
@@ -1262,6 +1391,7 @@ class Game {
     if (this.water) this.water.update(dt);   // real-time flow, decoupled from the deep-time speed
     this._morphTick();
     this.updateAshCover();
+    this._updateSandFlux(dt);        // coastal dune engine — reads ash, feeds the burial drain below
     this._updateHabitatHealth(dt);   // real dt, not sdt — the saturation ramp is a wall-clock effect
     this._checkAutoEruptions();
     this.updateNotifications(sdt);
@@ -1329,16 +1459,47 @@ class Game {
     
   
   render() {
+    // Full-screen takeover: the plant sprite gallery replaces the world view.
+    // Uses the live CONFIG.viewZoom, so it reads whatever the last frame set.
+    if (typeof PlantGallery !== 'undefined' && PlantGallery.active) {
+      PlantGallery.render(CONFIG.canvasWidth, CONFIG.canvasHeight);
+      return;
+    }
+
     background(20, 30, 25);
 
+    // Eruption screen-shake: jitter the WHOLE frame (ground blit + world + HUD) by a few
+    // 1080-space px while the eruption button is held / firing. background() above already
+    // cleared, so the few px of dark edge this bares reads as nothing; the full-screen ash
+    // cover + flash are drawn with overscan so the shake never opens a gap in them.
+    const _shake = (typeof InstallHUD !== 'undefined') ? InstallHUD.eruptionShakeOffset(this) : null;
+    if (_shake) translate(_shake.x, _shake.y);
+
+    // ---- GROUND TIER (1080) --------------------------------------------------
+    // The terrain is rasterised into a 1080 offscreen buffer and blitted up as one
+    // quad, so the season-buffer fill and the ground-only saturate() health filter
+    // stay at 1080 however large the backing canvas is (CONFIG.spriteSupersample).
+    // Everything ABOVE the ground — water, washes, sprites, HUD — is drawn straight
+    // onto the supersampled canvas. The saturate() filter and the terrain clip now
+    // live in _composeTerrainLayer().
+    const projH = (typeof Projection !== 'undefined')
+      ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
+    const tg = this._ensureTerrainLayer();
+    this._composeTerrainLayer(tg, projH);
+    push();
+    // Soft upscale of the 1080 ground — the same bilinear enlargement the browser
+    // used to do when it CSS-scaled the whole 1080 canvas up to the panel.
+    if ('imageSmoothingEnabled' in drawingContext) drawingContext.imageSmoothingEnabled = true;
+    image(tg, 0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+    pop();
+
+    // ---- ABOVE THE GROUND (supersampled) -------------------------------------
+    // Water, seasonal washes and every entity — clipped to the terrain footprint and
+    // drawn in the same camera transform, straight onto the high-res backing so the
+    // sprites resolve at full resolution.
     push();
     drawingContext.save();
     drawingContext.beginPath();
-    // 3/4 relief: the terrain buffer is baked in paint space (K + relief), so it
-    // draws 1:1 — no squash transform here. The drawn world height is the
-    // projected height (mapHeight·K + LIFT). md/TEMANAWA_34VIEW_PLAN.md §3.
-    const projH = (typeof Projection !== 'undefined')
-      ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
     const _clipW = this.terrain.mapWidth * CONFIG.viewZoom;
     const _clipH = projH * CONFIG.viewZoom;
     drawingContext.rect(CONFIG.viewX, CONFIG.viewY, _clipW, _clipH);
@@ -1346,28 +1507,6 @@ class Game {
 
     translate(CONFIG.viewX, CONFIG.viewY);
     scale(CONFIG.viewZoom);
-
-    // The relief buffer already encodes the projection, so it draws directly.
-    // Every entity in simulation.render() projects onto the SAME paint space via
-    // Projection.groundY, so undistorted sprites sit on the lifted ground.
-    //
-    // Habitat-health "quiet saturation" (step 1, ground-only): desaturate ONLY the baked
-    // ground blit when _sceneSat has drained. The filter is a full-canvas Canvas2D op — the
-    // one real cost here — so it is set ONLY when sat < ~1 (never in the healthy common case),
-    // and reset immediately after the blit so water/washes/entities keep full colour. The
-    // filter string is cached on a 0.01 quantum so a health transition allocates at most once
-    // per step, not per frame ("never allocate in draw()"). terrain.render() only touches
-    // imageSmoothingEnabled, so the filter cleanly rides its image() calls.
-    const _sat = this._sceneSat;
-    const _desat = (typeof HEALTH !== 'undefined') && HEALTH.groundOnly &&
-                   _sat != null && _sat < 0.999 && drawingContext && ('filter' in drawingContext);
-    if (_desat) {
-      const _q = Math.round(_sat * 100);
-      if (this._satFilterQ !== _q) { this._satFilterQ = _q; this._satFilterStr = 'saturate(' + (_q / 100) + ')'; }
-      drawingContext.filter = this._satFilterStr;
-    }
-    this.terrain.render();
-    if (_desat) drawingContext.filter = 'none';
 
     // Animated water: river flow / eels / sea shimmer, over the baked ground and
     // under the seasonal washes + animals. A few hundred small low-contrast decals.
@@ -1439,8 +1578,66 @@ class Game {
     this.ui.renderFullscreenOverlay();
   }
 
+  // ---- split-resolution ground tier ---------------------------------------
+  // The 1080 offscreen buffer the terrain is composited into. Lazily (re)allocated
+  // to the LOGICAL canvas size (never × SS) so terrain work stays at 1080. A p5
+  // createGraphics is a real canvas — remove() the old one on resize (the leak rule
+  // in CLAUDE.md / BUILD_V3 §2.3).
+  _ensureTerrainLayer() {
+    const w = CONFIG.canvasWidth, h = CONFIG.canvasHeight;
+    let tg = this._terrainLayer;
+    if (!tg || tg.width !== w || tg.height !== h) {
+      if (tg && tg.remove) tg.remove();
+      tg = this._terrainLayer = createGraphics(w, h);
+      if (tg.pixelDensity) tg.pixelDensity(1);   // manual supersample lives on the MAIN canvas only
+    }
+    return this._terrainLayer;
+  }
 
+  // Drop the buffer on resize; _ensureTerrainLayer rebuilds it next frame at the new
+  // logical size.
+  _resizeTerrainLayer() {
+    if (this._terrainLayer && this._terrainLayer.remove) this._terrainLayer.remove();
+    this._terrainLayer = null;
+  }
 
+  // Paint the ground into the 1080 buffer `tg`: the terrain blit under the same
+  // camera transform the entities use, clipped to the footprint, with the ground-only
+  // saturate() health filter — all at 1080. The buffer is cleared each frame (its
+  // letterbox stays transparent, so the canvas background shows through when blitted).
+  _composeTerrainLayer(tg, projH) {
+    tg.clear();
+    tg.push();
+    const _dc = tg.drawingContext;
+    _dc.save();
+    _dc.beginPath();
+    const _clipW = this.terrain.mapWidth * CONFIG.viewZoom;
+    const _clipH = projH * CONFIG.viewZoom;
+    _dc.rect(CONFIG.viewX, CONFIG.viewY, _clipW, _clipH);
+    _dc.clip();
+
+    tg.translate(CONFIG.viewX, CONFIG.viewY);
+    tg.scale(CONFIG.viewZoom);
+
+    // Habitat-health "quiet saturation" (ground-only): desaturate the baked ground when
+    // _sceneSat has drained. The filter is a full-canvas Canvas2D op — now run at 1080
+    // inside this buffer, not at the backing resolution. Set only when sat < ~1 (never in
+    // the healthy common case); the string is cached on a 0.01 quantum so a transition
+    // allocates at most once per step ("never allocate in draw()", CLAUDE.md).
+    const _sat = this._sceneSat;
+    const _desat = (typeof HEALTH !== 'undefined') && HEALTH.groundOnly &&
+                   _sat != null && _sat < 0.999 && _dc && ('filter' in _dc);
+    if (_desat) {
+      const _q = Math.round(_sat * 100);
+      if (this._satFilterQ !== _q) { this._satFilterQ = _q; this._satFilterStr = 'saturate(' + (_q / 100) + ')'; }
+      _dc.filter = this._satFilterStr;
+    }
+    this.terrain.render(tg);
+    if (_desat) _dc.filter = 'none';
+
+    _dc.restore();
+    tg.pop();
+  }
 
 
   
@@ -1463,11 +1660,15 @@ class Game {
   }
 
   handleKeyUp(k) {
+    // Plant gallery owns the D key: a short tap here is replayed to Debug.
+    if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyUp(k)) return;
     if (typeof InstallHUD !== 'undefined') InstallHUD.handleKeyUp(this, k);
   }
 
   handleKey(k) {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
+    // Swallow D so tap-vs-hold resolves on release/tick (see TeManawa_plant_debug.js).
+    if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyDown(k)) return;
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
     if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
 
@@ -1511,11 +1712,14 @@ function setup() {
   if (!audioManager) audioManager = initAudioManager();
 
   CONFIG.recalculateLayout(windowWidth, windowHeight);
+  applySpriteSupersampleFromURL();   // sets CONFIG.spriteSupersample before the canvas is made
 
-  pixelDensity(1); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size
-                   // pixelDensity 1 is non-negotiable on the 4K panel (CLAUDE.md, BUILD_V3 §5.2):
-                   // a 4K device would otherwise back a 4× fill cost every frame.
-  let cnv = createCanvas(CONFIG.canvasWidth, CONFIG.canvasHeight);
+  pixelDensity(1); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size.
+                   // pixelDensity stays 1 — we supersample MANUALLY (backing = logical × SS)
+                   // instead, so the terrain can opt out of it via the 1080 offscreen layer.
+                   // A p5 pixelDensity of 2 would 4×-back the WHOLE frame, terrain included.
+  const _ss = spriteSS();
+  let cnv = createCanvas(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
   cnv.style('display', 'block');
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
@@ -1552,16 +1756,19 @@ function windowResized() {
   // Recalculate layout for actual window dimensions
   CONFIG.recalculateLayout(windowWidth, windowHeight);
 
-  // Resize the p5 canvas to the new computed dimensions
-  resizeCanvas(CONFIG.canvasWidth, CONFIG.canvasHeight);
+  // Resize the p5 canvas to the new computed dimensions (backing = logical × SS).
+  const _ss = spriteSS();
+  resizeCanvas(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
 
-  // Apply CSS scaling to fill the window
+  // Apply CSS scaling to fill the window (uses the LOGICAL size, so the on-screen
+  // footprint is unchanged; the extra backing pixels are the crispness).
   scaleCanvasToFit();
 
   // Update UI panel positions if game is running
   if (game && game.ui) {
     game.ui.recalculate();
     game._updateViewTransform();
+    game._resizeTerrainLayer();   // the 1080 terrain buffer follows the logical size
   }
 
   // In 'fit' mode the terrain footprint itself follows the screen, so a resize
@@ -1579,6 +1786,26 @@ function applyTerrainFitFromURL() {
     CONFIG.terrainFit = q;
     CONFIG._terrainFitPinned = true;
     console.log(`[Terrain] footprint mode '${q}' from URL`);
+  }
+}
+
+// Backing-canvas supersample factor, clamped. 1 = logical 1080 (old behaviour);
+// 2 = 4K-native sprites. The one place SS is read, so the clamp lives here.
+function spriteSS() {
+  const s = Math.round((typeof CONFIG !== 'undefined' && CONFIG.spriteSupersample) || 1);
+  return Math.max(1, Math.min(3, s));
+}
+
+// ?sprites=1|2|3 startup override, same pattern as ?terrain / ?art. Must run
+// BEFORE createCanvas, since it sets the backing resolution.
+function applySpriteSupersampleFromURL() {
+  if (typeof window === 'undefined' || !window.location) return;
+  const q = new URLSearchParams(window.location.search).get('sprites');
+  if (q == null) return;
+  const n = parseInt(q, 10);
+  if (n >= 1 && n <= 3) {
+    CONFIG.spriteSupersample = n;
+    console.log(`[Render] sprite supersample ${n}× from URL`);
   }
 }
 
@@ -1616,15 +1843,33 @@ function scaleCanvasToFit() {
 
 function initializeRegistry() {
   REGISTRY.registerAnimalType('moa', {}, Moa);
-  REGISTRY.registerAnimalType('eagle', {}, HaastsEagle);
+  REGISTRY.registerAnimalType('eagle', {}, EylesHarrier);
   // Kererū — the large-seed disperser. Registered as its own base type + a single species,
   // spawned via level.initialEntityCounts. Guarded so a missing kereru.js degrades gracefully.
   if (typeof Kereru !== 'undefined') REGISTRY.registerAnimalType('kereru', {}, Kereru);
+  // Kōkako + huia — the other flighted forest birds (extend Kereru; own base type + list,
+  // like the kererū). Guarded so a missing file degrades gracefully.
+  if (typeof Kokako !== 'undefined') REGISTRY.registerAnimalType('kokako', {}, Kokako);
+  if (typeof Huia   !== 'undefined') REGISTRY.registerAnimalType('huia',   {}, Huia);
 
   for (const [key, config] of Object.entries(MOA_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
   for (const [key, config] of Object.entries(EAGLE_SPECIES)) REGISTRY.registerSpecies(key, 'eagle', config);
+  // North Island goose — a moa-guild grazer. Registered under the `moa` base type
+  // (so it lives in the moa list and reuses mating/breeding/health) but carries its
+  // own `class: Goose` in the config. Guarded so a missing goose.js degrades gracefully.
+  if (typeof Goose !== 'undefined' && typeof GOOSE_SPECIES !== 'undefined')
+    for (const [key, config] of Object.entries(GOOSE_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
+  // Mōho / North Island takahē — same moa-guild pattern (own `class: Takahe`). Guarded.
+  if (typeof Takahe !== 'undefined' && typeof TAKAHE_SPECIES !== 'undefined')
+    for (const [key, config] of Object.entries(TAKAHE_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
   if (typeof Kereru !== 'undefined' && typeof KERERU_SPECIES !== 'undefined')
     REGISTRY.registerSpecies('kereru', 'kereru', KERERU_SPECIES);
+  // Kōkako (singing, territorial) + huia (pair-bonded) — each its own species of its
+  // own base type, breeding true via the shared flyer egg path (_hatchFlyerEgg).
+  if (typeof Kokako !== 'undefined' && typeof KOKAKO_SPECIES !== 'undefined')
+    REGISTRY.registerSpecies('kokako', 'kokako', KOKAKO_SPECIES);
+  if (typeof Huia !== 'undefined' && typeof HUIA_SPECIES !== 'undefined')
+    REGISTRY.registerSpecies('huia', 'huia', HUIA_SPECIES);
   for (const [key, config] of Object.entries(PLANT_TYPES)) REGISTRY.registerPlant(key, config);
   for (const [key, config] of Object.entries(PLACEABLES)) REGISTRY.registerPlaceable(key, config);
 
@@ -1661,14 +1906,27 @@ function draw() {
 
   if (typeof Kiosk !== 'undefined') Kiosk.beat();
 
+  // Poll the held D key (toggles the plant sprite gallery at the 3 s mark).
+  if (typeof PlantGallery !== 'undefined') PlantGallery.tick();
+
   const _t0 = performance.now();
   game.update(deltaMultiplier);
   const _t1 = performance.now();
+
+  // Split-resolution pipeline: the backing canvas is SS× the logical 1080 size, so a
+  // single scale(SS) here lets every main-canvas drawer keep authoring in 1080-space
+  // and land on the high-res backing. Sprites + HUD gain the resolution; the terrain
+  // opts out inside Game.render() by compositing at 1080 and blitting up. background()
+  // in Game.render() ignores the transform, so it still clears the whole canvas.
+  const _ss = spriteSS();
+  push();
+  if (_ss !== 1) scale(_ss);
   game.render();
+  if (typeof Kiosk !== 'undefined') Kiosk.renderCrossfade(CONFIG.canvasWidth, CONFIG.canvasHeight);
+  pop();
+
   const _t2 = performance.now();
   if (typeof Debug !== 'undefined') Debug.sample(_t1 - _t0, _t2 - _t1);
-
-  if (typeof Kiosk !== 'undefined') Kiosk.renderCrossfade(CONFIG.canvasWidth, CONFIG.canvasHeight);
 }
 
 function updateFPS() {
@@ -1681,7 +1939,9 @@ function updateFPS() {
 }
 
 
-function mousePressed() { game.handleClick(mouseX, mouseY); }
-function mouseReleased() { game.handleClickUp(mouseX, mouseY); }
+// mouseX/mouseY are in BACKING pixels (logical × SS); all hit-testing is in
+// 1080-space, so divide back before handing coordinates to the game.
+function mousePressed() { const s = spriteSS(); game.handleClick(mouseX / s, mouseY / s); }
+function mouseReleased() { const s = spriteSS(); game.handleClickUp(mouseX / s, mouseY / s); }
 function keyPressed() { game.handleKey(key); }
 function keyReleased() { game.handleKeyUp(key); }

@@ -2,22 +2,19 @@
 //
 // GLACIAL CYCLE — not seasons.
 // =============================================================================
-// This module is parent-game residue. It began life as a four-SEASON cycle on a
-// short frame timer. In Te Manawa there are no seasons — there is only the
-// glacial cycle, and it is keyed to DEEP TIME.
-//
-// The class name (SeasonManager) and its method/field names are KEPT so the ~8
-// files that call into it keep working unchanged. But everything it MODELS is now
-// a point on the interglacial → full-glacial gradient, and its DRIVER is
-// Climate.glacialIndexAt(DeepTime.yearsBP), NOT a timer. Nothing here cycles on
-// its own any more; scrub the deep-time clock and the cold state follows.
+// There are no seasons in Te Manawa, only the glacial cycle, keyed to deep time.
+// The class and its method/field names are kept as SeasonManager/winterness/etc.
+// so the ~8 files that call in keep working — but everything it models is a point
+// on the interglacial → full-glacial gradient, and its driver is
+// Climate.glacialIndexAt(DeepTime.yearsBP), not a timer. Scrub the deep-time
+// clock and the cold state follows; nothing here cycles on its own.
 //
 //   phase   = interglacial | cooling | glacial | fullGlacial   (warm → cold)
 //   winterness (kept name) == the glacial index, 0..1
 //
 // The four phases also key the four baked terrain buffers and their snow lines
-// (TerrainGenerator.seasonBuffers / seasonSnowLines). See
-// md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §1.1.
+// (TerrainGenerator.seasonBuffers / seasonSnowLines).
+// See md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §1.1.
 // =============================================================================
 
 // ============================================
@@ -189,18 +186,10 @@ class SeasonManager {
     return false;
   }
 
-  // ============================================
-  // UNIFIED LERP HELPER
-  // ============================================
-
-  // The seasonal getters below inline the current->next blend directly rather
-  // than routing through a _lerpSeasonal(thunk, thunk) helper. They run per-entity
-  // per-frame (moa hunger/migration, plant modifiers), and passing two arrow
-  // closures per call allocated ~1,400 short-lived functions/frame — the sim's
-  // single largest GC source. Inlined, they allocate nothing. The `next` read is
-  // guarded so it is only touched mid-transition. (getForestBand above shows the
-  // per-frame cache idiom for the parameterless global values, if this is ever
-  // hoisted to one snapshot/tick.)
+  // The seasonal getters below inline the current→next blend by hand. Do NOT
+  // refactor them to a _lerpSeasonal(thunk, thunk) helper: two closures per call,
+  // per entity per frame, was the sim's largest GC source (see MISTAKES.md). The
+  // `next` read is guarded so it is only touched mid-transition.
 
   // ============================================
   // SNOW & WEATHER
@@ -216,7 +205,7 @@ class SeasonManager {
   // forest falls back to refugia). Lerped smoothly per frame like the snow line, so
   // no biome reclassification is needed (avoids stutter). Cached per frame. Returns
   // null unless the level opts in via LEVEL_MECHANICS.forestContraction +
-  // forestBandByStage (keyed by the four glacial phases). See plan §1.3.
+  // forestBandByStage (keyed by the four glacial phases).
   getForestBand() {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
     const bands = M && M.forestContraction && (M.forestBandByStage || M.forestBandBySeason);

@@ -1,7 +1,7 @@
 # Te Manawa — Codebase Reorganisation Proposal
 
 Written before Phases 3–7 and before the ~113 new art assets land. Scope: **structure
-only**. No design decisions — where this disagrees with `TEMANAWA_PLAN_V2.md`, the plan
+only**. No design decisions — where this disagrees with `TEMANAWA_PLAN_V3.md`, the plan
 wins; where it disagrees with `TEMANAWA_BUILD_V3.md`, the build companion wins.
 
 The codebase is in good shape. 11k lines across 23 files, every module has a header
@@ -41,7 +41,7 @@ Ranked by cost-if-left, not by size of diff.
 | 3 | **`TeManawa_sketch.js` is 1,038 lines and holds five unrelated things** | Phase 4 edits the middle of it | 4 |
 | 4 | **`BIOMES` is level data living in engine code** | Phase 3 swaps the scaffold biomes | 4.2 |
 | 5 | **Economy residue in `CONFIG`, `PLACEABLES`, `GAME_STATE`** | Next person reads `CONFIG.width` and guesses wrong | 5 |
-| 6 | **17 md files, several superseded, no index** | Next contributor builds from `TEMANAWA_PLAN.md` | 6.2 |
+| 6 | **md files had no index** | Next contributor reads the wrong doc | 6.2 |
 | 7 | **No `CLAUDE.md`, no README** | Every new session re-derives the load order | 6.1 |
 | 8 | **`createGraphics` buffers never freed** | Already live — leaks ~4 MB every 12th reset | 7.1 |
 | 9 | **Stale duplicates committed at the repo root** | Already live | 6.3 |
@@ -165,7 +165,7 @@ split; this is the concrete cut.
 | New file | From `sketch.js` | Lines | Why now |
 |---|---|--:|---|
 | `TeManawa_config.js` | `CONFIG`, `recalculateLayout`, `applyLevelToConfig` | ~180 | Phase 4 adds field coefficients here. Everything reads it; it should not sit inside the file that owns `draw()` |
-| `TeManawa_flora.js` | `PLANT_TYPES`, `PLANT_SPRITE_SETS` | ~120 | **The plan names this file.** Phase 5 replaces the table wholesale (`PLAN_V2.md` §2.4) — much easier as its own file |
+| `TeManawa_flora.js` | `PLANT_TYPES`, `PLANT_SPRITE_SETS` | ~120 | **The plan names this file.** Phase 5 replaces the table wholesale (`PLAN_V3.md` §4) — much easier as its own file |
 | `TeManawa_palette.js` | `fillColor`, `strokeColor`, `CACHED_COLORS`, `initCachedColors` | ~70 | Half of `CACHED_COLORS` is dead economy UI (§5) |
 | `TeManawa_game.js` | the `Game` class | ~340 | The thing Phase 4 and 6 actually edit |
 | `TeManawa_main.js` | `preload`, `setup`, `draw`, `windowResized`, `scaleCanvasToFit`, `initializeRegistry`, input handlers, FPS | ~200 | What's left is a proper entry point, and small enough to read in one go |
@@ -235,18 +235,9 @@ existed; it was spread across four md files and three code comments.
 
 ### 6.2 `md/` needs an index — done
 
-17 files, 5,793 lines, with real overlap and no statement of what supersedes what:
-
-- `TEMANAWA_PLAN.md` (281 lines) is superseded by `TEMANAWA_PLAN_V2.md` (596) but says so
-  nowhere
-- `TEMANAWA_ECOLOGY.md` (536) overlaps five `TEMANAWA_ECOLOGY_*.md` regional files (2,150)
-- `TEMANAWA_FAUNA.md` and `TEMANAWA_FAUNA_POOL.md` overlap
-- `TEMANAWA_CONCEPT_ECOLOGY_FIRST.md` reads as a superseded pitch
-
-Nothing should be deleted — the research is the value, and `BUILD_V3.md` §4.2 leans on
-`FAUNA_POOL.md`. But a contributor who opens `md/` and reads `TEMANAWA_PLAN.md` will build
-the wrong thing. `md/README.md` now states the spine (`PLAN_V2` → `BUILD_V3` →
-`TERRAIN_PLAN`), marks the superseded documents, and groups the research.
+`md/README.md` now states the spine (`PLAN_V3` → `BUILD_V3` → `TERRAIN_PLAN`), and groups the
+research. The three superseded plan documents (v1, v2.1, and the ecology-first concept) have
+since been deleted — their conclusions were folded into `PLAN_V3.md`.
 
 ### 6.3 Committed junk — done
 

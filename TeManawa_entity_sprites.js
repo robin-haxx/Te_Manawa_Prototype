@@ -69,7 +69,7 @@ const SpriteAngle = {
 // — changing it after that has no effect until the page is reloaded, since p5
 // resolves loadImage() calls during the preload phase.
 //
-// Only the harrier (Haast's eagle) is wired up so far. Species without a
+// Only the harrier (Eyles' harrier / kērangi) is wired up so far. Species without a
 // 'high' entry silently fall back to their 'low' art, so adding a new hi-res
 // set is a matter of dropping another block into ART_SETS below.
 
@@ -95,6 +95,26 @@ const ArtMode = {
   const requested = new URLSearchParams(window.location.search).get('art');
   if (requested === 'low' || requested === 'high') ArtMode.current = requested;
 })();
+
+// Per-species moa art, in sprites/Moa/. Every moa species renders from one of
+// these full-colour illustrations (the old Side_Moa_Walk placeholder is gone).
+// They are drawn untinted and face RIGHT, so each carries its own faceSign (+1)
+// for the render mirror (TeManawa_moa.js render()); the mechanism is per-set so
+// a future set that faces the other way can just declare -1.
+// Currently a single 'Running' frame per species; add frames by bumping `count`
+// (files are zero-padded <prefix><nnnnn>.png, numbered first..first+count-1).
+// A species opts in by setting `spriteSet: '<key>'` in its registry config; the
+// three keys below are shared by the nine species (see TeManawa_species_data.js).
+// The moa-GUILD grazers (goose, mōho/takahē) share this mechanism too — they are
+// registered under the `moa` base type and render through the same path, so their
+// dedicated art drops in here exactly like a moa variant.
+const MOA_VARIANT_SETS = {
+  bush:        { dir: 'Moa/', prefix: 'BushMoa_Running_',             pad: 5, first: 1, count: 1, faceSign: 1 },
+  northGiant:  { dir: 'Moa/', prefix: 'NorthIslandGiantMoa_Running_', pad: 5, first: 1, count: 1, faceSign: 1 },
+  stoutLegged: { dir: 'Moa/', prefix: 'StoutLeggedMoa_Running_',      pad: 5, first: 1, count: 1, faceSign: 1 },
+  goose:       { dir: 'Moa/', prefix: 'Goose_Running_',              pad: 5, first: 1, count: 1, faceSign: 1 },
+  takahe:      { dir: 'Moa/', prefix: 'Takahe_Running_',             pad: 5, first: 1, count: 1, faceSign: 1 }
+};
 
 // Declarative description of each species' artwork per mode.
 //   dir/prefix/pad/first/count → how the frame filenames are built
@@ -134,15 +154,26 @@ const ART_SETS = {
 // ============================================
 
 const EntitySprites = {
+  // Generic moa set. No longer authored art — load() aliases it to the
+  // stout-legged illustration so the per-genus tint path (getMoaSpriteTinted,
+  // exercised by the boot harness) has valid source frames. In-game every
+  // species declares a spriteSet, so nothing renders this. faceSign is fixed up
+  // to +1 in load() to match the aliased right-facing art.
   moa: {
     walk: [],
     idle: null,
-    mate: null
+    mate: null,
+    faceSign: 1
   },
-  // Dedicated per-species sprite sets. A species whose registry config sets
-  // e.g. `spriteSet: 'bush'` renders from here instead of the generic moa art.
+  // Dedicated per-species sprite sets, one per key in MOA_VARIANT_SETS above. A
+  // species whose registry config sets e.g. `spriteSet: 'bush'` renders from
+  // here (untinted) instead of the generic moa art. Populated in load().
   moaVariants: {
-    bush: { walk: [], idle: null, mate: null }
+    bush:        { walk: [], idle: null, mate: null, faceSign: 1 },
+    northGiant:  { walk: [], idle: null, mate: null, faceSign: 1 },
+    stoutLegged: { walk: [], idle: null, mate: null, faceSign: 1 },
+    goose:       { walk: [], idle: null, mate: null, faceSign: 1 },   // North Island goose (moa-guild grazer)
+    takahe:      { walk: [], idle: null, mate: null, faceSign: 1 }    // mōho / NI takahē (moa-guild grazer)
   },
   eagle: {
     fly: [],
@@ -155,9 +186,16 @@ const EntitySprites = {
     // low- and hi-res sets. Overwritten from ART_SETS at load time.
     artAngle: 0.74
   },
-  // Kererū — a single placeholder frame (sprites/kereru0.png, faces up-and-right).
-  // Mirrored for leftward travel in Kereru.render; the 5-frame flight set lands later.
-  kereru: { sprite: null },
+  // Kererū — two fallback frames: perched (side view, faces right) and flying
+  // (top-down, wings spread). Kereru.render picks by state and mirrors for
+  // leftward travel; the full flight cycle lands later.
+  kereru: { perched: null, flying: null },
+  // Kōkako — a single flight frame (sprites/Flighted); perched reuses it. Extends
+  // the kererū render path (short-flight forest bird).
+  kokako: { perched: null, flying: null },
+  // Huia — sex-specific flight frames (the sexes were strongly dimorphic). Perched
+  // reuses the flying frame.
+  huia:   { male: null, female: null },
   loaded: false,
   loadAttempted: false,
 
@@ -191,43 +229,39 @@ const EntitySprites = {
     this.loadAttempted = true;
     
     const spritePath = 'sprites/';
-    
-    // PROTOTYPE ART SWAP: the generic moa set renders with the Side_Moa_Walk art —
-    // a 10-frame side walk cycle (Side_Moa_Walk_00..09). Art only: every species
-    // key, its nutrition, size, tint and behaviour are untouched.
-    //
-    // Frame count is read from set.walk.length, so a 10-frame cycle needs no other
-    // change. The non-moving/idle pose is frame 02 and the mating pose is frame 05,
-    // both ALIASED from the walk array below — loadImage is not deduped, so alias
-    // rather than reload.
-    for (let i = 0; i <= 9; i++) {
-      const n = String(i).padStart(2, '0');
-      this.moa.walk.push(loadImage(
-        `${spritePath}Side_Moa_Walk/Side_Moa_Walk_${n}.png`,
-        () => {},
-        () => console.warn(`Could not load Side_Moa_Walk_${n}.png`)
-      ));
+
+    // Per-species dedicated moa art (sprites/Moa/). Every moa species now renders
+    // from one of these full-colour illustrations (the old Side_Moa_Walk generic
+    // placeholder is gone). Each set is loaded from MOA_VARIANT_SETS; currently one
+    // 'Running' frame apiece, so idle and mate alias that single frame — when a
+    // walk cycle lands, bump `count` and the frame selection picks it up.
+    // Juveniles share the adult frame, drawn smaller (see TeManawa_moa.js updateSize).
+    for (const [key, art] of Object.entries(MOA_VARIANT_SETS)) {
+      const set = this.moaVariants[key];
+      for (let i = 0; i < art.count; i++) {
+        const n = String(art.first + i).padStart(art.pad, '0');
+        const file = `${art.prefix}${n}.png`;
+        set.walk.push(loadImage(
+          `${spritePath}${art.dir}${file}`,
+          () => {},
+          () => console.warn(`Could not load ${file}`)
+        ));
+      }
+      set.idle = set.walk[0];
+      set.mate = set.walk[0];
     }
 
-    // Non-moving pose = frame 02; mating pose = frame 05. Same p5.Image objects
-    // as the walk cycle above, not a second load.
-    this.moa.idle = this.moa.walk[2];
-    this.moa.mate = this.moa.walk[5];
+    // The generic set is no longer authored art — it ALIASES the stout-legged
+    // illustration purely so the per-genus tint path (getMoaSpriteTinted, which
+    // the boot harness exercises) still has valid source frames to bake from.
+    // In-game every species declares a spriteSet, so nothing renders the tinted
+    // generic; faceSign matches the aliased right-facing art (+1).
+    this.moa.walk = this.moaVariants.stoutLegged.walk;
+    this.moa.idle = this.moaVariants.stoutLegged.idle;
+    this.moa.mate = this.moaVariants.stoutLegged.mate;
+    this.moa.faceSign = 1;
 
-    // Juveniles share the adult walk cycle — they are simply drawn smaller (moa
-    // size scales with age; see TeManawa_moa.js updateSize). There is no separate
-    // juvenile sprite state.
-
-    // Bush moa (Anomalopteryx) — 5-frame walk + idle. While the generic set is
-    // swapped to this same art (above), the variant ALIASES it rather than
-    // loading the six files a second time: p5 does not dedupe loadImage, and
-    // every duplicate request blocks the first frame. `spriteSet: 'bush'` keeps
-    // working unchanged. Restore the loop when the generic art comes back.
-    this.moaVariants.bush.walk = this.moa.walk;
-    this.moaVariants.bush.idle = this.moa.idle;
-    this.moaVariants.bush.mate = this.moa.mate;
-
-    // Haast's eagle (Pouākai) — harrier wingbeat, frame count and resolution
+    // Eyles' harrier (kērangi) — harrier wingbeat, frame count and resolution
     // depend on the active art mode.
     const eagleArt = ArtMode.setFor('eagle');
     console.log(`Art mode '${ArtMode.current}': loading ${eagleArt.count} eagle frames from ${eagleArt.dir}`);
@@ -247,12 +281,38 @@ const EntitySprites = {
     this.eagle.glide = this.eagle.fly[eagleArt.glideFrame];
     this.eagle.artAngle = eagleArt.artAngle;
 
-    // Kererū placeholder frame. The drawn-glyph fallback in Kereru.render covers a
-    // load failure (never a silent () => {} FAILURE handler — CLAUDE.md).
-    this.kereru.sprite = loadImage(
-      `${spritePath}kereru0.png`,
+    // Kererū fallback frames — perched (side) and flying (top-down). The drawn-glyph
+    // fallback in Kereru.render covers a load failure (never a silent () => {}
+    // FAILURE handler — CLAUDE.md).
+    this.kereru.perched = loadImage(
+      `${spritePath}Kereru_Perched.png`,
       () => {},
-      () => console.warn('Could not load kereru0.png')
+      () => console.warn('Could not load Kereru_Perched.png')
+    );
+    this.kereru.flying = loadImage(
+      `${spritePath}Kereru_Flying.png`,
+      () => {},
+      () => console.warn('Could not load Kereru_Flying.png')
+    );
+
+    // Kōkako + huia — the flighted forest wattlebirds (sprites/Flighted). A single
+    // flight frame each (huia sexed); perched falls back to the flight frame, and a
+    // drawn-glyph fallback in the classes covers a load failure (never a silent
+    // () => {} FAILURE handler — CLAUDE.md).
+    this.kokako.flying = loadImage(
+      `${spritePath}Flighted/Kokako_Flying_00001.png`,
+      () => {},
+      () => console.warn('Could not load Kokako_Flying_00001.png')
+    );
+    this.huia.male = loadImage(
+      `${spritePath}Flighted/HuiaMale_Flying_00001.png`,
+      () => {},
+      () => console.warn('Could not load HuiaMale_Flying_00001.png')
+    );
+    this.huia.female = loadImage(
+      `${spritePath}Flighted/HuiaFemale_Flying_00001.png`,
+      () => {},
+      () => console.warn('Could not load HuiaFemale_Flying_00001.png')
     );
 
     this.loaded = true;
@@ -262,15 +322,47 @@ const EntitySprites = {
     return sprite && sprite.width > 0 && sprite.height > 0;
   },
 
-  // Kererū placeholder frame, or null if it hasn't loaded (drawn-glyph fallback).
-  getKereruSprite() {
-    return this.isValid(this.kereru.sprite) ? this.kereru.sprite : null;
+  // Kererū frame for the current pose: perched (true) or flying (false). Falls
+  // back to whichever frame did load, then to null (drawn-glyph fallback).
+  getKereruSprite(perched) {
+    const k = this.kereru;
+    const want = perched ? k.perched : k.flying;
+    if (this.isValid(want)) return want;
+    const other = perched ? k.flying : k.perched;
+    return this.isValid(other) ? other : null;
+  },
+
+  // Kōkako frame. Only a flying frame exists, so perched reuses it; null → glyph.
+  getKokakoSprite(perched) {
+    const k = this.kokako;
+    const want = perched ? (k.perched || k.flying) : (k.flying || k.perched);
+    return this.isValid(want) ? want : null;
+  },
+
+  // Huia frame for the bird's sex (the sexes are drawn differently). Falls back to
+  // the other sex's frame if one failed to load, then to null (drawn-glyph fallback).
+  getHuiaSprite(perched, isFemale) {
+    const h = this.huia;
+    const want = isFemale ? h.female : h.male;
+    if (this.isValid(want)) return want;
+    const other = isFemale ? h.male : h.female;
+    return this.isValid(other) ? other : null;
+  },
+
+  // Resolve the sprite set for a variant, falling back to the generic set when
+  // the variant has no usable art loaded. Both getMoaSprite and getMoaFaceSign
+  // go through here so the mirror sign always matches the set that actually
+  // rendered (they must not diverge, or the fallback moa faces backwards).
+  _resolveMoaSet(variant) {
+    const set = variant && this.moaVariants[variant];
+    if (set && set.walk.length > 0 && this.isValid(set.walk[0])) return set;
+    return this.moa;
   },
 
   getMoaSprite(animTime, isMoving, variant = null, isMating = false) {
-    const set = (variant && this.moaVariants[variant]) || this.moa;
+    const set = this._resolveMoaSet(variant);
 
-    // Mating holds a single dedicated pose (frame 05), overriding the walk cycle.
+    // Mating holds a dedicated pose, overriding the walk cycle.
     if (isMating && this.isValid(set.mate)) return set.mate;
 
     if (isMoving && set.walk.length > 0) {
@@ -280,10 +372,14 @@ const EntitySprites = {
 
     if (this.isValid(set.idle)) return set.idle;
 
-    // Variant art missing/not loaded yet → fall back to the generic moa set.
-    if (set !== this.moa) return this.getMoaSprite(animTime, isMoving, null, isMating);
-
     return null;
+  },
+
+  // Horizontal mirror sign for a variant's art (see TeManawa_moa.js render()).
+  // Resolves through the same fallback as getMoaSprite so it tracks the set that
+  // actually draws: generic art faces left (-1), the Moa/ illustrations right (+1).
+  getMoaFaceSign(variant = null) {
+    return this._resolveMoaSet(variant).faceSign;
   },
 
   // Bake one tinted copy of a loaded frame into an offscreen buffer, so the tint

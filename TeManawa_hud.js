@@ -2,12 +2,7 @@
 // TE MANAWA — INSTALLATION HUD
 // ------------------------------------------------------------
 // The deep-time timeline (top), the five buttons (bottom), and the
-// world-space effects the buttons produce.
-//
-// Phase 1.5: this was TeManawa_install.js, a monkey-patch layer that
-// overrode Game.update / Game.handleKey / GameUI.renderFullscreenOverlay
-// at load time. The economy strip it was patching around is gone, so it
-// is now a normal module that Game and GameUI call into directly.
+// world-space effects the buttons produce. Game and GameUI call into it directly.
 //
 // Buttons respond to touch/mouse AND keys 1-5, so physical arcade
 // microswitches can be mapped onto those keys without touching this file.
@@ -19,7 +14,7 @@
 // timing of the transient button effects.
 const TM_TIME = {
   stormSeconds:    20,
-  // STORM overuse (plan §4). Each press adds pressure that decays every frame; while it sits
+  // STORM overuse. Each press adds pressure that decays every frame; while it sits
   // above the overuse line the kererū stay grounded BETWEEN storms and recruitment stalls, so
   // SPAMMING storm desaturates while a single press stays cheap.
   stormPressureAdd:   0.40,   // pressure a single press adds (0..1) — ~2 quick presses cross the line
@@ -31,6 +26,15 @@ const TM_TIME = {
   ashPeak:      205,      // flash alpha at the peak (kept < 255 for headroom)
   erCooldownMs: 2000,     // minimum gap between eruptions — the anti-spam limit
   erLongPressMs: 3000,    // hold the eruption button this long to reseed the land
+  // ---- eruption takeover: screen shake + the ash-cloud cover (see renderAshCloud /
+  // eruptionShakeOffset). Armed by _ashCloudUntil from BOTH the button (fireEruption/
+  // fireEruptionReseed) and an auto/timeline eruption (Game._fireEruptionInPlace), so a
+  // volcanic event on the clock shows the same rumble + cloud. On the button it also hides
+  // the soft-regen hitch; the auto path has no regen, so there it is pure spectacle.
+  erShakeMaxPx:  5,       // peak screen-shake amplitude (1080-space px); ~×1.5 at the crest
+  cloudMillis: 1900,      // ash-cloud takeover length after the land regenerates (hang + fade)
+  cloudRollFrac: 0.30,    // a tap's share of cloudMillis spent rolling the cloud DOWN (>=500ms)
+  cloudHangFrac: 0.22,    // share spent HANGING at full cover before the fade begins
   // read-through to DeepTime so older references keep working
   get yearsStart() { return DeepTime.yearsStart; },
   get yearsEnd()   { return DeepTime.yearsEnd; },
@@ -49,6 +53,28 @@ window.TM_TIME = TM_TIME;
 const TM_GROW = { warmMax: 0.65, coldMin: 0.75, step: 0.02 };
 window.TM_GROW = TM_GROW;
 
+// The ambient colour band that frames the scene at all times — the on-screen twin of the
+// physical button LEDs on the wall. HUE tracks the CLIMATE (deep green interglacial → light
+// blue glacial), so the band always reads the "temperature" of the sim. SATURATION tracks
+// HABITAT HEALTH — an eruption, a wrong FOREST/TUSSOCK press, or storm overuse all drain it
+// toward grey (the same signal that quietly desaturates the ground, Game._habitatHealth).
+// The colour is low-passed and breathes on a slow sine so it EBBS rather than snaps: the
+// pulse is small and the slew gentle, keeping it inside the photosensitivity budget
+// (CLAUDE.md — ≤3 luminance transitions/s, large changes ramped ≥500 ms). Console-tunable
+// like TM_TIME / LOOK.
+const TM_EDGE = {
+  depth:      110,          // how far the glow reaches in from each edge (1080-space px)
+  baseAlpha:  0.62,         // peak edge opacity, at mid-breath
+  breatheAmp: 0.16,         // ± share of baseAlpha the breathing adds/removes
+  breatheMs:  5200,         // one full breath, ms (slow — an ebb, not a flicker)
+  colorEase:  0.010,        // per-frame low-pass of the band colour toward target (the latency)
+  desatMax:   0.80,         // health=0 → colour blended this far toward neutral grey (keeps a little hue)
+  warm: [40, 140, 74],      // interglacial peak — deep green
+  cold: [150, 205, 236],    // glacial peak — light blue
+  grey: [122, 130, 132]     // the neutral the band desaturates toward
+};
+window.TM_EDGE = TM_EDGE;
+
 const InstallHUD = {
   TOP_H: 88,
   BOT_H: 132,
@@ -63,7 +89,7 @@ const InstallHUD = {
     { id: 'deep',   key: '1', label: '50,000 YEARS',
       action: () => DeepTime.pressDeep(),
       isActive: () => DeepTime.isDeep() },
-    // GROWTH is split in two: the RIGHT one depends on the climate (plan §2). FOREST grows
+    // GROWTH is split in two: the RIGHT one depends on the climate. FOREST grows
     // warm/forest cover (suits the interglacial); TUSSOCK grows cold-hardy open country (suits
     // the glacial). Pressing the wrong one for the current climate drains habitat health and
     // the scene quietly desaturates (Game._updateHabitatHealth); the maturation itself is the
@@ -77,10 +103,11 @@ const InstallHUD = {
     { id: 'storm',  key: '4', label: 'STORM',
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        g._stormPressure = Math.min(1, (g._stormPressure || 0) + TM_TIME.stormPressureAdd);
+                       if (g.applyStormToPlants) g.applyStormToPlants(1);   // §10B–C habitat effects: snap emergents, salt-burn/bury the coast
                        InstallHUD.initStormCells(g); },
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
-    // Eruption is a press-and-hold TIME-NAVIGATION control between the volcanic events
-    // (plan §3). A TAP reverts to the previous (older) eruption and replays it; a HOLD
+    // Eruption is a press-and-hold TIME-NAVIGATION control between the volcanic events.
+    // A TAP reverts to the previous (older) eruption and replays it; a HOLD
     // (erLongPressMs) skips forward to the next (younger) one, wrapping to Kidnappers past
     // Whakamaru. Both do a soft regen + terrain morph to that year + the event's ash
     // clearing (Game.applyEruptionAt), so the visitor watches the land recover. A tap is
@@ -153,7 +180,7 @@ const InstallHUD = {
   },
 
   // A tap: REVERT to the previous (older) eruption and replay it — soft regen from the
-  // cleared state (plan §3.2). Ash flash + Game.applyEruptionAt does the seek/morph/clear.
+  // cleared state. Ash flash + Game.applyEruptionAt does the seek/morph/clear.
   // No-op at/older than the first event (prevEruption null). Swallowed inside the cooldown
   // so the button cannot be spammed into a flash strobe.
   fireEruption(g) {
@@ -163,6 +190,8 @@ const InstallHUD = {
     if (y == null) return false;                   // nothing older to revert to
     g._tmAshUntil = now + TM_TIME.ashMillis;
     g._tmAshMode  = 'tap';                         // flash rises and falls
+    g._ashCloudUntil = now + TM_TIME.cloudMillis;  // the sprite cover: quick roll-in, hang, fade
+    g._ashCloudMode  = 'tap';
     g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
     if (typeof g.applyEruptionAt === 'function') g.applyEruptionAt(y, DeepTime.eruptionByYear(y));
     else if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption', { reseed: false });
@@ -179,6 +208,8 @@ const InstallHUD = {
     g._tmErFired = true;                           // release must not also revert
     g._tmAshUntil = now + TM_TIME.ashMillis;
     g._tmAshMode  = 'hold';                         // flash falls from the charged peak
+    g._ashCloudUntil = now + TM_TIME.cloudMillis;   // cloud already rolled DOWN over the hold; now hang + fade
+    g._ashCloudMode  = 'hold';
     g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
     const y = (typeof DeepTime !== 'undefined') ? DeepTime.nextEruption(DeepTime.yearsBP) : null;
     if (y != null && typeof g.applyEruptionAt === 'function') g.applyEruptionAt(y, DeepTime.eruptionByYear(y));
@@ -193,7 +224,7 @@ const InstallHUD = {
     // back the scale the rest of the frame should run at.
     g.timeScale = DeepTime.update(dt);
 
-    // Storm-overuse pressure (plan §4): each STORM press adds pressure (button action); it
+    // Storm-overuse pressure: each STORM press adds pressure (button action); it
     // decays here every frame on the REAL dt. Above the overuse line the kererū stay grounded
     // BETWEEN storms (Kereru.behave reads g._stormOveruse) and recruitment stalls
     // (Game._updateHabitatHealth), so SPAMMING storm desaturates while one press stays cheap.
@@ -248,8 +279,6 @@ const InstallHUD = {
     }
   },
 
-  // Mirrors HaastsEagle.checkStorms(): only eagles actually HUNTING get broken
-  // off, and it re-applies every frame so hunts starting mid-storm are caught too.
   applyStormDistraction(g) {
     const eagles = g.simulation && g.simulation.eagles;
     if (!eagles) return;
@@ -257,7 +286,6 @@ const InstallHUD = {
       const e = eagles[i];
       if (!e || !e.alive) continue;
       if (e.distractedTimer > 0) continue;
-      if (!e.hunting) continue;
       // beDistracted() zeroes the timer unless distractedBy is a LIVE object with
       // a pos, so hand it an invisible stand-in anchored just off each bird —
       // a shared centre would clump every eagle onto one point.
@@ -442,14 +470,13 @@ const InstallHUD = {
     image(e.buf, dx - 2, dy - 2);
   },
 
-  renderTimeline(ui, g, W, H) {
+  // The shared timeline body — the deep-time axis, the monotonic uplift wedge, the two
+  // eruption markers and the playhead — drawn relative to an axis line at `ay`. Both the
+  // debug (top) and visitor (bottom) timelines call this, so the two can never drift apart;
+  // each caller owns its own strip background, year and fast-forward badge. Assumes an
+  // active push().
+  _timelineBody(g, x0, w, ay) {
     const yr = DeepTime.yearsBP;
-    const x0 = 48, w = W - 96;
-    const ay = this.TOP_H - 30;
-    push();
-    noStroke(); fill(14, 21, 19, 205); rect(0, 0, W, this.TOP_H);
-    // ---- the year ------------------------------------------
-    this._blitText(DeepTime.label(), FreckleFace, 'freckle', 26, CENTER, TOP, W / 2, 10, [232, 240, 236]);
     // ---- axis ----------------------------------------------
     stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
     // ---- uplift: monotonic, no reading required ------------
@@ -480,11 +507,120 @@ const InstallHUD = {
     const px = DeepTime.yearToX(yr, x0, w);
     stroke(255, 210, 120, 130); strokeWeight(1); line(px, ay - 14, px, upY + upH + 2);
     noStroke(); fill(255, 210, 120); circle(px, ay, 9);
-    // ---- fast-forward --------------------------------------
+  },
+
+  // DEBUG timeline — the original top strip: dark bar, the small year, the shared body and
+  // the fast-forward badge. Shown only with the debug overlay; visitors get the bottom
+  // strip (renderVisitorTimeline) + the large lowered year (renderVisitorYear) instead.
+  renderTimeline(ui, g, W, H) {
+    const x0 = 48, w = W - 96;
+    push();
+    noStroke(); fill(14, 21, 19, 205); rect(0, 0, W, this.TOP_H);
+    this._blitText(DeepTime.label(), FreckleFace, 'freckle', 26, CENTER, TOP, W / 2, 10, [232, 240, 236]);
+    this._timelineBody(g, x0, w, this.TOP_H - 30);
     if (DeepTime.isDeep()) {
       this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, TOP, x0 + w, 12, [255, 210, 120]);
     }
     pop();
+  },
+
+  // VISITOR timeline — the deep-time axis relocated to a thin strip at the bottom (the top
+  // of where the buttons used to sit). The year is NOT drawn here; it floats larger and
+  // higher via renderVisitorYear. On the wall the five buttons are physical, so their
+  // on-screen twins only appear in debug — this is the clean, uncluttered visitor layout.
+  VIS_STRIP_H: 64,
+  renderVisitorTimeline(g, W, H) {
+    const x0 = 48, w = W - 96;
+    const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = yTop + 34;
+    push();
+    noStroke(); fill(14, 21, 19, 165); rect(0, yTop, W, stripH);
+    this._timelineBody(g, x0, w, ay);
+    if (DeepTime.isDeep()) {
+      this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [255, 210, 120]);
+    }
+    pop();
+  },
+
+  // VISITOR year — the one always-on readout, large and lowered to float over the northern
+  // forest (the spot the design brief marks). A soft dark halo keeps it legible over the
+  // busy scene; no strip behind it, since the scene runs to the top edge in visitor mode.
+  VIS_YEAR_SIZE: 50,
+  VIS_YEAR_Y: 0.11,          // vertical centre, as a fraction of canvas height
+  renderVisitorYear(g, W, H) {
+    const label = DeepTime.label();
+    const cx = W / 2, cy = Math.round(H * this.VIS_YEAR_Y);
+    push();
+    this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
+    this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
+    pop();
+  },
+
+  // The ambient colour band framing the scene at all times (TM_EDGE). Hue by climate,
+  // saturation by habitat health, low-passed + breathing so it ebbs. The four edge
+  // gradients are cached and rebuilt only when the quantised colour (or the canvas size)
+  // changes, so the per-frame cost is a save + four fillRects — no allocation in draw().
+  _edgeCache: null,
+  renderEdgeGlow(g, W, H) {
+    const E = (typeof TM_EDGE !== 'undefined') ? TM_EDGE : null;
+    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null;
+    if (!E || !dc || !dc.createLinearGradient) return;
+
+    // --- target colour: hue by climate (glacial index), desaturation by habitat health ---
+    const gi = (typeof DeepTime !== 'undefined' && DeepTime.climate)
+      ? Math.max(0, Math.min(1, DeepTime.climate().glacialIndex || 0)) : 0;
+    const health = (g._habitatHealth == null) ? 1 : Math.max(0, Math.min(1, g._habitatHealth));
+    let tr = E.warm[0] + (E.cold[0] - E.warm[0]) * gi;
+    let tg = E.warm[1] + (E.cold[1] - E.warm[1]) * gi;
+    let tb = E.warm[2] + (E.cold[2] - E.warm[2]) * gi;
+    const blend = (1 - health) * E.desatMax;              // toward neutral grey as health falls
+    tr += (E.grey[0] - tr) * blend;
+    tg += (E.grey[1] - tg) * blend;
+    tb += (E.grey[2] - tb) * blend;
+
+    // --- low-pass the band colour on the game object → the latency / ebb the brief asks for ---
+    if (g._edgeR == null) { g._edgeR = tr; g._edgeG = tg; g._edgeB = tb; }
+    const k = E.colorEase;
+    g._edgeR += (tr - g._edgeR) * k;
+    g._edgeG += (tg - g._edgeG) * k;
+    g._edgeB += (tb - g._edgeB) * k;
+    const r = g._edgeR | 0, gg = g._edgeG | 0, b = g._edgeB | 0;
+
+    // --- (re)build the four edge gradients only when the quantised colour / size changes ---
+    const depth = E.depth;
+    const key = r + ',' + gg + ',' + b;
+    let c = this._edgeCache;
+    if (!c || c.key !== key || c.W !== W || c.H !== H || c.depth !== depth) {
+      // A hot inner rim (the base colour lightened) fades to the base colour and then to
+      // nothing — reads like a lit LED bezel rather than a flat wash.
+      const hotR = Math.min(255, r + 55), hotG = Math.min(255, gg + 55), hotB = Math.min(255, b + 55);
+      const mk = (x0, y0, x1, y1) => {
+        const grd = dc.createLinearGradient(x0, y0, x1, y1);
+        grd.addColorStop(0,    'rgba(' + hotR + ',' + hotG + ',' + hotB + ',1)');
+        grd.addColorStop(0.16, 'rgba(' + r + ',' + gg + ',' + b + ',0.88)');
+        grd.addColorStop(1,    'rgba(' + r + ',' + gg + ',' + b + ',0)');
+        return grd;
+      };
+      c = this._edgeCache = {
+        key, W, H, depth,
+        top:    mk(0, 0, 0, depth),
+        bottom: mk(0, H, 0, H - depth),
+        left:   mk(0, 0, depth, 0),
+        right:  mk(W, 0, W - depth, 0)
+      };
+    }
+
+    // --- breathing opacity: one slow sine, small amplitude (an ebb, never a flicker) ---
+    const now = (typeof millis === 'function') ? millis() : 0;
+    const breath = Math.sin((now / E.breatheMs) * Math.PI * 2);
+    const alpha = Math.max(0, E.baseAlpha * (1 + E.breatheAmp * breath));
+
+    dc.save();
+    dc.globalAlpha = alpha;
+    dc.fillStyle = c.top;    dc.fillRect(0, 0, W, depth);
+    dc.fillStyle = c.bottom; dc.fillRect(0, H - depth, W, depth);
+    dc.fillStyle = c.left;   dc.fillRect(0, 0, depth, H);
+    dc.fillStyle = c.right;  dc.fillRect(W - depth, 0, depth, H);
+    dc.restore();
   },
 
   renderButtons(ui, g, W, H) {
@@ -575,5 +711,93 @@ const InstallHUD = {
 
     if (a <= 0) return;
     push(); noStroke(); fill(205, 202, 196, a); rect(0, 0, W, H); pop();
+  },
+
+  // ==========================================================
+  // ERUPTION TAKEOVER — screen shake + the rolling ash cover
+  // ----------------------------------------------------------
+  // Driven by the hold charge (_tmErDownAt) and the post-fire cover window
+  // (_ashCloudUntil). The button arms _ashCloudUntil (fireEruption/fireEruptionReseed);
+  // so does an auto/timeline eruption (Game._fireEruptionInPlace), so a volcanic event on
+  // the clock gets the same rumble + ash-cloud sprite as a button press. Only the hold
+  // CHARGE (the pre-fire roll-down) stays button-exclusive — the auto path has no gesture.
+  // ==========================================================
+
+  // Camera jitter for Game.render() to translate() the whole frame by. Builds as the
+  // hold charges (so a press-and-hold visibly rumbles toward the reseed), peaks at the
+  // fire, then decays through the takeover. Two out-of-phase sines per axis => an
+  // organic rattle, not a buzz. Squared envelope: gentle until the hold really commits.
+  // Returns null when idle (Game.render skips the translate). No allocation on the idle
+  // path; one tiny literal only while an eruption is live.
+  eruptionShakeOffset(g) {
+    const now = millis();
+    let s = 0;
+    if (g._tmErDownAt && !g._tmErFired) {
+      s = Math.max(s, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
+    }
+    if (g._ashCloudUntil && now < g._ashCloudUntil) {
+      s = Math.max(s, (g._ashCloudUntil - now) / TM_TIME.cloudMillis);   // 1 at the fire -> 0 at the end
+    }
+    if (s <= 0) return null;
+    const amp = TM_TIME.erShakeMaxPx * s * s;
+    return { x: Math.sin(now * 0.043) * amp + Math.sin(now * 0.101) * amp * 0.5,
+             y: Math.cos(now * 0.055) * amp + Math.sin(now * 0.087) * amp * 0.5 };
+  },
+
+  // The cover's descent (0 = off the top, 1 = fully down) and opacity (0..1), or null
+  // when there is no cover to draw. HOLD: the cloud rolls DOWN across the 3 s charge
+  // (descend = charge progress), so it is already covering when the reseed hitch lands
+  // at c=1 — the stutter is hidden. It then hangs and fades over cloudMillis. TAP: no
+  // charge, so the whole roll-in + hang + fade plays inside cloudMillis.
+  ashCoverState(g, now) {
+    let descend = -1, alpha = 0;
+    if (g._tmErDownAt && !g._tmErFired) {                 // rolling down while the hold charges
+      const c = Math.max(0, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
+      descend = c; alpha = Math.min(1, c * 1.4);
+    }
+    if (g._ashCloudUntil && now < g._ashCloudUntil) {     // post-fire hang + fade (both gestures)
+      const p = Math.max(0, Math.min(1, 1 - (g._ashCloudUntil - now) / TM_TIME.cloudMillis));
+      const hang = TM_TIME.cloudHangFrac;
+      if (g._ashCloudMode === 'hold') {                   // already down from the charge
+        descend = 1;
+        alpha = Math.max(alpha, p < hang ? 1 : 1 - (p - hang) / (1 - hang));
+      } else {                                            // tap: roll in, hang, then fade
+        const roll = TM_TIME.cloudRollFrac;
+        descend = Math.max(descend, Math.min(1, p / roll));
+        let a;
+        if (p < roll)             a = p / roll;
+        else if (p < roll + hang) a = 1;
+        else                      a = 1 - (p - roll - hang) / Math.max(1e-3, 1 - roll - hang);
+        alpha = Math.max(alpha, a);
+      }
+    }
+    if (descend < 0 || alpha <= 0) return null;
+    return { descend, alpha: Math.max(0, Math.min(1, alpha)) };
+  },
+
+  // The ash cloud itself: one sprite, screen-wide, scrolling down from above. At full
+  // descent its TOP sits at the screen top and its (taller-than-screen) BOTTOM has run off
+  // the bottom, so the view is totally covered — then it fades to reveal the new land.
+  // No-op until the PNG has actually loaded (guards the not-yet-added asset and the harness).
+  renderAshCloud(g, W, H) {
+    const img = (typeof placeableSprites !== 'undefined') ? placeableSprites.ashCloud : null;
+    if (!img || !img.width) return;
+    const st = this.ashCoverState(g, millis());
+    if (!st) return;
+    const iw = W;
+    let ih = W * (img.height / img.width);
+    if (ih < H * 1.05) ih = H * 1.05;                     // guarantee the cover even if the art is short
+    // easeOut the descent so the roll settles; iy runs -ih (above) -> 0 (top at screen top).
+    const d = 1 - (1 - st.descend) * (1 - st.descend);
+    const iy = ih * (d - 1);
+    push();
+    imageMode(CORNER);
+    noTint();
+    const _dc = drawingContext;
+    const oldA = _dc.globalAlpha;
+    _dc.globalAlpha = st.alpha;
+    image(img, -8, iy, iw + 16, ih);                     // slight side overscan so the shake never bares an edge
+    _dc.globalAlpha = oldA;
+    pop();
   }
 };

@@ -8,7 +8,7 @@
 // wall-clock or frame count, so events land in the right place at any
 // speed — which is the entire point of having a fast-forward button.
 //
-// TEMANAWA_PLAN_V2.md §8 Phase 2.
+// TEMANAWA_PLAN_V3.md §13.
 // ============================================================
 
 const DeepTime = {
@@ -22,7 +22,7 @@ const DeepTime = {
   // ---- eruptions -------------------------------------------
   // The four TVZ events inside the window, oldest → youngest. This is the single
   // source of truth: DEEP_TIME_MARKERS (below) and the Eruption button both read it.
-  //   tier      — clearing severity for the disturb/regen mechanic (see the plan).
+  //   tier      — clearing severity for the disturb/regen mechanic.
   //   skip      — a forward-SKIP target (long press). Oruanui is `false`: its fallout
   //               sits too close to the present to show, so a forward skip past
   //               Whakamaru WRAPS to Kidnappers rather than landing on it.
@@ -40,7 +40,7 @@ const DeepTime = {
   yrPerSec:   500,      // baseline sim-years per real second at scale 1
   fps:         60,
 
-  // TIMELAPSE, see TEMANAWA_PLAN.md §5: ~50,000 years in ~10 seconds.
+  // TIMELAPSE, see TEMANAWA_PLAN_V3.md §3: ~50,000 years in ~10 seconds.
   deepMult:    10,
   deepSeconds: 10,
 
@@ -111,14 +111,14 @@ const DeepTime = {
     return null;
   },
 
-  // Clearing / recovery per tier, for the disturb mechanic (plan §2.1). clearFraction
+  // Clearing / recovery per tier, for the disturb mechanic. clearFraction
   // = share of plants knocked out at the eruption; decayYears = sim-years for the ash
   // to clear and the land to green back. One table, keyed by ERUPTIONS[i].tier, so all
   // four events stay in sync. Severity is magnitude × standing cover: Kidnappers (#1)
   // and Oruanui (#4) are both 'major' but read differently (sea vs frozen ground).
   TIERS: {
-    minor:        { clearFraction: 0.15, decayYears:  6000 },
-    major:        { clearFraction: 0.60, decayYears: 18000 },
+    minor:        { clearFraction: 0.35, decayYears:  6000 },
+    major:        { clearFraction: 0.75, decayYears: 18000 },
     catastrophic: { clearFraction: 0.95, decayYears: 35000 }
   },
 
@@ -196,12 +196,11 @@ const DeepTime = {
   }
 };
 
-// Timeline markers. Content is a co-design hook — these are placeholders with
-// correct dates, not final label text. The eruption markers are DERIVED from
-// DeepTime.ERUPTIONS so the timeline and the button can never disagree on a date
-// (all four now show, and Whakamaru reads its true 349 ka, not the old 345 ka).
-// The glacial/warm markers are climate instrumentation and live in the debug
-// overlay; the visitor timeline only draws kind === 'eruption'.
+// Timeline markers. Label text is a co-design placeholder; the dates are correct.
+// Eruption markers are DERIVED from DeepTime.ERUPTIONS so the timeline and the
+// button can never disagree on a date. The glacial/warm markers are climate
+// instrumentation for the debug overlay; the visitor timeline only draws
+// kind === 'eruption'.
 const DEEP_TIME_MARKERS = [
   ...DeepTime.ERUPTIONS.map(e => ({ yearsBP: e.yearsBP, label: e.name, kind: 'eruption' })),
   { yearsBP: 270000, label: 'MIS 8',  kind: 'glacial' },

@@ -2,7 +2,7 @@
 
 **For the illustrator.** Everything to be drawn, at what size, under what name, in what
 order. This is the commissioning document; `TEMANAWA_BUILD_V3.md` §4 is the internal
-accounting behind it and `TEMANAWA_PLAN_V2.md` is why each asset exists.
+accounting behind it and `TEMANAWA_PLAN_V3.md` is why each asset exists.
 
 **132 new assets** (was 113; +19 terrain illustration stamps, §3.3). 45 already exist and
 are marked so. **The view is now a high 3/4 angle, not straight-down — see §1.**
@@ -365,7 +365,7 @@ anything gets extra attention, those.
 
 ---
 
-**Background reading, if wanted:** `TEMANAWA_PLAN_V2.md` (what the piece is and why each
+**Background reading, if wanted:** `TEMANAWA_PLAN_V3.md` (what the piece is and why each
 asset exists) · `TEMANAWA_FAUNA_POOL.md` §4 (notes for the illustrator on the animals,
 including the palette and the dimorphism pairs) · the four habitat deep dives for what
 each plant community is actually made of.

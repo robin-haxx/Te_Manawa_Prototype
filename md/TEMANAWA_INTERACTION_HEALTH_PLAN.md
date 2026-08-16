@@ -12,7 +12,7 @@ one shared signal:
    kererū grounded, dispersal stalls, the forest cannot recruit, and the scene drains of
    colour — the storm's hidden cost.
 
-Reads against, and defers to, `md/TEMANAWA_PLAN_V2.md` (the spine), `md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md`
+Reads against, and defers to, `md/TEMANAWA_PLAN_V3.md` (the spine), `md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md`
 (the glacial-clock rebind this builds on), `md/TEMANAWA_ECOLOGY_FAUNA.md` §3.3 (the kererū
 dispersal fact), and `md/TEMANAWA_34VIEW_PLAN.md` §7 (the "quiet ground" look this extends).
 
@@ -361,8 +361,6 @@ Steps 1–2 are independent of 3–4; **step 3 blocks step 4.**
   the modern collapse is a *kererū* problem. The mechanical spine of §3–4.
 - `md/TEMANAWA_FAUNA.md` §167-169 — kererū the only surviving disperser of large podocarp/tawa
   fruit; "a real mechanic, not decoration."
-- `md/TEMANAWA_CONCEPT_ECOLOGY_FIRST.md` §3.2 — "growth does something different in every habitat";
-  "one button visibly fails somewhere." The seed of the split-growth contrast.
 - `md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` §1.1 — `winterness` == `glacialIndex(yearsBP)`; the world
   is a glacial cycle, which is what the split growth reads.
 - `md/TEMANAWA_34VIEW_PLAN.md` §7 — "quiet the ground's saturation so the outlined sprites pop." The

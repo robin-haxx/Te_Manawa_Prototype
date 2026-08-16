@@ -1,17 +1,17 @@
 # Te Manawa — document index
 
-24 documents. This says which ones are live, which are superseded, and which are
+25 documents. This says which ones are live, which are superseded, and which are
 research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
 
-**Current state:** the run opens ~1 Ma and closes on Ōruanui (~25.5 ka). Phases 0–2 are
-done and **Phase 3 (terrain) is substantially built** — the 3/4 view, the SVG geography
-skeleton, the deep-time land morph and the illustration look are all running.
+**Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka).
+The land morph, the glacial-cycle climate, five buttons, habitat health and the kererū dispersal
+loop are all running; the frontier is the fauna cast, the flora art and the disturbance clocks.
 
-**New here?** Start with `TEMANAWA_PEDAGOGY.md` — the single-page overview of *what the
-running build teaches a visitor* and *what is left to reach a finished installation*. Then
-use the precedence order below for the build detail.
+**New here?** Read `TEMANAWA_PLAN_V3.md` (the spine — current design, honest phase status, and the
+road ahead), or `TEMANAWA_PEDAGOGY.md` for the visitor's-eye view of *what the wall teaches today*.
+Then use the precedence order below for the build detail.
 
 ---
 
@@ -19,24 +19,12 @@ use the precedence order below for the build detail.
 
 | # | Document | Lines | Role |
 |--:|---|--:|---|
-| 1 | **`TEMANAWA_PLAN_V2.md`** | 608 | **The design spine.** v2.1. The filter, the plants, the mechanical core, the four buttons, the fauna cast, the build phases. Anything that disagrees with this loses |
-| 2 | **`TEMANAWA_BUILD_V3.md`** | 511 | Architecture, kiosk self-run, the **158-asset manifest**, performance and load budgets. Makes no design decisions — it costs the plan's |
+| 1 | **`TEMANAWA_PLAN_V3.md`** | 472 | **The design spine.** Current design — five buttons, habitat health, the deep-time glacial ecology, the geography morph, the implemented fauna cast — plus an honest phase status and the road ahead. Anything that disagrees with this loses |
+| 2 | **`TEMANAWA_BUILD_V3.md`** | 567 | Architecture, kiosk self-run, the **sprite manifest** (~160 core + ~19 stamps), performance and load budgets. The technical companion — it makes no design decisions, it costs the plan's |
 | 3 | **`TEMANAWA_TERRAIN_PLAN.md`** | 296 | Terrain background. Its keyframe pipeline was cut, then partly **revived by `TEMANAWA_GEOGRAPHY.md`** as the SVG skeleton. §1, §6 and §7 are still live |
 | 4 | **`TEMANAWA_REORG.md`** | — | Structural proposal: the asset pipeline, splitting `sketch.js`, economy residue, and the adaptive terrain mode as built. Ordered so each step is harness-verifiable |
 
 Start at 1. If you are about to write code, read 2 §5 (the budgets) as well.
-
----
-
-## Superseded — read for history, do not build from
-
-| Document | Lines | Superseded by |
-|---|--:|---|
-| `TEMANAWA_PLAN.md` | 281 | **`TEMANAWA_PLAN_V2.md`.** The v1 plan. Its §2 accessibility rule ("nothing essential conveyed by audio alone") is still quoted by `BUILD_V3.md` §3 and still holds |
-| `TEMANAWA_CONCEPT_ECOLOGY_FIRST.md` | 278 | `TEMANAWA_PLAN_V2.md` §0.1. The pitch that argued for ecology-first framing. It won; the argument is now the plan's governing principle |
-
-Neither should be deleted — they record *why* decisions went the way they did, which the
-current documents state as conclusions.
 
 ---
 
@@ -56,7 +44,7 @@ current documents state as conclusions.
 ## Ecology research — reference, not instruction
 
 2,700 lines of regional ecology. This is the evidence base the plan filters, not a
-specification. `TEMANAWA_PLAN_V2.md` §1 ("the filter") is what decides how much of it
+specification. `TEMANAWA_PLAN_V3.md` §1 ("the filter") is what decides how much of it
 reaches the screen — which is deliberately not much.
 
 | Document | Lines | |
@@ -77,12 +65,12 @@ Primary sources are the five PDFs in `research/`.
 
 | Document | |
 |---|---|
-| `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshaped Phase 3; sits under `PLAN_V2.md`. **Built** through the relief bake, entity y-sort and cel look |
-| `TEMANAWA_GEOGRAPHY.md` | **The SVG geography skeleton** — ranges and river authored as vectors, elevation built around them, with the deep-time uplift/incision morph. Revives `TERRAIN_PLAN.md` §3–5 and updates `PLAN_V2.md` §7. Static integration and the morph are built |
+| `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshaped Phase 3. **Built** through the relief bake, entity y-sort and cel look |
+| `TEMANAWA_GEOGRAPHY.md` | **The SVG geography skeleton** — ranges and river authored as vectors, elevation built around them, with the deep-time uplift/incision morph. Revives `TERRAIN_PLAN.md` §3–5. Static integration and the morph are built |
 | `TEMANAWA_DEVTOOLS.md` | **The console dev workflow.** `LOOK` (paint) and `GEN` (landform) live-editable globals, the `B` / `G` / `N` keys, and how to extend them. Read this before tuning the look |
 | `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` | **The deep-time ecology build.** Season→glacial rebind, the climate table to 1 Ma, forest contraction, emergence sea level, and the four-eruption clear/regen + button seek/revert. **Implemented and harness-green** (see its §4) |
-| `TEMANAWA_INTERACTION_HEALTH_PLAN.md` | **Interaction plan.** Split Growth into glacial/interglacial buttons, a derived habitat-health scalar surfaced as scene saturation, and a kererū seed-dispersal loop coupled to Storm overuse. Builds on `DEEPTIME_ECOLOGY_PLAN.md`; sits under `PLAN_V2.md`. **Steps 1–3 built and harness-green** (health/saturation readout, five-button split FOREST/TUSSOCK growth, kererū seed dispersal); step 4 (Storm-overuse coupling) and step 5 (tuning) still to come |
-| `TEMANAWA_PEDAGOGY.md` | **What it teaches + the road to installation.** The visitor-facing pedagogy of the running build and the prioritised next steps. Descriptive; reads under `PLAN_V2.md` |
+| `TEMANAWA_INTERACTION_HEALTH_PLAN.md` | **Interaction plan.** Split Growth into glacial/interglacial buttons, a derived habitat-health scalar surfaced as scene saturation, and a kererū seed-dispersal loop coupled to Storm overuse. Builds on `DEEPTIME_ECOLOGY_PLAN.md`. **Steps 1–3 built and harness-green** (health/saturation readout, five-button split FOREST/TUSSOCK growth, kererū seed dispersal); step 4 (Storm-overuse coupling) and step 5 (tuning) still to come |
+| `TEMANAWA_PEDAGOGY.md` | **What it teaches + the road to installation.** The visitor-facing pedagogy of the running build and the prioritised next steps |
 
 ---
 

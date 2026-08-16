@@ -17,12 +17,11 @@ const MOA_STATE = {
 // have no configured highlightColor. Read-only — never mutated.
 const MOA_HL_DEFAULT = [255, 235, 120];
 
-// Native facing of the moa art, along +x. The Side_Moa_Walk set is authored
-// facing LEFT, but the lateral-flip convention (_flip: +1 = face right) assumes
-// right-facing art (see TeManawa_entity_sprites.js header). This sign reconciles
-// the two: with left-facing art it is -1, so flip=+1 renders a mirrored (right-
-// facing) frame. Set to +1 if the art is swapped back to a right-facing set.
-const MOA_ART_FACE_SIGN = -1;
+// Native facing of the moa art is per sprite set, not global: the mirror sign
+// is read from the resolved set via EntitySprites.getMoaFaceSign(variant) in
+// render() (see the entity-sprites header). The Moa/ illustrations all face
+// RIGHT and return +1 (no mirror when flip=+1); a future left-facing set would
+// return -1 so flip=+1 renders it mirrored.
 
 const MOA_AGE = {
   JUVENILE_MAX: 600,
@@ -245,16 +244,16 @@ class Moa extends Boid {
   // ============================================
 
   isReadyToMate() {
-    return this.canMate && this.mateCooldown <= 0 && this.canMateByAge() && 
-      !this.isPregnant && !this.matingPartner && 
-      this.hunger < this.matingHungerThreshold && 
+    return this.canMate && this.mateCooldown <= 0 && this.canMateByAge() &&
+      !this.isPregnant && !this.matingPartner &&
+      this.hunger < (this._effMatingHunger ?? this.matingHungerThreshold) &&
       this.securityTime >= this.securityTimeRequired * 0.5;
   }
 
   canBeMate() {
     return this.alive && this.canMate && this.mateCooldown <= 0 && this.canMateByAge() &&
       !this.isPregnant && !this.matingPartner &&
-      this.hunger < this.matingHungerThreshold * 1.5;
+      this.hunger < (this._effMatingHunger ?? this.matingHungerThreshold) * 1.5;
   }
 
   // Soft carrying-capacity taper (opt-in via LEVEL_MECHANICS.breedingSoftCap).
@@ -265,15 +264,35 @@ class Moa extends Boid {
   // keys off live population — breeding rebounds automatically after a crash.
   _computeBreedDensityFactor(simulation) {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+
+    // Per-species carrying target (opt-in): breed freely while this species is
+    // below its comfortable level, then taper to a trickle as it reaches target.
+    // Keyed off the LIVE species count, so a fast breeder can't fill the shared
+    // moa cap and starve the slow species (mōho, goose) out of room — and a
+    // crashed species rebounds on its own. Multiplies with the global soft cap.
+    let speciesFactor = 1;
+    if (M && M.speciesCarryingTargets && simulation._speciesTarget) {
+      const target = simulation._speciesTarget(this.speciesKey);
+      const n = simulation.getCachedSpeciesCount(this.speciesKey);
+      const floorF = M.speciesSuppressFloor ?? 0.1;
+      const knee = M.speciesBreedKnee ?? 0.7;         // breed freely below knee×target
+      if (n >= target) speciesFactor = floorF;
+      else if (n > target * knee) {
+        const t = (n - target * knee) / (target * (1 - knee));   // 0..1 across the taper
+        speciesFactor = 1 - t * (1 - floorF);
+      }
+    }
+
     const soft = M ? M.breedingSoftCap : undefined;
-    if (soft == null) return 1;                       // feature off — no change
+    if (soft == null) return speciesFactor;           // only the per-species gate active
     const carry = M.breedingCarryingCap ?? (soft * 3);
     const floor = M.breedingSuppressFloor ?? 0.15;
     const P = simulation.getMoaPopulation();
-    if (P <= soft) return 1;
-    if (P >= carry) return floor;
-    const t = (P - soft) / (carry - soft);            // 0..1 across the band
-    return 1 - t * (1 - floor);
+    let globalFactor;
+    if (P <= soft) globalFactor = 1;
+    else if (P >= carry) globalFactor = floor;
+    else globalFactor = 1 - ((P - soft) / (carry - soft)) * (1 - floor);
+    return speciesFactor * globalFactor;
   }
 
   // ============================================
@@ -317,7 +336,26 @@ class Moa extends Boid {
         }
       }
     }
-    
+
+    // Open-country tussock subsidy. Lowland grassland/scrub/coast grazers (the goose
+    // and the plains/coastal moa, flagged `openCountry`) feed on the flush of new
+    // tussock the visitor grows in a GLACIAL — the matched cold regime. A mild hunger
+    // relief keeps them in breeding condition, and _resetAfterMating shortens their egg
+    // cooldown while it holds: a small population lift, so the cold phase is busier, not
+    // emptier (md/TEMANAWA_ECOLOGY_FAUNA.md). Reads the shared per-frame flag
+    // (Game._tussockFlush) so the regime/millis isn't recomputed per bird. Runs before
+    // the mating early-return so completeMating sees a fresh flag this frame.
+    this._openCountryBoost = false;
+    if (this.speciesConfig.openCountry &&
+        typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.openCountryTussockBoost) {
+      const g = simulation.game || (typeof game !== 'undefined' ? game : null);
+      if (g && g._tussockFlush) {
+        this._openCountryBoost = true;
+        const relief = LEVEL_MECHANICS.openCountryBoostHungerRelief ?? 0.04;
+        this.hunger = Math.max(0, this.hunger - relief * dt);
+      }
+    }
+
     // Cooldowns
     if (this.mateCooldown > 0) {
       this.mateCooldown -= dt;
@@ -333,7 +371,7 @@ class Moa extends Boid {
       let edible = 0, nearFav = false;
       for (let i = 0; i < plants.length; i++) {
         const p = plants[i];
-        if (!p.alive) continue;
+        if (!p.alive || p._consumed) continue;
         if (p.favouredSpecies === this.speciesKey) nearFav = true;
         if (!p.dormant && p.growth > 0.5 && edible < 8) edible++;
       }
@@ -366,6 +404,22 @@ class Moa extends Boid {
     // Density-dependent breeding gate (recomputed here so determineState can
     // read it without threading simulation through its signature).
     this._breedDensityFactor = this._computeBreedDensityFactor(simulation);
+
+    // Allee support: a species well BELOW its target breeds at a relaxed hunger
+    // gate so the last few can climb back instead of hovering at the floor (grazers
+    // are food-limited without the visitor planting, so they seldom dip under the
+    // normal gate). At/above the fraction it's the normal gate, so healthy or
+    // over-target populations are unaffected — this only ever helps recovery.
+    this._mateHungerGate = this.hungerThreshold;
+    this._effMatingHunger = this.matingHungerThreshold;
+    if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.speciesCarryingTargets && simulation._speciesTarget) {
+      const n = simulation.getCachedSpeciesCount(this.speciesKey);
+      if (n < simulation._speciesTarget(this.speciesKey) * (LEVEL_MECHANICS.recoveryBreedFrac ?? 0.6)) {
+        const mult = LEVEL_MECHANICS.recoveryMatingHungerMult ?? 1.6;
+        this._mateHungerGate = this.hungerThreshold * mult;
+        this._effMatingHunger = this.matingHungerThreshold * mult;
+      }
+    }
 
     // Determine and execute state
     this.currentState = this.determineState(placeables, sc, moas);
@@ -420,21 +474,21 @@ class Moa extends Boid {
     
     if (this.matingTimer > 0 || this.matingPartner) return MOA_STATE.MATING;
     
-    // Respond to courtship (opposite sex only)
-    if (this.canBeMate() && !this.targetMate && this.hunger < this.hungerThreshold) {
+    const _mateGate = this._mateHungerGate ?? this.hungerThreshold;
+
+    if (this.canBeMate() && !this.targetMate && this.hunger < _mateGate) {
       for (let i = 0; i < moas.length; i++) {
-        if (moas[i] !== this && moas[i].targetMate === this && 
-            moas[i].alive && moas[i].isFemale !== this.isFemale) {
+        if (moas[i] !== this && moas[i].targetMate === this && moas[i].alive) {
           this.targetMate = moas[i];
           return MOA_STATE.SEEKING_MATE;
         }
       }
     }
-    
-    if (this.targetMate?.alive && this.canBeMate() && this.hunger < this.hungerThreshold) 
+
+    if (this.targetMate?.alive && this.canBeMate() && this.hunger < _mateGate)
       return MOA_STATE.SEEKING_MATE;
-    
-    if (this.isReadyToMate() && this.hunger < this.hungerThreshold &&
+
+    if (this.isReadyToMate() && this.hunger < _mateGate &&
         (this._breedDensityFactor >= 1 || random() < this._breedDensityFactor)) {
       const mate = this.findPotentialMate(moas);
       if (mate) { this.targetMate = mate; return MOA_STATE.SEEKING_MATE; }
@@ -585,7 +639,6 @@ class Moa extends Boid {
     for (let i = 0; i < moas.length; i++) {
       const o = moas[i];
       if (o === this || !o.canBeMate()) continue;
-      if (o.isFemale === this.isFemale) continue; // Must be opposite sex
       if (o.matingPartner && o.matingPartner !== this) continue;
 
       const dx = o.pos.x - px, dy = o.pos.y - py;
@@ -677,11 +730,10 @@ class Moa extends Boid {
   completeMating(simulation) {
     const partner = this.matingPartner;
     
-    // The female becomes pregnant
-    const female = this.isFemale ? this : partner;
-    if (female?.alive) {
-      female.isPregnant = true;
-      female.pregnancyTimer = female.pregnancyDuration;
+    const bearer = this.alive ? this : partner;
+    if (bearer?.alive) {
+      bearer.isPregnant = true;
+      bearer.pregnancyTimer = bearer.pregnancyDuration;
     }
     
     // Reset both
@@ -701,6 +753,10 @@ class Moa extends Boid {
       _cd *= (LEVEL_MECHANICS.breedingCooldownMult ?? 1);
     }
     _cd *= (moa.reproCooldownMult || 1);   // non-focal competitors breed a little faster
+    // Open-country grazers breed a little faster during a matched TUSSOCK-in-glacial
+    // flush (flag set each tick in behave) — the population lift that fills the cold plains.
+    if (moa._openCountryBoost && typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.openCountryBoostCooldownMult)
+      _cd *= LEVEL_MECHANICS.openCountryBoostCooldownMult;
     moa.mateCooldown = _cd;
     moa.matingPartner = null;
     moa.matingTimer = 0;
@@ -730,7 +786,28 @@ class Moa extends Boid {
       this.pregnancyTimer = 0;
       return;
     }
-    
+
+    // Per-species carrying target: an over-target species mostly reabsorbs the
+    // clutch instead of laying (a short retry cooldown, not a full cycle), so a
+    // fast breeder like the goose settles NEAR its target instead of booming to
+    // the shared cap and crowding the slow species out. The birth-step brake that
+    // actually bites — the per-tick courtship gate only delays a ready pair a few
+    // ticks. Mirrors the flyer taper in Kereru._tryReproduce.
+    if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.speciesCarryingTargets && simulation._speciesTarget) {
+      const target = simulation._speciesTarget(this.speciesKey);
+      const n = simulation.getCachedSpeciesCount(this.speciesKey);
+      const knee = LEVEL_MECHANICS.speciesBreedKnee ?? 0.7;
+      let skip = 0;
+      if (n >= target) skip = 1 - (LEVEL_MECHANICS.speciesOverTargetLay ?? 0.12);
+      else if (n > target * knee) skip = (n - target * knee) / (target * (1 - knee));
+      if (skip > 0 && random() < skip) {
+        this.isPregnant = false;
+        this.pregnancyTimer = 0;
+        this.mateCooldown = this.mateCooldownTime * 0.4;   // short retry, not a full cycle
+        return;
+      }
+    }
+
     const egg = simulation.addEgg(this.pos.x, this.pos.y);
     egg.speedBonus = this.eggSpeedBonus;
     if (this.speciesKey) egg.parentSpecies = this.speciesKey;
@@ -903,7 +980,7 @@ class Moa extends Boid {
   }
 
   forage(simulation) {
-    if (!this.targetPlant?.alive || this.targetPlant.growth < 0.5) {
+    if (!this.targetPlant?.alive || this.targetPlant._consumed || this.targetPlant.growth < 0.5) {
       this.targetPlant = this.findPlant(simulation);
     }
     
@@ -970,7 +1047,7 @@ class Moa extends Boid {
     
     for (let i = 0; i < plants.length; i++) {
       const p = plants[i];
-      if (!p.alive || p.growth < 0.5) continue;
+      if (!p.alive || p._consumed || p.growth < 0.5) continue;
       if (p.seasonalModifier < 0.3 && this.hunger < 70) continue;
       
       const dx = p.pos.x - this.pos.x, dy = p.pos.y - this.pos.y;
@@ -1107,7 +1184,9 @@ class Moa extends Boid {
   // ============================================
 
   render() {
-    if (!this.alive) return;
+    // A dead moa keeps rendering while its death fade runs (_fade > 0); the sim's
+    // render layer composites the alpha. Only skip once fully faded / never-set.
+    if (!this.alive && !(this._fade > 0)) return;
 
     const variant = this.speciesConfig.spriteSet;
     // Per-species tint (by genus), baked into the sprite once (EntitySprites
@@ -1143,24 +1222,32 @@ class Moa extends Boid {
     }
 
     // Shadow
-    noStroke();
-    fill(0, 0, 0, 25);
-    ellipse(1.5, 1.5, this.size * 1.0, this.size * 0.5);
-    
+    if (CONFIG.drawShadows) {
+      noStroke();
+      fill(0, 0, 0, 25);
+      ellipse(1.5, 1.5, this.size * 1.0, this.size * 0.5);
+    }
+
     // Lateral flip instead of top-down rotation (a walking animal turns around,
     // it doesn't spin). _flip is the eased horizontal facing (updateFacing, Boid):
     // +1 faces right, -1 faces left, and it animates THROUGH 0, where the sprite
     // is edge-on (scaleX → 0) and squashes before opening out mirrored. The small
     // vertical stretch at |flip| → 0 is the bounce that makes the turn fun.
     const flip = (this._flip !== undefined) ? this._flip : 1;
-    // MOA_ART_FACE_SIGN corrects for the art's native facing so +1 always faces
-    // right, whatever direction the sprite set is drawn in.
-    scale(flip * MOA_ART_FACE_SIGN, 1 + (1 - Math.abs(flip)) * 0.18);
-    
+    // The resolved set's faceSign corrects for its native facing so +1 always
+    // faces right, whatever direction the sprite set is drawn in (generic art
+    // faces left, the dedicated Moa/ art faces right).
+    const faceSign = EntitySprites.getMoaFaceSign(variant);
+    scale(flip * faceSign, 1 + (1 - Math.abs(flip)) * 0.18);
+
     noTint();   // the sprite is already tinted (baked once); avoid a stray double-tint
     imageMode(CENTER);
-    const _drawSize = this.size * 2.5 * (this.speciesConfig.spriteScale || 1);
-    image(sprite, 0, 0, _drawSize, _drawSize);
+    // Draw at the sprite's own aspect ratio: width anchors to the size budget,
+    // height follows. The generic frame is square (unchanged), but the dedicated
+    // Moa/ art is landscape and would stretch tall if forced into a square box.
+    const _drawW = this.size * 2.5 * (this.speciesConfig.spriteScale || 1);
+    const _drawH = (sprite.width > 0) ? _drawW * (sprite.height / sprite.width) : _drawW;
+    image(sprite, 0, 0, _drawW, _drawH);
     pop();
   }
 
@@ -1177,12 +1264,18 @@ class Moa extends Boid {
   }
 
   renderIndicators() {
-    // The entire indicator layer is debug-only (CONFIG.showEntityUI). Hearts,
-    // pregnancy dots, low-population rings, bars and state glyphs are all
-    // instrumentation; none of them belong in an ambient diorama.
+    const px = this.pos.x, py = this.pos.y, s = this.size;
+
+    // Mating heart — the ONE breeding cue kept for visitors (user-facing), so it draws
+    // whether or not the debug entity-UI layer is on. Drawn first, in the top indicator
+    // pass, so it floats above trees.
+    this._renderMatingHeart(px, py, s);
+
+    // Everything below is debug-only instrumentation (CONFIG.showEntityUI): pregnancy dots,
+    // low-population rings, hunger/age bars and state glyphs — the "this is a video game"
+    // layer that has no place in an ambient diorama.
     if (!CONFIG.showEntityUI) return;
 
-    const px = this.pos.x, py = this.pos.y, s = this.size;
     const yOff = -s * 0.8 - 4;
 
     // Low-population warning: a pulsing red ring. Drawn here (the indicator
@@ -1190,19 +1283,8 @@ class Moa extends Boid {
     // over trees and other plants.
     this.renderLowPopRing();
     
-    // Heart indicator
-    if (this.heartTimer > 0) {
-      const a = min(255, this.heartTimer * 8);
-      fill(255, 120, 140, a);
-      noStroke();
-      push();
-      translate(px, py - s - 5 + sin(this.animTime * 0.15) * 2);
-      scale(0.4);
-      beginShape(); vertex(0, -3); bezierVertex(-5, -8, -10, -3, 0, 5); endShape();
-      beginShape(); vertex(0, -3); bezierVertex(5, -8, 10, -3, 0, 5); endShape();
-      pop();
-    }
-    
+    // (The mating heart is drawn user-facing above, ahead of the debug gate.)
+
     // Pregnancy indicator (females only now)
     if (this.isPregnant) {
       const prog = 1 - this.pregnancyTimer / this.pregnancyDuration;
@@ -1243,6 +1325,23 @@ class Moa extends Boid {
       fill(200, 200, 200, 140); 
       text(this.isFemale ? "♀" : "♂", px, py + yOff - 5); 
     }
+  }
+
+  // The mating heart — user-facing (see renderIndicators): a small soft-pink heart that
+  // rises and fades over a breeding pair. The one breeding cue kept in the ambient diorama;
+  // gentle and non-flashing (photosensitivity). Anchored in world space, like the rest of
+  // the indicator pass, so it stays above trees.
+  _renderMatingHeart(px, py, s) {
+    if (!(this.heartTimer > 0)) return;
+    const a = Math.min(255, this.heartTimer * 8);
+    push();
+    noStroke();
+    fill(255, 120, 140, a);
+    translate(px, py - s - 5 + Math.sin(this.animTime * 0.15) * 2);
+    scale(0.5);
+    beginShape(); vertex(0, -3); bezierVertex(-5, -8, -10, -3, 0, 5); endShape();
+    beginShape(); vertex(0, -3); bezierVertex(5, -8, 10, -3, 0, 5); endShape();
+    pop();
   }
 
   // Small two-tone progress bar used by the indicators above.

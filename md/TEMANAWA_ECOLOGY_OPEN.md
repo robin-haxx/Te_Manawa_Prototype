@@ -330,7 +330,7 @@ installation's landscape has no equivalent to it at all.*
 
 ## 10. `[BUILD]` Flora shortlist — open-country group
 
-> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V2.md` §2. Black
+> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V3.md` §4. Black
 > beech and mānuka are built as sprites; **short tussock and a single "grey scrub"
 > entry — absorbing mingimingi, pōhuehue and tauhinu — are ground palette**, which is
 > how the glacial mosaic is rendered. *Dracophyllum*, rangiora, māhoe, tūpari and

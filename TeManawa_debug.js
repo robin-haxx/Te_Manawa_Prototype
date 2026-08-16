@@ -1,9 +1,9 @@
 // ============================================================
 // TE MANAWA — DEBUG OVERLAY  (press D)
 // ------------------------------------------------------------
-// A read-only instrument panel for the ecosystem. Nothing in here
-// mutates the sim; it exists so the deep-time and ecology work in
-// Phases 2-7 can be tuned against real numbers instead of guesses.
+// A read-only instrument panel for the ecosystem. Nothing in here mutates the
+// sim; it exists so the deep-time and ecology work can be tuned against real
+// numbers instead of guesses.
 //
 //   D          cycle: off -> compact -> full -> off
 //   SHIFT+D    dump a JSON snapshot to the console
@@ -29,24 +29,17 @@ const Debug = {
   // ==========================================================
   // WHAT DEBUG MODE OWNS ON SCREEN
   // ----------------------------------------------------------
-  // Three things used to be visible to visitors and are now debug-only,
-  // because each was instrumentation wearing the costume of interpretation:
-  //
-  //   · the climate wave      a temperature graph. Nobody reads a curve at
-  //                           arm's length in forty seconds, and it was the
-  //                           busiest object in the frame. The climate is
-  //                           supposed to be read off the LAND and the CAST
-  //                           (findings #2 and #3) — a chart undercuts both
-  //   · notification messages "A moa has hatched!" — engine chatter from the
-  //                           game this used to be. An ambient diorama does
-  //                           not narrate itself
-  //   · the entity UI layer   hunger and breeding bars, hearts, pregnancy
-  //                           dots, low-population rings, state glyphs. The
-  //                           single strongest "this is a video game" signal
-  //                           on screen, and most of it was never gated
-  //
-  // applyVisibility() is called whenever the mode changes and drives the
-  // engine flags the renderers already check.
+  // Three things are debug-only, not visitor-facing — each is instrumentation,
+  // not interpretation:
+  //   · the climate wave      a temperature graph nobody reads at arm's length
+  //                           in forty seconds; the climate is meant to be read
+  //                           off the land and the cast, and a chart undercuts that
+  //   · notification messages "A moa has hatched!" — an ambient diorama does not
+  //                           narrate itself
+  //   · the entity UI layer   hunger/breeding bars, hearts, pregnancy dots,
+  //                           low-population rings, state glyphs — the strongest
+  //                           "this is a video game" signal on screen
+  // applyVisibility() drives the engine flags the renderers already check.
   // ==========================================================
   applyVisibility() {
     if (typeof CONFIG !== 'undefined') CONFIG.showEntityUI = this.enabled;
@@ -129,7 +122,9 @@ const Debug = {
       mis: cl.mis,
       seaLevel: cl.seaLevel,
       snowLine: cl.snowLine,
-      tempBias: cl.tempBias
+      tempBias: cl.tempBias,
+      sandFlux: g._sandFlux || 0,       // coastal dune engine (SANDFLUX)
+      sandBurial: g._sandBurial || 0
     };
 
     // ---- FAUNA ---------------------------------------------
@@ -420,7 +415,11 @@ const Debug = {
       ['MIS',          s.climate.mis || '-'],
       ['sea level',    s.climate.seaLevel.toFixed(0) + ' m'],
       ['snow line',    s.climate.snowLine.toFixed(3)],
-      ['temp bias',    s.climate.tempBias.toFixed(1) + ' C']
+      ['temp bias',    s.climate.tempBias.toFixed(1) + ' C'],
+      ['sand flux',    s.climate.sandFlux.toFixed(2),
+                       s.climate.sandFlux > 0.5 ? [230, 200, 130] : null],
+      ['dune burial',  s.climate.sandBurial.toFixed(2),
+                       s.climate.sandBurial > 0.05 ? [220, 170, 120] : null]
     ]);
 
     const faunaRows = [

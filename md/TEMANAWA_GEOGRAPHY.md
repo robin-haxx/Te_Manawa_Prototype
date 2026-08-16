@@ -5,7 +5,7 @@ runs — and let procedure build the elevation *around* it. The features are
 recognisable and consistent every run; the noise (and a per-run seed) varies
 everything else. You tune the general look from a handful of knobs.
 
-This **updates `TEMANAWA_PLAN_V2.md` §7 and revives `TEMANAWA_TERRAIN_PLAN.md`**
+This **updates `TEMANAWA_PLAN_V3.md` §2 and revives `TEMANAWA_TERRAIN_PLAN.md`**
 (§3–5), which were cut on the grounds that the 345→25 ka window barely moves the
 topography. The run now opens at **~1 Ma** (`yearsStart` = 1.0 Ma; 1.1 Ma is the
 eventual target — §7), over which the axial ranges rise from almost nothing to
@@ -155,8 +155,80 @@ Proposed `levelDef.geography` block, mirrored onto a `GEO` dev surface like
 3. ✅ **Time ramp:** `tUplift`/`tIncision` off `yearsBP`; interval re-bake
    (`morphIntervalYears`, ~9 ky) cross-faded and amortised across frames.
    **`yearsStart` is still 1.0 Ma — the bump to 1.1 Ma is not yet made.**
-4. ⬜ **Later:** coast curve to Whanganui; dune fields + dynamics; ranges' reduced
-   snow; secondary events across the window.
+4. 🟡 **Dune field — the Manawatū transgressive dunefield.** Sourced from
+   `TEMANAWA_ECOLOGY_COAST.md` §1,§10. Three pieces built, harness-locked:
+   - ✅ **Colour** — a bake-time SAND TINT on the western coastal plain (`LOOK.dune*` in
+     `TeManawa_terrain.js`, static `_duneIntensity`, blended in `_bakeSeasonColumns`). Densest
+     at the shore, thinning inland toward the ESE, windowed to the coastal-plain elevation band,
+     and capped by a coast-relative inland REACH that GROWS with the glacial index
+     (`duneReachByPhase`) — the Koputaroa surge. The reach stays well short of the range spine,
+     so the belt can never bleed east onto the trans-range land.
+   - ✅ **Relief** — low wind-aligned (NW→SE) sand ridges added to the coastal-plain ELEVATION
+     (static `_duneRidge`/`_duneRelief`, injected in `_applyGeoToHeightMap` off the river channel).
+     Added ONCE at the GLACIAL (max) reach — relict topography that persists across phases while
+     the colour surges/greens over it, as the stabilised Koputaroa/Foxton belts do. In the single
+     `heightMap`, so it participates in the morph (sliced==sync) and entities ride the bumps.
+   - ✅ **Sand flux** — the wind↔vegetation engine (`SANDFLUX` config + `Game._sandFluxModel` +
+     `_updateSandFlux` in `TeManawa_sketch.js`). Fixed NW wind, strength rising non-linearly with
+     the glacial index; `sandFlux = wind × exposedSand` (climate openness + the visitor's
+     FOREST/TUSSOCK regime, ash, storm); a DISTURBANCE-only BURIAL term drains habitat health
+     (sand burying coastal veg, §10C) while sparing a well-managed coast. Shown live on the debug
+     overlay (`sand flux` / `dune burial`).
+   - ✅ **Flux → colour (§10B(1)).** The disturbance-driven surge (`Game._duneSurge`, eased, mirrored
+     to `terrain._duneSurge`) both EXTENDS the sand-colour reach inland (static `_duneEffReach`,
+     toward the glacial relict reach — never past the relief) and BRIGHTENS the blend (static
+     `_duneEffAmt` — bare mobile sand vs stabilised dune). Snapshotted PER MORPH so the sliced
+     re-bake can't tear (sliced==sync held); crossfaded, so it never lands as a cut. A managed
+     coast has surge 0 → the bake is byte-identical to before. **The storm button drives this for
+     free** (`wStorm × _stormPressure` → surge): a storm advances the dune a step. Verified live —
+     mismanagement brightens the belt core (+6.6) and advances sand inland (+3.2), zero elsewhere.
+   - ✅ **Storm habitat effects (§10B(3–5) + §10C).** `Game.applyStormToPlants` (fired once per STORM
+     press) rewinds the succession clock UNEVENLY across `simulation.plants`: pure static
+     `_stormPlantDamage(type, growth, elevation, wind, cfg)` with two channels — **snap inland
+     emergents** (tall `rimu/kahikatea/tawa/beech` windthrown → regrow) and **salt-burn + lee burial**
+     on the low seaward margin, ASYMMETRIC by species (soft non-rhizomatous knocked back; hardy
+     open/dune binders ride it out — `STORM_EMERGENT/HARDY/SOFT` sets + `STORMFX` config). Scaled by
+     `_windStrength(glacial index)`, so a glacial gale bites hardest (§10D). Verified live: one press
+     at wind 0.63 → emergents 1.0→0.62, soft →0.94, hardy →0.99; windthrows engage at full-glacial wind.
+   - ✅ **Blow-outs (§10B(2)).** Surge-gated DEFLATION HOLLOWS scoured into the belt's elevation
+     (static `_duneBlowout` sparse mask + the deflation in `_applyGeoToHeightMap`). A STABLE belt keeps
+     its ridges; an ACTIVE/mobile one (surge past `duneBlowoutOnset` — mismanaged, glacial, or storm-hit
+     via the storm→surge chain) scours sparse bare-sand bowls down to the water table (`duneWaterTable`),
+     which heal as it re-stabilises. Intensity gates belt membership; the sparse mask × surge drives
+     depth (so a bowl bottoms out at the floor, not a shallow dimple). Snapshotted per morph (sliced==sync).
+     Verified live: 0 hollows stable → 480 hollows / 0.18 deep at high surge. Depth is land-shape-dependent
+     (belt height above the water table) — tune `duneWaterTable`/`duneBlowout` with the land re-tune.
+   ⬜ **Still to build:** the SVG `dune` authoring class (`dunes:[]` empty).
+5. ✅ **Glacial eustatic sea (the sea rise/fall of the glacial cycle).** The fast glacio-eustatic
+   ripple from `Climate.seaLevel` (+6 m interglacial ↔ −125 m LGM), wired into the coast as a SIGNED
+   term in `_combineGeo` (`TerrainGenerator.glacialSeaShift` → `_geoT.glacialSea`), composed on top of
+   the slow tectonic emergence. A glacial LOWSTAND raises the low western shelf so it emerges as land
+   (coast marches seaward — **MORE land in a glacial**); an interglacial HIGHSTAND sinks it (the sea
+   creeps inland — **less land, the intuition-defying but correct direction**). Elevation-attenuated
+   (`glacialSeaCeil`) and WEST-gated (`glacialSeaEastU`) so only the western coast moves, never the
+   trans-range eastern lowland or the ranges. The **dune shoreline tracks it** (`duneCoastTrack`) so
+   the belt marches onto the bared shelf in a glacial (true Koputaroa mode). Breathes over the cycle
+   via the morph re-bakes, crossfaded. Harness-locked; verified live (west land 0.41→0.47 glacial;
+   dune west edge 0.26→0.10 glacial). **Requires the plant-site reconcile** (`cullSubmergedPlants`
+   now refreshes `elevation`/`biomeKey`) so cover tracks the moving coast — see `MISTAKES.md`.
+
+   > **Habitat composition over the cycle (the payoff).** Land area and its makeup swing opposite
+   > ways. **Glacial:** more land, but it is the exposed western shelf — cold, windy, OPEN country:
+   > coastal / dune / tussock / subalpine expand, the dune belt surges seaward *and* inland, forest
+   > contracts to refugia. **Interglacial:** less land (the sea drowns the lowest western ground),
+   > but what remains is forested — the forest band lifts, dunes green and lock to a narrow strip. So
+   > the cycle is not "more/less of the same map" — it trades **open coastal/dune area (glacial) for
+   > forest area (interglacial)**, with the coastline as the pivot. Plants now follow this (bug fix).
+6. ✅ **Drowned-valley estuary — the interglacial highstand extreme (§8/§12-6).** The far pole of the
+   glacial sea: at a warm interglacial the sea BACKS UP THE RIVER VALLEY as an estuary reaching inland
+   (toward Shannon/Opiki), so the "coast" stops being an edge strip and fingers into the middle of the
+   map. `TerrainGenerator.estuaryStrength` (glacial-index-gated, `estuaryOnsetG` — fills in warm spells,
+   drains in the cold) → `_geoT.estuary`, applied in `_applyGeoToHeightMap`: positional up the cached
+   MAIN stem (`wMDist`/`wMPos`, out to `estuaryReach × highstand`), spreading `estuaryWidth` off the
+   channel, elevation-gated to the valley FLOOR (`estuaryCeil`) so terraces and ranges stay dry. Drowned
+   cells classify as sea → the plant-reconcile clears their vegetation. Verified live: inland valley water
+   2,818 → **7,483** cells at the highstand (~2.7×), drained in a glacial.
+7. ⬜ **Later:** coast curve to Whanganui; ranges' reduced snow; secondary events across the window.
 
 ---
 

@@ -1,7 +1,7 @@
 # Te Manawa — 3/4 View & Illustration Restyle
 
-Status: **substantially built** (Phase 3). Sits under `TEMANAWA_PLAN_V2.md`; where they
-disagree, V2 wins. Reshaped Phase 3 (terrain) — it did not add a phase. Built:
+Status: **substantially built** (Phase 3). Sits under `TEMANAWA_PLAN_V3.md`; where they
+disagree, the plan wins. Reshaped Phase 3 (terrain) — it did not add a phase. Built:
 `TeManawa_projection.js`, the relief bake, entity y-sort with feet anchors, and the cel
 illustration look (`LOOK` in `TeManawa_terrain.js`). Pending: real terrain stamps and the
 illustrator's final palette (§8 step 5).

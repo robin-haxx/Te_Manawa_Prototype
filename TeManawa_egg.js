@@ -160,10 +160,12 @@ class Egg {
     const c = EGG_COLORS;
     
     // Shadow
-    noStroke();
-    fill(c.shadow);
-    ellipse(x + 1, y + 1, size * 1.4, size * 0.9);
-    
+    if (CONFIG.drawShadows) {
+      noStroke();
+      fill(c.shadow);
+      ellipse(x + 1, y + 1, size * 1.4, size * 0.9);
+    }
+
     // Main egg
     fill(c.base);
     stroke(c.stroke);

@@ -11,6 +11,7 @@ const MOA_SPECIES = {
   upland_moa: {
     displayName: "Upland Moa",
     scientificName: "Megalapteryx didinus",
+    spriteSet: 'bush',         // borrows the small BushMoa art (no dedicated art yet)
     tint: null,                // Megalapteryx — rendered as-is
     highlightColor: [235, 238, 242],  // white — player highlight (pulse + UI border)
     description: "Small, hardy moa adapted to high-altitude forests",
@@ -61,7 +62,8 @@ const MOA_SPECIES = {
   south_island_giant_moa: {
     displayName: "South Island Giant Moa",
     scientificName: "Dinornis robustus",
-    tint: [170, 150, 130],     // Dinornis — desaturated brown
+    spriteSet: 'northGiant',   // borrows the NorthIslandGiantMoa art (both Dinornis giants)
+    tint: [170, 150, 130],     // Dinornis — desaturated brown (unused while spriteSet is set)
     highlightColor: [190, 140, 90],   // brown — player highlight (pulse + UI border)
     description: "Massive moa of the lowland plains, up to 3.6m tall",
     rarity: 'uncommon',
@@ -82,6 +84,7 @@ const MOA_SPECIES = {
     securityTimeBase: 1100,
     securityTimeVariation: 500,
     
+    openCountry: true,   // lowland-plains grazer — shares the TUSSOCK-in-glacial lift (see TeManawa_goose.js / Moa.behave)
     preferredElevation: { min: 0.15, max: 0.40 },
     temperatureTolerance: { cold: 0.4, heat: 0.7 },
     
@@ -106,7 +109,8 @@ const MOA_SPECIES = {
   north_island_giant_moa: {
     displayName: "North Island Giant Moa",
     scientificName: "Dinornis novaezealandiae",
-    tint: [170, 150, 130],     // Dinornis — desaturated brown
+    spriteSet: 'northGiant',   // dedicated Moa/ art — renders untinted (see EntitySprites)
+    tint: [170, 150, 130],     // Dinornis — desaturated brown (unused while spriteSet is set)
     highlightColor: [190, 140, 90],   // brown — player highlight (pulse + UI border)
     description: "Large moa of northern forests",
     rarity: 'uncommon',
@@ -147,7 +151,8 @@ const MOA_SPECIES = {
   eastern_moa: {
     displayName: "Eastern Moa",
     scientificName: "Emeus crassus",
-    tint: [190, 120, 60],      // emeid — saturated brown
+    spriteSet: 'stoutLegged',  // borrows the stocky StoutLeggedMoa art (emeid build)
+    tint: [190, 120, 60],      // emeid — saturated brown (unused while spriteSet is set)
     highlightColor: [205, 195, 120],  // wheat — player highlight (pulse + UI border)
     description: "Adaptable medium-sized moa of varied habitats",
     rarity: 'common',
@@ -188,7 +193,8 @@ const MOA_SPECIES = {
   stout_legged_moa: {
     displayName: "Stout-legged Moa",
     scientificName: "Euryapteryx curtus",
-    tint: [205, 170, 80],      // yellow-brown — distinct from the rust bush moa
+    spriteSet: 'stoutLegged',  // dedicated Moa/ art — renders untinted (see EntitySprites)
+    tint: [205, 170, 80],      // yellow-brown (unused while spriteSet is set)
     highlightColor: [235, 165, 70],   // orange — player highlight (pulse + UI border)
     description: "Stocky moa with powerful legs, coastal to lowland",
     rarity: 'common',
@@ -205,6 +211,7 @@ const MOA_SPECIES = {
     hungerThreshold: 33,
     criticalHunger: 72,
     
+    openCountry: true,   // coastal-to-lowland grazer — shares the TUSSOCK-in-glacial lift (see TeManawa_goose.js / Moa.behave)
     preferredElevation: { min: 0.12, max: 0.35 },
     temperatureTolerance: { cold: 0.5, heat: 0.7 },
     
@@ -226,7 +233,8 @@ const MOA_SPECIES = {
   heavy_footed_moa: {
     displayName: "Heavy-footed Moa",
     scientificName: "Pachyornis elephantopus",
-    tint: [165, 168, 172],     // Pachyornis — grey
+    spriteSet: 'stoutLegged',  // borrows the stocky StoutLeggedMoa art (Pachyornis build)
+    tint: [165, 168, 172],     // Pachyornis — grey (unused while spriteSet is set)
     highlightColor: [178, 184, 194],  // grey — player highlight (pulse + UI border)
     description: "Robust moa with massive legs, lowland specialist",
     rarity: 'uncommon',
@@ -243,6 +251,7 @@ const MOA_SPECIES = {
     hungerThreshold: 42,
     criticalHunger: 100,
     
+    openCountry: true,   // lowland specialist on the open flats — shares the TUSSOCK-in-glacial lift (Moa.behave)
     preferredElevation: { min: 0.30, max: 0.44 },  // forest-edge competitor (lower forest band + top of flats)
     temperatureTolerance: { cold: 0.45, heat: 0.65 },
     
@@ -266,7 +275,8 @@ const MOA_SPECIES = {
   crested_moa: {
     displayName: "Crested Moa",
     scientificName: "Pachyornis australis",
-    tint: [165, 168, 172],     // Pachyornis — grey
+    spriteSet: 'stoutLegged',  // borrows the stocky StoutLeggedMoa art (Pachyornis build)
+    tint: [165, 168, 172],     // Pachyornis — grey (unused while spriteSet is set)
     highlightColor: [178, 184, 194],  // grey — player highlight (pulse + UI border)
     description: "Southern moa with distinctive head crest",
     rarity: 'rare',
@@ -306,7 +316,8 @@ const MOA_SPECIES = {
   mantells_moa: {
     displayName: "Mantell's Moa",
     scientificName: "Pachyornis geranoides",
-    tint: [165, 168, 172],     // Pachyornis — grey
+    spriteSet: 'stoutLegged',  // borrows the stocky StoutLeggedMoa art (Pachyornis build)
+    tint: [165, 168, 172],     // Pachyornis — grey (unused while spriteSet is set)
     highlightColor: [178, 184, 194],  // grey — player highlight (pulse + UI border)
     description: "North Island relative of the heavy-footed moa",
     rarity: 'uncommon',
@@ -323,6 +334,7 @@ const MOA_SPECIES = {
     hungerThreshold: 38,
     criticalHunger: 88,
     
+    openCountry: true,   // North Island lowland grazer — shares the TUSSOCK-in-glacial lift (Moa.behave)
     preferredElevation: { min: 0.18, max: 0.42 },
     temperatureTolerance: { cold: 0.55, heat: 0.6 },
     
@@ -344,8 +356,7 @@ const MOA_SPECIES = {
   little_bush_moa: {
     displayName: "Little Bush Moa",
     scientificName: "Anomalopteryx didiformis",
-    spriteSet: 'bush',         // dedicated LB_moa art — renders untinted
-    spriteScale: 1.5,          // LB art drawn small — render at 1.5x
+    spriteSet: 'bush',         // dedicated BushMoa art (Moa/) — renders untinted
     tint: [190, 120, 60],      // emeid — saturated brown (unused while spriteSet is set)
     highlightColor: [255, 215, 70],   // yellow — player highlight (pulse + UI border)
     description: "Smallest moa, nimble forest dweller",
@@ -391,13 +402,22 @@ const MOA_SPECIES = {
 };
 
 // ==========================================
-// EAGLE SPECIES
+// RAPTOR SPECIES — Eyles' harrier / kērangi
+// ------------------------------------------------------------
+// The North Island apex avian predator in this window is the giant Eyles'
+// harrier (kērangi), NOT Haast's eagle — Haast's was South-Island-only and a
+// soaring ambush hunter, whereas the kērangi quartered low over open country
+// and forest edge. The internal base type stays 'eagle' (a mechanical list
+// name, not visitor-facing); only the identity is the harrier's. Behaviour
+// tuning (low quartering flight vs the inherited soaring approach) is a
+// separate follow-up — see md/TEMANAWA_PLAN_V3.md §14.1 and the memory
+// raptor-identity-conflation.
 // ==========================================
 const EAGLE_SPECIES = {
-  haasts_eagle: {
-    displayName: "Haast's Eagle",
-    scientificName: "Hieraaetus moorei",
-    description: "Largest known eagle, apex predator of moa",
+  eyles_harrier: {
+    displayName: "Eyles' Harrier",
+    scientificName: "Circus teauteensis",
+    description: "Kērangi — the largest harrier known; hunted birds low over open country and forest edge",
     rarity: 'common',
     
     wingspan: { min: 10, max: 14 },
@@ -422,11 +442,11 @@ const EAGLE_SPECIES = {
     restDuration: 180
   },
   
-  // Could add young/old eagles, or regional variants
-  young_haasts_eagle: {
-    displayName: "Young Haast's Eagle",
-    scientificName: "Hieraaetus moorei (juvenile)",
-    description: "Inexperienced but energetic hunter",
+  // Juvenile variant — faster, less accurate
+  young_eyles_harrier: {
+    displayName: "Young Eyles' Harrier",
+    scientificName: "Circus teauteensis (juvenile)",
+    description: "A juvenile kērangi — quick, but still learning to hunt",
     rarity: 'uncommon',
     
     wingspan: { min: 8, max: 10 },
@@ -461,8 +481,8 @@ function registerAllSpecies() {
     // Default moa config (can be empty, species will override)
   }, Moa);
   
-  REGISTRY.registerAnimalType('eagle', {}, HaastsEagle);
-  
+  REGISTRY.registerAnimalType('eagle', {}, EylesHarrier);
+
   // Register all moa species
   for (const [key, config] of Object.entries(MOA_SPECIES)) {
     REGISTRY.registerSpecies(key, 'moa', config);
@@ -472,6 +492,4 @@ function registerAllSpecies() {
   for (const [key, config] of Object.entries(EAGLE_SPECIES)) {
     REGISTRY.registerSpecies(key, 'eagle', config);
   }
-  
-  console.log('All species registered:', REGISTRY.getSummary());
 }

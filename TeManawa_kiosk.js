@@ -36,10 +36,9 @@ const Kiosk = {
   _fadeUntil:    0,
   _watchdogTimer: null,
   _installed:    false,
-  // Set by attach() from setup(). NOT window.game — `let game` in a classic
-  // script is a lexical global and never becomes a property of window, so
-  // window.game is permanently undefined and every recovery path here would
-  // silently no-op. (Found by the headless boot harness, not by testing.)
+  // Set by attach() from setup() — NOT window.game, which is permanently
+  // undefined here (a classic-script `let` is a lexical global, not a window
+  // property), so every recovery path would silently no-op. See MISTAKES.md.
   game:          null,
 
   // ==========================================================

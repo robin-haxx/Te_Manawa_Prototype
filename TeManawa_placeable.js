@@ -5,6 +5,7 @@ let placeableSprites = {
   cloud1: null,
   cloud2: null,
   bolt: null,
+  ashCloud: null,   // eruption takeover cover — see InstallHUD.renderAshCloud
   loaded: false
 };
 
@@ -22,6 +23,12 @@ function loadPlaceableSprites() {
   placeableSprites.cloud1 = loadImage('sprites/cloud1.png');
   placeableSprites.cloud2 = loadImage('sprites/cloud2.png');
   placeableSprites.bolt = loadImage('sprites/bolt.png');
+  // Eruption ash-cloud cover. NEVER a silent failure callback (CLAUDE.md): if the PNG
+  // is missing, renderAshCloud no-ops on the un-sized image and the shake + flash still play.
+  placeableSprites.ashCloud = loadImage(
+    'sprites/Environmental/VolcanicAshCloud_Sprite_00001.png',
+    () => {},
+    () => console.warn('Could not load sprites/Environmental/VolcanicAshCloud_Sprite_00001.png'));
   placeableSprites.loaded = true;
 }
 

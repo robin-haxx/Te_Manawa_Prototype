@@ -94,18 +94,14 @@ const LEVEL_REGISTRY = {
 // ============================================
 // BIOME BAND VALIDATION
 // ============================================
-// Mirrors TerrainGenerator.getBiomeFromElevation exactly: bands are scanned in
-// ascending minElevation order and the FIRST band containing the elevation wins.
+// Mirrors TerrainGenerator.getBiomeFromElevation: bands are scanned ascending by
+// minElevation and the FIRST band containing the elevation wins. Overlapping
+// bands do not blend — a lower band shadows a higher one, and a fully shadowed
+// band never draws, invisibly (each band reads fine alone). This is one of two
+// ways a biome-colour edit can silently do nothing; see MISTAKES.md.
 //
-// So overlapping bands do not blend — the lower band shadows the higher one, and
-// a fully shadowed band never draws at all. That is the second way an edit to a
-// biome's colours can appear to do nothing (the first was a duplicate BIOMES
-// table in sketch.js, now deleted), and it is invisible in the data: the bands
-// look fine read one at a time.
-//
-// Runs at level load and reports the EFFECTIVE range each biome actually gets
-// alongside the declared one. Warnings only — the renderer is happy either way,
-// and a deliberate overlap is a legitimate authoring choice.
+// Runs at level load and reports the EFFECTIVE range each biome gets alongside
+// the declared one. Warnings only — a deliberate overlap is a legitimate choice.
 function validateBiomeBands(biomes) {
   const list = Object.values(biomes || {})
     .filter(b => b && typeof b.minElevation === 'number')
@@ -178,9 +174,6 @@ function validateBiomeBands(biomes) {
   return issues;
 }
 
-// FINAL SCORE — removed in Phase 1.5. There is no score, no win state and
-// no mauri to total, so defaultLevelScore/computeLevelScore are gone.
-
 // Default values that levels can omit to use these
 const LEVEL_DEFAULTS = {
   terrain: {
@@ -230,9 +223,6 @@ function resolveLevelDef(levelDef) {
   resolved.initialEntityCounts = Object.assign(
     {}, LEVEL_DEFAULTS.initialEntityCounts, levelDef.initialEntityCounts || {}
   );
-
-  // Goals array is kept by reference — functions intact
-  // (already copied above, but being explicit)
 
   // Resolve placeable overrides onto base PLACEABLES
   if (resolved.availablePlaceables) {

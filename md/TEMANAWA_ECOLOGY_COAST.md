@@ -348,7 +348,7 @@ as the sim cools, and stabilise and green over as it warms. **Direction never ch
 
 ## 11. `[BUILD]` Flora shortlist — coast group
 
-> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V2.md` §2 — ten
+> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V3.md` §4 — ten
 > drawn species plus seven ground-palette entries. From a bird's-eye view most of the
 > plants below are **colour, not sprites**: spinifex and pīngao are washes, not
 > entities. This shortlist remains the reference for what those colours should be, and

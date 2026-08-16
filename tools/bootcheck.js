@@ -352,6 +352,228 @@ try{
     : 'kererū: dispersal grows the forest (cap-guarded); recruitment stalls without them');
 }catch(e){ console.log('KERERU FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
+// ---- kōkako + huia: the other flighted forest birds ---------------------------
+// Both EXTEND Kereru (own base type + otherEntities list, short-flight frugivore
+// loop), disperse >50% less than the kererū, and breed true through the shared
+// flyer egg path. Huia found as bonded male+female pairs that forage the same
+// tree; the kōkako holds a territory and SINGS — a song makes the nearest kōkako
+// answer while crowded-in rivals are pushed off to new ground. See TeManawa_kokako.js
+// / TeManawa_huia.js.
+try{
+  const G=vm.runInContext('game',ctx);
+  const Kokako=vm.runInContext('Kokako',ctx), Huia=vm.runInContext('Huia',ctx);
+  const KOK=vm.runInContext('KOKAKO_SPECIES',ctx), HUI=vm.runInContext('HUIA_SPECIES',ctx);
+  const KST=vm.runInContext('KERERU_STATE',ctx), KKST=vm.runInContext('KOKAKO_STATE',ctx);
+  const sim=G.simulation;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // spawn from initialEntityCounts, into their own flyer lists.
+  const kok = sim.otherEntities.kokako || [];
+  const hui = sim.otherEntities.huia || [];
+  chk(kok.filter(x=>x.alive).length>0, `kōkako spawn from initialEntityCounts (${kok.length})`);
+  chk(hui.filter(x=>x.alive).length>0, `huia spawn from initialEntityCounts (${hui.length})`);
+  const ko = kok.find(x=>x.alive), hu = hui.find(x=>x.alive);
+  chk(ko instanceof Kokako, 'a spawned kōkako is a Kokako instance');
+  chk(hu instanceof Huia, 'a spawned huia is a Huia instance');
+  chk(ko && ko.isFlyer===true && typeof ko.behave==='function' && typeof ko.update==='function' &&
+      typeof ko.render==='function', 'kōkako implement the flyer contract (behave/update/render, drawn above)');
+  chk(hu && hu.isFlyer===true, 'huia are flyers (rendered above the ground plane)');
+
+  // dispersal: both carry a chance well under half the kererū's (which is 1), but
+  // still disperse some. This is the >50%-less requirement.
+  chk(KOK.disperseChance>0 && KOK.disperseChance<0.5, `kōkako disperse >50% less than the kererū (${KOK.disperseChance})`);
+  chk(HUI.disperseChance>0 && HUI.disperseChance<0.5, `huia disperse >50% less than the kererū (${HUI.disperseChance})`);
+  chk(ko && ko._disperseChance===KOK.disperseChance, 'the reduced dispersal chance reaches the kōkako instance');
+
+  // forest fidelity: each holds a home anchor the flying loop orbits (kōkako a
+  // territory, huia its mate) rather than ranging like the free kererū.
+  chk(ko && typeof ko._anchorPoint==='function' && ko._anchorPoint()!==null,
+      'a kōkako holds a territory anchor (stays on its patch of forest)');
+
+  // huia found as bonded male+female pairs.
+  chk(hui.length>=2 && hui.length%2===0, `huia spawn as whole pairs (${hui.length})`);
+  const bonded = hui.filter(h=>h._mate && h._mate.alive && h._mate.isFemale!==h.isFemale).length;
+  chk(bonded===hui.length, `every founder huia is bonded to an opposite-sex mate (${bonded}/${hui.length})`);
+  const female = hui.find(h=>h.isFemale && h._mate), male = female && female._mate;
+  chk(male && male._anchorPoint()===female.pos, 'a huia anchors to its mate (hangs around the same tree)');
+  if(male && female){
+    const fake={alive:true,dormant:false,growth:1,pos:{x:female.pos.x,y:female.pos.y}};
+    female._targetTree=fake; male._mate=female;
+    chk(male._findFruitTree(sim)===fake, 'the male huia forages on the female\'s tree (pair forages together)');
+    female._targetTree=null;
+  }
+
+  // kōkako SONG: a secure, perched kōkako breaks into a SINGING state (it sits on
+  // the tree longer). The nearest kōkako in earshot is told to answer; a third bird
+  // crowded inside the territory radius is displaced to new ground.
+  const savedStormUntil=G._tmStormUntil, savedOveruse=G._stormOveruse;
+  G._tmStormUntil=0; G._stormOveruse=false;                    // clear any storm ground-hold for the test
+  if(kok.length>=3){
+    const singer=kok[0], responder=kok[1], third=kok[2];
+    // park every other kōkako far away so only these three interact.
+    for(let i=3;i<kok.length;i++){ kok[i].pos.x=12; kok[i].pos.y=12; }
+    singer.pos.x=500; singer.pos.y=500;
+    responder.pos.x=560; responder.pos.y=500;                  // 60px — nearest, answers
+    third.pos.x=500;    third.pos.y=620;                       // 120px — inside territory, displaced
+    singer.state=KST.PERCHED; singer.hunger=0;                 // secure on a perch
+    singer._singCooldown=0; singer._songTimer=0; singer._respondSing=false; singer._restTimer=1000;
+    responder._respondSing=false; third._relocating=false;
+    const posSq=(third.pos.x-500)**2+(third.pos.y-500)**2;   // third's distance² from the singer now
+    singer.behave(sim, G.seasonManager, 1);
+    chk(singer.state===KKST.SINGING, 'a secure kōkako breaks into a song (SINGING state — sits longer on the tree)');
+    chk(responder._respondSing===true, 'the nearest kōkako in earshot is told to answer (call and response)');
+    chk(third._relocating===true, 'a crowded-in kōkako is pushed to seek a different territory');
+    const terr1=(third._territory.x-500)**2+(third._territory.y-500)**2;
+    chk(terr1 > posSq, 'the displaced kōkako claims new ground farther out from the singer');
+    singer.render();                                           // exercise the singing render (_renderExtra)
+  }
+  G._tmStormUntil=savedStormUntil; G._stormOveruse=savedOveruse;
+
+  // breed true through the shared flyer egg path (_hatchFlyerEgg).
+  const kokBefore=(sim.otherEntities.kokako||[]).filter(x=>x.alive).length;
+  const ke=sim.addEgg(ko?ko.pos.x:100, ko?ko.pos.y:100); ke.offspringType='kokako'; ke.parentSpecies='kokako'; ke.hatched=true;
+  sim.updateEggs(1);
+  const kokAfter=sim.otherEntities.kokako||[];
+  chk(kokAfter.filter(x=>x.alive).length===kokBefore+1, 'a kōkako egg hatches a juvenile into the flock');
+  chk(kokAfter[kokAfter.length-1] instanceof Kokako, 'the kōkako hatchling breeds true (a Kokako, not a kererū)');
+  const huiBefore=(sim.otherEntities.huia||[]).filter(x=>x.alive).length;
+  const he=sim.addEgg(hu?hu.pos.x:100, hu?hu.pos.y:100); he.offspringType='huia'; he.parentSpecies='huia'; he.hatched=true;
+  sim.updateEggs(1);
+  const huiAfter=sim.otherEntities.huia||[];
+  chk(huiAfter.filter(x=>x.alive).length===huiBefore+1, 'a huia egg hatches a juvenile into the flock');
+  chk(huiAfter[huiAfter.length-1] instanceof Huia, 'the huia hatchling breeds true (a Huia)');
+
+  console.log(fail? `flighted forest birds: ${fail} FAILURES`
+    : 'flighted forest birds: kōkako sing + hold territory, huia pair-bond, both disperse <½ the kererū and breed true');
+}catch(e){ console.log('KOKAKO/HUIA FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- North Island goose + the open-country tussock lift ------------------------
+// The goose (Cnemiornis gracilis) is a moa-guild grazer: registered under the `moa`
+// base type with its own Goose class, so it lives in the moa list and reuses the
+// grazer engine. The goose + the plains/coastal moa (flagged `openCountry`) get a
+// small population lift while the visitor grows TUSSOCK in a GLACIAL — the matched
+// cold regime (Game._tussockFlush). "Cold is busier, not emptier" (ECOLOGY_FAUNA).
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const REG=vm.runInContext('REGISTRY',ctx), Goose=vm.runInContext('Goose',ctx);
+  const sim=G.simulation, season=G.seasonManager;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // registration + identity: a moa-guild species with its own class, flagged lowland.
+  const gs = REG.getSpecies('giant_goose');
+  chk(!!gs, 'giant_goose is registered');
+  chk(gs && gs.baseType==='moa', 'goose registers under the moa guild (shares the grazer engine)');
+  chk(gs && gs.class===Goose, 'goose uses the Goose behaviour class');
+  chk(gs && gs.config.openCountry===true, 'goose is flagged open-country');
+  chk(gs && gs.config.preferredElevation && gs.config.preferredElevation.max<=0.30,
+      `goose favours lowland/coast (band max ${gs && gs.config.preferredElevation && gs.config.preferredElevation.max})`);
+
+  // it spawns into the moa list and runs the grazer contract.
+  const geese = sim.moas.filter(m=>m.speciesKey==='giant_goose');
+  chk(geese.length>0, `geese spawn into the moa list (${geese.length})`);
+  const goose = geese[0];
+  chk(goose && Goose && goose instanceof Goose, 'a spawned goose is a Goose instance');
+  chk(goose && typeof goose.behave==='function' && typeof goose.applySeparation==='function',
+      'goose runs the moa grazer contract (behave / applySeparation)');
+
+  // the plains/coastal moa share the flag; a forest moa does not.
+  for (const key of ['stout_legged_moa','mantells_moa','heavy_footed_moa','south_island_giant_moa']){
+    const s=REG.getSpecies(key); chk(s && s.config.openCountry===true, `${key} is open-country`);
+  }
+  const forest=REG.getSpecies('upland_moa');
+  chk(forest && !forest.config.openCountry, 'a forest moa (upland) is NOT open-country');
+
+  // mōho / NI takahē — the same moa-guild pattern, a territorial rail. NOT the SI takahē.
+  const Takahe=vm.runInContext('Takahe',ctx);
+  const ts = REG.getSpecies('north_island_takahe');
+  chk(!!ts, 'north_island_takahe (mōho) is registered');
+  chk(ts && ts.baseType==='moa' && ts.class===Takahe, 'mōho is a moa-guild grazer with the Takahe class');
+  chk(ts && ts.config.scientificName==='Porphyrio mantelli', 'mōho is P. mantelli (NI), not the SI takahē');
+  chk(ts && ts.config.openCountry===true, 'mōho is flagged open-country');
+  const takahe = sim.moas.find(m=>m.alive && m.speciesKey==='north_island_takahe');
+  chk(!!takahe, 'mōho spawns into the moa list');
+  chk(takahe && Takahe && takahe instanceof Takahe, 'a spawned mōho is a Takahe instance');
+  // territorial: it holds a tighter home range than a roaming moa, and does not do the
+  // moa's seasonal elevation migration (only relocates when starving with no food).
+  chk(takahe && takahe.homeRangeRadius<=50, 'mōho holds a tight territory (small home range)');
+  if (takahe){
+    takahe.hunger=10; takahe.localFoodScore=1;
+    chk(takahe.shouldMigrate({migrationStrength:1})===false, 'a fed mōho stays put (no seasonal migration)');
+  }
+
+  // sprite wiring: the goose and mōho render through dedicated moa-variant art now.
+  const MVS=vm.runInContext('MOA_VARIANT_SETS',ctx);
+  chk(gs && gs.config.spriteSet==='goose' && MVS && MVS.goose, 'goose is wired to its dedicated sprite set');
+  chk(ts && ts.config.spriteSet==='takahe' && MVS && MVS.takahe, 'mōho is wired to its dedicated sprite set');
+
+  // the flush flag: only TUSSOCK grown in a glacial arms it.
+  const FAR=1e15;
+  const flush=(warmUntil,coldUntil,yr)=>{ DT.seekTo(yr); season.update(1);
+    G._tmGrowWarmUntil=warmUntil; G._tmGrowColdUntil=coldUntil; G._updateHabitatHealth(1); return G._tussockFlush; };
+  chk(flush(0,FAR,140000)===true,  'TUSSOCK in a glacial arms the open-country flush');
+  chk(flush(0,FAR,122000)===false, 'TUSSOCK in an interglacial does not (wrong regime)');
+  chk(flush(FAR,0,140000)===false, 'FOREST growth never arms the tussock flush');
+  chk(flush(0,0,140000)===false,   'no growth pressed → no flush');
+
+  // the flag actually reaches the grazer (behave sets _openCountryBoost from it).
+  if (goose){
+    DT.seekTo(140000); season.update(1);
+    G._tussockFlush=true;  goose.behave(sim, season, 1); chk(goose._openCountryBoost===true,  'flush on → the grazer takes the open-country boost');
+    G._tussockFlush=false; goose.behave(sim, season, 1); chk(goose._openCountryBoost===false, 'flush off → no boost');
+  }
+
+  G._tmGrowWarmUntil=0; G._tmGrowColdUntil=0; G._tussockFlush=false; G._regimeFit=1; DT.reset();
+  console.log(fail? `grazers: ${fail} FAILURES`
+    : 'grazers: goose + mōho are moa-guild birds (dedicated art); open-country lift on TUSSOCK-in-glacial; mōho territorial');
+}catch(e){ console.log('GRAZERS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- fauna stability: nothing goes extinct, forest birds don't run away -------
+// Drives the ecology over a long warm↔cold sweep with NO visitor input (the honest
+// unattended case). The design guarantees: per-species floors + the invisible
+// sex-rebalance keep every founding species alive, the surplus-only harrier keeps
+// the forest flyers from booming past their caps, and the add-a-bird refound stays
+// a near-never backstop (never the mechanism). See the scaffold ECOLOGY FEEDBACK
+// block + TeManawa_eagle.js hunt / TeManawa_simulation.js _updateRefounding.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), REG=vm.runInContext('REGISTRY',ctx);
+  const sim=G.simulation, season=G.seasonManager;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  const grazers=(sim.activeSpecies.moa||[]).slice();
+  const flyers=Object.keys(sim.otherEntities).filter(t=>sim.otherEntities[t][0]&&sim.otherEntities[t][0].isFlyer);
+  const all=grazers.concat(flyers);
+  const cnt=k=>sim.getSpeciesCount(k);
+
+  // a warm (interglacial) and a cold (fullGlacial) year inside the window
+  let warmY=null, coldY=null;
+  for(let y=30000;y<=980000;y+=20000){ DT.seekTo(y); season.update(1);
+    if(!warmY&&season.currentKey==='interglacial')warmY=y; if(season.currentKey==='fullGlacial')coldY=y; }
+  warmY=warmY||105000; coldY=coldY||450000;
+
+  const mn={}, mx={}; for(const k of all){mn[k]=Infinity;mx[k]=0;}
+  const refound0=sim.stats.refounds;
+  const HC=4000, N=4*HC;   // two warm↔cold cycles
+  for(let t=0;t<N;t++){
+    const ph=(t%(2*HC))/HC, frac=ph<=1?ph:2-ph;   // triangular sweep 0..1..0
+    if(t%40===0){ DT.seekTo(warmY+(coldY-warmY)*frac); season.update(1); }
+    ctx.frameCount++; sim.update(1,1); sim._advanceFades();
+    if(t%250===0){ for(const k of all){ const c=cnt(k); if(c<mn[k])mn[k]=c; if(c>mx[k])mx[k]=c; } }
+  }
+  for(const k of all){ const c=cnt(k); if(c<mn[k])mn[k]=c; if(c>mx[k])mx[k]=c; }
+
+  for(const k of all) chk(mn[k]>=1, `${k} never goes extinct (min ${mn[k]})`);
+  for(const k of flyers){
+    const cap=((REG.getSpecies(k)&&REG.getSpecies(k).config&&REG.getSpecies(k).config.maxPopulation)||20)+2;
+    chk(mx[k]<=cap, `${k} stays under its cap (max ${mx[k]} <= ${cap})`);   // breeding halts at maxPopulation
+  }
+  const adds=sim.stats.refounds-refound0;
+  chk(adds<=4, `refound (add-a-bird) stays a rare backstop (${adds} adds in ${N} ticks)`);
+
+  DT.reset(); G.resetEcosystem();   // restore a fresh world for the sections that follow
+  console.log(fail? `fauna stability: ${fail} FAILURES`
+    : `fauna stability: no extinction over ${N} ticks (warm↔cold, no visitor); flyers under cap; refound backstop rare (${adds})`);
+}catch(e){ console.log('FAUNA STABILITY FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
 // ---- storm overuse: the STORM cost (plan §4) ----------------------------------
 // Each STORM press adds decaying pressure; above the overuse line the kererū stay grounded
 // BETWEEN storms and interglacial recruitment stalls, so the scene desaturates. A SINGLE press
@@ -390,6 +612,61 @@ try{
   console.log(fail? `storm overuse: ${fail} FAILURES`
     : 'storm overuse: spamming grounds the kererū + stalls recruitment; one press stays cheap; pressure decays');
 }catch(e){ console.log('STORM-OVERUSE FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- sand flux: the coastal dune engine (TEMANAWA_ECOLOGY_COAST.md §10A/§10D) --------
+// sandFlux = windStrength(glacial index) × exposedSand(climate openness + visitor disturbance).
+// Wind rises with cold; the WRONG regime / ash / storm expose bare sand; and the BURIAL drain is
+// keyed to the DISTURBANCE-only exposure (`excess`), so a managed, undisturbed coast is never
+// penalised whatever the climate — mismanagement bites hardest when the glacial wind is up.
+try{
+  const Game=vm.runInContext('Game',ctx), C=vm.runInContext('SANDFLUX',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const flux=(w,fit,ash,storm)=>Game._sandFluxModel(w,fit,ash,storm,C).flux;
+  const model=(w,fit,ash,storm)=>Game._sandFluxModel(w,fit,ash,storm,C);
+  // Wind is always ON but rises non-linearly into a glacial.
+  chk(model(0,1,0,0).wind > 0, 'the NW wind is always on (baseline windStrength > 0 even in the interglacial)');
+  chk(model(1,1,0,0).wind > model(0,1,0,0).wind, 'windStrength rises into a glacial');
+  // Flux climbs with cold (thinner cover), disturbance held at zero.
+  chk(flux(1,1,0,0) > flux(0.5,1,0,0) && flux(0.5,1,0,0) > flux(0,1,0,0), 'sand flux grows with the glacial index (open cold coast)');
+  // A well-vegetated, undisturbed interglacial coast is essentially locked (flux ~0).
+  chk(flux(0,1,0,0) < 0.02, 'a managed, undisturbed interglacial coast is locked down (flux ~0)');
+  // Visitor-driven exposure raises flux: wrong regime, ash, storm.
+  chk(flux(1,0.2,0,0) > flux(1,1,0,0), 'forcing the WRONG cover for the climate mobilises more sand');
+  chk(flux(0,1,0.8,0) > flux(0,1,0,0), 'eruption ash strips cover and mobilises sand');
+  chk(flux(0,1,0,0.8) > flux(0,1,0,0), 'a storm spikes the sand flux (advance the dune a step)');
+  chk(flux(1,0,1,1) <= 1 && flux(0,1,0,0) >= 0, 'sand flux stays within 0..1 under extreme inputs');
+  // BURIAL invariant: disturbance-only, so a managed+undisturbed coast burials nothing at any climate.
+  chk(model(1,1,0,0).excess === 0 && model(0,1,0,0).excess === 0, 'burial excess is 0 on a managed, undisturbed coast (any climate) — health invariant preserved');
+  chk(model(1,0.2,0,0).excess > 0, 'mismanagement (wrong regime) drives the burial excess above 0');
+  chk((C.burialWeight*model(1,0.2,0,0).wind*model(1,0.2,0,0).excess) > (C.burialWeight*model(0.3,0.2,0,0).wind*model(0.3,0.2,0,0).excess),
+      'the same mismanagement buries harder when the glacial wind is stronger');
+  console.log(fail? `sand flux: ${fail} FAILURES`
+    : 'sand flux: wind×exposure keyed to climate + disturbance; wrong regime/ash/storm mobilise sand; burial spares a managed coast');
+}catch(e){ console.log('SAND-FLUX FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- storm habitat effects: the succession clock rewound UNEVENLY (§10B–C) ----------
+// One STORM press snaps the inland emergents and salt-burns/buries the seaward margin, asymmetric
+// by species: tall emergents thrown, soft coastal plants knocked back, hardy binders ride it out;
+// harder in a glacial (stronger wind). _stormPlantDamage(type, growth, elevation, wind, cfg).
+try{
+  const Game=vm.runInContext('Game',ctx), C=vm.runInContext('STORMFX',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const d=(type,growth,elev,wind)=>Game._stormPlantDamage(type,growth,elev,wind,C);
+  const FOREST=0.5, COAST=0.05;   // an inland forest elevation vs a seaward-margin one
+  // (A) snap inland emergents — tall trees catch the wind, short ones ride it out.
+  chk(d('rimu',1.0,FOREST,1) > C.killThresh, 'a fully-grown inland emergent (rimu) is windthrown by a strong storm');
+  chk(d('rimu',0.3,FOREST,1) === 0, 'a short emergent (below emergentMinGrowth) rides the storm out');
+  chk(d('rimu',1.0,FOREST,1) > d('rimu',1.0,FOREST,0.35), 'windthrow is worse in a glacial gale than a mild interglacial breeze');
+  // (B) coastal salt-burn + lee burial, ASYMMETRIC by species (§10C).
+  chk(d('fern',1.0,COAST,1) > d('tussock',1.0,COAST,1), 'at the coast a soft species (fern) is hit far harder than a hardy binder (tussock)');
+  chk(d('tussock',1.0,COAST,1) < 0.2, 'a hardy open/dune binder rides out the coastal storm (§10C thrive/tolerate)');
+  chk(d('fern',1.0,COAST,1) > d('fern',1.0,0.20,1), 'coastal damage is strongest at the waterline and fades inland/up');
+  chk(d('kowhai',1.0,FOREST,1) === 0, 'a non-emergent inland plant above the coastal zone is untouched by the storm');
+  // wind scales everything; damage stays bounded.
+  chk(d('fern',1.0,COAST,1) > d('fern',1.0,COAST,0.35) && d('fern',1.0,COAST,1) <= 1, 'coastal damage scales with wind and stays within 0..1');
+  console.log(fail? `storm effects: ${fail} FAILURES`
+    : 'storm effects: snaps inland emergents, salt-burns/buries the seaward margin, asymmetric by species, harder in a glacial');
+}catch(e){ console.log('STORM-EFFECTS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- auto-eruptions + attract returns to the last eruption --------------
 // Eruptions fire ONCE as the clock CROSSES each checkpoint while playing forward (no button
@@ -435,21 +712,27 @@ const g=vm.runInContext('game',ctx);
 {
   const D=vm.runInContext('Debug',ctx), C=vm.runInContext('CONFIG',ctx);
   const G=vm.runInContext('game',ctx);
+  const IH=vm.runInContext('InstallHUD',ctx);
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
 
   D.mode='off'; D.applyVisibility();
-  chk(C.showEntityUI===false,'entity UI (bars/hearts/rings/glyphs) must be OFF for visitors');
+  // The mating heart is user-facing now (drawn ahead of the showEntityUI gate); the REST of
+  // the entity-UI layer (bars/rings/state glyphs, incl. the kōkako song note) stays off.
+  chk(C.showEntityUI===false,'entity UI (bars/rings/glyphs/song note) must be OFF for visitors');
   chk(D.enabled===false,'Debug.enabled must be false when mode is off');
   G.addNotification('test message','info');
   chk(G.ui.messages.length>0,'notifications should still be QUEUED (useful in debug)');
-  FRAME(ctx.draw);   // must not throw with debug off
+  FRAME(ctx.draw);   // must not throw with debug off — exercises the visitor HUD + edge glow
+  // On the wall the five buttons are physical, so no on-screen buttons for visitors.
+  chk(!G.ui._tmButtons || G.ui._tmButtons.length===0,'on-screen buttons hidden for visitors');
 
   D.mode='full'; D.applyVisibility();
   chk(C.showEntityUI===true,'entity UI must come back ON with the debug overlay');
   FRAME(ctx.draw);   // exercises the climate strip + all six panels
+  chk(G.ui._tmButtons && G.ui._tmButtons.length===IH.BUTTONS.length,'on-screen buttons return with the debug overlay');
   D.mode='off'; D.applyVisibility(); FRAME(ctx.draw);
 
-  console.log(fail? `visitor render: ${fail} FAILURES` : 'visitor render: clean (no entity UI, no messages, no climate chart)');
+  console.log(fail? `visitor render: ${fail} FAILURES` : 'visitor render: clean (heart only, no bars/song note, no messages, no climate chart)');
 }
 
 // ---- Phase 2: deep-time model ----------------------------------------
@@ -1024,6 +1307,68 @@ const g=vm.runInContext('game',ctx);
   chk(TG._northLift(0.11, 0.22, 0.13) > 0 && TG._northLift(0.11, 0.22, 0.13) < 0.13, 'north up-ramp eases smoothly through the band');
   chk(TG._northLift(0.1, 0.22, 0) === 0, 'north up-ramp off (amt 0) adds nothing');
 
+  // COASTAL DUNE FIELD: a sand tint on the WESTERN coastal plain, thinning inland to 0 at the
+  // per-phase reach, capped short of the range spine so it can NEVER bleed east across the
+  // ranges onto the trans-range land. _duneIntensity(nx, ny, e, coastX, coastXS, reach, off, eLo, eHi).
+  const dLOOK = vm.runInContext('LOOK', ctx);
+  const dCX = 0.14, dCXS = 0.1, dOff = 0.012, dLo = 0.16, dHi = 0.42;   // present coast + LOOK dune window
+  const dRIg = dLOOK.duneReachByPhase.interglacial, dRFg = dLOOK.duneReachByPhase.fullGlacial;
+  const dune = (nx, e, reach, ny = 0) => TG._duneIntensity(nx, ny, e, dCX, dCXS, reach, dOff, dLo, dHi);
+  chk(dLOOK.duneReachByPhase.interglacial < dLOOK.duneReachByPhase.cooling
+    && dLOOK.duneReachByPhase.cooling < dLOOK.duneReachByPhase.glacial
+    && dLOOK.duneReachByPhase.glacial < dLOOK.duneReachByPhase.fullGlacial,
+    'dune reach grows monotonically with cold (the Koputaroa glacial surge)');
+  chk(dune(0.25, 0.28, dRFg) > 0, 'dunes tint the western coastal plain just inland of the shore');
+  chk(dune(0.13, 0.28, dRFg) === 0, 'no dune tint seaward of the shoreline (west of the coast)');
+  chk(dune(0.60, 0.28, dRFg) === 0 && dune(0.85, 0.28, dRFg) === 0,
+    'the dune field is capped short of the spine — NO tint on the east / trans-range land, even at full glacial');
+  chk(dune(0.25, 0.10, dRFg) === 0 && dune(0.25, 0.50, dRFg) === 0,
+    'the dune window excludes water/wet slack (low e) and the range flank / hill forest (high e)');
+  chk(dune(0.32, 0.28, dRIg) === 0 && dune(0.32, 0.28, dRFg) > 0,
+    'the Koputaroa surge: a mid-plain cell is bare in the interglacial but sand at full glacial');
+  chk(dune(0.20, 0.28, dRFg) > dune(0.30, 0.28, dRFg),
+    'the sand tint is densest at the coast and thins inland (toward the ESE)');
+  chk(dune(0.25, 0.28, 0) === 0, 'dune field off (reach 0) tints nothing');
+
+  // DUNE RELIEF: relict wind-aligned ridges ADDED to the coastal-plain elevation, at the fixed
+  // GLACIAL reach, off the river channel. _duneRelief(u,v,e,coastX,coastXS,reach,off,eLo,eHi,amp,freq).
+  const dAmp = dLOOK.duneRelief, dFrq = dLOOK.duneRidgeFreq;
+  const dRel = (nx, e, ny = 0) => TG._duneRelief(nx, ny, e, dCX, dCXS, dRFg, dOff, dLo, dHi, dAmp, dFrq);
+  chk(TG._duneRidge(0.3, 0.5, dFrq) >= 0 && TG._duneRidge(0.3, 0.5, dFrq) <= 1, 'dune ridge pattern stays in 0..1');
+  chk(dRel(0.60, 0.28) === 0 && dRel(0.85, 0.28) === 0, 'dune relief adds NO ridges east of the belt (nothing on the trans-range land)');
+  chk(dRel(0.25, 0.10) === 0 && dRel(0.25, 0.50) === 0, 'dune relief respects the plain elevation window (no ridges on water or the range flank)');
+  chk(dRel(0.25, 0.28) <= dAmp + 1e-9, 'dune relief never exceeds the authored peak amplitude');
+  let anyRelief = false; for (let k = 0; k < 12; k++) { if (dRel(0.22 + 0.006 * k, 0.28, 0.08 * k) > 0) { anyRelief = true; break; } }
+  chk(anyRelief, 'dune relief raises the western coastal plain into ridges');
+  chk(TG._duneRelief(0.25, 0, 0.28, dCX, dCXS, dRFg, dOff, dLo, dHi, 0, dFrq) === 0, 'dune relief off (amp 0) adds no landform');
+
+  // FLUX → COLOUR REACH: the live sand surge extends the per-phase reach toward the glacial
+  // (relict) reach — mismanagement / a storm re-mobilises the belt inland. _duneEffReach(phase, full, surge, gain).
+  const dRCg = dLOOK.duneReachByPhase.glacial, dGain = dLOOK.duneSurgeGain;
+  chk(TG._duneEffReach(dRIg, dRFg, 0, dGain) === dRIg, 'surge 0 leaves the authored per-phase reach untouched (default look preserved)');
+  chk(TG._duneEffReach(dRIg, dRFg, 1, dGain) > dRIg, 'a high sand surge extends the colour reach inland');
+  chk(TG._duneEffReach(dRIg, dRFg, 1, dGain) <= dRFg + 1e-9, 'the surged reach never outruns the glacial (relict) reach — colour stays on the relief');
+  chk(TG._duneEffReach(dRIg, dRFg, 0.5, dGain) > TG._duneEffReach(dRIg, dRFg, 0.2, dGain), 'the reach grows monotonically with the surge');
+  chk(TG._duneEffReach(dRIg, dRFg, -1, dGain) === dRIg && TG._duneEffReach(dRIg, dRFg, 5, dGain) <= dRFg + 1e-9, 'surge is clamped: never below the phase reach, never past the glacial reach');
+  chk(TG._duneEffReach(dRFg, dRFg, 1, dGain) === dRFg, 'the full-glacial phase (already at max) does not surge further');
+  chk(TG._duneEffReach(dRIg, dRFg, 1, 0) === dRIg, 'surge gain 0 disables the flux→reach coupling (per-phase reach only)');
+  // The surge also BRIGHTENS the belt (bare mobile sand). _duneEffAmt(baseAmt, surge, boost).
+  chk(TG._duneEffAmt(0.5, 0, 0.6) === 0.5, 'surge 0 leaves the authored sand blend amount unchanged (default look)');
+  chk(TG._duneEffAmt(0.5, 0.8, 0.6) > 0.5, 'a high surge brightens the sand blend (mobile bare sand)');
+  chk(TG._duneEffAmt(0.9, 1, 0.6) <= 1, 'the brightened blend is capped at a full sand blend');
+  // BLOW-OUTS (§10B(2)): a sparse deflation-hollow mask across the belt — mostly 0, occasional bowls.
+  const bf = dLOOK.duneBlowoutFreq;
+  let boMax = 0, boZero = 0, boHit = 0, boN = 0;
+  for (let uu = 0.15; uu < 0.5; uu += 0.017) for (let vv = 0.1; vv < 0.9; vv += 0.037) {
+    const bo = TG._duneBlowout(uu, vv, bf); boN++;
+    if (bo < 0 || bo > 1) boMax = 99;                 // out of range → force a fail below
+    if (bo > boMax && boMax < 90) boMax = bo;
+    if (bo === 0) boZero++; else boHit++;
+  }
+  chk(boMax >= 0 && boMax <= 1, 'the blow-out mask stays in 0..1');
+  chk(boHit > 0 && boZero > boHit, 'blow-outs are SPARSE — some bowls open, but most of the belt is un-deflated');
+
+
   // deep-time factors: keyed to ABSOLUTE dates (not window progress), so a given yearsBP
   // always maps to the same geological state — jump the clock or resize the window freely.
   const at = yr => TG.geoTimeFactors(yr);
@@ -1154,6 +1499,19 @@ const g=vm.runInContext('game',ctx);
   chk(TG.shouldMorphBake(119000, 120000, 5000, 0, 9000, 1000) === false, 'morph waits until yearsBP drifts far enough');
   chk(TG.shouldMorphBake(100000, 120000, 500, 0, 9000, 1000) === false, 'morph respects the real-time throttle');
   chk(Math.abs(TG._combineGeo(0.3, 0, 0, 0, 0, 0, 0, 1, 1, 0.45, 0.06, 0.04, 0.5, 1) - 0.3) < 1e-9, 'combineGeo with no feature leaves the base untouched');
+  // GLACIAL EUSTATIC SEA: a SIGNED coastal shift from the glacial index (the fast ripple, composed
+  // onto the tectonic emergence). Colder EXPOSES land (coast seaward); warmer FLOODS (coast inland).
+  chk(TG.glacialSeaShift(140000) > TG.glacialSeaShift(122000), 'the glacial sea shift is larger (more exposure) in a glacial than an interglacial');
+  chk(TG.glacialSeaShift(140000) > 0, 'a glacial LOWSTAND raises the coastal shelf — exposes land, the coast marches seaward');
+  const cg = (e, gs) => TG._combineGeo(e, 0,0,0,0, 0,0, 1,1, 0.45,0.06,0.04, 0.5, 1, 0, 1, 2.6, 0.25, 0, 0, 0.04, 0, 1, 0, gs, 0.30);
+  chk(cg(0.15, 0.08) > 0.15, 'a glacial lowstand (+shift) lifts a low coastal cell toward land');
+  chk(cg(0.15, -0.08) < 0.15, 'an interglacial highstand (−shift) sinks a low coastal cell toward sea');
+  chk(Math.abs(cg(0.5, 0.08) - 0.5) < 1e-9, 'ground above the glacial-sea ceiling never moves (the ranges stay put)');
+  chk(Math.abs(cg(0.15, 0) - 0.15) < 1e-9, 'a present-level sea (no shift) leaves the coast untouched');
+  // DROWNED-VALLEY ESTUARY: the far pole of the highstand — the sea backs up the valley in a warm
+  // interglacial (fills), drains in a glacial. Positional up the main stem (tested live for placement).
+  chk(TG.estuaryStrength(122000) > TG.estuaryStrength(140000), 'the drowned-valley estuary fills in an interglacial and drains in a glacial');
+  chk(TG.estuaryStrength(122000) > 0 && TG.estuaryStrength(140000) === 0, 'the estuary is present at a highstand and absent in a full glacial');
   if (GEO && G.terrain._geoCache) {
     const T = G.terrain;
     T.morphTo(vm.runInContext('DeepTime.yearsStart', ctx), 1);   // p=0 — ranges nascent
@@ -1398,6 +1756,17 @@ console.log('  playTime  ', g.playTime.toFixed(0));
     moa.pos.set(sx, sy); moa.vel.set(svx, svy);           // restore the moa (not the land)
   }
 
+  // (a2) the RIVER is unwalkable too. It rides THROUGH the walkable lowland at grassland
+  //      elevation, so the coarse biome grid alone called it land and animals pathed straight
+  //      onto it ("animals run onto the water"). isWalkable now also consults waterTypeAt, so
+  //      no painted river/sea pixel is walkable. Scan the live land for a river cell and assert.
+  let riverCell = null;
+  for (let y = 8; y < T.mapHeight - 8 && !riverCell; y += 4)
+    for (let x = 8; x < T.mapWidth - 8 && !riverCell; x += 4)
+      if (T.waterTypeAt(x, y) === 2) riverCell = { x, y };
+  chk(!riverCell || T.isWalkable(riverCell.x, riverCell.y) === false,
+      'painted river water is not walkable (animals no longer path onto the river)');
+
   // (b) eels stay on water across deep time — including the window end, where the
   //     NE arm has dried. waterTypeAt: 0 land · 1 sea · 2 river; only 0 is illegal.
   //     Build at a post-500 ka year (yearsEnd) so eels are present to test (gated feature).
@@ -1432,6 +1801,14 @@ console.log('  playTime  ', g.playTime.toFixed(0));
     for (const p of S.plants) if (p.alive && T.waterTypeAt(p.pos.x, p.pos.y) !== 0) onWater++;
   }
   chk(onWater === 0, `no plant left standing on painted water after morph+cull (found ${onWater} of ${spawned} spawned)`);
+
+  // (d) survivors' cached SITE is refreshed to the morphed ground — the "plants don't update as the
+  //     landscape changes" bug (a podocarp kept its forest elevation while the Ruahine uplifted into
+  //     the subalpine band under it, so its forest-contraction check never fired). After the morph
+  //     loop every living plant's cached elevation must equal the CURRENT terrain under it.
+  let stale = 0;
+  for (const p of S.plants) { if (!p.alive) continue; if (Math.abs(p.elevation - T.getElevationAt(p.pos.x, p.pos.y)) > 1e-6) stale++; }
+  chk(stale === 0, `every surviving plant's cached elevation tracks the morphed ground (found ${stale} stale of ${S.plants.length})`);
 
   console.log(fail ? `land/water discipline: ${fail} FAILURES`
     : `land/water discipline: moa ejected off water, eels stay wet & gated <=500 ka, no plant on painted water `

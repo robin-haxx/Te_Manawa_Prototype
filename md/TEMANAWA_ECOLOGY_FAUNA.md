@@ -226,7 +226,7 @@ research applied. Given one screen with the land as the main narrative, the faun
 budget is realistically **six**.
 
 > ⛔ **Superseded on the cast.** `TEMANAWA_FAUNA_POOL.md` §1 sets the built cast at
-> **seven** (this six plus **huia**), and `TEMANAWA_PLAN_V2.md` §5.1 adopts it, adding
+> **seven** (this six plus **huia**), and `TEMANAWA_PLAN_V3.md` §5 adopts it, adding
 > the *Dinornis* male as the dimorphism pair. **Coastal moa** is the conditional
 > eighth and its condition — a distinct coastal band — is met by parametric sea level.
 > The scoring below still stands and is why those seven were chosen.
@@ -263,8 +263,8 @@ highway.
 ### Scores highest, fits worst — the honest note on huia
 
 > ⛔ **Resolved: huia is in the sim.** The recommendation below was withdrawn by
-> `TEMANAWA_FAUNA_POOL.md` §0 and the decision is recorded in `TEMANAWA_PLAN_V2.md`
-> §5.1 and §10.3. The argument below rests on "it will not read at sprite scale," and
+> `TEMANAWA_FAUNA_POOL.md` §0 and the decision is recorded in `TEMANAWA_PLAN_V3.md`
+> §5. The argument below rests on "it will not read at sprite scale," and
 > that premise is wrong: the sim is a **stylised bird's-eye cartoon**, so a huia sprite
 > stands for huia in an area, not for an individual bird at literal scale. Its bill
 > dimorphism gives the same free-second-sprite payoff as *Dinornis*. **The text below is

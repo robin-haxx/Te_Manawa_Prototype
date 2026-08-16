@@ -1,7 +1,7 @@
 # Te Manawa — Terrain Implementation Plan
 
-> ⛔ **Superseded, then partly revived. Read `TEMANAWA_GEOGRAPHY.md`,
-> `TEMANAWA_PLAN_V2.md` §7 and `TEMANAWA_BUILD_V3.md` §6 first.**
+> ⛔ **Superseded, then partly revived. Read `TEMANAWA_GEOGRAPHY.md`
+> and `TEMANAWA_BUILD_V3.md` §6 first.**
 >
 > This doc's keyframe pipeline — **§3 (manifest/layer format), §4 (the six-step morph),
 > §5 (noise guardrails)** — was cut in v2.1, then the *idea* of an authored morph came

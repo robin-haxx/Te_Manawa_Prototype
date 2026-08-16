@@ -1,6 +1,6 @@
 # Te Manawa — Species and Asset Summary
 
-**One page for the whole cast.** A join across `TEMANAWA_PLAN_V2.md` §2 and §5 (what's
+**One page for the whole cast.** A join across `TEMANAWA_PLAN_V3.md` §2 and §5 (what's
 in) and `TEMANAWA_BUILD_V3.md` §4 (what it costs), with the **ecological role** column
 added — that's the one thing scattered across the five deep dives and consolidated
 nowhere.
@@ -145,6 +145,6 @@ illustrator wants more.
 
 ---
 
-**Reference:** `TEMANAWA_PLAN_V2.md` §2, §5 · `TEMANAWA_BUILD_V3.md` §4 ·
+**Reference:** `TEMANAWA_PLAN_V3.md` §2, §5 · `TEMANAWA_BUILD_V3.md` §4 ·
 `TEMANAWA_SPRITE_BRIEF.md` · `TEMANAWA_FAUNA_POOL.md` · `TEMANAWA_SPECIES_KERANGI.md` ·
 the five deep dives.

@@ -12,6 +12,9 @@ const LOOK = {
   outlines:  true,   // ink stroke along biome boundaries (replaces contour lines)
   shore:     true,   // pale stroke at the water's edge
   shade:     true,   // slope shading of the lit tops
+  facet:     true,   // break the flat cel bands along an organic noise contour so the toon
+                     //   shading reads as ROCK FACETS, not grid-aligned steps (domain-warped
+                     //   posterize; bake-time, press B / reload). Off = the old grid-locked bands.
   haze:      true,   // atmospheric fade in the sky above the far ridge
   quiet:     true,   // desaturate the ground so the outlined sprites read first
   reliefEdge: true,  // bold dark outline along relief steps/cliff tops (like the sprite outlines)
@@ -25,10 +28,18 @@ const LOOK = {
   wobbleFreq:    0.12,   // spatial frequency of the wander
   quietSat:      0.2,   // 0 = full colour ground, 1 = greyscale
   quietContrast: 0.92,   // <1 compresses ground contrast toward mid-grey
-  shadeStrength: 70.0,   // slope-shading gain (feeds the cel bands below)
+  shadeStrength: 10.0,   // slope-shading gain (feeds the cel bands below)
   shadeSteps:    4,      // CEL bands: 0/1 = smooth gradient, 2–4 = flat toon steps (match the sprites)
   shadeShadow:   0.3,   // darkest cel band (shadow side) — multiplier on the ground colour
   shadeHigh:     1.32,   // lightest cel band (NW-lit highlight) — multiplier
+  facetAmp:      1.2,  // FACET break-up: how far a cel-band boundary may wander, in BAND-WIDTHS
+                        //   (0 = grid-locked steps; ~0.5 = edges roam half a band into organic rock
+                        //   facets; >1 can skip a band). Nudges the quantizer threshold, bake-time.
+  facetFreq:     0.1,   // FACET: spatial frequency of the LARGE facets (the flat rock planes).
+                        //   Lower = broader facets; higher = busier. World units, like wobbleFreq.
+  facetDetail:   0.3,   // FACET: weight of a 2nd (high-freq) octave that frays facet edges into
+                        //   cracks (0 = smooth wander; ~0.4 = ragged rock edges). Fraction of octave 1.
+  facetDetailFreq: 5.0, // FACET: frequency multiple of that crack octave over facetFreq.
   bakeScale:     3,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. render() draws
                          //   it under the 2.5× camera, so N>2.5 MINIFIES it — that downsample is
                          //   what anti-aliases ink+fill into curves (needs smoothScale). 3 is the
@@ -60,12 +71,42 @@ const LOOK = {
   riverFrontJitter: 0.09, // geo river: low-freq wander of the emerging tip so the growing river tapers off naturally instead of ending on a straight line. Regenerate to apply.
   riverEdgeNoise: 0.015,  // geo river: HIGH-frequency wobble on the channel edge (world frac) — breaks the authored polyline's smooth banks into a natural ragged waterline. Cached with the distance field, so it costs nothing per frame. 0 = off. Regenerate to apply.
   riverEdgeFreq:  26,     // geo river: spatial frequency of the edge noise. Higher = choppier banks.
-  tribHighlandThin: 1.1,  // tributaries: how fast the painted WATER/BED thins with elevation above the lowland (0.30). High ground carries only a thread (or bare gully) — a stream running downhill — instead of band-water and beaches perched on a ridge. 0 = off.
+  riverEdgeNoisePow: 2,   // geo river: how the edge-noise amplitude scales DOWN for narrow channels — the wobble is multiplied by (channelWidth / mainWidth)^this. A thin tributary's water thread is only a few cells wide, so the main's full-amplitude wobble (linear scaling) beat it into disconnected pools; squaring the ratio (2) cuts the tributary wobble ~3× while leaving the wide main almost untouched. 1 = the old linear scaling. Regenerate to apply.
+  tribHighlandThin: 1.1,  // tributaries: how fast the painted WATER/BED thins with elevation above the lowland (tribHighlandLo). High ground carries only a thread — a stream running downhill — instead of band-water and beaches perched on a ridge. Bounded by tribThinCap so the thread never starves. 0 = off.
+  tribHighlandLo: 0.30,   // tributaries: elevation at which highland thinning STARTS. Below this the tributary keeps its full lowland water width; above it the thread narrows at tribHighlandThin per unit elevation. Regenerate to apply.
+  tribThinCap: 0.12,      // tributaries: CAP on how much highland thinning may raise the water/bed threshold — floors the water thread so a tributary always keeps a small consistent ribbon of water (never beads to bare gully). The whole authored tributary sits near ~0.48 elevation, so without this the thinning starved the thread along its entire length. 0 = uncapped (old behaviour). Regenerate to apply.
   straitWidthMult: 6.0,   // main river is this many times wider at ~1 Ma (the Manawatū Strait). Narrows to 1× by straitCloseTo. Regenerate to apply.
   seaRise:       0.10,  // EMERGENCE (deep time): at ~1 Ma the basin is a shallow-marine embayment. The flood is water RISING (attenuated by elevation, see seaFloodCeil), not the ground sinking, scaled by submergence and easing to 0 (present shoreline) by GEO_EPOCHS.emergeTo (~0.5 Ma). Tune live (press B/G/N).
   seaFloodCeil:  1.,  // EMERGENCE reach: the flood's lowering fades to nothing at this elevation — ground above it never submerges, so the eastern uplands stay legible land at 1 Ma instead of the whole map reading as a grey flood. Lower = flood hugs the coast; higher = deeper inundation. Tune live (press B/G/N).
-  seaSWReach:    1.25,  // SW MARINE STRAIT (Axis A, positional): at ~1 Ma the Whanganui basin SW of the river is open sea — the strait. Regardless of elevation, the ground SW of a diagonal front (measured u+(1−v), so the lower-LEFT corner) is pulled fully under, then fills back into the normally-generated terrain by GEO_EPOCHS.emergeTo (~0.5 Ma). This is how far that full submergence reaches toward the NE; larger = more of the map starts drowned. Tune live (press B/G/N).
-  seaSWFeather:  0.7,  // SW MARINE STRAIT: softness of that diagonal front (0 = a hard shoreline). Its taper is what leaves the SE with intermittently more land — a basic 'land bridge'. Tune live (press B/G/N).
+  seaSWReach:    1.60,  // SW MARINE STRAIT (Axis A, positional): at ~1 Ma the Whanganui basin SW of the river is open sea — the strait. Regardless of elevation, the ground SW of a diagonal front (measured u+(1−v), so the lower-LEFT corner) is pulled fully under, then fills back into the normally-generated terrain by GEO_EPOCHS.emergeTo (~0.5 Ma). This is how far that full submergence reaches toward the NE; larger = more of the map starts drowned. Raised with seaSWFeather (1.25→1.60) so the WIDER taper still reaches the NE dry edge — the basin keeps its extent but shelves in gradually instead of dropping off. Tune live (press B/G/N).
+  seaSWFeather:  3.0,  // SW MARINE STRAIT: softness of that diagonal front (0 = a hard shoreline). Its taper is what leaves the SE with intermittently more land — a basic 'land bridge'. Widened 0.7→1.40 so the basin's INNER (NE, landward) shore grades in over a broad shelf rather than the obvious early drop-off; paired with seaSWReach above so the deep SW core survives. Tune live (press B/G/N).
+
+  // ---- GLACIAL EUSTATIC SEA (the fast ~100 ky ripple, from Climate.seaLevel) ----
+  // Distinct from the slow TECTONIC emergence above (seaRise/submergence, a one-way flood that
+  // recedes by ~0.5 Ma): this is the glacio-eustatic cycle, and it is SIGNED and oscillating.
+  // A glacial LOWSTAND (−125 m at the LGM) raises the low western shelf so it emerges as land and
+  // the coast marches SEAWARD (more land, but open/cold/dune country); an interglacial HIGHSTAND
+  // (+6 m) sinks it so the sea creeps INLAND (less land, but forested). Driven by the glacial index
+  // at the morph's yearsBP (TerrainGenerator.glacialSeaShift → Climate), so it breathes over the
+  // cycle as the world re-bakes, crossfaded like everything else. Elevation-attenuated to the coast
+  // and WEST-gated, so it never touches the trans-range eastern lowland. Set glacialSeaAmp 0 to disable.
+  glacialSeaAmp:   0.09,  // peak coastal elevation shift at full glacial↔interglacial swing; higher = the coast moves further. 0 = off.
+  glacialSeaMid:   0.05,  // glacial index at which the sea sits at PRESENT (no shift). Climate stands +6 m at g≈0 and 0 m at g≈0.05, so warmer than this floods, colder exposes.
+  glacialSeaCeil:  0.30,  // only ground BELOW this elevation is moved (the coastal shelf/plain); higher ground is untouched, so the ranges never shift.
+  glacialSeaEastU: 0.42,  // WEST gate: the eustatic shift fades to 0 by this screen-X fraction, so it moves only the WESTERN coast, never the eastern trans-range land.
+
+  // ---- DROWNED-VALLEY ESTUARY (the interglacial highstand extreme) -------------
+  // The far pole of the highstand (TEMANAWA_ECOLOGY_COAST.md §8): at a warm interglacial the sea
+  // does not just nudge the coast inland — it BACKS UP THE RIVER VALLEY as an estuary reaching east
+  // to Shannon and north to Opiki. So the "coast" stops being an edge strip and fingers into the
+  // middle of the map. Positional (follows the cached MAIN stem, wMDist/wMPos) and gated on the
+  // glacial index (fills only in warm interglacials, drains in glacials). Elevation-gated to the
+  // valley FLOOR, so terraces and the ranges stay dry. Applied in _applyGeoToHeightMap after the
+  // combine, like the dune relief. Distinct from the uniform glacialSea coastal shift above.
+  estuaryOnsetG:   0.16,  // glacial index BELOW which the estuary starts filling (full at g=0, empty at g≥this). Only warm interglacials drown the valley.
+  estuaryReach:    0.60,  // how far up the main stem (wMPos, 0 = SW mouth → 1 = NE source) the estuary reaches at FULL highstand; scales with the highstand strength.
+  estuaryWidth:    0.11,  // half-width (world frac) of the drowned floodplain either side of the main channel — how far the estuary spreads off the river.
+  estuaryCeil:     0.24,  // only valley-floor ground BELOW this elevation drowns; higher terraces stay dry (a soft shoreline up the valley walls).
 
   // ---- LOCALIZED SUBMERGENCE PATCH (deep time, Axis A, positional) -------------
   // A single elliptical spot that starts fully DROWNED at ~1 Ma and fills back into the
@@ -80,8 +121,8 @@ const LOOK = {
   patchSubV:       0.72,  // patch centre, vertical (0 = north/top edge, 1 = south/bottom edge)
   patchSubRX:      0.17,  // patch radius in u (half-width). 0 = OFF.
   patchSubRY:      0.15,  // patch radius in v (half-height) — a touch larger than RX offsets the 3/4 vertical squash so the drowned area reads round on screen. 0 = OFF.
-  patchSubFeather: 0.9,   // soft taper (as a fraction of the radius) from full drown at the core edge out to dry land, on the W/N/S sides. Wider = more gradual shoreline. 0 = a hard shoreline. (The moa beach north of the patch stays land up to ~1.1.)
-  patchSubFeatherE: 1.4,  // EAST taper — separate, and much wider, because the patch's eastern edge runs UPHILL into the coast: a short taper there drops from sea floor straight to high land in a cell or two, which the 3/4 relief bake paints as a jagged cliff line. This lengthens the eastern grade so the land eases down into the water from further east (a beach slope, not a drop-off). Blended smoothly by direction (full east → patchSubFeather at N/S), so no seam. Keep ≥ patchSubFeather; too large starts eating the far-east hill. Tune live (press B/G/N).
+  patchSubFeather: 1.20,   // soft taper (as a fraction of the radius) from full drown at the core edge out to dry land, on the W/N/S sides. Wider = more gradual shoreline. 0 = a hard shoreline. Widened 0.9→1.20 with the strait feathers so the deep central pocket shelves in to match. (The moa beach north of the patch stays land up to ~1.1.)
+  patchSubFeatherE: 3.0,  // EAST taper — separate, and much wider, because the patch's eastern edge runs UPHILL into the coast: a short taper there drops from sea floor straight to high land in a cell or two, which the 3/4 relief bake paints as a jagged cliff line. This lengthens the eastern grade so the land eases down into the water from further east (a beach slope, not a drop-off). Blended smoothly by direction (full east → patchSubFeather at N/S), so no seam. Keep ≥ patchSubFeather; too large starts eating the far-east hill. Tune live (press B/G/N).
 
   // ---- SOUTH-HALF STRAIT (deep time, Axis A) ----------------------------------
   // The SOUTHERN half of the map subsides into a marine strait, deepest at its pulse peak
@@ -89,7 +130,7 @@ const LOOK = {
   // as the N–S land bridge and the Manawatū a 'ghost' of the strait. The pulse TIMING is dated
   // in GEO_EPOCHS.southSink*; these knobs are its SHAPE on the map. Positional in v (latitude).
   southSinkLat:     0.38,  // where the strait's north shore begins, as a vertical fraction (0 = north edge, 1 = south). Ground south of this drowns; north of it is untouched. Lower = MORE of the south submerged. Tune live (press B/G/N).
-  southSinkFeather: 0.22,  // width of that shore ramp (in v). WIDE = the land eases under gradually (the brief's "not a sharp drop off at all"); small = a crisp coastline. Tune live (press B/G/N).
+  southSinkFeather: 0.50,  // width of that shore ramp (in v). WIDE = the land eases under gradually (the brief's "not a sharp drop off at all"); small = a crisp coastline. Widened 0.22→0.50 so the southern shore ramp reaches to v~0.88 — the "especially southward" part of the gentler basin. Tune live (press B/G/N).
   southSinkProtect: 1.0,   // how strongly the Tararua range mass RESISTS submergence (1 = the range footprint + foothills stay fully dry — the land bridge; 0 = the strait floods straight over it). Tune live (press B/G/N).
   southSinkWobble:  0.05,  // meander the strait's north SHORE off the straight latitude line (in v), so the drowned area is not a square-edged patch. Also mottles the sea floor so it reads as varied open water. 0 = a straight, latitude-aligned coast. Tune live (press B/G/N).
 
@@ -108,6 +149,54 @@ const LOOK = {
   // tapers with it. Regenerate / re-bake (B) to apply.
   eastLowerFrac:    0.4,  // fraction of the screen WIDTH (from the right/east edge) that ramps down. 0 = off.
   eastLowerAmt:     0.2,  // how much elevation to SUBTRACT at the very east edge (smoothstep to 0 at eastLowerFrac inland). Keep modest so the flank grades to hill/forest, not sea. Tune live (press B/G/N).
+
+  // ---- COASTAL DUNE FIELD (the Manawatū transgressive dunefield) ---------------
+  // The one landform driver that never changes across the whole deep-time window: the NW
+  // wind blows shelf/beach sand inland toward the ESE (md/TEMANAWA_ECOLOGY_COAST.md §1,§10).
+  // Rendered here as a BAKE-TIME SAND TINT only (no elevation change yet): each western
+  // coastal-plain cell's colour is blended toward duneColor by an intensity that is densest
+  // just inland of the shore and thins inland to 0 at the REACH. The reach is a screen-X
+  // fraction measured inland (east) from the present western shoreline, and is capped well
+  // short of the range spine — so the belt can NEVER bleed east across the ranges onto the
+  // trans-range eastern lowland (the real constraint: dunes are a west-coast feature). The
+  // reach GROWS with the glacial index (duneReachByPhase) — the Koputaroa surge: a narrow
+  // green-locked belt in the interglacial, reaching far inland at full glacial. Per-phase,
+  // applied in the season bake and blended by the same glacial-index crossfade as snow.
+  // Tune live (press B). Set dune:false or duneMaxAmt:0 to disable.
+  dune:            true,     // master toggle for the dune sand tint
+  duneColor:       '#d8c489',// pale gold dune sand the plain is tinted toward (spinifex/pīngao country)
+  duneMaxAmt:      0.5,      // peak blend toward duneColor at the belt core (0 = off, 1 = pure sand)
+  duneShoreOffset: 0.012,    // inland gap (screen-X frac) before the tint starts — leaves the bare beach/foredune toe
+  duneElevLo:      0.16,     // no sand tint below this elevation (keeps it off the water + wet slack)
+  duneElevHi:      0.42,     // sand tint fades out above this elevation (keeps it off the range flanks / hill forest)
+  // REACH per glacial phase — inland extent as a screen-X fraction from the shoreline.
+  // Ascending with cold: the dunefield surges inland as the climate cools (Koputaroa mode)
+  // and contracts to a coastal belt in the interglacial. Keep the LARGEST well under the
+  // shoreline→spine distance (~0.5+ at these latitudes) so the belt stops short of the ranges.
+  duneReachByPhase: { interglacial: 0.11, cooling: 0.17, glacial: 0.25, fullGlacial: 0.33 },
+  // DUNE RELIEF — low wind-aligned (NW→SE) sand ridges added to the coastal-plain ELEVATION
+  // in the belt, so it reads as landform, not just a wash. Added ONCE at the GLACIAL (max)
+  // reach — relict topography that persists across phases while the sand COLOUR (per-phase,
+  // above) surges over and greens off it, exactly as the stabilised Koputaroa/Foxton belts do.
+  // In the single heightMap (both sync + sliced morph share it), so entities ride the bumps too.
+  duneRelief:      0.028,    // peak ridge height (0..1 elevation) at the belt core; 0 = colour only, no landform
+  duneRidgeFreq:   52,       // spatial frequency of the ridges across the wind axis — more = finer streaks running NW→SE inland
+  // FLUX → COLOUR REACH: the live sand flux (Game._duneSurge, the disturbance-driven wind×exposure,
+  // mirrored onto terrain._duneSurge) extends the per-phase sand-colour reach INLAND toward the
+  // fixed glacial (relict) reach — a mismanaged coast re-mobilises the old belt, the sand creeps
+  // inland (and a storm advances it a step, §10B). Sampled per morph re-bake and crossfaded, so it
+  // never outruns the relief and never lands as a cut. 0 = the reach ignores flux (per-phase only).
+  duneSurgeGain:   0.9,      // how far full disturbance flux pushes the reach from the phase value toward the glacial reach (0..1)
+  duneSurgeAmt:    0.6,      // how much the surge also BRIGHTENS the sand blend (bare mobile sand vs stabilised/vegetated dune): duneMaxAmt × (1 + surge·this), capped at 1. 0 = reach-only, no colour change
+  duneCoastTrack:  1.0,      // how far the dune belt's shoreline FOLLOWS the glacial-eustatic sea (screen-X per elevation-shift unit ≈ 1/coast slope). So in a glacial the dunes march seaward onto the bared shelf (true Koputaroa mode); 0 = belt pinned to the present coast
+  // BLOW-OUTS (§10B(2)): where the belt is ACTIVE/mobile (high sand surge), the wind scours bare-sand
+  // DEFLATION HOLLOWS down to the moist water-table plane; a stable, vegetated belt has none. Carved
+  // into the dune relief in _applyGeoToHeightMap, surge-gated, so a storm (which spikes the surge)
+  // opens them and they heal as the belt re-stabilises. Sparse, thresholded pattern in the belt.
+  duneBlowout:      1.4,     // how fully an active belt deflates its hollows toward the water table at a blow-out centre (deflation is capped at a full scour to the floor; > 1 lets the centres bottom out before full surge)
+  duneBlowoutFreq:  30,      // spatial frequency / count of the blow-out hollows across the belt
+  duneBlowoutOnset: 0.25,    // sand SURGE above which blow-outs begin to open (a stable belt below this has none)
+  duneWaterTable:   0.12,    // the deflation FLOOR — dry sand blows away down to the moist water-table plane (just above the sea band ~0.10, so a scoured hollow reads as a bare-sand / wet-slack bowl, not open lagoon). Raise it if the land re-tune sits the belt higher; lower it toward the sea band for deeper, wetter hollows
 
   // ---- EAST→WEST STRAIT RETREAT (deep time) ------------------------------------
   // The wide main-stem "strait" (straitWidthMult) closes two ways at once as the ranges rise:
@@ -192,8 +281,8 @@ class TerrainGenerator {
     this.seasonManager = null;
     
     // Dimensions — see TerrainGenerator.gridFor(). Two modes:
-    //   'square'  Phase 1.5 behaviour. A fixed CONFIG.mapGrid square, letterboxed
-    //             into the screen via CONFIG.viewX/viewY/viewZoom.
+    //   'square'  a fixed CONFIG.mapGrid square, letterboxed into the screen via
+    //             CONFIG.viewX/viewY/viewZoom.
     //   'fit'     the grid takes the screen's aspect at a constant cell COUNT, so
     //             it fills the panel edge to edge and costs the same either way.
     // CONFIG.mapGrid is the one number that governs simulation cost — see
@@ -262,9 +351,8 @@ class TerrainGenerator {
   // Pure, static and p5-free, so tools/bootcheck.js can assert against it
   // directly without booting the sketch.
   //
-  // 'square' is the Phase 1.5 behaviour: a CONFIG.mapGrid square letterboxed
-  // into whatever the panel happens to be. On the 9:16 kiosk that throws away
-  // ~44% of the screen.
+  // 'square' is a CONFIG.mapGrid square letterboxed into whatever the panel
+  // happens to be. On the 9:16 kiosk that throws away ~44% of the screen.
   //
   // 'fit' keeps the CELL COUNT constant and spends it on the screen's aspect
   // instead:
@@ -274,9 +362,9 @@ class TerrainGenerator {
   // so cols·rows ≈ grid² at every aspect. On 1080×1920 that is 384×682 =
   // 261,888 cells against 512² = 262,144 — the same simulation cost, no
   // letterbox. This matters because mapGrid is the number every per-cell
-  // system scales on (the pixel bake now, Phase 4's four Float32Array fields
-  // next), so a fill mode that grew the grid with the aspect would silently
-  // blow the §5.2 budget on a tall panel.
+  // system scales on (the pixel bake now, the per-cell ecology fields next), so a
+  // fill mode that grew the grid with the aspect would silently blow the §5.2
+  // budget on a tall panel.
   //
   // Two consequences worth knowing:
   //   · Cells are smaller in screen terms on the short axis, so noiseScale is
@@ -748,7 +836,16 @@ class TerrainGenerator {
   }
   
   isWalkable(x, y) {
-    return this.getEffectiveBiomeAt(x, y).walkable;
+    // Two water tests, same reasoning as Simulation.cullSubmergedPlants(): animals walk
+    // the PAINTED ground, not the coarse sim grid. The biome grid catches sea and ice —
+    // but the RIVER (and its tributaries) rides THROUGH the walkable lowland at grassland
+    // elevation, so it is not in the biome grid as water and animals used to path straight
+    // onto it. waterTypeAt (paint resolution: 0 land · 1 sea · 2 river) is the authoritative
+    // "is this pixel water", and it also fixes the coast-margin cells where the two
+    // classifications disagree. Returns 0 before the first bake, so this is a no-op until
+    // the ground is painted (biome test still applies).
+    if (!this.getEffectiveBiomeAt(x, y).walkable) return false;
+    return this.waterTypeAt(x, y) === 0;
   }
   
   canPlace(x, y) {
@@ -856,6 +953,10 @@ class TerrainGenerator {
     // Deep-time factors for the CURRENT yearsBP (ranges grow, gorge incises), then
     // reshape the base field with the geography skeleton and classify biomes.
     this._geoT = TerrainGenerator.geoTimeFactors(
+      (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
+    this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(   // fast eustatic ripple (Climate), onto the tectonic factors
+      (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
+    this._geoT.estuary = TerrainGenerator.estuaryStrength(      // drowned-valley highstand (interglacial)
       (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
     if (this._geoUpliftOverride != null) this._geoT.uplift = this._geoUpliftOverride;   // GEO.uplift() authoring preview
     this._prepGeo();
@@ -984,10 +1085,35 @@ class TerrainGenerator {
     };
   }
 
+  // GLACIAL EUSTATIC sea shift for a morph year: a SIGNED coastal elevation offset from the
+  // glacial index (Climate.seaLevel's driver). + when colder than present (glacial lowstand →
+  // the shelf emerges, coast marches seaward) and − when warmer (highstand → the sea creeps in).
+  // Reads Climate + LOOK, so it is NOT pure like geoTimeFactors — it is assigned onto _geoT where
+  // the morph year is known, then read per cell in _applyGeoToHeightMap. 0 when disabled/unavailable.
+  static glacialSeaShift(yearsBP) {
+    if (yearsBP == null || typeof Climate === 'undefined') return 0;
+    const amp = (typeof LOOK !== 'undefined' && LOOK.glacialSeaAmp != null) ? LOOK.glacialSeaAmp : 0;
+    if (!(amp > 0)) return 0;
+    const mid = (typeof LOOK !== 'undefined' && LOOK.glacialSeaMid != null) ? LOOK.glacialSeaMid : 0.05;
+    const g = Climate.at(yearsBP).glacialIndex;
+    return amp * (g - mid);   // colder than mid ⇒ + (expose land); warmer ⇒ − (flood coast)
+  }
+
+  // DROWNED-VALLEY ESTUARY strength (0..1) for a morph year: 1 at a peak interglacial highstand
+  // (glacial index 0), easing to 0 by estuaryOnsetG — so the estuary fills the river valley in warm
+  // spells and drains in the cold. Reads Climate + LOOK; assigned onto _geoT where the year is known.
+  static estuaryStrength(yearsBP) {
+    if (yearsBP == null || typeof Climate === 'undefined') return 0;
+    const onset = (typeof LOOK !== 'undefined' && LOOK.estuaryOnsetG != null) ? LOOK.estuaryOnsetG : 0;
+    if (!(onset > 0)) return 0;
+    let h = (onset - Climate.at(yearsBP).glacialIndex) / onset;   // 1 at g=0 → 0 at g≥onset
+    return h < 0 ? 0 : h > 1 ? 1 : h;
+  }
+
   // Combine the geo field for one cell with the deep-time factors. Pure/static so
   // the cached morph path and the direct _applyGeo share it (no divergence), and
   // tools/bootcheck.js can assert it.
-  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub) {
+  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil) {
     const e0 = e;                                  // pre-range LOCAL ground — the level the river follows
     if (rMask > 0 && uplift > 0 && rH > 0) {
       // RANGES scale the EXISTING ground instead of replacing it with a crest template.
@@ -1087,6 +1213,19 @@ class TerrainGenerator {
     // (harness/older paths) passes undefined → no-op.
     if (patchSub > 0) {
       if (e > sf) e += (sf - e) * patchSub;
+    }
+    // GLACIAL EUSTATIC sea (fast ripple, SIGNED). Unlike every term above it can RAISE as well as
+    // lower: a glacial lowstand (glacialSea > 0) lifts the low western shelf so it emerges as land
+    // and the coast marches seaward; an interglacial highstand (glacialSea < 0) sinks it so the sea
+    // creeps inland. `glacialSea` arrives already WEST-gated from the caller; here it is attenuated
+    // by elevation — full at the waterline, fading to 0 by glacialSeaCeil — so only the coastal
+    // shelf/plain moves and the ranges never do. Composes additively on top of the tectonic terms.
+    if (glacialSea !== 0 && glacialSea != null) {
+      const gc = (glacialSeaCeil > 0) ? glacialSeaCeil : 0.30;
+      if (e < gc) {
+        const f = 1 - e / gc;                          // 1 at sea level → 0 at the ceiling
+        e += glacialSea * f * f * (3 - 2 * f);
+      }
     }
     return e < 0 ? 0 : e > 1 ? 1 : e;
   }
@@ -1229,6 +1368,92 @@ class TerrainGenerator {
     return amt * tt * tt * (3 - 2 * tt);
   }
 
+  // COASTAL DUNE tint intensity (0..1) for a paint cell at screen fractions (nx, ny) and
+  // elevation e — the Manawatū transgressive dunefield (TEMANAWA_ECOLOGY_COAST.md §1,§10).
+  // A sand belt just inland of the present western shoreline (shoreX = coastX + coastXS·ny,
+  // the same present-coast line getIslandFalloff uses), densest at the coast and thinning
+  // inland toward the ESE to 0 at `reach` (an inland screen-X fraction that GROWS with the
+  // glacial index — the Koputaroa surge — and is capped short of the range spine, so the
+  // belt can never cross east onto the trans-range land). Windowed to the coastal-plain
+  // elevation band [elevLo, elevHi] so it stays off the water/wet slack and off the range
+  // flanks. Pure + p5-free so tools/bootcheck.js can assert placement (west-only, capped).
+  static _duneIntensity(nx, ny, e, coastX, coastXS, reach, off, elevLo, elevHi) {
+    if (!(reach > 0) || e <= elevLo || e >= elevHi) return 0;
+    const shoreX = coastX + coastXS * ny;        // present shoreline at this latitude
+    const inland = nx - shoreX;                   // 0 at the shore, + inland (east)
+    const span = reach - off;
+    if (inland <= off || span <= 0) return 0;
+    let t = (inland - off) / span;                // 0 at the foredune toe → 1 at the reach
+    if (t >= 1) return 0;
+    let a = 1 - t;                                // densest near the coast, thinning inland
+    a = a * a * (3 - 2 * a);                       // smooth inland tail
+    // Coastal-plain elevation window: fade in off the wet beach, out onto the range flank.
+    const mid = (elevLo + elevHi) * 0.5;
+    let ew = e < mid ? (e - elevLo) / (mid - elevLo) : (elevHi - e) / (elevHi - mid);
+    if (ew < 0) ew = 0; else if (ew > 1) ew = 1;
+    ew = ew * ew * (3 - 2 * ew);
+    return a * ew;
+  }
+
+  // COASTAL DUNE ridge pattern (0..1) — the wind-aligned sand corrugation. The fixed NW wind
+  // blows NW→SE (TEMANAWA_ECOLOGY_COAST.md §1), so the parabolic-dune STREAKS run along that
+  // axis: lines of constant b=(u−v) run from the top-left (NW) to the bottom-right (SE), and
+  // the corrugation varies ACROSS them — bright/dark sand streaks pointing inland. A low-freq
+  // amplitude wander keeps them from reading as a uniform sine grid. Pure (sines only) so it is
+  // deterministic across the sliced morph and testable in tools/bootcheck.js.
+  static _duneRidge(u, v, freq) {
+    const a = u + v, b = u - v;                       // along-/cross-wind (NW→SE)
+    const s1 = Math.sin(b * freq + a * 6);            // streaks running along the wind
+    const s2 = Math.sin(a * (freq * 0.45));           // transverse breakup (foredune ripple)
+    let r = 0.7 * s1 + 0.3 * s2;                       // −1..1
+    r *= 0.6 + 0.4 * Math.sin(a * 3.3 + b * 2.1);      // low-freq amplitude wander
+    r = 0.5 + 0.5 * r;                                 // → 0..1 ridge height
+    return r < 0 ? 0 : r > 1 ? 1 : r;
+  }
+
+  // COASTAL DUNE BLOW-OUT mask (0..1) — sparse deflation-hollow locations across the belt. A product
+  // of two skewed sines (mostly near 0, occasional crests) thresholded so only the crests read as
+  // blow-outs, so the hollows are scattered bowls, not a uniform pitting. Pure/testable, like _duneRidge.
+  static _duneBlowout(u, v, freq) {
+    const a = u + v, b = u - v;
+    let n = 0.5 + 0.5 * Math.sin(a * freq * 0.7 + 1.3) * Math.sin(b * freq * 0.9 - 0.7);
+    n *= 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(a * freq * 1.9 + b * freq * 0.5));   // 2nd octave for irregularity
+    const t = 0.6;                                     // threshold: only the high patches deflate
+    let bo = (n - t) / (1 - t);
+    return bo < 0 ? 0 : bo > 1 ? 1 : bo;
+  }
+
+  // COASTAL DUNE relief delta (>= 0) to ADD to a coastal-plain cell's elevation: the dune
+  // intensity mask (densest at the coast, thinning to 0 at `reach`, windowed to the plain
+  // elevation band) times the wind-aligned ridge pattern times the peak amplitude. Called at
+  // the GLACIAL (max) reach so the ridges are relict landform that persists across phases.
+  static _duneRelief(u, v, e, coastX, coastXS, reach, off, elevLo, elevHi, amp, freq) {
+    if (!(amp > 0)) return 0;
+    const m = TerrainGenerator._duneIntensity(u, v, e, coastX, coastXS, reach, off, elevLo, elevHi);
+    if (m <= 0) return 0;
+    return amp * m * TerrainGenerator._duneRidge(u, v, freq);
+  }
+
+  // EFFECTIVE dune-colour REACH for a phase, given the live sand SURGE (0..1, the disturbance-driven
+  // wind×exposure). Lerps from the authored per-phase reach toward the glacial (relict) reach as the
+  // surge rises, so a mismanaged coast / a storm re-mobilises the old belt and the sand creeps inland
+  // — but never past the relief, and never below the authored reach (surge 0 ⇒ default look). Pure.
+  static _duneEffReach(phaseReach, fullReach, surge, gain) {
+    let s = surge * gain;
+    if (s < 0) s = 0; else if (s > 1) s = 1;
+    const r = phaseReach + (fullReach - phaseReach) * s;
+    return r < phaseReach ? phaseReach : r;
+  }
+
+  // EFFECTIVE dune blend AMOUNT given the surge: a mobile, mismanaged belt reads as barer sand
+  // than a stabilised/vegetated one, so the surge brightens the blend, capped at a full sand blend.
+  // surge 0 ⇒ the authored duneMaxAmt (default look preserved). Pure.
+  static _duneEffAmt(baseAmt, surge, boost) {
+    let s = surge; if (s < 0) s = 0;
+    let a = baseAmt * (1 + s * boost);
+    return a > 1 ? 1 : a < 0 ? 0 : a;
+  }
+
   // MAIN NE-ARM RECESSION presence multiplier (0..1) for a main-stem cell at downstream position
   // `wPos` (0 = SW mouth, 1 = NE source). 1 = channel fully present; multiply the main's water/carve
   // mask by it so the inland (high-wPos) reach fades to LAND as `mainArm` (deep time) ramps 0→1.
@@ -1276,6 +1501,7 @@ class TerrainGenerator {
     const wob = (typeof LOOK !== 'undefined' && LOOK.riverWobble != null) ? LOOK.riverWobble : 0.02;
     const eAmp = (typeof LOOK !== 'undefined' && LOOK.riverEdgeNoise != null) ? LOOK.riverEdgeNoise : 0;
     const eFreq = (typeof LOOK !== 'undefined' && LOOK.riverEdgeFreq != null) ? LOOK.riverEdgeFreq : 26;
+    const ePow = (typeof LOOK !== 'undefined' && LOOK.riverEdgeNoisePow != null) ? LOOK.riverEdgeNoisePow : 2;
     let idx = 0;
     for (let row = 0; row < gr; row++) {
       const v = row * invr, wy = row * scale;
@@ -1315,7 +1541,7 @@ class TerrainGenerator {
           // polyline as smooth curves. Cached — free at combine/paint time. Scaled by the
           // channel's width vs the main stem, so a thin tributary gets a proportionally small
           // wobble (a fixed 0.015 amplitude on a 0.02-wide trib shredded it into blocks).
-          if (eAmp > 0) d += (noise(u * eFreq + this.seed * 17, v * eFreq + this.seed * 19) * 2 - 1) * eAmp * (rv.width / this._mainRiverW);
+          if (eAmp > 0) d += (noise(u * eFreq + this.seed * 17, v * eFreq + this.seed * 19) * 2 - 1) * eAmp * Math.pow(rv.width / this._mainRiverW, ePow);
           if (d < 0) d = 0;
           const w = rv.width || 0.045;
           const margin = d / w;
@@ -1518,6 +1744,41 @@ class TerrainGenerator {
     const mainArm = (t.mainArm > 0) ? t.mainArm : 0;
     const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
+    // COASTAL DUNE relief (relict ridges) — added at the GLACIAL (max) reach so the landform
+    // persists across phases while the sand COLOUR surges over it. Off the river channel (wMask).
+    const duneAmp = (typeof LOOK !== 'undefined' && LOOK.dune && LOOK.duneRelief != null) ? LOOK.duneRelief : 0;
+    const dReach = (typeof LOOK !== 'undefined' && LOOK.duneReachByPhase) ? LOOK.duneReachByPhase.fullGlacial : 0;
+    const dOff = (typeof LOOK !== 'undefined' && LOOK.duneShoreOffset != null) ? LOOK.duneShoreOffset : 0;
+    const dELo = (typeof LOOK !== 'undefined' && LOOK.duneElevLo != null) ? LOOK.duneElevLo : 0.16;
+    const dEHi = (typeof LOOK !== 'undefined' && LOOK.duneElevHi != null) ? LOOK.duneElevHi : 0.42;
+    const dCoastXS = (typeof LOOK !== 'undefined' && LOOK.coastInlandSouth != null) ? LOOK.coastInlandSouth : 0;
+    const dFreq = (typeof LOOK !== 'undefined' && LOOK.duneRidgeFreq != null) ? LOOK.duneRidgeFreq : 52;
+    const duneOn = duneAmp > 0 && dReach > 0;
+    // BLOW-OUTS: surge-gated deflation hollows. Snapshotted per morph (like the colour surge) so the
+    // one-slice heightMap pass is deterministic. blowExcess ramps in above the onset surge.
+    const duneSurge = this._morphJob ? (this._morphJob.duneSurge || 0) : (this._duneSurge || 0);
+    const blowStrength = (typeof LOOK !== 'undefined' && LOOK.duneBlowout != null) ? LOOK.duneBlowout : 0;
+    const blowOnset = (typeof LOOK !== 'undefined' && LOOK.duneBlowoutOnset != null) ? LOOK.duneBlowoutOnset : 0.25;
+    const blowFreq = (typeof LOOK !== 'undefined' && LOOK.duneBlowoutFreq != null) ? LOOK.duneBlowoutFreq : 30;
+    const waterTable = (typeof LOOK !== 'undefined' && LOOK.duneWaterTable != null) ? LOOK.duneWaterTable : 0.15;
+    const blowExcess = (blowStrength > 0 && blowOnset < 1 && duneSurge > blowOnset)
+      ? ((duneSurge - blowOnset) / (1 - blowOnset)) * blowStrength : 0;
+    const blowOn = duneOn && blowExcess > 0;
+    // GLACIAL EUSTATIC sea (signed, this morph year) + its WEST gate east extent + elevation ceiling.
+    const glacialSea = (t.glacialSea != null) ? t.glacialSea : 0;
+    // Dune shoreline tracks the moving coast: a glacial lowstand (glacialSea > 0) pulls the belt's
+    // shore seaward (coastX down) so the dunes march onto the bared shelf (Koputaroa mode).
+    const dTrack = (typeof LOOK !== 'undefined' && LOOK.duneCoastTrack != null) ? LOOK.duneCoastTrack : 0;
+    const dCoastX = ((typeof LOOK !== 'undefined' && LOOK.coastInland != null) ? LOOK.coastInland : 0.02) - glacialSea * dTrack;
+    const gSeaCeil = (typeof LOOK !== 'undefined' && LOOK.glacialSeaCeil != null) ? LOOK.glacialSeaCeil : 0.30;
+    const gSeaEastU = (typeof LOOK !== 'undefined' && LOOK.glacialSeaEastU != null) ? LOOK.glacialSeaEastU : 0.42;
+    const gSeaOn = glacialSea !== 0 && gSeaEastU > 0;
+    // DROWNED-VALLEY ESTUARY (highstand, positional up the main stem). Follows wMDist/wMPos.
+    const highstand = (t.estuary != null) ? t.estuary : 0;
+    const estReach = (typeof LOOK !== 'undefined' && LOOK.estuaryReach != null) ? LOOK.estuaryReach : 0;
+    const estWidth = (typeof LOOK !== 'undefined' && LOOK.estuaryWidth != null) ? LOOK.estuaryWidth : 0;
+    const estCeil = (typeof LOOK !== 'undefined' && LOOK.estuaryCeil != null) ? LOOK.estuaryCeil : 0.24;
+    const estOn = highstand > 0 && estReach > 0 && estWidth > 0 && !!wMDistArr && !!wMPosArr;
     const gr = this.gridRows, gc = this.gridCols, invr = 1 / gr, invc = 1 / gc, edgeMargin = this._geoEdgeMargin, topMargin = this._geoTopMargin;
     let i = 0;
     for (let row = 0; row < gr; row++) {
@@ -1561,8 +1822,44 @@ class TerrainGenerator {
         let southSub = TerrainGenerator._southStrength(v + wv * southWob, southSink, southLat, southFeather);   // meander the shore off the straight latitude line
         if (southSub > 0) { const pr = 1 - southProtect * rMask[i]; southSub *= pr > 0 ? pr : 0; }   // Tararua stays a dry peninsula
         const patchSub = TerrainGenerator._patchStrength(u + wv * southWob, v, sub, patchU, patchV, patchRX, patchRY, patchFeather, patchFeatherE);   // meander the patch shore off a straight ellipse too
-        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, wDepthArr[i], up, inc, relief, incise, sea, wPosArr[i], cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub);
-        hm[i] = TerrainGenerator._nsEdgeFalloff(e, v, edgeMargin, topMargin);
+        // GLACIAL EUSTATIC sea: WEST-gate the signed shift (full at the west edge → 0 by gSeaEastU),
+        // so it moves only the western coast, never the trans-range eastern lowland.
+        let gSea = 0;
+        if (gSeaOn && u < gSeaEastU) { const wg = 1 - u / gSeaEastU; gSea = glacialSea * wg * wg * (3 - 2 * wg); }
+        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, wDepthArr[i], up, inc, relief, incise, sea, wPosArr[i], cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil);
+        // DROWNED-VALLEY ESTUARY: at a warm highstand the sea backs up the main-stem valley. Drown
+        // the low valley floor near the main channel (wMDist/wMPos) toward the sea floor, elevation-
+        // gated so terraces stay dry, reaching further inland as the highstand strengthens.
+        let eD = e;
+        if (estOn && e < estCeil) {
+          const reach = estReach * highstand;
+          const dM = wMDistArr[i];
+          if (reach > 0 && dM < estWidth && wMPosArr[i] < reach) {
+            let prox = 1 - dM / estWidth; prox = prox * prox * (3 - 2 * prox);           // near the channel
+            let rf = 1 - wMPosArr[i] / reach; rf = rf * rf * (3 - 2 * rf);                // fades up-valley (inland)
+            let eg = 1 - e / estCeil; eg = eg * eg * (3 - 2 * eg);                        // valley floor drowns, terrace top stays dry
+            const es = highstand * prox * rf * eg;
+            if (es > 0) eD = e + (seaFloor - e) * es;
+          }
+        }
+        // Add the relict dune ridges (masked to the coastal-plain belt; not on the river channel or drowned estuary).
+        if (duneOn) {
+          const wm = wMask > 1 ? 1 : wMask < 0 ? 0 : wMask;
+          const dr = TerrainGenerator._duneRelief(u, v, eD, dCoastX, dCoastXS, dReach, dOff, dELo, dEHi, duneAmp, dFreq);
+          if (dr > 0) eD = eD + dr * (1 - wm);
+          // BLOW-OUTS (§10B(2)): where the belt is active/mobile (surge past the onset), scour sparse
+          // bare-sand hollows down toward the water table; a stable belt leaves the ridges intact.
+          // Intensity is a BELT-MEMBERSHIP gate here (not a depth scalar) — the sparse blow-out mask ×
+          // surge drives the scour, so a hollow centre bottoms out at the floor instead of the two
+          // sparse fields multiplying each other down to a shallow dimple.
+          if (blowOn && eD > waterTable &&
+              TerrainGenerator._duneIntensity(u, v, eD, dCoastX, dCoastXS, dReach, dOff, dELo, dEHi) > 0.12) {
+            let deflate = TerrainGenerator._duneBlowout(u, v, blowFreq) * blowExcess * (1 - wm);
+            if (deflate > 1) deflate = 1;
+            if (deflate > 0) eD -= (eD - waterTable) * deflate;
+          }
+        }
+        hm[i] = TerrainGenerator._nsEdgeFalloff(eD, v, edgeMargin, topMargin);
       }
     }
     // Ease the extremely harsh vertical steps the carve/uplift can leave (a bank against
@@ -1739,6 +2036,34 @@ class TerrainGenerator {
     return this._paintWob;
   }
 
+  // FACET break-up field: two-octave value-noise in [-1,1] at PAINT resolution — a LOW octave
+  // that sizes the big flat rock facets and a HIGH octave that frays their edges into cracks.
+  // Added to the cel-band threshold in _bakeSeasonColumns so the toon steps break along an
+  // organic contour instead of the sim grid (domain-warped posterize). Season-independent, so it
+  // is sampled ONCE into a cached array (keyed by seed + freqs + size) and reused across all four
+  // season bakes and every morph slice — the same determinism discipline as the wobble/river
+  // fields: never call noise() live on the sliced bake path.
+  _paintFacetField(PW, PH, S) {
+    const f = LOOK.facetFreq, dw = LOOK.facetDetail, df = LOOK.facetFreq * LOOK.facetDetailFreq;
+    const key = this.seed + '|' + f + '|' + df + '|' + dw + '|' + PW + 'x' + PH + '@' + S;
+    if (this._paintFacetKey !== key) {
+      const s = this.seed, invS = 1 / S, norm = 1 / (1 + dw);
+      const arr = new Float32Array(PW * PH);
+      let i = 0;
+      for (let pr = 0; pr < PH; pr++) {
+        const wy = pr * invS;
+        for (let pc = 0; pc < PW; pc++, i++) {
+          const wx = pc * invS;
+          const lo = noise(wx * f  + s * 11, wy * f  + s * 13) * 2 - 1;   // big facets
+          const hi = noise(wx * df + s * 17, wy * df + s * 19) * 2 - 1;   // edge cracks
+          arr[i] = (lo + hi * dw) * norm;                                 // in [-1,1]
+        }
+      }
+      this._paintFacet = arr; this._paintFacetKey = key;
+    }
+    return this._paintFacet;
+  }
+
   // Paint-resolution river mask: the strongest _riverMask over the geo rivers at each
   // fine cell's (u,v) = (pc/PW, pr/PH). This is what makes the channel read as WATER at
   // any bed height — decoupled from elevation — so a river riding the plains (well above
@@ -1803,6 +2128,8 @@ class TerrainGenerator {
     const tribEmg = (_gt.tribEmergence != null) ? _gt.tribEmergence : 1;
     const tribEmgE = (_gt.tribEmergenceEarly != null) ? _gt.tribEmergenceEarly : 1;   // eastmost tributary's early schedule
     const thin = (typeof LOOK !== 'undefined' && LOOK.tribHighlandThin != null) ? LOOK.tribHighlandThin : 1.6;
+    const tribLo = (typeof LOOK !== 'undefined' && LOOK.tribHighlandLo != null) ? LOOK.tribHighlandLo : 0.30;
+    const thinCap = (typeof LOOK !== 'undefined' && LOOK.tribThinCap != null) ? LOOK.tribThinCap : 0.12;
     const mainArm = (_gt.mainArm > 0) ? _gt.mainArm : 0;   // MAIN NE-ARM recession (deep time)
     const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
@@ -1835,17 +2162,21 @@ class TerrainGenerator {
               // gully, not band-water with beaches. Raise the thresholds with elevation
               // so water narrows to a thread (then bare gully) upslope — no perched
               // ponds or sand rings on ridge lines.
-              if (wTypeArr[idx] === 1 && thin > 0 && eClass > 0.30) {
-                const hi = (eClass - 0.30) * thin;
+              if (wTypeArr[idx] === 1 && thin > 0 && eClass > tribLo) {
+                let hi = (eClass - tribLo) * thin;
+                if (hi > thinCap) hi = thinCap;   // floor the thread: thinning narrows the water but never starves it (a stream keeps a consistent minimum width)
                 wT += hi; bT += hi;   // bank thins WITH the water (a gully stream), not a widening sand ring
               }
               if (m >= wT) waterHit = true; else if (m >= bT) bedHit = true;
             }
           }
-          // Seam fallback: a TRIBUTARY-owned cell whose paint was gated off may still
-          // sit inside the (strait-widened) MAIN channel — without this the strait's
-          // water/banks cut off along the straight margin-selection boundary.
-          if (!waterHit && !bedHit && wTypeArr[idx] === 1 && wMDistArr) {
+          // Seam fallback: a TRIBUTARY-owned cell whose paint was gated off — OR that the
+          // tributary classified only as its own thin BANK — may still sit inside the
+          // (strait-widened) MAIN channel. Run whenever the cell isn't already water so the
+          // main's wide water can UPGRADE a tributary bank to water at the confluence (it only
+          // ever promotes: bed→water, never water→bed). Without this the tributary's own bank
+          // ring walls its mouth off from the main behind a strip of sand.
+          if (!waterHit && wTypeArr[idx] === 1 && wMDistArr) {
             const dM = wMDistArr[idx];
             const effWM = wMBaseWArr[idx] * (1 + (straitW - 1) * straitWide);
             if (dM < effWM) {
@@ -1906,6 +2237,9 @@ class TerrainGenerator {
       yearsBP,
       bakeScale: (bakeScaleOverride != null) ? bakeScaleOverride : null,
       phase: 0, row: 0, col: 0,
+      // Snapshot the live sand surge ONCE per morph, so every season buffer in this re-bake uses
+      // the same value and the sliced bake can't tear across slices (sliced==sync invariant).
+      duneSurge: this._duneSurge || 0,
       seasonIdx: 0, seasons: this._seasonBakeOrder(), st: null
     };
   }
@@ -1936,6 +2270,8 @@ class TerrainGenerator {
         // Reshape the sim-facing land: cheap per-cell combines over the geo
         // cache, biome classify off the cached wobble. Same calls as morphTo().
         this._geoT = TerrainGenerator.geoTimeFactors(job.yearsBP);
+        this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(job.yearsBP);   // fast eustatic ripple at the morph year
+        this._geoT.estuary = TerrainGenerator.estuaryStrength(job.yearsBP);      // drowned-valley highstand at the morph year
         if (this._geoUpliftOverride != null) this._geoT.uplift = this._geoUpliftOverride;   // GEO.uplift() authoring preview
         if (!this._geoCache) { this._prepGeo(); this._buildGeoCache(); }
         this._applyGeoToHeightMap();
@@ -2214,6 +2550,8 @@ class TerrainGenerator {
     const tribEmg = (_gt.tribEmergence != null) ? _gt.tribEmergence : 1;
     const tribEmgE = (_gt.tribEmergenceEarly != null) ? _gt.tribEmergenceEarly : 1;   // eastmost tributary's early schedule
     const thin = (typeof LOOK !== 'undefined' && LOOK.tribHighlandThin != null) ? LOOK.tribHighlandThin : 1.6;
+    const tribLo = (typeof LOOK !== 'undefined' && LOOK.tribHighlandLo != null) ? LOOK.tribHighlandLo : 0.30;
+    const thinCap = (typeof LOOK !== 'undefined' && LOOK.tribThinCap != null) ? LOOK.tribThinCap : 0.12;
     const mainArm = (_gt.mainArm > 0) ? _gt.mainArm : 0;   // MAIN NE-ARM recession (deep time)
     const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
@@ -2270,18 +2608,22 @@ class TerrainGenerator {
               let bT = riverBankT + (1 - fs) * (1 - riverBankT);
               // Highland thinning — same rule as _rebuildBiomeMap: tributary water
               // narrows to a thread with elevation; no perched water/beach on ridges.
-              if (wt === 1 && thin > 0 && eClass > 0.30) {
-                const hi = (eClass - 0.30) * thin;
+              if (wt === 1 && thin > 0 && eClass > tribLo) {
+                let hi = (eClass - tribLo) * thin;
+                if (hi > thinCap) hi = thinCap;   // floor the thread: thinning narrows the water but never starves it (a stream keeps a consistent minimum width)
                 wT += hi; bT += hi;   // bank thins WITH the water (a gully stream), not a widening sand ring
               }
               if (m >= wT) { biome = this._waterBiome; colorElev = riverColorElev; wa = 2; }
               else if (m >= bT && this._bedBiome) { biome = this._bedBiome; colorElev = bedColorElev; }
             }
           }
-          // Seam fallback (same rule as _rebuildBiomeMap): a gated tributary cell inside
-          // the strait-widened MAIN channel takes the main's paint, so the strait's
-          // water/banks don't cut off along the margin-selection seam.
-          if (wa === 0 && biome !== this._bedBiome && C_wType[ni] === 1 && C_wMDist) {
+          // Seam fallback (same rule as _rebuildBiomeMap): a tributary cell inside the
+          // strait-widened MAIN channel takes the main's paint, so the strait's water/banks
+          // don't cut off along the margin-selection seam. Runs even when the tributary already
+          // painted the cell as its own thin BANK, so the main's wide water UPGRADES that bank
+          // to water at the confluence (promotes bed→water only, never the reverse) — otherwise
+          // the tributary's bank ring walls its mouth off from the main behind a strip of sand.
+          if (wa === 0 && C_wType[ni] === 1 && C_wMDist) {
             const dM00 = C_wMDist[rowA + x0], dM10 = C_wMDist[rowA + x1];
             const dM01 = C_wMDist[rowB + x0], dM11 = C_wMDist[rowB + x1];
             const dM = (dM00 * (1 - fx) + dM10 * fx) * (1 - fy) + (dM01 * (1 - fx) + dM11 * fx) * fy;
@@ -2372,6 +2714,32 @@ class TerrainGenerator {
     const hazeC = this._getCachedColor(LOOK.hazeColor);
     const reC = this._getCachedColor(LOOK.reliefEdgeColor);
 
+    // FACET break-up (domain-warped posterize) — only when cel steps are actually on. The field
+    // is cached, so building it here (once) and reusing across all four season bakes is free.
+    const facetOn = LOOK.shade && LOOK.facet && (LOOK.shadeSteps | 0) >= 2 && LOOK.facetAmp > 0;
+    const facetA = facetOn ? this._paintFacetField(PW, PH, S) : null;
+
+    // COASTAL DUNE tint — this phase's inland REACH (the Koputaroa surge is per-phase, so it
+    // rides the same glacial-index crossfade as snow). The live sand SURGE (disturbance-driven
+    // flux) extends the reach toward the glacial (relict) reach — snapshotted PER MORPH (off the
+    // job, or live on the sync rebake) so it stays constant across the sliced bake. Cached once.
+    const duneReachBase = (LOOK.duneReachByPhase && LOOK.duneReachByPhase[seasonKey]) || 0;
+    const duneFullReach = (LOOK.duneReachByPhase && LOOK.duneReachByPhase.fullGlacial) || duneReachBase;
+    const duneSurge = this._morphJob ? (this._morphJob.duneSurge || 0) : (this._duneSurge || 0);
+    const duneSurgeGain = (LOOK.duneSurgeGain != null) ? LOOK.duneSurgeGain : 0;
+    const duneReach = TerrainGenerator._duneEffReach(duneReachBase, duneFullReach, duneSurge, duneSurgeGain);
+    // Surge also BRIGHTENS the blend — a mobile, mismanaged belt reads as barer sand than a
+    // stabilised/vegetated one — capped at a full sand blend.
+    const duneSurgeAmt = (LOOK.duneSurgeAmt != null) ? LOOK.duneSurgeAmt : 0;
+    const duneAmt = TerrainGenerator._duneEffAmt((LOOK.duneMaxAmt != null) ? LOOK.duneMaxAmt : 0, duneSurge, duneSurgeAmt);
+    const duneOn = !!LOOK.dune && duneAmt > 0 && duneReach > 0;
+    const duneC = duneOn ? this._getCachedColor(LOOK.duneColor || '#d8c489') : null;
+    // The belt's shoreline tracks the glacial-eustatic coast (this morph's shift), so the tint
+    // follows the sea onto the bared glacial shelf. Same value the heightMap coast was baked with.
+    const duneGlacialSea = (this._geoT && this._geoT.glacialSea != null) ? this._geoT.glacialSea : 0;
+    const duneTrack = (LOOK.duneCoastTrack != null) ? LOOK.duneCoastTrack : 0;
+    const duneCoastX = ((LOOK.coastInland != null) ? LOOK.coastInland : 0.02) - duneGlacialSea * duneTrack;
+
     return {
       seasonKey, buf, px: buf.pixels,
       K, LIFT, S, PW, PH,
@@ -2393,7 +2761,16 @@ class TerrainGenerator {
       reliefEdgeOn: LOOK.reliefEdge,
       reR: red(reC), reG: green(reC), reB: blue(reC),
       EDGEW: Math.max(1, Math.round(1.3 * S)),         // relief outline thickness, px
-      jit: LOOK.outlines ? LOOK.outlineJitter : 0
+      jit: LOOK.outlines ? LOOK.outlineJitter : 0,
+      facetA, facetAmp: facetOn ? LOOK.facetAmp : 0,   // FACET break-up (domain-warped posterize)
+      // COASTAL DUNE sand tint (per-phase reach; blended before snow/edges so outlines ink over it)
+      duneOn, duneAmt,
+      duneR: duneC ? red(duneC) : 0, duneG: duneC ? green(duneC) : 0, duneB: duneC ? blue(duneC) : 0,
+      duneReach, duneOff: (LOOK.duneShoreOffset != null) ? LOOK.duneShoreOffset : 0,
+      duneELo: (LOOK.duneElevLo != null) ? LOOK.duneElevLo : 0.16,
+      duneEHi: (LOOK.duneElevHi != null) ? LOOK.duneElevHi : 0.42,
+      duneCoastX,
+      duneCoastXS: (LOOK.coastInlandSouth != null) ? LOOK.coastInlandSouth : 0
     };
   }
 
@@ -2420,11 +2797,16 @@ class TerrainGenerator {
             snowColorsRGB, hasSnow, snowLine, permanentSnowLine,
             shoreR, shoreG, shoreB, hazeR, hazeG, hazeB,
             invS, SHADE, STEPS, SHLO, SHHI, TOPBAND, CLIFF,
-            reliefEdgeOn, reR, reG, reB, EDGEW, jit } = st;
+            reliefEdgeOn, reR, reG, reB, EDGEW, jit, facetA, facetAmp,
+            duneOn, duneAmt, duneR, duneG, duneB, duneReach, duneOff, duneELo, duneEHi,
+            duneCoastX, duneCoastXS } = st;
+
+    const invPW = 1 / PW, invPH = 1 / PH;
 
     for (let pc = c0; pc < c1; pc++) {
       let ceiling = fullHeight;
       let farR = 0, farG = 0, farB = 0, painted = false;
+      const nx = pc * invPW;   // screen-X fraction of this column (for the dune belt)
 
       for (let pr = PH - 1; pr >= 0; pr--) {             // near → far
         const i = pr * PW + pc;
@@ -2445,6 +2827,18 @@ class TerrainGenerator {
 
         // ---- season colour for this paint cell ----
         let cr = colR[i], cg = colG[i], cb = colB[i];
+
+        // COASTAL DUNE sand tint: blend toward the sand colour on the western coastal plain,
+        // thinning inland to 0 at this phase's reach (the Koputaroa surge grows with cold).
+        // Before snow (dunes sit below the snow line anyway) and before the edge ink, so biome
+        // outlines + the shoreline stroke still draw over the sand. waterA 0 = land only.
+        if (duneOn && waterA[i] === 0) {
+          const di = TerrainGenerator._duneIntensity(nx, pr * invPH, e, duneCoastX, duneCoastXS, duneReach, duneOff, duneELo, duneEHi);
+          if (di > 0) {
+            const a = di * duneAmt;
+            cr = cr + (duneR - cr) * a; cg = cg + (duneG - cg) * a; cb = cb + (duneB - cb) * a;
+          }
+        }
 
         if (hasSnow && e >= snowLine && waterA[i] !== 2) {   // no snow cap on a river riding high ground
           let cov;
@@ -2478,7 +2872,13 @@ class TerrainGenerator {
         let sh = 1 - ((e - eN) + (e - eW)) * 0.5 * S * SHADE;
         if (sh < SHLO) sh = SHLO; else if (sh > SHHI) sh = SHHI;
         if (STEPS >= 2) {
-          const b = Math.min(STEPS - 1, ((sh - SHLO) / (SHHI - SHLO)) * STEPS | 0);
+          // Domain-warped posterize: nudge the band threshold by the facet noise so the step
+          // lands on an organic contour, not the sim grid. facetAmp is in BAND-WIDTHS, added to
+          // the fractional band index — still a HARD step, the boundary MOVES, it does not blur.
+          let bf = (sh - SHLO) / (SHHI - SHLO) * STEPS;
+          if (facetA) bf += facetA[i] * facetAmp;
+          let b = bf | 0;
+          if (b < 0) b = 0; else if (b > STEPS - 1) b = STEPS - 1;
           sh = SHLO + (SHHI - SHLO) * (b / (STEPS - 1));
         }
         let tr = (cr * sh) | 0, tg = (cg * sh) | 0, tb = (cb * sh) | 0;
@@ -2561,13 +2961,19 @@ class TerrainGenerator {
    * Render terrain - just draws pre-baked buffers with crossfade
    * This is EXTREMELY fast - no computation, just image drawing
    */
-  render() {
+  render(g) {
+    // Split pipeline: draw the ground into the target buffer `g` (Game._terrainLayer,
+    // a 1080 offscreen) rather than the live canvas, so the season-buffer blit and the
+    // saturate() health filter stay pinned at 1080 while the main canvas is
+    // supersampled for sprites. R = g || window, so an omitted target falls back to the
+    // global canvas and any legacy caller keeps working.
+    const R = g || (typeof window !== 'undefined' ? window : this);
     // Anti-alias the baked ground as it scales to the panel. The buffer is baked
     // at bakeScale× and drawn under the 2.5× camera, so bakeScale>2.5 minifies it;
     // with smoothing that downsample turns the raster ink+fill into curved edges.
     // smoothScale=false → crisp nearest-neighbour (the pixel look). Saved/restored
     // so sprites and HUD keep whatever the frame set.
-    const _dc = drawingContext, _ps = _dc.imageSmoothingEnabled, _pq = _dc.imageSmoothingQuality;
+    const _dc = R.drawingContext, _ps = _dc.imageSmoothingEnabled, _pq = _dc.imageSmoothingQuality;
     const _sm = (typeof LOOK === 'undefined') ? true : LOOK.smoothScale !== false;
     _dc.imageSmoothingEnabled = _sm;
     if (_sm && 'imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = 'high';
@@ -2593,7 +2999,7 @@ class TerrainGenerator {
         this._releaseBakeBuffer(mf.buf);
         this._morphFade = null;
       } else {
-        image(mf.buf, 0, 0, drawW, drawH);
+        R.image(mf.buf, 0, 0, drawW, drawH);
         const tt = t < 0 ? 0 : t;
         fadeAlpha = tt * tt * (3 - 2 * tt);   // eased ramp, no step
       }
@@ -2605,7 +3011,7 @@ class TerrainGenerator {
       // No phase manager - just draw the interglacial. The buffer is bakeScale× the world
       // footprint, so draw it at (mapWidth × paintWorldH) — p5 downsamples the S×
       // detail into the footprint, then the view zoom scales it up (higher-res).
-      image(this.seasonBuffers.interglacial, 0, 0, drawW, drawH);
+      R.image(this.seasonBuffers.interglacial, 0, 0, drawW, drawH);
       _dc.globalAlpha = _ga;
       _dc.imageSmoothingEnabled = _ps; if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = _pq;
       return;
@@ -2616,13 +3022,13 @@ class TerrainGenerator {
 
     if (transitionProgress < 0.01) {
       // No transition - just draw current season
-      image(this.seasonBuffers[currentKey], 0, 0, drawW, drawH);
+      R.image(this.seasonBuffers[currentKey], 0, 0, drawW, drawH);
     } else {
       // Crossfade between current and next season
       const nextKey = this.seasonManager.nextKey;
 
       // Draw current season
-      image(this.seasonBuffers[currentKey], 0, 0, drawW, drawH);
+      R.image(this.seasonBuffers[currentKey], 0, 0, drawW, drawH);
 
       // Draw next season with alpha — globalAlpha, not tint(), so p5 skips the
       // per-call tinted-canvas composite (#7). The buffers are opaque, so the
@@ -2640,7 +3046,7 @@ class TerrainGenerator {
       // exactly the pre-swap composite (retired current·(1−tp) + next·tp), so the
       // swap is seamless; the fresh current land then eases in underneath the blend.
       _dc.globalAlpha = transitionProgress;
-      image(this.seasonBuffers[nextKey], 0, 0, drawW, drawH);
+      R.image(this.seasonBuffers[nextKey], 0, 0, drawW, drawH);
     }
     _dc.globalAlpha = _ga;
     _dc.imageSmoothingEnabled = _ps; if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = _pq;

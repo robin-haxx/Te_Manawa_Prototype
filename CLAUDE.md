@@ -4,7 +4,7 @@
 of the Manawatū across ~1 Ma to 25.5 ka, on one screen, unattended, no operator, no
 network. Vanilla JavaScript on p5.js, classic scripts, no build step.
 
-> **Governing principle** (`md/TEMANAWA_PLAN_V2.md` §0.1):
+> **Governing principle** (`md/TEMANAWA_PLAN_V3.md` §0):
 > *This is a cartoon seen from above, not a survey of the Manawatū.*
 
 A fork of the Mauri engine, stripped of its economy. If something in the code looks like
@@ -28,7 +28,7 @@ node tools/bootcheck.js
 ```
 
 A headless harness: stubs p5 and the DOM, loads every script in `index.html` order, runs
-`preload`/`setup`/120 `draw` frames, presses all four buttons, cycles the debug overlay,
+`preload`/`setup`/120 `draw` frames, presses all five buttons, cycles the debug overlay,
 times six soft resets against a full `init()`, checks the climate curve against five
 dated facts, and sweeps the terrain footprint across six aspect ratios.
 
@@ -41,12 +41,14 @@ than adding a test framework. If a section prints `FAILURES`, that is a real reg
 
 | Order | Document | Role |
 |---|---|---|
-| 1 | `md/TEMANAWA_PLAN_V2.md` | **The design spine.** Where anything disagrees with it, it wins |
-| 2 | `md/TEMANAWA_BUILD_V3.md` | Architecture, performance budgets, the 158-asset manifest |
+| 1 | `md/TEMANAWA_PLAN_V3.md` | **The design spine.** Build Plan v3 — current design, phase status, road ahead. Where anything disagrees with it, it wins |
+| 2 | `md/TEMANAWA_BUILD_V3.md` | Architecture, performance budgets, the 158-asset manifest (technical companion) |
 | 3 | `md/TEMANAWA_TERRAIN_PLAN.md` | Terrain and morph pipeline detail |
 | 4 | `md/TEMANAWA_REORG.md` | Structural proposal — what to reorganise and in what order |
 
-`md/TEMANAWA_PLAN.md` (no V2) is **superseded**. `md/README.md` indexes the rest.
+`md/README.md` indexes the rest. `MISTAKES.md` (repo root) is the incident log
+behind the rules below — what was tried, why it failed, and the rule that stops a
+repeat. Newest first; add to it when a mistake is worth not repeating.
 
 ---
 
@@ -154,12 +156,23 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 | Live plant entities | ≤ 1,000 |
 | Live fauna | ≤ 300 |
 | `image()` calls per frame | ≤ 1,500 |
-| `pixelDensity` | **1** — non-negotiable on a 4K panel |
+| `pixelDensity` | **1** — never raise it; use `CONFIG.spriteSupersample` instead (below) |
 | Soft reset | **10–25 ms** (measured 17–31). A reset must never touch the network |
 | Photosensitivity | ≤ 3 luminance transitions/sec; large changes ramped ≥ 500 ms |
 
 `CONFIG.mapGrid` is a **cell budget**, not a width — both terrain footprint modes spend
 `mapGrid²` cells. It is the single most expensive number in the project.
+
+**Split-resolution rendering (`CONFIG.spriteSupersample`, default 2; `?sprites=1|2|3`).**
+The backing canvas is `spriteSupersample×` the logical 1080 size and a single `scale(SS)`
+in `draw()` renders sprites + HUD at that higher resolution (the source PNGs carry 2–4×
+the detail). The **terrain opts out**: it is composited into a 1080 offscreen buffer
+(`Game._terrainLayer`) — the season-buffer blit, water decals, the frost/ash/haze washes'
+source, and the `saturate()` health filter all run at 1080 — then blitted up as one quad,
+so the ground stays cheap while the cast is crisp. `pixelDensity` must stay **1** (a p5
+density of 2 would 4×-back the *whole* frame, terrain included, defeating the split).
+`SS = 1` reproduces the old single-1080-canvas path exactly. Mouse coords are in backing
+pixels, so `mousePressed`/`mouseReleased` divide by `SS`. See `Game._composeTerrainLayer`.
 
 ---
 
@@ -172,8 +185,8 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 | Cost | **17–31 ms** | 1.5–2.5 s |
 | Frequency | hundreds a day | ideally once a day |
 
-`Game.init()` is the expensive one (~1.8 s now — the Phase 3 terrain bake is heavy) because
-it regenerates terrain noise over every cell and bakes four season buffers.
+`Game.init()` is the expensive one (several seconds — ~6.8 s in the harness; the terrain bake is
+heavy) because it regenerates terrain noise over every cell and bakes four season buffers.
 `resetEcosystem()` keeps the terrain and replaces only the living world. Every 12th reset reseeds the land via `init()` so it varies across a
 day. **Nothing on the visitor path may call `init()`.**
 
@@ -189,15 +202,19 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` |
 | `B` / `G` / `N` | Dev tools: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. See `md/TEMANAWA_DEVTOOLS.md` |
-| `?art=low\|high` | Sprite resolution, startup only |
+| `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
+| `?sprites=1\|2\|3` | Backing-canvas supersample for sprites+HUD (default 2); terrain stays 1080. Startup only |
 
 ## Current phase
 
-Phases 0–2 are done and **Phase 3 (terrain) is substantially built** — the 3/4 view, the
-SVG geography skeleton (`md/TEMANAWA_GEOGRAPHY.md`), the deep-time morph and the cel
-illustration look are all running. Currently tuning the terrain look; `CONFIG.mapGrid` is
-still 512. The `md/TEMANAWA_REORG.md` §8 structural steps (asset pipeline, `sketch.js`
-split) are still pending.
-
-**Critical path is Phase 5 art: ~113 new assets, not "twenty sprites."**
+The build runs ahead of the old phase ledger — see `md/TEMANAWA_PLAN_V3.md` §13 for the honest
+status. Done or substantially built: the terrain (SVG skeleton + uplift/incision/emergence morph +
+3/4 cel look + water layer), the glacial-cycle climate to 1 Ma, forest contraction, the four
+eruptions, the **five buttons**, habitat health, and the kererū dispersal loop. The **frontier** is
+four things: the **fauna cast** turning on (the scaffold now founds a 7-species grazer mix — 5 moa +
+the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli`, both moa-guild
+grazers on dedicated art that make the cold phase busier; the remaining moa and the raptor identity
+are still unresolved), the
+**flora art** (~113 assets — all fauna run on placeholder art), the **disturbance clocks** (`disturb()`
++ `warp`, not yet built), and the **interaction tuning**. `CONFIG.mapGrid` is still 512 (can now drop).

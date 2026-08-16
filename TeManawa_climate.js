@@ -6,28 +6,14 @@
 //     Climate.at(yearsBP) -> { glacialIndex, seaLevel, snowLine,
 //                              tempBias, stage, stageName, mis }
 //
-// This is the whole climate model. TEMANAWA_PLAN_V2.md §3.2:
-// glacialIndex is a low-frequency oscillator over yearsBP, and
-// everything else is a coefficient on it.
+// glacialIndex is a low-frequency oscillator over yearsBP; everything else
+// (sea level, snow line, temperature) is a coefficient on it. The sim reads
+// glacialIndex directly; the timeline and debug overlay read the rest.
 //
-// Scheduled for Phase 4, landed in Phase 2 because the timeline has to
-// draw era bands and cannot do that without knowing where the glacials
-// are. Being a pure function it costs nothing to have early, and Phase
-// 4 becomes wiring rather than invention:
-//
-//   Phase 4 consumes this for
-//     · sea level -> coastline and dune extent
-//     · snow line -> SeasonManager
-//     · open      -> glacialIndex x topographic exposure
-//
-// ------------------------------------------------------------
-// WHY A TABLE, NOT A SINE: a generic ~100 kyr oscillator got two checkable facts wrong —
-// it put MIS 5e (the last interglacial) mid-glacial and missed the LGM at the end of the
-// run. Real late-Quaternary cycles are ~100 kyr but strongly asymmetric and irregular
-// (MIS 7 has three warm peaks, MIS 5 four substages, terminations are abrupt); no closed
-// form gets that right. So: anchor points from the LR04 benthic stack, smoothstepped
-// between and auditable one line at a time. Ages are rounded — the SHAPE and ORDER are
-// what's true. Full rationale: TEMANAWA_PLAN_V2.md §8.2.
+// The curve is a TABLE, not a sine: anchor points from the LR04 benthic stack,
+// smoothstepped between and auditable one line at a time. Ages are rounded — the
+// SHAPE and ORDER are what's true. A parametric wave was tried and got MIS 5e and
+// the LGM wrong; see MISTAKES.md and TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §2.
 // ============================================================
 
 const Climate = {
@@ -35,14 +21,11 @@ const Climate = {
   // Ordered oldest -> youngest, matching the direction the run plays.
   ANCHORS: [
     // ---- deep window: 1 Ma → 350 ka -------------------------------------------
-    // Added so the FIRST HALF of the run breathes too (before this the curve held a
-    // flat 0.85 from 1 Ma to 350 ka — ~62% of the window frozen). The Mid-Pleistocene
-    // Transition sits inside this span: cycles before ~0.86 Ma (≈MIS 22, the "900-ka
-    // event") are ~41 kyr and LOWER amplitude; after it they grow into the strong
-    // ~100 kyr sawtooth the younger table already carries. So the glacials get DEEPER
-    // and the interglacials WARMER toward the present — that change of character is
-    // real and worth seeing on the wall. Ages rounded to the MIS; SHAPE and ORDER are
-    // what's true (same rule as the younger anchors below).
+    // The Mid-Pleistocene Transition sits in this span: cycles before ~0.86 Ma
+    // (≈MIS 22, the "900-ka event") are ~41 kyr and lower-amplitude; after it they
+    // grow into the strong ~100 kyr sawtooth the younger table carries. So glacials
+    // deepen and interglacials warm toward the present — a real change of character,
+    // worth seeing on the wall. Ages rounded to the MIS; shape and order are true.
     [1000000, 0.30],  // MIS 25 — interglacial (pre-MPT, damped)
     [ 950000, 0.60],  // MIS 24 — glacial (41-kyr world, modest)
     [ 920000, 0.34],  // MIS 23 — interglacial

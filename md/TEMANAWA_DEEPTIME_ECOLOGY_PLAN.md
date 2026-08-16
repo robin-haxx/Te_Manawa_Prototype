@@ -5,8 +5,8 @@ change** and **four year-bound TVZ eruptions** that clear the cast and let the v
 watch it recover. Builds on the geology-is-year-bound work already landed in
 `TerrainGenerator.GEO_EPOCHS` / `geoTimeFactors()`.
 
-Reads against, and defers to, `md/TEMANAWA_PLAN_V2.md` (the spine), `md/TEMANAWA_ECOLOGY_WETLAND.md`
-§6 (the eruption sequence), and `md/TEMANAWA_CONCEPT_ECOLOGY_FIRST.md` §3 ("three breaths").
+Reads against, and defers to, `md/TEMANAWA_PLAN_V3.md` (the spine) and `md/TEMANAWA_ECOLOGY_WETLAND.md`
+§6 (the eruption sequence).
 
 > **Governing principle, unchanged:** *a cartoon seen from above, not a survey.* Everything
 > below is a handful of scalars keyed to `yearsBP`. The test of each mechanic is not accuracy
@@ -152,7 +152,7 @@ accurate*, not build-from-scratch.
   the `winterness`=glacialIndex rebind already lets the existing dormancy path push
   `FOREST_TREES` (`beech, rimu, fern`) dormant as `glacialIndex` climbs — no new art.
 
-**Optional, cheap, PLAN_V2 §3.4:** a frost scalar off `glacialIndex` applied *topographically*
+**Optional, cheap:** a frost scalar off `glacialIndex` applied *topographically*
 (pools in basins/valley floors first, spares slopes). Nice accuracy touch; deferred behind the
 band swing.
 
@@ -427,6 +427,4 @@ Glacials & vegetation:
 Habitat & disturbance (internal):
 - `md/TEMANAWA_ECOLOGY_WETLAND.md` §6 — the five-stage eruption sequence, Ōruanui pollen timings,
   the Whakamaru "inference not measurement" caveat (bloom stage deferred here — no wetland biome).
-- `md/TEMANAWA_CONCEPT_ECOLOGY_FIRST.md` §3 — "three breaths," cold → forest-retreat/tussock.
-- `md/TEMANAWA_PLAN_V2.md` — climate rationale (§8.2), disturbance-per-habitat findings, topographic
-  frost (§3.4).
+- `md/TEMANAWA_PLAN_V3.md` — the design spine; climate and disturbance conclusions.

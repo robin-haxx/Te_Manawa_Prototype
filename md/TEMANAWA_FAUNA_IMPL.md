@@ -2,12 +2,12 @@
 
 **One page for the cast that is actually in the code.** What each animal *is*, how it
 behaves, how it breeds, how it draws, and where it is wired into the engine. This is a
-build reference, not a design authority: it reads **under** `TEMANAWA_PLAN_V2.md` (the
+build reference, not a design authority: it reads **under** `TEMANAWA_PLAN_V3.md` (the
 spine) and **defers to the code** where they differ. For the *ecological* case for each
 species see `TEMANAWA_FAUNA.md` (the scored longlist) and `TEMANAWA_ECOLOGY_FAUNA.md`;
 for the sprite manifest see `TEMANAWA_BUILD_V3.md` §4 / `TEMANAWA_SPRITE_BRIEF.md`.
 
-> Governing principle (`TEMANAWA_PLAN_V2.md` §0.1): *a cartoon seen from above, not a
+> Governing principle (`TEMANAWA_PLAN_V3.md` §0.1): *a cartoon seen from above, not a
 > survey of the Manawatū.* Every behaviour below is tuned to read at a glance, from a
 > distance, in an unattended loop — not to model an ecosystem faithfully.
 
@@ -21,7 +21,7 @@ facing/flip, the delta-time integrator, terrain avoidance, edges. Three classes 
 | Class | File | List it lives in | Spawned from |
 |---|---|---|---|
 | `Moa` | `TeManawa_moa.js` | `Simulation.moas` | `initialMoaCount` / `initialSpeciesDistribution` |
-| `HaastsEagle` | `TeManawa_eagle.js` | `Simulation.eagles` | `eagleCount` |
+| `EylesHarrier` | `TeManawa_eagle.js` | `Simulation.eagles` | `eagleCount` |
 | `Kereru` | `TeManawa_kereru.js` | `Simulation.otherEntities.kereru` | `initialEntityCounts.kereru` |
 
 **The two-clock split (do not conflate — `CLAUDE.md`).** The update loop calls each
@@ -122,16 +122,16 @@ dive or rest, so a swoop reads as a real descent at 3/4.
   restraint (surplus predators tolerate more hunger than they crop the last prey), a
   scarce-prey penalty that spares rare species, prey-following relocation, and pair bonds.
 
-Config in `EAGLE_SPECIES` (`haasts_eagle`, `young_haasts_eagle`): `baseSpeed` 0.4,
+Config in `EAGLE_SPECIES` (`eyles_harrier`, `young_eyles_harrier`): `baseSpeed` 0.4,
 `huntSpeed` 1.2, `huntRadius` 130, `catchRadius` 12, `maxHunger` 100, `restDuration` 180.
 
-> ⚠ **Known identity caveat (do not cement — pre-Phase-7).** The apex predator is
-> conflated three ways: the class/label is **Haast's eagle** (`scientificName
-> "Hieraaetus moorei"`), the notifications call it **"Pouākai"**, and the art lives in
-> `sprites/EylesHarrier/`. The *intended* Manawatū apex (per `TEMANAWA_FAUNA.md` §1.2/§3
-> and `TEMANAWA_PEDAGOGY.md`) is **Eyles' harrier** *Circus teauteensis* — Haast's eagle
-> was South Island only. The engineering is sound; the **identity needs reconciling** in
-> data, text and art before Phase 7. Tracked in project memory (`raptor-identity-conflation`).
+> ✅ **Identity resolved.** The apex predator is now **Eyles' harrier / kērangi** *Circus
+> teauteensis* throughout: class `EylesHarrier`, species keys `eyles_harrier` /
+> `young_eyles_harrier`, notifications say *kērangi*, art in `sprites/EylesHarrier/`. The
+> internal base-type key stays `'eagle'` (mechanical, not visitor-facing). **Behaviour is
+> still the inherited soaring model** — the numbers above are Haast's-scaled; retune toward
+> low quartering flight and a dashing approach when the predator balance is next touched
+> (a delicate area — see `ecology-feedback-model`). Tracked: `raptor-identity-conflation`.
 
 ---
 
@@ -230,8 +230,10 @@ See `TEMANAWA_INTERACTION_HEALTH_PLAN.md` §3–4.
 
 - **Art.** All three still use placeholder/partial art; the Phase 5 manifest is
   ~113 new assets (`TEMANAWA_BUILD_V3.md` §4 / `TEMANAWA_SPRITE_BRIEF.md`).
-- **Raptor identity** — reconcile Haast's/Pouākai/Eyles' harrier (§3 caveat).
-- **Moa roster** — the scaffold spawns only `upland_moa`; the other eight species are
-  defined but not yet placed in a level distribution.
+- ~~**Raptor identity**~~ — ✅ resolved to Eyles' harrier / kērangi (§3). Flight *behaviour* still to retune.
+- **Moa roster** — the scaffold now founds 5 moa (`upland`, `little_bush`, `stout_legged`,
+  `mantells`, `heavy_footed`) + the goose + mōho/NI takahē; the remaining moa (the two
+  `Dinornis` giants, `eastern`, `crested`) are defined but not yet placed. The *Dinornis*
+  dimorphism pair is the notable gap.
 - **Kererū flocking** — no explicit cohesion; the flock aggregates only via the shared
   fruiting-tree resource. Add gentle cohesion if a tighter flock read is wanted.

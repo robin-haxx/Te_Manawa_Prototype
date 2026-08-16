@@ -330,7 +330,7 @@ the surface — would be cheap and correct.
 
 ## 10. `[BUILD]` Flora shortlist — wetland group
 
-> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V2.md` §2.
+> ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V3.md` §4.
 > Kahikatea, harakeke, tī kōuka and nīkau are built as sprites; raupō and toetoe are
 > **ground palette**, and pukatea, pūrei and *Raoulia* are not built. This shortlist
 > remains the reference for composition and colour.

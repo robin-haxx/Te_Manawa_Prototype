@@ -185,7 +185,7 @@ const PlantStatics = {
   
   getSway(frameCount, phase, modifier) {
     const index = ((frameCount * 0.02 + phase) * (this.SWAY_TABLE_SIZE / TWO_PI)) % this.SWAY_TABLE_SIZE;
-    return this.swayTable[index | 0] * 0.05 * modifier;
+    return this.swayTable[index | 0] * 0.028 * modifier;
   }
 };
 
@@ -220,6 +220,8 @@ class Plant {
     this.baseB = blue(c);
 
     this.alive = true;
+    this._consumed = false;   // browsed: fading out before it enters the regrowth cycle
+    this._fade = undefined;   // death-fade alpha (1→0) while _consumed; see Simulation._advanceFades
     this.dormant = false;
     this.dormantTimer = 0;
     this.regrowthTimer = 0;
@@ -246,6 +248,10 @@ class Plant {
   }
   
   update(seasonManager) {
+    // Frozen while it fades out from a browse: no growth, dormancy or nutrition
+    // refill until Simulation._advanceFades finalises it into the regrowth cycle.
+    if (this._consumed) return;
+
     if (this.isSpawned && this.parentPlaceable) {
       if (!this.parentPlaceable.alive) {
         this.alive = false;
@@ -369,13 +375,16 @@ class Plant {
   }
   
   consume() {
-    if (this.dormant) return 0;
-    
+    if (this.dormant || !this.alive || this._consumed) return 0;
+
     const nutritionGained = this.nutrition;
-    this.alive = false;
-    this.growth = 0;
+    // Don't yank the plant out of the world on the bite. Mark it browsed (no more
+    // nutrition, frozen — see update()) and let it fade out over TM_FADE_MS at the
+    // render layer; Simulation._advanceFades finalises it into the regrowth cycle
+    // (alive=false, growth=0) once the fade runs out, so it grows back in as before.
+    this._consumed = true;
+    this._fade = 1;
     this.nutrition = 0;
-    this.regrowthTimer = 0;
     return nutritionGained;
   }
   
@@ -493,9 +502,11 @@ class Plant {
     const setScale = meta ? meta.scale : 1.0;
 
     // Shadow - draw directly without transform
-    noStroke();
-    fill(0, 0, 0, dormant ? 10 : 20);
-    ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+    if (CONFIG.drawShadows) {
+      noStroke();
+      fill(0, 0, 0, dormant ? 10 : 20);
+      ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+    }
 
     // Footprint width. Where a dedicated growth sequence exists the artwork
     // already carries the size progression, so compounding it with `growth`
@@ -546,10 +557,12 @@ class Plant {
     const buffer = dormant ? PlantStatics.kawakawaBufferDormant : PlantStatics.kawakawaBuffer;
     
     // Shadow
-    noStroke();
-    fill(0, 0, 0, dormant ? 10 : 20);
-    ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
-    
+    if (CONFIG.drawShadows) {
+      noStroke();
+      fill(0, 0, 0, dormant ? 10 : 20);
+      ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+    }
+
     const halfSize = displaySize * 0.5;
     
     // Only use push/pop if we need rotation (sway)
@@ -588,8 +601,10 @@ class Plant {
       b = this.baseB;
     }
     noStroke();
-    fill(0, 0, 0, dormant ? 10 : 20);
-    ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+    if (CONFIG.drawShadows) {
+      fill(0, 0, 0, dormant ? 10 : 20);
+      ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+    }
     fill(r, g, b, alpha);
     ellipse(px, py, displaySize, displaySize * 0.9);
     fill(r + 30, g + 30, b + 20, alpha * 0.5);

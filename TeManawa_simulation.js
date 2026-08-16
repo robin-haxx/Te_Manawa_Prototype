@@ -2,6 +2,14 @@
 // SIMULATION CLASS
 // All coordinates are in WORLD space (game area, not canvas)
 // ============================================
+
+// Death fade: how long (real ms) a removed bird or a browsed plant takes to ease
+// out. Advanced on the REAL frame clock (not the deep-time sim clock) so a death
+// reads as a soft dissolve at wall-clock rate even in 10x fast-forward. Composited
+// via drawingContext.globalAlpha at the render layer (the same technique the HUD
+// clouds use), so nothing in an entity's own render() needs to know about it.
+const TM_FADE_MS = 380;
+
 class Simulation {
   constructor(terrain, config, game, seasonManager) {
     this.terrain = terrain;
@@ -22,7 +30,9 @@ class Simulation {
       deathsBySpecies: {},
       anySpeciesExtinct: false,
       eagleBirths: 0,
-      eagleDeaths: 0
+      eagleDeaths: 0,
+      refounds: 0,       // times a near-extinct (≤1) species had a founder added
+      sexRebalances: 0   // times a same-sex floored pair was flipped to break the deadlock
 
     };
 
@@ -140,7 +150,11 @@ class Simulation {
     const pref = this.seasonManager.getPreferredElevation();
     
     for (const [speciesKey, count] of Object.entries(distribution)) {
-      const species = MOA_SPECIES[speciesKey];
+      // Habitat source: the MOA_SPECIES literal for the moa, else the registry —
+      // moa-guild species defined elsewhere (e.g. the goose in GOOSE_SPECIES) are
+      // registered under the `moa` base type but are not in the MOA_SPECIES object.
+      const species = MOA_SPECIES[speciesKey] ||
+        (typeof REGISTRY !== 'undefined' && REGISTRY.getSpecies(speciesKey) && REGISTRY.getSpecies(speciesKey).config);
       if (!species) {
         console.warn(`Unknown moa species in distribution: ${speciesKey}`);
         continue;
@@ -217,17 +231,43 @@ class Simulation {
     if (!this.otherEntities[type]) {
       this.otherEntities[type] = [];
     }
-    
+
+    // Huia found as bonded male+female pairs at one tree (see TeManawa_huia.js).
+    if (type === 'huia') { this._spawnHuiaPairs(count); return; }
+
     for (let i = 0; i < count; i++) {
       const pos = this.findWalkablePosition(0.15, 0.65);
       const entity = this._createFromRegistry(type, type, pos.x, pos.y, null);
-      
+
       if (entity) {
         this.otherEntities[type].push(entity);
       } else {
         console.warn(`Could not create entity of type: ${type}. ` +
           `Register it in REGISTRY before the level loads.`);
       }
+    }
+  }
+
+  // Found huia as male+female pairs: each pair drops on one walkable forest-ish
+  // spot, the two birds a few px apart and bonded, so they start on the same tree
+  // and forage together (Huia._anchorPoint / _findFruitTree keep them there).
+  _spawnHuiaPairs(count) {
+    const list = this.otherEntities.huia || (this.otherEntities.huia = []);
+    const pairs = Math.max(1, Math.floor(count / 2));   // whole pairs (an odd count rounds down)
+    for (let p = 0; p < pairs; p++) {
+      const base = this.findWalkablePosition(0.2, 0.6);
+      const bx = base.x, by = base.y;                 // copy now — findWalkablePosition reuses _tempPos
+      const male = this._createFromRegistry('huia', 'huia',
+        bx + random(-8, 8), by + random(-8, 8), null);
+      const female = this._createFromRegistry('huia', 'huia',
+        bx + random(-8, 8), by + random(-8, 8), null);
+      if (!male && !female) {
+        console.warn('Could not create huia. Register it in REGISTRY before the level loads.');
+        return;                                       // creation failing once will fail every time
+      }
+      if (male)   { male.isFemale = false;  list.push(male); }
+      if (female) { female.isFemale = true; list.push(female); }
+      if (male && female) { male._mate = female; female._mate = male; }
     }
   }
   
@@ -414,7 +454,7 @@ class Simulation {
       speciesKey = eagleSpecies[Math.floor(Math.random() * eagleSpecies.length)];
     }
     
-    const eagle = this._createFromRegistry('eagle', speciesKey, pos.x, pos.y, HaastsEagle);
+    const eagle = this._createFromRegistry('eagle', speciesKey, pos.x, pos.y, EylesHarrier);
     if (eagle) {
       if (eagle.emergent) this._assignEagleNest(eagle, pos.x, pos.y);
       this.eagles.push(eagle);
@@ -481,7 +521,7 @@ class Simulation {
     if (this.stats && this.stats.eagleDeaths !== undefined) this.stats.eagleDeaths++;
     this._invalidateCache();
     if (this.game) {
-      this.game.addNotification('A Pouākai starves as prey grows scarce.', 'info');
+      this.game.addNotification('A kērangi starves as prey grows scarce.', 'info');
     }
   }
 
@@ -491,7 +531,7 @@ class Simulation {
     const cap = M.eagleMaxPopulation ?? 12;
     if (this.countAliveEagles() >= cap) return;
 
-    const eaglet = this._createFromRegistry('eagle', egg.parentSpecies, egg.pos.x, egg.pos.y, HaastsEagle);
+    const eaglet = this._createFromRegistry('eagle', egg.parentSpecies, egg.pos.x, egg.pos.y, EylesHarrier);
     if (!eaglet) return;
 
     eaglet.emergent = true;
@@ -518,16 +558,16 @@ class Simulation {
     this.eagles.push(eaglet);
 
     if (this.stats && this.stats.eagleBirths !== undefined) this.stats.eagleBirths++;
-    if (this.game) this.game.addNotification('A Pouākai eaglet hatches.', 'success');
+    if (this.game) this.game.addNotification('A kērangi chick hatches.', 'success');
   }
 
-  // Hatch a kererū egg into a juvenile in the flock (emergent frugivore
-  // reproduction — mirrors _hatchEagleEgg). Cap-guarded by kereruMaxPopulation.
-  _hatchKereruEgg(egg) {
-    const cap = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.kereruMaxPopulation) ?? 16;
-    if (this.getSpeciesCount('kereru') >= cap) return;
+  // Hatch a flyer egg (kererū / kōkako / huia) into a juvenile in that species'
+  // flock — emergent frugivore reproduction, mirrors _hatchEagleEgg. Cap-guarded
+  // by the species' own maxPopulation (falling back to the kererū knob).
+  _hatchFlyerEgg(egg, type) {
+    if (this.getSpeciesCount(type) >= this._flyerCap(type)) return;
 
-    const chick = this._createFromRegistry('kereru', 'kereru', egg.pos.x, egg.pos.y, null);
+    const chick = this._createFromRegistry(type, type, egg.pos.x, egg.pos.y, null);
     if (!chick) return;
 
     chick.age = 0;
@@ -535,7 +575,7 @@ class Simulation {
     chick.hunger = 30;
     chick.crop = 0;
 
-    const list = this.otherEntities.kereru || (this.otherEntities.kereru = []);
+    const list = this.otherEntities[type] || (this.otherEntities[type] = []);
     // Minority-sex balance: take the rarer sex among the living flock so a small
     // population keeps both sexes and stays able to pair (like the moa/eagle path).
     let f = 0, m = 0;
@@ -543,7 +583,16 @@ class Simulation {
     chick.isFemale = (f < m) ? true : (m < f ? false : random() < 0.5);
 
     list.push(chick);
-    if (this.game) this.game.addNotification('A kererū chick hatches.', 'success');
+    const label = (chick && chick._label) || type;
+    if (this.game) this.game.addNotification(`A ${label} chick hatches.`, 'success');
+  }
+
+  // Flock cap for a flyer type: the registered species config first (kōkako, huia
+  // carry their own maxPopulation), else the kererū LEVEL_MECHANICS knob.
+  _flyerCap(type) {
+    const sp = (typeof REGISTRY !== 'undefined') ? REGISTRY.getSpecies(type) : null;
+    if (sp && sp.config && sp.config.maxPopulation != null) return sp.config.maxPopulation;
+    return (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.kereruMaxPopulation) ?? 16;
   }
 
   findWalkablePosition(minElev, maxElev) {
@@ -584,18 +633,21 @@ class Simulation {
     return null;
   }
 
-  handleEagleCatch(eagle, moa) {
-    // Protected floor species (e.g. the last Dinornis) can't be taken — the
-    // eagle's strike fails and it breaks off.
-    if (this.isSpeciesProtected(moa.speciesKey)) {
+  // A harrier takes a prey animal — either a grazer (moa/goose/mōho) or a forest
+  // flyer (kererū/kōkako/huia). Prey-generic: the death fade arms automatically
+  // when `.alive` flips, and cleanup drops the body once faded.
+  handleEagleCatch(eagle, prey) {
+    // Floor-protected species can't be taken — the strike fails and the bird
+    // breaks off. (Belt-and-braces: the hunt scan already skips protected prey.)
+    if (this.isPreyProtected(prey)) {
       eagle.hunting = false;
       eagle.target = null;
       eagle.huntSearchTimer = 0;
       return;
     }
-    moa.alive = false;
+    prey.alive = false;
     if (audioManager) audioManager.playEagleCatch();
-    
+
     eagle.kills++;
     eagle.hunger = Math.max(0, eagle.hunger - 90);
     eagle.vel.mult(0.1);
@@ -611,21 +663,21 @@ class Simulation {
     } else {
       eagle.patrolCenter.set(eagle.nest.x, eagle.nest.y);
     }
-    
-    // Track per-species death
-    const speciesKey = moa.speciesKey || 'unknown';
+
+    // Track per-species death (only grazer species carry a deathsBySpecies slot).
+    const speciesKey = prey.speciesKey || 'unknown';
     if (this.stats.deathsBySpecies[speciesKey] !== undefined) {
       this.stats.deathsBySpecies[speciesKey]++;
     }
-    
-    const moaCount = this.getMoaPopulation();
-    
-    if (moaCount <= this.eagles.length * 2) {
-      this.game.addNotification('Eagle caught a moa - population low!', 'error');
-    }
-    
+
     this.stats.deaths++;
     this._invalidateCache();
+
+    // Instrumentation only — the visitor wall hides the message strip.
+    if (this.game) {
+      const label = prey._label || (prey.speciesConfig && prey.speciesConfig.displayName) || 'bird';
+      this.game.addNotification(`A harrier takes a ${label}.`, 'info');
+    }
   }
   // ============================================
   // ENTITY CREATION
@@ -663,6 +715,17 @@ class Simulation {
         if (k) sc[k] = (sc[k] || 0) + 1;
       }
     }
+    // Fold flyer / other species into the SAME per-frame count cache, so
+    // getCachedSpeciesCount serves kererū/kōkako/huia too (surplus-aware predation
+    // and the per-species breeding gate both read it). A moa key and an
+    // otherEntities type never collide, so this can't double-count.
+    for (const type in this.otherEntities) {
+      const list = this.otherEntities[type];
+      let c = 0;
+      for (let i = 0, l = list.length; i < l; i++) if (list[i].alive) c++;
+      sc[type] = (sc[type] || 0) + c;
+    }
+
     const eggs = this.eggs;
     for (let i = 0, len = eggs.length; i < len; i++) {
       if (eggs[i].alive && !eggs[i].hatched) eggCount++;
@@ -680,13 +743,88 @@ class Simulation {
     return (this._speciesCountCache && this._speciesCountCache[speciesKey]) || 0;
   }
 
-  // A species is "protected" once it has fallen to its configured population floor
-  // (LEVEL_MECHANICS.populationFloors) — its remaining members can't be hunted or
-  // starved, so the species can never be wiped out below that floor.
   isSpeciesProtected(speciesKey) {
-    const floors = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.populationFloors) || null;
-    if (!floors || floors[speciesKey] === undefined) return false;
-    return this.getCachedSpeciesCount(speciesKey) <= floors[speciesKey];
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (!M) return false;
+    const explicit = M.populationFloors;
+    if (explicit && explicit[speciesKey] !== undefined) {
+      return this.getCachedSpeciesCount(speciesKey) <= explicit[speciesKey];
+    }
+    if (M.moaPopulationFloor != null && this.activeSpecies.moa.indexOf(speciesKey) !== -1) {
+      return this.getCachedSpeciesCount(speciesKey) <= M.moaPopulationFloor;
+    }
+    return false;
+  }
+
+  // ============================================
+  // PER-SPECIES CARRYING TARGET / FLOOR
+  // ----------------------------------------------
+  // The comfortable population for a species (target) and the protected minimum
+  // (floor). Drive the surplus-aware harrier (crop the abundant, spare the rare)
+  // and the grazer breeding gate (breed up to target, then trickle). Both are
+  // static, so resolve once and cache.
+  // ============================================
+
+  _speciesTarget(key) {
+    const cache = this._targetCache || (this._targetCache = {});
+    if (cache[key] !== undefined) return cache[key];
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    let t = null;
+    const st = M && M.speciesTargets && M.speciesTargets[key];
+    if (st && st.target != null) t = st.target;
+    if (t == null && typeof REGISTRY !== 'undefined') {
+      const sp = REGISTRY.getSpecies(key);
+      const cap = sp && sp.config && sp.config.maxPopulation;
+      if (cap != null) t = Math.max(2, Math.round(cap * ((M && M.flyerTargetFrac) ?? 0.65)));
+    }
+    if (t == null) t = (M && M.defaultSpeciesTarget) ?? 6;
+    return (cache[key] = t);
+  }
+
+  _speciesFloor(key) {
+    const cache = this._floorCache || (this._floorCache = {});
+    if (cache[key] !== undefined) return cache[key];
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    let f = null;
+    const st = M && M.speciesTargets && M.speciesTargets[key];
+    if (st && st.floor != null) f = st.floor;
+    if (f == null && M && M.populationFloors && M.populationFloors[key] != null) f = M.populationFloors[key];
+    if (f == null && typeof REGISTRY !== 'undefined') {
+      const sp = REGISTRY.getSpecies(key);
+      if (sp && sp.config && sp.config.populationFloor != null) f = sp.config.populationFloor;
+    }
+    if (f == null && M && M.moaPopulationFloor != null && this.activeSpecies.moa.indexOf(key) !== -1) f = M.moaPopulationFloor;
+    if (f == null) f = 2;
+    return (cache[key] = f);
+  }
+
+  // Population above (positive) or below (negative) the comfortable target.
+  getSpeciesSurplus(key) { return this.getCachedSpeciesCount(key) - this._speciesTarget(key); }
+
+  // A prey animal is untouchable while its species sits at/below its floor — the
+  // hard guarantee that predation can never take the last few of a kind. Works for
+  // both grazers and flyers (the count cache covers both).
+  isPreyProtected(prey) {
+    const key = prey.speciesKey;
+    return this.getCachedSpeciesCount(key) <= this._speciesFloor(key);
+  }
+
+  // Alive prey (grazers + forest flyers) within radius, into a REUSED scratch
+  // array — the surplus-aware harrier hunts moa AND kererū/kōkako/huia. No
+  // allocation on the hot path; safe because each eagle drains the array within
+  // its own hunt() before the next eagle queries.
+  getHuntablePrey(x, y, radius) {
+    const out = this._preyScratch || (this._preyScratch = []);
+    out.length = 0;
+    const moas = this.moaGrid.getInRadius(x, y, radius);
+    for (let i = 0; i < moas.length; i++) out.push(moas[i]);
+    for (const type in this._dynamicGrids) {
+      const list = this.otherEntities[type];
+      if (!list || !list.length || !list[0].isFlyer) continue;   // flyers only
+      const near = this._dynamicGrids[type].getInRadius(x, y, radius);
+      for (let i = 0; i < near.length; i++) out.push(near[i]);
+    }
+    return out;
   }
 
   // Convenience getters for level 2 goal conditions
@@ -848,6 +986,7 @@ class Simulation {
     this._updateOtherEntities(dt, rdt);
     
     this._updateSpeciesStability(dt);
+    this._updateRefounding(dt);
 
     // Predator-prey coupling: eagle numbers track the moa population, thinning
     // in the cold seasons and rebuilding in the warm ones. This is the top-down
@@ -882,6 +1021,114 @@ class Simulation {
         if (entity.update) entity.update(rdt);                            // motion/anim (real)
         this.constrainToBounds(entity.pos);
       }
+    }
+  }
+
+  // ============================================
+  // AUTO-REFOUND — the rare last-resort safety net (opt-in: LEVEL_MECHANICS.autoRefound)
+  // ----------------------------------------------
+  // A tracked species that has sat at/below its floor AND cannot self-recover
+  // (down to one bird, or every survivor the same sex) for a sustained spell gets
+  // ONE fresh adult of the missing sex, dropped near an existing bird so a breeding
+  // pair can re-form. This is a backstop, not the mechanism: it is instrumented
+  // (stats.refounds + a debug log) precisely so we can tell if species survival is
+  // leaning on it — if it fires often, the base dynamics are too harsh and the
+  // model should move to rate-based regulation.
+  // ============================================
+  _updateRefounding(dt) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (!M || !M.autoRefound) return;
+    const interval = M.refoundCheckInterval ?? 300;
+    this._refoundTimer = (this._refoundTimer || 0) + dt;
+    if (this._refoundTimer < interval) return;
+    this._refoundTimer -= interval;
+
+    const timers = this._refoundStuck || (this._refoundStuck = {});
+    const delay = M.refoundDelay ?? 2400;
+
+    for (const key of (this.activeSpecies.moa || [])) this._refoundCheckSpecies(key, false, timers, delay, interval);
+    for (const type in this.otherEntities) {
+      const list = this.otherEntities[type];
+      if (list.length && list[0].isFlyer) this._refoundCheckSpecies(type, true, timers, delay, interval);
+    }
+  }
+
+  _refoundCheckSpecies(key, isFlyer, timers, delay, incr) {
+    let count = 0, males = 0, females = 0, sample = null;
+    if (isFlyer) {
+      const list = this.otherEntities[key] || [];
+      for (let i = 0; i < list.length; i++) { const o = list[i]; if (o.alive) { count++; sample = o; o.isFemale ? females++ : males++; } }
+    } else {
+      const moas = this.moas;
+      for (let i = 0; i < moas.length; i++) { const m = moas[i]; if (m.alive && m.speciesKey === key) { count++; sample = m; m.isFemale ? females++ : males++; } }
+    }
+    const floor = this._speciesFloor(key);
+    // Stuck = it can't produce a pair: a lone bird, or all survivors one sex while
+    // pinned at/below the floor. A healthy-but-small species is NOT stuck.
+    const stuck = count <= 1 || (count <= floor && (males === 0 || females === 0));
+    if (!stuck) { timers[key] = 0; return; }
+    timers[key] = (timers[key] || 0) + incr;
+    if (timers[key] < delay) return;
+    timers[key] = 0;
+    // Two survivors of the same sex is a breeding DEADLOCK, not a survival crisis
+    // (the floor already guarantees they live). Resolve it invisibly by flipping
+    // one bird's sex — no animal conjured from nowhere, no population bump. Only a
+    // genuine near-extinction (down to one bird, which the floor makes very rare)
+    // actually adds a founder.
+    if (count >= 2 && (males === 0 || females === 0)) this._sexRebalance(key, isFlyer, females === 0);
+    else this._refound(key, isFlyer, sample, males, females);
+  }
+
+  // Flip one member of a same-sex floored species to the missing sex so the pair
+  // can breed again. Invisible (sex is barely dimorphic in the art) and adds no
+  // individual — the honest way to break the deadlock without magicking in a bird.
+  _sexRebalance(key, isFlyer, makeFemale) {
+    const list = isFlyer ? (this.otherEntities[key] || []) : this.moas;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (!o.alive || (!isFlyer && o.speciesKey !== key)) continue;
+      o.isFemale = makeFemale;
+      if (isFlyer) o._mate = null;              // let it re-pair (huia)
+      this.stats.sexRebalances = (this.stats.sexRebalances || 0) + 1;
+      if (typeof CONFIG !== 'undefined' && CONFIG.debugMode) {
+        console.log(`sex-rebalance: ${key} → one ${makeFemale ? 'female' : 'male'} (total ${this.stats.sexRebalances})`);
+      }
+      return;
+    }
+  }
+
+  _refound(key, isFlyer, sample, males, females) {
+    // Add the missing sex so a pair can form (coin-flip only if somehow both 0).
+    const addFemale = (females === 0) ? true : (males === 0 ? false : random() < 0.5);
+    let x, y;
+    if (sample) {
+      const p = this.findWalkablePositionNear(sample.pos.x, sample.pos.y, 60) || sample.pos;
+      x = p.x; y = p.y;
+    } else {
+      const pref = this.seasonManager.getPreferredElevation();
+      const p = this.findWalkablePosition(pref.min, pref.max);
+      x = p.x; y = p.y;
+    }
+
+    const entity = this._createFromRegistry(isFlyer ? key : 'moa', key, x, y, isFlyer ? null : Moa);
+    if (!entity) return;
+    entity.isFemale = addFemale;
+    entity.mature = true;                      // a ready adult, so recovery is quick
+    if (isFlyer) {
+      entity.age = entity._maturityFrames || 1200;
+      entity.hunger = 20;
+      (this.otherEntities[key] || (this.otherEntities[key] = [])).push(entity);
+    } else {
+      entity.age = MOA_AGE.ADULT_MIN;
+      if (entity.updateAge) entity.updateAge(0);  // size up to adult now (no one-frame juvenile pop)
+      entity.hunger = 25;
+      this.moas.push(entity);
+    }
+
+    this.stats.refounds = (this.stats.refounds || 0) + 1;
+    this._invalidateCache();
+    if (typeof CONFIG !== 'undefined' && CONFIG.debugMode) {
+      console.log(`refound: ${key} (+1 ${addFemale ? 'F' : 'M'}) — total refounds ${this.stats.refounds}`);
     }
   }
 
@@ -948,11 +1195,19 @@ class Simulation {
     this._plantBatchIndex = endIdx >= len ? 0 : endIdx;
   }
 
-  // Remove plants whose ground has gone underwater. The deep-time land morph re-bakes the
-  // terrain WITHOUT rebuilding the living world (only the eruption path does a full respawn),
-  // so as the southern strait floods a cell, any plant standing on it was left stranded in the
-  // sea (the "tree in the water" bug). Game calls this once each time a morph re-bake completes
-  // — cheap (≤1000 plants, two lookups each) and off the per-frame path. Compacts the list.
+  // Reconcile the plant field to the morphed land: DROP the plants the morph stranded (drowned or
+  // pushed onto ice), and REFRESH the survivors' cached site so their climate/biome logic responds
+  // to the new landscape. The deep-time land morph re-bakes the terrain WITHOUT rebuilding the
+  // living world (only the eruption path does a full respawn), so as the southern strait floods a
+  // cell, any plant standing on it was left stranded in the sea (the "tree in the water" bug).
+  //
+  // A plant also caches its `elevation`/`biomeKey` at SPAWN, so before this reconcile they went
+  // stale as the land rose or the coast moved — a podocarp kept reading forest elevation while the
+  // Ruahine uplifted into the subalpine band under it, and so "survived fine" where it should wilt.
+  // Refreshing both here (once per re-bake) feeds the current ground to the forest-contraction,
+  // dormancy and biome-modifier checks in Plant.update(), so the cover tracks the changing land.
+  // Game calls this once each time a morph re-bake completes — cheap (≤1000 plants, a few lookups
+  // each) and off the per-frame path. Compacts the list.
   //
   // Two water tests, because the visitor sees the PAINTED ground, not the sim grid:
   //   · waterTypeAt (paint resolution) is exactly what the season bake coloured as sea/river and
@@ -978,6 +1233,11 @@ class Simulation {
       if (biome && (biome.isWater || !biome.walkable)) {     // open water / ice — strand it no longer
         p.alive = false; culled++; continue;
       }
+      // Survivor: refresh the cached site to the just-morphed ground so forest contraction,
+      // dormancy and the biome modifier in Plant.update() key off where the plant NOW sits
+      // (uplift into subalpine, a coast that moved, etc.) rather than its spawn-time reading.
+      p.elevation = terrain.getElevationAt(p.pos.x, p.pos.y);
+      if (biome) p.biomeKey = biome.key;
       plants[writeIdx++] = p;
     }
     if (writeIdx !== plants.length) plants.length = writeIdx;
@@ -1033,14 +1293,14 @@ class Simulation {
       
       if (egg.hatched && egg.alive) {
         if (egg.offspringType === 'eagle') {
-          // Emergent eagle reproduction: hatch a juvenile Pouākai, then consume
+          // Emergent eagle reproduction: hatch a juvenile kērangi, then consume
           // the egg (over-cap eggs are simply lost rather than lingering).
           this._hatchEagleEgg(egg);
           egg.alive = false;
-        } else if (egg.offspringType === 'kereru') {
-          // Emergent kererū reproduction: hatch a juvenile into the flock, then
-          // consume the egg (cap-guarded in _hatchKereruEgg).
-          this._hatchKereruEgg(egg);
+        } else if (egg.offspringType === 'kereru' || egg.offspringType === 'kokako' || egg.offspringType === 'huia') {
+          // Emergent flyer reproduction (kererū / kōkako / huia): hatch a juvenile
+          // into that species' flock, then consume the egg (cap-guarded).
+          this._hatchFlyerEgg(egg, egg.offspringType);
           egg.alive = false;
         } else if (this.getMoaPopulation() < config.maxMoaPopulation) {
           const offspringSpecies = egg.getOffspringSpecies();
@@ -1118,11 +1378,14 @@ class Simulation {
   }
   
   cleanup() {
-    
+    // Keep condition holds a dead entity in its list until its death fade has
+    // fully run out (_fade === 0). A just-dead bird has _fade === undefined (the
+    // fade is armed on the next render), a fading one has _fade in (0,1); only a
+    // fully-faded one (_fade === 0) is compacted out. `_kept(e)` centralises it.
     const moas = this.moas;
     let writeIdx = 0;
     for (let i = 0, len = moas.length; i < len; i++) {
-      if (moas[i].alive) moas[writeIdx++] = moas[i];
+      if (this._kept(moas[i])) moas[writeIdx++] = moas[i];
     }
     if (writeIdx !== moas.length) {
       moas.length = writeIdx;
@@ -1134,7 +1397,7 @@ class Simulation {
     const eagles = this.eagles;
     let eWrite = 0;
     for (let i = 0, len = eagles.length; i < len; i++) {
-      if (eagles[i].alive) eagles[eWrite++] = eagles[i];
+      if (this._kept(eagles[i])) eagles[eWrite++] = eagles[i];
     }
     if (eWrite !== eagles.length) {
       eagles.length = eWrite;
@@ -1145,11 +1408,15 @@ class Simulation {
     for (const [type, list] of Object.entries(this.otherEntities)) {
       let wi = 0;
       for (let i = 0; i < list.length; i++) {
-        if (list[i].alive) list[wi++] = list[i];
+        if (this._kept(list[i])) list[wi++] = list[i];
       }
       list.length = wi;
     }
   }
+
+  // Keep a list entry unless it is dead AND its death fade has run out. Live
+  // entities carry _fade === undefined, so they are always kept.
+  _kept(e) { return e.alive || e._fade !== 0; }
 
   // ============================================
   // PREDATOR-PREY COUPLING (opt-in per level)
@@ -1229,9 +1496,58 @@ class Simulation {
   // RENDER (unified viewport culling)
   // ============================================
 
+  // Advance the death fade on every dying entity once per REAL frame (called at
+  // the top of render, so it ticks at wall-clock rate regardless of the deep-time
+  // warp). Birds fade on death (!alive); a browsed plant fades while _consumed and
+  // is finalised into its regrowth cycle when the fade runs out. Off the hot sim
+  // path — this is O(entities) once a frame, no allocation.
+  _advanceFades() {
+    const step = ((typeof deltaTime === 'number' && deltaTime > 0) ? deltaTime : 16.7) / TM_FADE_MS;
+    this._fadeDeadList(this.moas, step);
+    this._fadeDeadList(this.eagles, step);
+    for (const type in this.otherEntities) this._fadeDeadList(this.otherEntities[type], step);
+
+    // Plants stay .alive while they fade (so they keep rendering their real
+    // sprite), keyed off _consumed; when the fade ends they drop into the normal
+    // regrowth path (alive=false, growth=0) that grows them back in.
+    const plants = this.plants;
+    for (let i = 0, len = plants.length; i < len; i++) {
+      const p = plants[i];
+      if (!p._consumed) continue;
+      p._fade -= step;
+      if (p._fade <= 0) {
+        p._fade = undefined; p._consumed = false;
+        p.alive = false; p.growth = 0; p.nutrition = 0; p.regrowthTimer = 0;
+      }
+    }
+  }
+
+  // Arm and advance the fade on dead birds in `list`. A freshly-dead entity has
+  // _fade === undefined → arm it at 1; thereafter ease to 0, where cleanup() drops it.
+  _fadeDeadList(list, step) {
+    for (let i = 0, len = list.length; i < len; i++) {
+      const e = list[i];
+      if (e.alive) continue;
+      if (e._fade === undefined) e._fade = 1;
+      else if (e._fade > 0) { e._fade -= step; if (e._fade < 0) e._fade = 0; }
+    }
+  }
+
+  // Render one entity, compositing it at its death-fade alpha when it is fading.
+  // A live entity (_fade === undefined) draws at full alpha with no context churn.
+  _renderWithFade(e, method) {
+    const f = e._fade;
+    if (f === undefined || f >= 1) { e[method](); return; }
+    const dc = drawingContext, a = dc.globalAlpha;
+    dc.globalAlpha = a * (f > 0 ? f : 0);
+    e[method]();
+    dc.globalAlpha = a;
+  }
+
   render() {
+    this._advanceFades();
     this.updateViewport();
-    
+
     const vl = this._viewLeft;
     const vt = this._viewTop;
     const vr = this._viewRight;
@@ -1260,13 +1576,18 @@ class Simulation {
     const list = this._sortList || (this._sortList = []);
     list.length = 0;
 
+    // A browsed plant stays .alive while it fades, so `e.alive` already carries it.
     for (let i = 0; i < plants.length; i++) { const e = plants[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (let i = 0; i < placeables.length; i++) { const e = placeables[i]; if (e.alive && e.type !== 'Storm' && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (let i = 0; i < eggs.length; i++) { const e = eggs[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
-    for (let i = 0; i < moas.length; i++) { const e = moas[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+    // Dead-but-fading birds (_fade > 0) keep drawing until the fade runs out.
+    for (let i = 0; i < moas.length; i++) { const e = moas[i]; if ((e.alive || e._fade > 0) && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (const [type, arr] of Object.entries(this.otherEntities)) {
-      if (type === 'kea' || type === 'kereru') continue;   // flying — drawn above with the eagles
-      for (let i = 0; i < arr.length; i++) { const e = arr[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+      for (let i = 0; i < arr.length; i++) {
+        const e = arr[i];
+        // Flyers (kererū, kōkako, huia — isFlyer) are drawn above with the eagles.
+        if ((e.alive || e._fade > 0) && !e.isFlyer && type !== 'kea' && inView(e.pos.x, e.pos.y, GM)) list.push(e);
+      }
     }
 
     for (let i = 1; i < list.length; i++) {            // insertion sort by depth (pos.y)
@@ -1275,18 +1596,20 @@ class Simulation {
       while (j >= 0 && list[j].pos.y > key) { list[j + 1] = list[j]; j--; }
       list[j + 1] = e;
     }
-    for (let i = 0; i < list.length; i++) list[i].render();
+    for (let i = 0; i < list.length; i++) this._renderWithFade(list[i], 'render');
 
     // ---- Above the ground plane (flyers, storms, indicators) -----------------
     // Eagles (aliveCheck true so a just-starved bird stops drawing immediately).
     this._renderFiltered(eagles, 30, null, true, inView);
-    // Flying others (kea) render above, like eagles.
-    if (this.otherEntities.kea) {
-      this._renderFiltered(this.otherEntities.kea, 30, null, true, inView);
-    }
-    // Kererū fly over the canopy — render above the ground plane too.
-    if (this.otherEntities.kereru) {
-      this._renderFiltered(this.otherEntities.kereru, 30, null, true, inView);
+    // Flying others (kea, kererū, kōkako, huia) fly over the canopy — render above
+    // the ground plane, like the eagles. Keyed off the entity's isFlyer flag so a
+    // new flighted species drops in without touching this loop.
+    for (const [type, arr] of Object.entries(this.otherEntities)) {
+      if (!arr.length) continue;
+      const sample = arr[0];
+      if (type === 'kea' || (sample && sample.isFlyer)) {
+        this._renderFiltered(arr, 30, null, true, inView);
+      }
     }
     // Storms sit above everything.
     this._renderFiltered(placeables, 80, p => p.type === 'Storm', true, inView);
@@ -1308,10 +1631,12 @@ class Simulation {
   _renderFiltered(list, extraMargin, filter, aliveCheck, inView, method = 'render') {
     for (let i = 0, len = list.length; i < len; i++) {
       const e = list[i];
-      if (aliveCheck && !e.alive) continue;
+      // A dead-but-fading bird (_fade > 0) is still drawn, so a swooped kererū or a
+      // caught moa eases out rather than blinking off the instant it dies.
+      if (aliveCheck && !e.alive && !(e._fade > 0)) continue;
       if (filter && !filter(e)) continue;
       if (inView(e.pos.x, e.pos.y, extraMargin)) {
-        e[method]();
+        this._renderWithFade(e, method);
       }
     }
   }
