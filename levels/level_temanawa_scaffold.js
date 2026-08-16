@@ -194,6 +194,15 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   mechanics: {
     forestContraction: true,
 
+    // NO HYBRIDISING. The whole ground-bird guild (all 5 moa + the goose + the mōho / NI
+    // takahē) shares one grazer breeding engine on the same `moas` list, so without this a
+    // bird with no same-species mate nearby would court ACROSS species — a goose × moa
+    // pairing that reads as a bug on the wall. With it ON, findPotentialMate returns null
+    // instead of falling back to a cross-species mate, and offspring never mutate species
+    // (TeManawa_egg.js). Species stay separate; the population floors + autoRefound below
+    // keep any one from dying out when it can't find its own kind.
+    noSpeciation: true,
+
     // OPEN-COUNTRY TUSSOCK BOOST. The goose and the plains/coastal moa (species
     // flagged `openCountry`) favour lowland grassland/scrub/coast, and get a small
     // population lift while the visitor grows TUSSOCK in a GLACIAL — the matched cold

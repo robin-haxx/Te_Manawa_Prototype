@@ -1159,7 +1159,7 @@ class Game {
   // each checkpoint, so the visitor sees the eruptions happen without touching the button.
   // The full takeover — screen-shake rumble + the rolling ash-cloud sprite — fires here
   // too (same _ashCloudUntil window the button arms), so a timeline eruption reads as an
-  // event, not just a quiet ground wash. 'tap' envelope: roll-in, hang, fade, no charge.
+  // event, not just a quiet ground wash. The cover STARTS full and fades — no roll-in.
   _fireEruptionInPlace(eruption) {
     if (typeof TM_TIME !== 'undefined' && typeof millis === 'function') {
       const now = millis();

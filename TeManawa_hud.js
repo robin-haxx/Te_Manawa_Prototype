@@ -25,15 +25,17 @@ const TM_TIME = {
   ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
   ashPeak:      205,      // flash alpha at the peak (kept < 255 for headroom)
   erCooldownMs: 2000,     // minimum gap between eruptions — the anti-spam limit
-  erLongPressMs: 3000,    // hold the eruption button this long to reseed the land
+  erLongPressMs: 4500,    // hold the eruption button this long to reseed the land. Also paces
+                          // the whole long-press build-up (the cloud roll-down, the charge
+                          // flash and the shake), so this is deliberately slow — a 50% longer
+                          // build than the original 3000 ms, per the design chat.
   // ---- eruption takeover: screen shake + the ash-cloud cover (see renderAshCloud /
   // eruptionShakeOffset). Armed by _ashCloudUntil from BOTH the button (fireEruption/
   // fireEruptionReseed) and an auto/timeline eruption (Game._fireEruptionInPlace), so a
   // volcanic event on the clock shows the same rumble + cloud. On the button it also hides
   // the soft-regen hitch; the auto path has no regen, so there it is pure spectacle.
   erShakeMaxPx:  5,       // peak screen-shake amplitude (1080-space px); ~×1.5 at the crest
-  cloudMillis: 1900,      // ash-cloud takeover length after the land regenerates (hang + fade)
-  cloudRollFrac: 0.30,    // a tap's share of cloudMillis spent rolling the cloud DOWN (>=500ms)
+  cloudMillis: 1900,      // ash-cloud takeover length: the cover starts full, hangs, then fades
   cloudHangFrac: 0.22,    // share spent HANGING at full cover before the fade begins
   // read-through to DeepTime so older references keep working
   get yearsStart() { return DeepTime.yearsStart; },
@@ -533,7 +535,9 @@ const InstallHUD = {
     const x0 = 48, w = W - 96;
     const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = yTop + 34;
     push();
-    noStroke(); fill(14, 21, 19, 165); rect(0, yTop, W, stripH);
+    // Light backing — kept low-alpha so the edge band glows THROUGH behind the axis while
+    // the marks still have enough contrast to read (the band is now drawn under the HUD).
+    noStroke(); fill(14, 21, 19, 120); rect(0, yTop, W, stripH);
     this._timelineBody(g, x0, w, ay);
     if (DeepTime.isDeep()) {
       this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [255, 210, 120]);
@@ -751,25 +755,21 @@ const InstallHUD = {
   // charge, so the whole roll-in + hang + fade plays inside cloudMillis.
   ashCoverState(g, now) {
     let descend = -1, alpha = 0;
-    if (g._tmErDownAt && !g._tmErFired) {                 // rolling down while the hold charges
+    // PRE-FIRE (long press only): the cloud rolls DOWN from the top across the charge — the
+    // deliberate anticipation, and the ONLY scroll-from-top that remains. Its speed is
+    // erLongPressMs, so slowing the hold (above) slows this roll to match.
+    if (g._tmErDownAt && !g._tmErFired) {
       const c = Math.max(0, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
       descend = c; alpha = Math.min(1, c * 1.4);
     }
-    if (g._ashCloudUntil && now < g._ashCloudUntil) {     // post-fire hang + fade (both gestures)
+    // POST-FIRE (tap, auto/timeline, and the tail of a hold): the ash STARTS fully covering
+    // the screen, hangs, then fades to reveal the recovered land — NO roll-in. So a live
+    // eruption reads as "ash blankets the view, then clears", not a curtain scrolling down.
+    if (g._ashCloudUntil && now < g._ashCloudUntil) {
       const p = Math.max(0, Math.min(1, 1 - (g._ashCloudUntil - now) / TM_TIME.cloudMillis));
       const hang = TM_TIME.cloudHangFrac;
-      if (g._ashCloudMode === 'hold') {                   // already down from the charge
-        descend = 1;
-        alpha = Math.max(alpha, p < hang ? 1 : 1 - (p - hang) / (1 - hang));
-      } else {                                            // tap: roll in, hang, then fade
-        const roll = TM_TIME.cloudRollFrac;
-        descend = Math.max(descend, Math.min(1, p / roll));
-        let a;
-        if (p < roll)             a = p / roll;
-        else if (p < roll + hang) a = 1;
-        else                      a = 1 - (p - roll - hang) / Math.max(1e-3, 1 - roll - hang);
-        alpha = Math.max(alpha, a);
-      }
+      descend = 1;
+      alpha = Math.max(alpha, p < hang ? 1 : 1 - (p - hang) / (1 - hang));
     }
     if (descend < 0 || alpha <= 0) return null;
     return { descend, alpha: Math.max(0, Math.min(1, alpha)) };

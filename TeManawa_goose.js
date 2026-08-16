@@ -127,12 +127,16 @@ const GOOSE_SPECIES = {
 
     eagleResistance: 0.1,  // some heft, but open ground offers little cover
 
-    // Cold is busier: it feeds efficiently on the winter tussock and idles in summer.
+    // Cold is busier: it feeds efficiently on the glacial tussock and idles when
+    // interglacial forest crowds out the open country. Keyed by GLACIAL PHASE
+    // (interglacial/cooling/glacial/fullGlacial) — the deep-time clock's key, NOT
+    // summer/winter, which read undefined→1 and left this inert (see memory
+    // seasonal-modifiers-key-mismatch).
     seasonalModifiers: {
-      summer: { hungerRate: 1.15, speed: 1.0 },
-      autumn: { hungerRate: 1.0,  speed: 1.0 },
-      winter: { hungerRate: 0.85, speed: 0.95 },   // thrives in the cold open country
-      spring: { hungerRate: 0.95, speed: 1.05 }
+      interglacial: { hungerRate: 1.15, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.9,  speed: 1.0  },
+      fullGlacial:  { hungerRate: 0.85, speed: 0.95 }   // thrives in the cold open country
     }
   }
 };

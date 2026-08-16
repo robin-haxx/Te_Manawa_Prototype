@@ -46,12 +46,20 @@ const MOA_SPECIES = {
     curiosity: 0.6,        // Tendency to investigate new things
     flightiness: 0.7,      // How easily spooked
     
-    // Seasonal adaptations
+    // Seasonal adaptations — keyed by GLACIAL PHASE (interglacial/cooling/glacial/
+    // fullGlacial), the deep-time clock's SeasonManager.currentKey. NOT summer/
+    // winter: those keys read undefined→1, which left every species' innate cold/
+    // warm differentiation inert (see memory seasonal-modifiers-key-mismatch).
+    // hungerRate <1 = thrives, >1 = struggles; it rides on top of the shared
+    // per-phase hungerModifier (0.9 interglacial → 1.3 fullGlacial), so the cold
+    // stays globally harder — this only decides WHO holds on.
+    // Upland Moa (Megalapteryx) — cold-hardy subalpine grazer, displaced onto the
+    // flats but not starved by the ice, so only a mild cold advantage.
     seasonalModifiers: {
-      summer: { hungerRate: 1.1, speed: 1.0 },
-      autumn: { hungerRate: 1.0, speed: 1.0 },
-      winter: { hungerRate: 0.9, speed: 0.9 },  // Better adapted to cold
-      spring: { hungerRate: 1.0, speed: 1.1 }
+      interglacial: { hungerRate: 1.0,  speed: 1.0  },
+      cooling:      { hungerRate: 0.98, speed: 1.0  },
+      glacial:      { hungerRate: 0.95, speed: 0.98 },
+      fullGlacial:  { hungerRate: 0.93, speed: 0.95 }
     }
   },
   
@@ -95,11 +103,13 @@ const MOA_SPECIES = {
     // Special: harder for eagles to catch
     eagleResistance: 0.3,  // 30% chance to resist attack
     
+    // South Island Giant (Dinornis) — large mixed grazer, a shade better on the
+    // open glacial flats than under closed interglacial forest.
     seasonalModifiers: {
-      summer: { hungerRate: 0.9, speed: 1.0 },
-      autumn: { hungerRate: 1.0, speed: 1.0 },
-      winter: { hungerRate: 1.2, speed: 0.8 },
-      spring: { hungerRate: 1.0, speed: 1.0 }
+      interglacial: { hungerRate: 1.0,  speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.98, speed: 0.95 },
+      fullGlacial:  { hungerRate: 0.97, speed: 0.92 }
     }
   },
   
@@ -136,11 +146,13 @@ const MOA_SPECIES = {
     
     eagleResistance: 0.2,
     
+    // North Island Giant (Dinornis) — lowland forest/shrubland; leans warm, so the
+    // glacial pinches it as the forest falls back.
     seasonalModifiers: {
-      summer: { hungerRate: 0.95, speed: 1.0 },
-      autumn: { hungerRate: 1.0, speed: 1.0 },
-      winter: { hungerRate: 1.15, speed: 0.85 },
-      spring: { hungerRate: 1.0, speed: 1.05 }
+      interglacial: { hungerRate: 0.95, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 1.06, speed: 0.9  },
+      fullGlacial:  { hungerRate: 1.1,  speed: 0.85 }
     }
   },
   
@@ -179,11 +191,12 @@ const MOA_SPECIES = {
     // Special: finds food more efficiently
     foragingBonus: 1.2,
     
+    // Eastern Moa (Emeus) — lowland/eastern dry country; mildly warm-leaning.
     seasonalModifiers: {
-      summer: { hungerRate: 1.0, speed: 1.0 },
-      autumn: { hungerRate: 0.95, speed: 1.0 },  // Good at finding autumn food
-      winter: { hungerRate: 1.05, speed: 0.95 },
-      spring: { hungerRate: 0.95, speed: 1.05 }
+      interglacial: { hungerRate: 0.97, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 1.03, speed: 0.95 },
+      fullGlacial:  { hungerRate: 1.05, speed: 0.92 }
     }
   },
   
@@ -219,11 +232,13 @@ const MOA_SPECIES = {
     curiosity: 0.5,
     flightiness: 0.75,
     
+    // Stout-legged Moa (Euryapteryx) — open-country coastal/lowland grazer; the
+    // glacial's expanding tussock flats suit it (openCountry).
     seasonalModifiers: {
-      summer: { hungerRate: 0.9, speed: 1.05 },
-      autumn: { hungerRate: 1.0, speed: 1.0 },
-      winter: { hungerRate: 1.1, speed: 0.9 },
-      spring: { hungerRate: 1.0, speed: 1.0 }
+      interglacial: { hungerRate: 1.06, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.93, speed: 1.0  },
+      fullGlacial:  { hungerRate: 0.9,  speed: 0.98 }
     }
   },
   
@@ -261,11 +276,13 @@ const MOA_SPECIES = {
     
     eagleResistance: 0.15,
     
+    // Heavy-footed Moa (Pachyornis elephantopus) — grassland/shrubland flats
+    // specialist; at home on the glacial outwash (openCountry).
     seasonalModifiers: {
-      summer: { hungerRate: 0.95, speed: 0.9 },
-      autumn: { hungerRate: 1.2, speed: 0.8 },
-      winter: { hungerRate: 1.15, speed: 0.75 },
-      spring: { hungerRate: 1.1, speed: 0.85 }
+      interglacial: { hungerRate: 1.07, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.92, speed: 1.0  },
+      fullGlacial:  { hungerRate: 0.9,  speed: 0.98 }
     }
   },
   
@@ -302,11 +319,13 @@ const MOA_SPECIES = {
     curiosity: 0.8,  // More curious
     flightiness: 0.6,
     
+    // Crested Moa (Pachyornis australis) — subalpine/alpine cold specialist; the
+    // strongest cold-thriver of the roster.
     seasonalModifiers: {
-      summer: { hungerRate: 1.05, speed: 1.0 },
-      autumn: { hungerRate: 1.0, speed: 1.0 },
-      winter: { hungerRate: 0.95, speed: 0.95 },
-      spring: { hungerRate: 0.95, speed: 1.1 }
+      interglacial: { hungerRate: 1.06, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.9,  speed: 1.0  },
+      fullGlacial:  { hungerRate: 0.86, speed: 0.98 }
     }
   },
   
@@ -342,11 +361,13 @@ const MOA_SPECIES = {
     curiosity: 0.55,
     flightiness: 0.55,
     
+    // Mantell's Moa (Pachyornis geranoides) — NI lowland open-country grazer; the
+    // glacial flats suit it (openCountry).
     seasonalModifiers: {
-      summer: { hungerRate: 0.95, speed: 1.0 },
-      autumn: { hungerRate: 1.0, speed: 1.0 },
-      winter: { hungerRate: 1.1, speed: 0.9 },
-      spring: { hungerRate: 1.0, speed: 1.0 }
+      interglacial: { hungerRate: 1.06, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.93, speed: 1.0  },
+      fullGlacial:  { hungerRate: 0.9,  speed: 0.98 }
     }
   },
   
@@ -392,11 +413,13 @@ const MOA_SPECIES = {
     // (beech/rimu/fern cover). 0..1 — weight added to migration target scoring.
     forestAffinity: 0.8,
     
+    // Little Bush Moa (Anomalopteryx) — dense closed-forest bird; thrives in the
+    // interglacial canopy, crowds the refugia as the glacial shrinks the forest.
     seasonalModifiers: {
-      summer: { hungerRate: 1.0, speed: 1.05 },
-      autumn: { hungerRate: 0.95, speed: 1.0 },
-      winter: { hungerRate: 1.0, speed: 0.95 },
-      spring: { hungerRate: 0.9, speed: 1.1 }
+      interglacial: { hungerRate: 0.92, speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 1.08, speed: 0.9  },
+      fullGlacial:  { hungerRate: 1.12, speed: 0.85 }
     }
   }
 };

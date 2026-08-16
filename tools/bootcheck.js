@@ -716,9 +716,9 @@ const g=vm.runInContext('game',ctx);
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
 
   D.mode='off'; D.applyVisibility();
-  // The mating heart is user-facing now (drawn ahead of the showEntityUI gate); the REST of
-  // the entity-UI layer (bars/rings/state glyphs, incl. the kōkako song note) stays off.
-  chk(C.showEntityUI===false,'entity UI (bars/rings/glyphs/song note) must be OFF for visitors');
+  // The mating heart AND the kōkako song note are user-facing now (drawn outside the
+  // showEntityUI gate); the REST of the entity-UI layer (bars/rings/state glyphs) stays off.
+  chk(C.showEntityUI===false,'entity UI (bars/rings/glyphs) must be OFF for visitors');
   chk(D.enabled===false,'Debug.enabled must be false when mode is off');
   G.addNotification('test message','info');
   chk(G.ui.messages.length>0,'notifications should still be QUEUED (useful in debug)');
@@ -732,7 +732,7 @@ const g=vm.runInContext('game',ctx);
   chk(G.ui._tmButtons && G.ui._tmButtons.length===IH.BUTTONS.length,'on-screen buttons return with the debug overlay');
   D.mode='off'; D.applyVisibility(); FRAME(ctx.draw);
 
-  console.log(fail? `visitor render: ${fail} FAILURES` : 'visitor render: clean (heart only, no bars/song note, no messages, no climate chart)');
+  console.log(fail? `visitor render: ${fail} FAILURES` : 'visitor render: clean (heart + kōkako note user-facing; no bars/rings/glyphs, no messages, no climate chart)');
 }
 
 // ---- Phase 2: deep-time model ----------------------------------------

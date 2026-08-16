@@ -126,13 +126,15 @@ const TAKAHE_SPECIES = {
 
     eagleResistance: 0.1,
 
-    // Cold is busier: like the goose it feeds efficiently through the cold and idles
-    // in the summer heat, but less extremely (it also works forest margins).
+    // Cold is busier: like the goose it feeds efficiently through the glacial and
+    // idles in the interglacial, but less extremely (it also works forest margins).
+    // Keyed by GLACIAL PHASE (interglacial/cooling/glacial/fullGlacial) — the deep-
+    // time clock's key, not summer/winter (which read undefined→1 and did nothing).
     seasonalModifiers: {
-      summer: { hungerRate: 1.1,  speed: 1.0 },
-      autumn: { hungerRate: 1.0,  speed: 1.0 },
-      winter: { hungerRate: 0.9,  speed: 0.95 },
-      spring: { hungerRate: 0.95, speed: 1.05 }
+      interglacial: { hungerRate: 1.1,  speed: 1.0  },
+      cooling:      { hungerRate: 1.0,  speed: 1.0  },
+      glacial:      { hungerRate: 0.92, speed: 1.0  },
+      fullGlacial:  { hungerRate: 0.9,  speed: 0.95 }
     }
   }
 };

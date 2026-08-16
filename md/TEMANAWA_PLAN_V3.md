@@ -391,7 +391,7 @@ others. Honest current state:
 | **4 — Climate/fields** | glacial cycle + per-cell fields | **Partial** — glacial rebind, climate to 1 Ma, forest contraction **built**; the four `disturb()` fields + `warp` **not built** (§9) |
 | **5 — Flora** | plant table + art | **Partial** — table + spawning **built** (`plant_defs`, populated `plantTypes`); **art is placeholder** |
 | **6 — Disturbance** | `disturb()` + `warp`, wire buttons | **Partial** — eruption clear/regrow (`ashCover`) **built**; storm/growth aftermath + `warp` **not built** |
-| **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **7 grazers** (5 moa + North Island goose + mōho/NI takahē) **+ 3 flyers** (kererū, kōkako, huia) with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier). Remaining: harrier flight behaviour, `seasonalModifiers` phase-key fix (`seasonal-modifiers-key-mismatch`), the *Dinornis* dimorphism pair |
+| **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **7 grazers** (5 moa + North Island goose + mōho/NI takahē) **+ 3 flyers** (kererū, kōkako, huia) with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier); **per-species cold adaptation now live** (`seasonalModifiers` re-keyed by glacial phase). Remaining: harrier flight behaviour, the *Dinornis* dimorphism pair |
 | **+ Interaction** | five buttons, health, kererū | ✅ **Built** (steps 1–4); tuning (step 5) open — *new track, not in the v2.1 ledger* |
 | **8 — Kiosk** | hardening, audio, lockdown | **Not started** — audio still preloads 6.5 MB; `mapGrid` still 512 |
 
@@ -413,9 +413,10 @@ into the **land and the cast**, where a visitor reads them in forty seconds with
 3. **Start the art** on the seven-species cast and the two era-signal plants (mamaku, nīkau) — the assets
    that carry findings #2 and #3.
 4. ~~**Spawn the fauna cast** (§5)~~ — ✅ **largely done.** The founder mix spawns 7 grazers + 3 flyers with
-   a no-extinction feedback model (`ecology-feedback-model`). Remaining tuning: the `seasonalModifiers`
-   phase-key mismatch that leaves per-species cold adaptation inert (`seasonal-modifiers-key-mismatch`), so
-   open-country grazers currently lean on the visitor's TUSSOCK press rather than innate cold hardiness.
+   a no-extinction feedback model (`ecology-feedback-model`), and the `seasonalModifiers` are now correctly
+   keyed by glacial phase so **per-species cold adaptation is live** (`seasonal-modifiers-key-mismatch`,
+   resolved) — open-country/subalpine grazers innately hold in the cold while forest moa retreat, so the
+   cold-vs-warm turnover reads from the animals, not just the visitor's TUSSOCK press.
 5. **Build the disturbance clocks** (§9) — `disturb()` + the `warp` field, wiring Storm and Growth to
    visible, habitat-appropriate aftermath; attach the wetland bloom once a wetland biome exists.
 6. **Finish the interaction loop** (§7 step 5): tune the health feel and the photosensitivity slew.

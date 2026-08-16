@@ -197,15 +197,12 @@ class Kokako extends Kereru {
     ellipse(dir * s * 0.5, s * 0.02, s * 0.22, s * 0.22);             // blue wattle
   }
 
-  // Song cue — a small music note lifting from the singing bird. DEBUG-only now (gated on
-  // CONFIG.showEntityUI like the rest of the entity-UI layer): the mating heart is the one
-  // breeding cue kept for visitors, while the song note is a developer indicator. For
-  // visitors the song stays observable behaviourally — the bird holds its perch notably
-  // longer and neighbours answer / move off. Gentle bob on the real anim clock, non-
-  // flashing (CLAUDE.md).
+  // Song cue — a small music note lifting from the singing bird. USER-FACING (like the
+  // mating heart): a charming, legible cue for the singing/territory behaviour, drawn
+  // whether or not the debug entity-UI layer is on. Gentle bob on the real anim clock,
+  // non-flashing (CLAUDE.md).
   _renderExtra(s, perched) {
     if (this.state !== KOKAKO_STATE.SINGING) return;
-    if (typeof CONFIG !== 'undefined' && !CONFIG.showEntityUI) return;
     const dir = (this._flip >= 0) ? 1 : -1;
     const bob = Math.sin((this.animTime || 0) * 0.12) * s * 0.14;
     const hx = dir * s * 0.95, hy = -s * 1.05 + bob;                  // note-head centre, above the head

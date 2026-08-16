@@ -55,6 +55,11 @@ class GameUI {
 
     InstallHUD.renderWorldLayer(g, W, H);   // storm cells — under the strips
 
+    // The ambient LED colour band frames the scene at all times, drawn UNDER the HUD so the
+    // timeline (axis / markers / playhead) and the year read cleanly OVER the band rather
+    // than being washed out by it.
+    InstallHUD.renderEdgeGlow(g, W, H);
+
     // The on-screen buttons are a DEBUG twin of the wall's physical buttons, so they only
     // show with the overlay. Visitors get the clean layout: the deep-time axis on a thin
     // strip at the bottom (where the buttons used to be) and the year floated large and
@@ -67,11 +72,6 @@ class GameUI {
       InstallHUD.renderVisitorTimeline(g, W, H);
       InstallHUD.renderVisitorYear(g, W, H);
     }
-
-    // The ambient LED colour band frames the scene at all times — over the HUD strips (so
-    // the bottom band lights the timeline / button row like a bezel) but under the debug
-    // panels, which must stay readable.
-    InstallHUD.renderEdgeGlow(g, W, H);
 
     if (debug) this.renderMessages(W, H);
     InstallHUD.renderAshFlash(g, W, H);     // white wash — over everything
