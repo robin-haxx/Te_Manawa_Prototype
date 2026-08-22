@@ -233,7 +233,7 @@ const KOKAKO_SPECIES = {
 
   // Movement / render — a poorer flier than the kererū: slower, shorter hops, and
   // it barely clears the canopy (low cruise altitude).
-  baseSpeed:        0.34,
+  baseSpeed:        0.24,
   maxForce:         0.05,
   size:             6,
   perceptionRadius: 60,

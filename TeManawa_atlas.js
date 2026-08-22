@@ -63,10 +63,13 @@ const SpriteStrips = {
   // Blit frame i of `name` into the dest rect, honouring the current imageMode
   // (callers set imageMode(CENTER) and pass the centre). Returns false — a clean
   // no-op — if the strip is not registered.
-  draw(name, i, dx, dy, dw, dh) {
+  draw(name, i, dx, dy, dw, dh, g) {
     const f = this.frame(name, i);
     if (!f) return false;
-    image(f.img, dx, dy, dw, dh, f.sx, f.sy, f.sw, f.sh);
+    // `g` optionally targets a p5 graphics buffer (DOM-stack GL mode draws water
+    // into the terrain layer via g.image); null/undefined uses the global canvas.
+    const R = g || (typeof window !== 'undefined' ? window : null);
+    (R || this).image(f.img, dx, dy, dw, dh, f.sx, f.sy, f.sw, f.sh);
     return true;
   },
 

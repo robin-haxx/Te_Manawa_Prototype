@@ -185,7 +185,7 @@ Proposed `levelDef.geography` block, mirrored onto a `GEO` dev surface like
    - ✅ **Storm habitat effects (§10B(3–5) + §10C).** `Game.applyStormToPlants` (fired once per STORM
      press) rewinds the succession clock UNEVENLY across `simulation.plants`: pure static
      `_stormPlantDamage(type, growth, elevation, wind, cfg)` with two channels — **snap inland
-     emergents** (tall `rimu/kahikatea/tawa/beech` windthrown → regrow) and **salt-burn + lee burial**
+     emergents** (tall `Totara/kahikatea/tawa/beech` windthrown → regrow) and **salt-burn + lee burial**
      on the low seaward margin, ASYMMETRIC by species (soft non-rhizomatous knocked back; hardy
      open/dune binders ride it out — `STORM_EMERGENT/HARDY/SOFT` sets + `STORMFX` config). Scaled by
      `_windStrength(glacial index)`, so a glacial gale bites hardest (§10D). Verified live: one press

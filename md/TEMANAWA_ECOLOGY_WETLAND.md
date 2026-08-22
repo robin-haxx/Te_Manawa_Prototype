@@ -159,7 +159,7 @@ uplift → steeper gradients → more erosion → sediment down the gorge
 
 **The drowned forest.** At "Go-to-Hell Swamp" between East Base trig and Himatangi
 Bush, tōtara **stumps with roots *in situ***, spaced 1.8–3.6 m apart, stand under
-1.8 m of peat, with mātai, rimu, kahikatea and maire identifiable among them. Esler
+1.8 m of peat, with mātai, Totara, kahikatea and maire identifiable among them. Esler
 rejects the local "a gale snapped them" explanation and argues a **rising water table
 killed the forest**, probably because the river's outfall was restricted — by sand at
 the mouth, or by growth of the **Whirokino anticline**, a small fold running NNE which

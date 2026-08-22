@@ -107,7 +107,7 @@ visibly fails somewhere"), made into a side-by-side contrast the visitor control
 **Author two plant sets** (in the level file, `levels/level_temanawa_scaffold.js`, the single
 source of the ground look):
 
-- `WARM_PLANTS` — the forest / podocarp-broadleaf / tree-fern types (beech, rimu, tawa, fern…).
+- `WARM_PLANTS` — the forest / podocarp-broadleaf / tree-fern types (beech, Totara, tawa, fern…).
 - `COLD_PLANTS` — the open-country types (grassland, tussock, shrubland, herbfield) — the
   cold-tolerant end of `PLANT_TYPES.coldTolerance` (`sketch.js:581-622`).
 

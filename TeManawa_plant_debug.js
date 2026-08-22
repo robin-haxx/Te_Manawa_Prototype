@@ -8,6 +8,8 @@
 // can be eyeballed at a glance. Background is a flat neutral (no terrain).
 //
 //   hold D for 3 s   toggle the gallery on/off
+//   scroll / ↑↓      pan (true scale can run taller than the screen)
+//   SAVE PNG / S     export the WHOLE page (all rows) as one PNG
 //
 // It reads `plantSprites` (built in preload) for the art and PLANT_TYPES
 // for each plant's footprint size, and multiplies by the LIVE
@@ -39,11 +41,11 @@
 //     Beech_{Mature,Thriving,Wilting,Dormant}.png     -> Beech/
 //     Fern_{Mature,Thriving,Wilting,Dormant}.png      -> TreeFern/ (fern)
 //     Flax_{Mature,Thriving,Wilting,Dormant}.png      -> Flax/
-//     Rimu_{Mature,Thriving,Wilting,Dormant}.png      -> Totara/ (rimu proto)
+//     Totara_{Mature,Thriving,Wilting,Dormant}.png      -> Totara/ (Totara proto)
 //     Tussock_{Mature,Thriving,Wilting,Dormant}.png   -> Tussock/
 //   Unwired folder frames:
 //     Totara/Totara_Mature.png, Totara/Totara_Dormant.png
-//       (rimu is sizeOnly — it never loads state frames, only Growing_/Size_)
+//       (Totara is sizeOnly — it never loads state frames, only Growing_/Size_)
 //     Epiphytes/Epiphytes.png  (comment in sketch.js: hand-composited into
 //       tree art, never wired as a plant type)
 //   Already parked in sprites/_retired/ (also unused): Lancewood*, Patotara*
@@ -59,9 +61,19 @@ const PlantGallery = {
   // Flat background — a mid neutral that reads against both light and dark art.
   BG: [74, 82, 78],
 
+  // Layout constants shared by the on-screen render and the full-page PNG export,
+  // so both lay the gallery out identically (only scroll/clip differ).
+  LAYOUT: { marginX: 40, top: 92, frameGap: 12, groupGap: 34, rowGap: 28, labelH: 34 },
+
   // hold-tracking state
   _downAt: null,        // millis() when D first went down, or null
   _holdConsumed: false, // true once this hold has toggled (ignore until release)
+
+  // scroll state — the gallery keeps true on-screen scale, so at large viewZoom
+  // the content runs taller than the screen; scrollY pans it. Clamped to the
+  // content height each render (see _maxScroll, set there).
+  scrollY: 0,
+  _maxScroll: 0,
 
   // ==========================================================
   // INPUT
@@ -69,8 +81,33 @@ const PlantGallery = {
   // keydown: swallow D so the tap-vs-hold decision resolves on keyup / tick,
   // instead of the overlay cycling immediately (and repeating on autorepeat).
   onKeyDown(k) {
+    // While the gallery is up, the arrow / page keys pan it — swallow them so
+    // they never reach the sim. Home/End jump to the ends.
+    if (this.active) {
+      if (k === 'ArrowDown')  { this.scroll( this._pageStep(0.15)); return true; }
+      if (k === 'ArrowUp')    { this.scroll(-this._pageStep(0.15)); return true; }
+      if (k === 'PageDown' || k === ' ') { this.scroll( this._pageStep(0.9)); return true; }
+      if (k === 'PageUp')     { this.scroll(-this._pageStep(0.9)); return true; }
+      if (k === 'Home')       { this.scrollY = 0; return true; }
+      if (k === 'End')        { this.scrollY = this._maxScroll; return true; }
+      if (k === 's' || k === 'S') { this.saveImage(); return true; }
+    }
     if (k !== 'd' && k !== 'D') return false;
     if (this._downAt == null) { this._downAt = millis(); this._holdConsumed = false; }
+    return true;
+  },
+
+  // A scroll step as a fraction of the viewport height (used by the key pans).
+  _pageStep(frac) {
+    const H = (typeof CONFIG !== 'undefined' && CONFIG.canvasHeight) ? CONFIG.canvasHeight : 1080;
+    return H * frac;
+  },
+
+  // Pan by dy pixels, clamped to the content. Positive dy scrolls down.
+  // _maxScroll is refreshed each render() once the true content height is known.
+  scroll(dy) {
+    if (!this.active) return false;
+    this.scrollY = Math.max(0, Math.min(this._maxScroll, this.scrollY + dy));
     return true;
   },
 
@@ -95,6 +132,7 @@ const PlantGallery = {
     if (this._downAt == null) { this._downAt = millis(); this._holdConsumed = false; }
     if (!this._holdConsumed && millis() - this._downAt >= this.HOLD_MS) {
       this.active = !this.active;
+      if (this.active) this.scrollY = 0;   // always open at the top
       this._holdConsumed = true;
       if (typeof console !== 'undefined') console.log('[PlantGallery]', this.active ? 'ON' : 'OFF');
     }
@@ -106,7 +144,7 @@ const PlantGallery = {
   // Every distinct sprite a plant type can render, de-duplicated. Single-asset
   // stand-ins alias one image across all four seasonal states, so identity
   // de-dup collapses them to a single 'mature' frame. sizeOnly plants (tōtara/
-  // rimu) never load state frames — they show their growth sequence and size
+  // Totara) never load state frames — they show their growth sequence and size
   // variants instead. `sizeFactor` reproduces the sim's per-state footprint
   // scaling (growth frames render smaller); states and variants are drawn at
   // the full mature footprint, matching _renderSprite in TeManawa_plant.js.
@@ -166,29 +204,126 @@ const PlantGallery = {
   },
 
   // ==========================================================
+  // LAYOUT  (target-agnostic geometry)
+  // ----------------------------------------------------------
+  // Flow the plant groups into wrapping rows for a page `W` wide, measuring text
+  // on the render target `g` (the main canvas for the screen, an offscreen buffer
+  // for the PNG export) so both lay out identically. Each row is stamped with the
+  // baselineY its frames stand on, so painting is pure — no geometry there.
+  // Returns { groups, rows, contentH } where contentH is the rows' total height
+  // below `LAYOUT.top`.
+  // ==========================================================
+  _measure(g, zoom, W) {
+    const L = this.LAYOUT;
+    const groups = this._buildGroups(zoom);
+
+    const rows = [];
+    let row = { groups: [], maxH: 0 };
+    let x = L.marginX;
+    g.textSize(12);
+    for (const grp of groups) {
+      grp.contentW = grp.frames.reduce((s, f) => s + f.drawW, 0) + (grp.frames.length - 1) * L.frameGap;
+      grp.labelW = g.textWidth(grp.name + '  (' + grp.worldW + ')');
+      grp.w = Math.max(grp.contentW, grp.labelW);
+      grp.h = grp.frames.reduce((m, f) => Math.max(m, f.drawH), 0);
+
+      if (x + grp.w > W - L.marginX && row.groups.length) {   // wrap
+        rows.push(row);
+        row = { groups: [], maxH: 0 };
+        x = L.marginX;
+      }
+      grp.x = x;
+      row.groups.push(grp);
+      row.maxH = Math.max(row.maxH, grp.h);
+      x += grp.w + L.groupGap;
+    }
+    if (row.groups.length) rows.push(row);
+
+    let rowY = L.top;
+    for (const r of rows) {
+      r.baselineY = rowY + r.maxH;                 // every frame in the row stands here
+      rowY = r.baselineY + L.labelH + L.rowGap;
+    }
+    return { groups, rows, contentH: rowY - L.top };
+  },
+
+  // ==========================================================
+  // PAINT  (target-agnostic — `g` is the main canvas OR an offscreen buffer)
+  // ==========================================================
+  // Backdrop + header. Fills the whole target so a saved PNG is self-contained.
+  _paintBackdrop(g, zoom, W, H) {
+    g.noStroke();
+    g.fill(this.BG[0], this.BG[1], this.BG[2]);
+    g.rect(0, 0, W, H);
+
+    g.fill(240, 245, 240);
+    g.textAlign(LEFT, TOP);
+    g.textSize(20);
+    g.text('PLANT SPRITE GALLERY', 40, 30);
+    g.fill(190, 205, 195);
+    g.textSize(12);
+    g.text('On-screen scale · viewZoom ×' + zoom.toFixed(2) + ' · All art by Rafaela Martins Gaspar', 40, 58);
+  },
+
+  // Rows at absolute coordinates (baselineY set by _measure). No scroll or clip —
+  // the caller handles those for the screen; the export draws every row in full.
+  _paintRows(g, rows) {
+    const L = this.LAYOUT;
+    for (const r of rows) {
+      const baselineY = r.baselineY;
+
+      // subtle ground line spanning the row's groups
+      const first = r.groups[0], last = r.groups[r.groups.length - 1];
+      g.stroke(255, 255, 255, 28);
+      g.strokeWeight(1);
+      g.line(first.x, baselineY + 0.5, last.x + last.w, baselineY + 0.5);
+      g.noStroke();
+
+      for (const grp of r.groups) {
+        // frames, baseline-aligned, centred within the group's reserved width
+        let fx = grp.x + (grp.w - grp.contentW) / 2;
+        for (const f of grp.frames) {
+          // f.img may be an AtlasFrame (packed sprites) — the global image() wrap
+          // does not see graphics-method draws, so route through drawTo().
+          if (typeof SpriteAtlas !== 'undefined' && SpriteAtlas.isFrame(f.img)) {
+            SpriteAtlas.drawTo(g, f.img, fx, baselineY - f.drawH, f.drawW, f.drawH);
+          } else {
+            g.image(f.img, fx, baselineY - f.drawH, f.drawW, f.drawH);
+          }
+          if (grp.frames.length > 1) {   // label each frame only when there's variation
+            g.fill(150, 165, 155);
+            g.textSize(9);
+            g.textAlign(CENTER, TOP);
+            g.text(f.label, fx + f.drawW / 2, baselineY + 18);
+          }
+          fx += f.drawW + L.frameGap;
+        }
+
+        // plant name + footprint width, centred under the group
+        g.fill(225, 235, 228);
+        g.textSize(12);
+        g.textAlign(CENTER, TOP);
+        g.text(grp.name + '  (' + grp.worldW + ')', grp.x + grp.w / 2, baselineY + 4);
+      }
+    }
+  },
+
+  // SAVE PNG button geometry (screen space), so draw and hit-test agree.
+  _saveBtn(W) { return { x: W - 168, y: 22, w: 128, h: 34 }; },
+
+  // ==========================================================
   // RENDER  (screen space — no viewZoom transform is active here)
   // ==========================================================
   render(W, H) {
     const zoom = (typeof CONFIG !== 'undefined' && CONFIG.viewZoom) ? CONFIG.viewZoom : 1;
+    const L = this.LAYOUT;
 
     push();
-    noStroke();
-    fill(this.BG[0], this.BG[1], this.BG[2]);
-    rect(0, 0, W, H);
-
     textFont('monospace');
+    this._paintBackdrop(window, zoom, W, H);
 
-    // ---- header --------------------------------------------
-    fill(240, 245, 240);
-    textAlign(LEFT, TOP);
-    textSize(20);
-    text('PLANT SPRITE GALLERY', 40, 30);
-    fill(190, 205, 195);
-    textSize(12);
-    text('all art at on-screen scale · viewZoom ×' + zoom.toFixed(2), 40, 58);
-
-    const groups = this._buildGroups(zoom);
-    if (!groups.length) {
+    const { rows, contentH } = this._measure(window, zoom, W);
+    if (!rows.length) {
       fill(240, 210, 150);
       textSize(16);
       textAlign(CENTER, CENTER);
@@ -197,77 +332,113 @@ const PlantGallery = {
       return;
     }
 
-    // ---- flow layout: assign groups to wrapping rows -------
-    const marginX = 40, top = 92;
-    const frameGap = 12, groupGap = 34, rowGap = 28;
-    const labelH = 34;                 // reserved under each row for name + per-frame labels
+    // ---- clamp scroll to the measured content --------------
+    const viewTop = L.top - 14;          // clip a touch above the first row's art
+    const viewH = H - viewTop;
+    this._maxScroll = Math.max(0, contentH - viewH);
+    if (this.scrollY > this._maxScroll) this.scrollY = this._maxScroll;
 
-    const rows = [];
-    let row = { groups: [], maxH: 0 };
-    let x = marginX;
-    for (const g of groups) {
-      g.contentW = g.frames.reduce((s, f) => s + f.drawW, 0) + (g.frames.length - 1) * frameGap;
-      textSize(12);
-      g.labelW = textWidth(g.name + '  (' + g.worldW + ')');
-      g.w = Math.max(g.contentW, g.labelW);
-      g.h = g.frames.reduce((m, f) => Math.max(m, f.drawH), 0);
+    // ---- rows, clipped to the viewport and panned by scrollY ----
+    const ctx = (typeof drawingContext !== 'undefined') ? drawingContext : null;
+    if (ctx) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, viewTop, W, viewH);
+      ctx.clip();
+    }
+    translate(0, -this.scrollY);
+    this._paintRows(window, rows);
+    translate(0, this.scrollY);          // undo the pan before the clip is released
+    if (ctx) ctx.restore();
 
-      if (x + g.w > W - marginX && row.groups.length) {   // wrap
-        rows.push(row);
-        row = { groups: [], maxH: 0 };
-        x = marginX;
+    // ---- scrollbar: only when the content overflows the viewport ----
+    if (this._maxScroll > 0) {
+      const trackX = W - 10, trackW = 4;
+      const trackY = viewTop + 4, trackH = viewH - 8;
+      fill(255, 255, 255, 24);
+      rect(trackX, trackY, trackW, trackH, 2);
+
+      const thumbH = Math.max(24, trackH * (viewH / contentH));
+      const thumbY = trackY + (trackH - thumbH) * (this.scrollY / this._maxScroll);
+      fill(230, 240, 233, 150);
+      rect(trackX, thumbY, trackW, thumbH, 2);
+
+      // hint, only while there's more below to reveal
+      if (this.scrollY < this._maxScroll - 1) {
+        fill(210, 220, 214, 170);
+        textAlign(RIGHT, BOTTOM);
+        textSize(11);
+        text('scroll / ↑↓ for more ▾', W - 20, H - 10);
       }
-      g.x = x;
-      row.groups.push(g);
-      row.maxH = Math.max(row.maxH, g.h);
-      x += g.w + groupGap;
-    }
-    if (row.groups.length) rows.push(row);
-
-    // ---- render rows ---------------------------------------
-    let rowY = top;
-    for (const r of rows) {
-      const baselineY = rowY + r.maxH;   // every frame in the row stands on this line
-
-      // subtle ground line spanning the row's groups
-      const first = r.groups[0], last = r.groups[r.groups.length - 1];
-      stroke(255, 255, 255, 28);
-      strokeWeight(1);
-      line(first.x, baselineY + 0.5, last.x + last.w, baselineY + 0.5);
-      noStroke();
-
-      for (const g of r.groups) {
-        // frames, baseline-aligned, centred within the group's reserved width
-        let fx = g.x + (g.w - g.contentW) / 2;
-        for (const f of g.frames) {
-          image(f.img, fx, baselineY - f.drawH, f.drawW, f.drawH);
-          if (g.frames.length > 1) {   // label each frame only when there's variation
-            fill(150, 165, 155);
-            textSize(9);
-            textAlign(CENTER, TOP);
-            text(f.label, fx + f.drawW / 2, baselineY + 18);
-          }
-          fx += f.drawW + frameGap;
-        }
-
-        // plant name + footprint width, centred under the group
-        fill(225, 235, 228);
-        textSize(12);
-        textAlign(CENTER, TOP);
-        text(g.name + '  (' + g.worldW + ')', g.x + g.w / 2, baselineY + 4);
-      }
-
-      rowY = baselineY + labelH + rowGap;
     }
 
-    // ---- footer: flag overflow so it isn't mistaken for "all of them" ----
-    if (rowY > H) {
-      fill(240, 190, 150);
-      textAlign(LEFT, BOTTOM);
-      textSize(11);
-      text('… content taller than screen at this viewZoom (true scale kept)', 40, H - 10);
-    }
+    // ---- SAVE PNG button (drawn last, over everything; not baked into the export) ----
+    const b = this._saveBtn(W);
+    noStroke();
+    fill(58, 118, 88);
+    rect(b.x, b.y, b.w, b.h, 6);
+    fill(235, 245, 238);
+    textAlign(CENTER, CENTER);
+    textSize(12);
+    text('SAVE PNG  (S)', b.x + b.w / 2, b.y + b.h / 2 + 1);
 
     pop();
+  },
+
+  // ==========================================================
+  // EXPORT
+  // ----------------------------------------------------------
+  // Save the WHOLE page — every row at true on-screen scale, not just the visible
+  // viewport — as one PNG. Layout is measured in the gallery's 1920×1080 LOGICAL
+  // space, but the buffer is allocated (and scaled) by the live sprite supersample
+  // so the export lands at the wall's real backing resolution — 4K at the default
+  // ×2, matching what's on screen — rather than 1080p. Frees the buffer after
+  // (the createGraphics leak rule, CLAUDE.md / BUILD_V3 §2.3). One-shot on a
+  // click / the S key; never on the visitor path.
+  // ==========================================================
+  saveImage() {
+    if (typeof createGraphics !== 'function' || typeof saveCanvas !== 'function') return;
+    const zoom = (typeof CONFIG !== 'undefined' && CONFIG.viewZoom) ? CONFIG.viewZoom : 1;
+    const W = (typeof CONFIG !== 'undefined' && CONFIG.canvasWidth) ? CONFIG.canvasWidth : 1920;
+    const L = this.LAYOUT;
+
+    // Supersample factor the wall renders sprites+HUD at (×2 default → 4K backing).
+    const ss = (typeof spriteSS === 'function' && spriteSS()) ||
+               (typeof CONFIG !== 'undefined' && CONFIG.spriteSupersample) || 2;
+
+    // Measure on the main canvas (same monospace metrics as the buffer will use).
+    const { rows, contentH } = this._measure(window, zoom, W);
+    if (!rows.length) { console.warn('[PlantGallery] nothing to save — no sprites loaded'); return; }
+    const H = Math.ceil(L.top + contentH + 24);
+
+    let pg = null;
+    try {
+      pg = createGraphics(W * ss, H * ss);   // buffer at the full backing resolution
+      if (pg.pixelDensity) pg.pixelDensity(1);
+      pg.push();
+      pg.scale(ss);                          // author in logical space, land on 4K pixels
+      pg.textFont('monospace');
+      this._paintBackdrop(pg, zoom, W, H);
+      this._paintRows(pg, rows);
+      pg.pop();
+      const name = 'temanawa_plant_gallery_z' + zoom.toFixed(2);
+      saveCanvas(pg, name, 'png');
+      if (typeof console !== 'undefined') console.log('[PlantGallery] saved', name + '.png', (W * ss) + '×' + (H * ss));
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[PlantGallery] save failed', e);
+    } finally {
+      if (pg && pg.remove) pg.remove();
+    }
+  },
+
+  // Click routing (from Game.handleClick, in logical/1080 space). While the
+  // gallery is up it owns the pointer: the SAVE button fires the export, and any
+  // other click is swallowed so it can't reach the sim UI underneath.
+  handleClick(mx, my) {
+    if (!this.active) return false;
+    const W = (typeof CONFIG !== 'undefined' && CONFIG.canvasWidth) ? CONFIG.canvasWidth : 1920;
+    const b = this._saveBtn(W);
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) this.saveImage();
+    return true;
   }
 };

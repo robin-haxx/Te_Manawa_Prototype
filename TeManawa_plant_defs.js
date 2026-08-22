@@ -16,7 +16,7 @@ const PLANT_TYPES = {
   fern: { name: "Fern", nutrition: 30, color: '#228B22', size: 22, growthTime: 240,
     coldTolerance: 0.1, ashVulnerability: 0.95,
     description: "The iconic Ponga's fronds populate forests" },
-  rimu: { name: "Rimu", nutrition: 50, color: '#8B0000', size: 36, growthTime: 400,
+  Totara: { name: "Totara", nutrition: 50, color: '#8B0000', size: 40, growthTime: 400,
     coldTolerance: 0.3, ashVulnerability: 0.65,
     description: "Ancient podocarp with bright red fruit" },
   beech: { name: "Beech", nutrition: 40, color: '#8b430f', size: 32, growthTime: 350,
@@ -29,16 +29,21 @@ const PLANT_TYPES = {
     coldTolerance: 0.8, ashVulnerability: 0.3,
     description: "Alpine shrub with summer berries" },
 
-  // --- Glacial-flora (LGM) additions. Procedural blob-rendered (no sprites yet). ---
-  coprosma: { name: "Coprosma", nutrition: 30, color: '#5c7d3e', size: 11, growthTime: 190,
+  // --- Glacial / open-country shrubland. coprosma + dracophyllum are now SPRITED and placed in the
+  //     scaffold (grassland/subalpine/wetland). matagouri stays a defined-but-unplaced spare: it is a
+  //     South-Island dryland shrub, rare in the North Island and NOT in the Manawatū glacial record
+  //     (which is Coprosma/Muehlenbeckia/Myrsine/Veronica/Dracophyllum) — see TEMANAWA_ECOLOGY_OPEN.md.
+  // coprosma is the code key for a VISUAL GREY-SCRUB UMBRELLA — its variant sprites are the grey-scrub
+  // taxa (coprosma, pōhuehue/Muehlenbeckia, …) under sprites/Shrub/.
+  coprosma: { name: "Shrubs", nutrition: 30, color: '#5c7d3e', size: 18, growthTime: 190,
     coldTolerance: 0.85, ashVulnerability: 0.3,
-    description: "Divaricating shrub; hardy glacial browse with orange berries" },
-  dracophyllum: { name: "Dracophyllum", nutrition: 28, color: '#9a7b4f', size: 15, growthTime: 250,
+    description: "Grey scrub — divaricating coprosma, pōhuehue and kin; hardy browse of dry, frosty open ground" },
+  dracophyllum: { name: "Dracophyllum", nutrition: 28, color: '#9a7b4f', size: 22, growthTime: 250,
     coldTolerance: 0.9, ashVulnerability: 0.3,
     description: "Inaka grass-tree of the cold subalpine tops" },
   matagouri: { name: "Matagouri", nutrition: 26, color: '#7a6f4a', size: 12, growthTime: 210,
     coldTolerance: 0.95, ashVulnerability: 0.25,
-    description: "Tūmatakuru: thorny shrub of the glacial outwash flats" },
+    description: "Tūmatakuru: thorny shrub of the glacial outwash flats (South-Island; unplaced spare)" },
 
   // --- Favoured, browse-resistant plants (planted via the palette) ---
   lancewood: { name: "Juvenile Lancewood", nutrition: 34, color: '#6a5a33', size: 15, growthTime: 300,
@@ -61,12 +66,15 @@ const PLANT_TYPES = {
   //     scaffold biomes; coldTolerance vs warmMax(0.65)/coldMin(0.75) decides
   //     which growth button matures them and whether kererū disperse them. ---
 
-  // Kahikatea (Dacrycarpus) — the tallest NZ tree, wet lowland podocarp forest.
-  // Warm canopy tree (coldTolerance 0.35): kererū-dispersed, and in FOREST_TREES
-  // so it retreats with the glacial forest.
-  kahikatea: { name: "Kahikatea", nutrition: 48, color: '#556b3d', size: 34, growthTime: 420,
-    coldTolerance: 0.35, ashVulnerability: 0.75,
-    description: "Kahikatea: the tallest tree, of wet lowland forest" },
+  // Kahikatea (Dacrycarpus) — the tallest NZ tree, wet lowland podocarp forest, and the swamp-forest
+  // DISTURBANCE COLONISER (wetland doc §4.1): NOT a climax tree — it recruits on the raw wet alluvium
+  // a moving river exposes, and a stand with no fresh disturbance AGES OUT. `disturbanceRecruit:true`
+  // takes it out of the free recruitment paths (kererū dispersal / the FOREST button) — it establishes
+  // only via a river disturbance (storm flood, eruption sediment pulse, the deep-time channel shift);
+  // Plant.update ages it and it senesces without renewal. Warm canopy (coldTolerance 0.35), in FOREST_TREES.
+  kahikatea: { name: "Kahikatea", nutrition: 48, color: '#556b3d', size: 28, growthTime: 420,
+    coldTolerance: 0.35, ashVulnerability: 0.75, disturbanceRecruit: true,
+    description: "Kahikatea: the tallest tree, of wet lowland forest — colonises raw river alluvium" },
 
   // Nīkau (Rhopalostylis) — the world's southernmost palm; frost-tender lowland
   // forest. Low coldTolerance 0.2 sinks it hard in glacials (its range collapse);
@@ -91,7 +99,7 @@ const PLANT_TYPES = {
   // Tī kōuka / cabbage tree (Cordyline) — open, damp lowland and wetland margins;
   // hardy and frost-tolerant but light-demanding, so open country not closed
   // forest. Warm-hardy 0.6; bird-dispersed. Not in FOREST_TREES.
-  cabbagetree: { name: "Tī Kōuka", nutrition: 32, color: '#7a8a4e', size: 18, growthTime: 260,
+  cabbagetree: { name: "Tī Kōuka", nutrition: 32, color: '#7a8a4e', size: 26, growthTime: 260,
     coldTolerance: 0.6, ashVulnerability: 0.5,
     description: "Tī kōuka: the cabbage tree of open, wet ground" }
 };

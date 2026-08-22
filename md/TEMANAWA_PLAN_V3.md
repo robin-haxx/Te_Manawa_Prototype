@@ -149,14 +149,45 @@ crown, fan or rosette legible from directly overhead (mamaku/tree-fern — **the
 tōtara, tawa, tī kōuka, harakeke, nīkau, mānuka, black beech, kōwhai). The seven palette species
 (spinifex, pīngao, toetoe, raupō, bracken, short tussock, grey scrub) are a **ground colour + tiling
 micro-texture**, never entities — from above, ground cover *is* colour, and a whole-field colour change
-reads better than a change in the density of small objects. Rimu, kawakawa and rewarewa are cut (§15).
+reads better than a change in the density of small objects. Totara, kawakawa and rewarewa are cut (§15).
 
 **`coldTolerance` does the era work.** Warm/forest types have low tolerance; open-country types have
 high tolerance. The glacial dormancy path suppresses low-tolerance plants as `winterness` climbs, and
 the same axis classifies the two growth buttons (§6). The plant table drives spawning today: habitats
-carry populated `plantTypes` (lowland = tussock/flax/cabbage-tree/mānuka/kōwhai; podocarp = rimu/
-kahikatea/tawa/fern/nīkau/kōwhai; montane = beech/fern/tawa), so the cast of *plants* is live — behind
-**placeholder art**. The era-signal sprites (mamaku, nīkau) are the first Phase 5 assets to draw.
+carry populated `plantTypes` (lowland = tussock/flax/cabbage-tree/mānuka/kōwhai/**grey-scrub**;
+**wetland/riverbank = harakeke/tussock/tī-kōuka/kahikatea/mānuka/nīkau/grey-scrub**, at high density so the
+corridor reads lush; podocarp = Totara/kahikatea/tawa/fern/nīkau/kōwhai; **montane = tawa/Totara/fern +
+scattered beech**; **subalpine = tussock/grey-scrub/dracophyllum/mānuka**), so the cast of *plants* is
+live. The era-signal sprites (mamaku, nīkau) are still to draw.
+
+`[ART 2026-08-17]` **Glacial/open-country shrubs are now sprited and placed.** `coprosma` is the code key
+for a **visual grey-scrub umbrella** — its variant sprites are the grey-scrub guild (coprosma, pōhuehue/
+*Muehlenbeckia*, …) under `sprites/Shrub/`; **dracophyllum** is drawn and placed in the subalpine (it
+appears once the ranges rise). **Tussock** now renders 6 mature-size variants. A new `variantFiles` sprite
+loader handles the non-standard/umbrella filenames. *Matagouri* stays a defined-but-unplaced spare (a
+South-Island shrub, off the Manawatū glacial record).
+
+`[REVIEW 2026-08-17]` **Placement reconciled with the ecology docs.** Two corrections landed: montane is
+now **podocarp-broadleaf, not beech forest** — black beech is famously *absent* from the Manawatū (the
+"beech gap"; tawa grows in every forest type except beech, and the only beech in Esler's survey is the
+~526 ha Aokautere anomaly — `TEMANAWA_ECOLOGY.md` §3.3), so beech is a scattered minority now; and the
+riverbank wetland got a per-biome density lift. **Open follow-up (needs a decision):** beech's *true*
+role is the **glacial refugium tree** (dominates LGM tree pollen, holds in sheltered pockets), but the
+code puts it in `FOREST_TREES`, so the glacial forest-contraction *suppresses* it like a warm tree —
+backwards. Making beech hold (or gain) through the cold is the more interesting teaching fix; it touches
+the contraction machinery and a bootcheck assertion, so it is flagged, not yet done.
+
+**Cover changes two ways, and they teach two different things.** *Browsing prunes; it never clears.* A
+grazer's bite takes a slice of a plant's foliage — the plant gets a little smaller and regrows in place —
+so moa crop the bush without ever clear-felling it (`Plant.consume`; knobs `browseBite`/`browseFloor`).
+What makes trees *disappear* is *unsuitable habitat*: a canopy tree the glacial pushes outside the
+contracting forest band **dies back**, shrinking away to open ground rather than standing as a wilted
+sprite, so the forest visibly **retreats** in the cold and **sprouts back** in the interglacial
+(`forestDieback`/`forestRecoverRate`; the tree survives in place as rootstock, so the cycle is reversible
+without waiting on re-dispersal — the unattended kiosk never ratchets the forest away). Herbivory and
+climate are thus legible as *separate* forces: the first shapes plants, the second decides where the
+forest can live. Health stays decoupled from live cover — grazing must never desaturate a healthy map
+(`MISTAKES.md`).
 
 **~45 plant assets** (41 sprites + 4 shared micro-textures). Tōtara, black beech and harakeke already
 have usable art.
@@ -196,9 +227,12 @@ a giant harrier that quartered low over open country and forest edge, the North 
 predator (Haast's eagle was South-Island-only). Reconciled in **data** (`EAGLE_SPECIES.eyles_harrier`,
 `young_eyles_harrier`), **class** (`EylesHarrier`), **text** (notifications now say *kērangi*, not
 *Pouākai*) and **art** (already `sprites/EylesHarrier/`). The internal base-type key stays `'eagle'` — a
-mechanical list name, not visitor-facing. *Still to do: the behaviour is inherited from the soaring
-model; tune it toward low quartering flight and a dashing approach when the predator balance is next
-touched (a delicate area — see the memory `ecology-feedback-model`).*
+mechanical list name, not visitor-facing. *Flight style now retuned:* `patrol()` flies quartering
+BURSTS — a fast committed dash, then a slow glide, sweeping low back and forth over the territory —
+instead of circling a `patrolCenter`, and cruise altitude is lower (the low-quartering read). The
+hunt/catch/breeding **balance** is still the inherited Haast's-scaled model and was deliberately left
+untouched (the delicate area — see the memory `ecology-feedback-model`); patrol only runs when the bird
+is calm, so the flight change does not touch predation.
 
 Caps live in `LEVEL_MECHANICS`: moa 60, eagle 12, kererū 16 (floor 2). Coastal *Euryapteryx* is the
 conditional eighth species (+5 assets) if the coast earns a distinct band.
@@ -280,8 +314,9 @@ One field, **`ashCover`** (0→1 at the event, decaying over a sim-year window),
 the seizure-safe ash **fall** flash + a grey ground tint; a **clear** that knocks back plants weighted by
 severity (canopy hardest); and a **soft regrow** as the ash decays and the map repopulates from the
 existing spawn/regrowth timers. Three severity tiers (`ERUPTIONS[i].tier`: minor/major/catastrophic), one
-code path. **Scope cut: no wetland bloom** (finding #4) — wetland is not a functional biome yet; a hook
-is left where it will attach.
+code path. **Wetland bloom** (finding #4) — the **wetland biome now exists** (§14.5, a riparian swamp
+classified by river proximity), so the deferred bloom finally has a habitat to attach to; it rides on
+the `warp` disturbance clock still to be built (§9).
 
 Button ⑤ navigates the events: **tap → `prevEruption`** (revert + replay recovery), **hold →
 `nextEruption`** (skip + clearing), both seeks on `yearsBP` with an immediate terrain morph under the
@@ -297,25 +332,37 @@ decision (§16).
 
 ---
 
-## 9. Disturbance and the aftermath that teaches — *the frontier*
+## 9. Disturbance and the aftermath that teaches
 
-*(**Not yet built** — the highest-value systems work left after the cast.)*
+*(**`warp` clock + wetland bloom BUILT** 2026-08-17; the `wet`/`open`/`bare` fields + kahikatea river-
+recruitment remain — see the tail. Memory: `warp-disturbance-clock`.)*
 
 The best teaching structure in the research is invisible at kiosk speed: three of the four measured
-recovery times are instantaneous at 500 sim-years/second. The fix is the **`warp` local clock** — a
-per-cell time multiplier set by `disturb(x, y, radius, type)`, decaying back to 1 over a few real
-seconds, that stretches each aftermath to a visible beat and tunes each button to a habitat-appropriate,
-distinguishable recovery speed:
+recovery times are instantaneous at 500 sim-years/second. The fix — now built — is the **`warp` local
+clock**: `Simulation.disturb(x, y, radius, kind, strength)` stamps a warp bump that **decays on REAL
+time** (`updateDisturbance(rdt)`), so a disturbed cell recovers over a fixed ~2 s wall-time beat even
+under 10× fast-forward, and `Plant.handleGrowth` reads `warpAt(pos)` to accelerate local regrowth. It is
+a small **list of active disturbances**, not the four `Float32Array` fields originally sketched — same
+`warpAt` query, allocation-free and deterministic (nothing to tear across the sliced morph). Wired:
 
-- **Storm** = `disturb('sand')` at the coast (sand jumps ESE, the fixed wind) + `disturb('flood')` on
-  the river + `disturb('gale')` in the forest — and the dune plants **grow back into the new sand** in
-  ~2 s (finding #5).
-- **Eruption** already clears and regrows (§8); `warp` would give it the graded aftermath, and the
-  wetland **bloom** (finding #4) attaches here once a wetland biome exists.
+- **Storm** — each windthrown/knocked plant fires `disturb('gale')`, so the gap **grows back into the
+  storm** over the beat (finding #5; the `sand`/`flood` habitat-split of the original sketch is folded
+  into the existing dune sand-flux + the forest gale).
+- **Eruption** — `applyAsh` now **spares the wetland** from the clearing (tephra fertilises, not clears —
+  `wetlandAshSpare`) and calls **`bloomWetland`** (seeds swamp growth on the standing wetland + warps it),
+  so the **wetland bloom** (finding #4) finally fires: verified live, a catastrophic eruption clears the
+  forest (93→26 plants) while the swamps **bloom** (98→104). "The forest clears, but the swamps grow."
 
-Four `Float32Array` fields at cell resolution (`wet`, `open`, `bare`, `warp`) are the substrate — ~1 MB,
-free. Today only `ashCover` and the glacial `forestBand` move the cast; the per-cell disturbance fields
-and `warp` are the missing piece that converts four invisible facts into things a visitor remembers.
+**Kahikatea now requires river disturbance to recruit** (wetland doc §4.1, built 2026-08-17): it is a
+disturbance coloniser, not a climax tree — `disturbanceRecruit` takes it out of the free kererū/FOREST-
+button paths, so it establishes only on raw alluvium (storm flood, eruption sediment pulse, or the deep-
+time channel shift), and a stand with no fresh disturbance **ages out** (`Plant` senescence). This is the
+rule that finally couples the moving river to the swamp forest. Verified: FOREST press → 0 kahikatea,
+storm → +8, eruption → +6, a static river declines to nothing. Memory: `warp-disturbance-clock`.
+
+**Still deferred here:** only the per-cell `wet`/`open`/`bare` substrate remains unbuilt (the `warp` list
+covers the actual usage). Today `ashCover`, the glacial `forestBand`, the sand-flux, the `warp` clock
+**and** the kahikatea–river coupling move the cast.
 
 ---
 
@@ -389,8 +436,8 @@ others. Honest current state:
 | **0–2** | fork cleanup, deep-time clock, timeline | ✅ Done |
 | **3 — Terrain** | landform + look | ✅ **Built** — SVG skeleton, uplift/incision/**emergence** morph, 3/4 relief bake, cel look, water layer |
 | **4 — Climate/fields** | glacial cycle + per-cell fields | **Partial** — glacial rebind, climate to 1 Ma, forest contraction **built**; the four `disturb()` fields + `warp` **not built** (§9) |
-| **5 — Flora** | plant table + art | **Partial** — table + spawning **built** (`plant_defs`, populated `plantTypes`); **art is placeholder** |
-| **6 — Disturbance** | `disturb()` + `warp`, wire buttons | **Partial** — eruption clear/regrow (`ashCover`) **built**; storm/growth aftermath + `warp` **not built** |
+| **5 — Flora** | plant table + art | **Partial** — table + spawning **built** (`plant_defs`, populated `plantTypes`); **cover dynamics reworked** so grazing *prunes* (a plant gets smaller, never removed) and *unsuitable habitat* is what makes trees disappear — the glacial forest band die-back now retreats and regrows the forest (§4); **art is placeholder** |
+| **6 — Disturbance** | `disturb()` + `warp`, wire buttons | **Mostly built** — eruption clear/regrow (`ashCover`) + the **`warp` clock** (`disturb`/`warpAt`, real-time-paced recovery) + storm windthrow aftermath + the **wetland bloom** all built (§9). Remaining: `wet`/`open`/`bare` per-cell fields, kahikatea river-recruitment |
 | **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **7 grazers** (5 moa + North Island goose + mōho/NI takahē) **+ 3 flyers** (kererū, kōkako, huia) with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier); **per-species cold adaptation now live** (`seasonalModifiers` re-keyed by glacial phase). Remaining: harrier flight behaviour, the *Dinornis* dimorphism pair |
 | **+ Interaction** | five buttons, health, kererū | ✅ **Built** (steps 1–4); tuning (step 5) open — *new track, not in the v2.1 ledger* |
 | **8 — Kiosk** | hardening, audio, lockdown | **Not started** — audio still preloads 6.5 MB; `mapGrid` still 512 |
@@ -417,9 +464,17 @@ into the **land and the cast**, where a visitor reads them in forty seconds with
    keyed by glacial phase so **per-species cold adaptation is live** (`seasonal-modifiers-key-mismatch`,
    resolved) — open-country/subalpine grazers innately hold in the cold while forest moa retreat, so the
    cold-vs-warm turnover reads from the animals, not just the visitor's TUSSOCK press.
-5. **Build the disturbance clocks** (§9) — `disturb()` + the `warp` field, wiring Storm and Growth to
-   visible, habitat-appropriate aftermath; attach the wetland bloom once a wetland biome exists.
-6. **Finish the interaction loop** (§7 step 5): tune the health feel and the photosensitivity slew.
+5. ~~**Build the disturbance clocks** (§9)~~ — ✅ **built.** `disturb()` + `warpAt` (a real-time-decaying
+   warp that paces each aftermath to a visible beat), read by plant recovery; wired to the storm
+   (windthrow gaps grow back in) and the eruption, which now **spares + blooms the wetland** — the
+   deferred finding #4 finally fires ("the forest clears, but the swamps grow"), and **kahikatea now
+   requires river disturbance to recruit** (wetland doc §4.1 — the last big ecology loop, coupling the
+   moving river to the swamp forest). Remaining §9 tail: only the `wet`/`open`/`bare` per-cell fields. See
+   `warp-disturbance-clock`.
+6. **Finish the interaction loop** (§7 step 5): tune the health feel and the photosensitivity slew, and
+   the browse/die-back feel (§4) — how far a bite crops (`browseBite`/`browseFloor`) and how fast the
+   glacial forest retreats and regrows (`forestDiebackRate`/`forestRecoverRate`), watched over a full
+   unattended climate cycle so the forest reads as *cycling*, not declining.
 7. **Kiosk hardening + audio** (Phase 8): preload only the ambient bed and lazy-load the rest (the biggest
    cold-boot fix outstanding), drop `mapGrid` 512 → 256, photosensitivity and touch-target sign-off.
 8. **Interpretation + mana whenua co-design** (§16): the mute layer — nine moa and twelve plants carry
@@ -434,8 +489,9 @@ Steps 1–2 are days, not weeks, and they unblock the rest.
 
 Fertility as a second axis; the light-at-
 ground-level field; five wetland classes (collapsed to a single `wet` axis, itself deferred); the 1.8 m
-zonation; the dune-phase chronology as a mechanic; the divaricate/moa-browse debate; ~20 plant species
-indistinguishable from above (including rimu, kawakawa, rewarewa); then-and-now framing. **Fire is a
+zonation; the dune-phase chronology as a mechanic; the divaricate/moa-browse debate (browse is modelled
+only as simple pruning — §4 — not the co-evolutionary arms race in plant architecture); ~20 plant species
+indistinguishable from above (including Totara, kawakawa, rewarewa); then-and-now framing. **Fire is a
 correction, not a cut** — no ignition source in this window, volcanic only. **The wetland bloom** (finding
 #4) is deferred, not cut — it waits on a wetland biome, with a hook left in the eruption code (§8).
 

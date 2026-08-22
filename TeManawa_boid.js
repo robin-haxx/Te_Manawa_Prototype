@@ -23,6 +23,13 @@ class Boid {
     };
     this.noiseOffset = random() * 1000;
     this.wanderTime = random() * 1000; // For delta-time compatible wander
+
+    // Opt-in: keep this boid inside the VISIBLE screen bounds, not just the map. Flyers set
+    // this true (Kereru / Eagle constructors) because the cover-fit view runs the map wider
+    // than the canvas, so the map's left/right edges (within CONFIG.viewInsetX) sit off-screen
+    // — a bird at a valid map-x there is simply not visible. Ground animals leave it false;
+    // they stay on inland walkable land and never reach the horizontal overflow.
+    this._clampToView = false;
     this.animTime = 0;                 // sprite animation clock; rides the REAL
                                        // frame dt in update() (subclasses reseed
                                        // it to random() for per-entity phase)
@@ -49,7 +56,13 @@ class Boid {
     this._faceDir = (this.vel.x >= 0) ? 1 : -1;
     this._flip = this._faceDir;
     this._flipSpeed = 0.14;     // how fast the flip animates toward _faceDir
-    this._faceGateX = 0.03;     // min |vel.x| to commit a new direction (hysteresis)
+    this._faceGateX = 0.045;    // min |smoothed vel.x| to commit a new direction (hysteresis)
+    // Low-passed horizontal velocity that DRIVES the flip decision. Deciding the facing off
+    // the raw vel.x let a perched bird's jitter and a grazer's micro-oscillation at a shore
+    // flip the sprite back and forth (reported "continual sprite flip"). Averaging over a few
+    // frames rejects that while still following a genuine turn within a fraction of a second.
+    this._flipVx = this.vel.x;
+    this._flipVxEase = 0.06;    // low-pass rate (τ ≈ 16 frames) — long enough to reject flip-flap
 
     // Reusable vectors
     this._steeringVec = createVector();
@@ -192,49 +205,71 @@ class Boid {
       return result;
     }
 
-    // Case 2 — on land but heading toward unwalkable ground: steer onto the
-    // heading that best preserves course while staying walkable.
+    // Case 2 — on land but approaching unwalkable water: turn along the shore and slow
+    // as it nears, instead of ramming the edge and being kicked straight back inland (the
+    // ground-bird "rubber-band at the coast/water threshold" report). The old version was
+    // binary — nothing until water was 12 px ahead, then a full-strength swerve — so the
+    // moa reached the brink carrying momentum, got flung back, its own drive re-aimed it at
+    // the shore, and it bounced. Three changes kill the oscillation: look further ahead the
+    // faster it moves (it banks earlier), RAMP the steering with proximity (gentle at range,
+    // firm only at the brink — no last-moment kick), and BRAKE the momentum carrying it into
+    // the water so it eases up to the edge rather than overshooting across it.
     const velX = this.vel.x, velY = this.vel.y;
     const velMagSq = velX * velX + velY * velY;
     if (velMagSq < 0.0001) return result;
 
-    const invVelMag = 1 / Math.sqrt(velMagSq);
-    const futureX = px + velX * invVelMag * lookAhead;
-    const futureY = py + velY * invVelMag * lookAhead;
+    const velMag = Math.sqrt(velMagSq);
+    const invVelMag = 1 / velMag;
+    const dirX = velX * invVelMag, dirY = velY * invVelMag;
+    // Detection distance grows with speed: a calm grazer looks ~14 px ahead, a fleeing one
+    // up to ~34, so a fast approach starts turning sooner and never has to swerve hard.
+    const maxLook = 14 + (velMag * 40 < 20 ? velMag * 40 : 20);
 
-    if (!this.terrain.isWalkable(futureX, futureY)) {
-      let bestDot = -2;
-      let bestAngle = 0;
-      const currentHeading = Math.atan2(velY, velX);
+    // Nearest water hit along the heading (probe outward in a few even steps).
+    let dHit = -1;
+    for (let s = 1; s <= 5; s++) {
+      const d = maxLook * s * 0.2;
+      if (!this.terrain.isWalkable(px + dirX * d, py + dirY * d)) { dHit = d; break; }
+    }
+    if (dHit < 0) return result;                 // clear water-free path ahead — no steering
 
-      for (let i = 0; i < 12; i++) {
-        const a = angles[i];
-        const testAngle = currentHeading + a;
-        const testX = px + Math.cos(testAngle) * lookAhead;
-        const testY = py + Math.sin(testAngle) * lookAhead;
+    const prox = 1 - dHit / maxLook;             // 0 far → ~1 right at the brink
 
-        if (this.terrain.isWalkable(testX, testY)) {
-          const dot = Math.cos(a);
-          if (dot > bestDot) {
-            bestDot = dot;
-            bestAngle = testAngle;
-          }
-        }
-      }
-
-      if (bestDot > -2) {
-        result.set(
-          Math.cos(bestAngle) * this.maxForce * 2,
-          Math.sin(bestAngle) * this.maxForce * 2
-        );
-      } else {
-        result.set(
-          -velX * invVelMag * this.maxForce * 3,
-          -velY * invVelMag * this.maxForce * 3
-        );
+    // Best walkable heading that preserves course the most — turn ALONG the shore, not away
+    // from it, so the bird follows the coast instead of reversing into the map.
+    let bestDot = -2, bestAngle = 0;
+    const currentHeading = Math.atan2(velY, velX);
+    for (let i = 0; i < 12; i++) {
+      const a = angles[i];
+      const testAngle = currentHeading + a;
+      if (this.terrain.isWalkable(px + Math.cos(testAngle) * maxLook, py + Math.sin(testAngle) * maxLook)) {
+        const dot = Math.cos(a);
+        if (dot > bestDot) { bestDot = dot; bestAngle = testAngle; }
       }
     }
 
+    // Steering ramps from a nudge at range to a firm turn at the brink. The course-preserving
+    // heading keeps a little of the forward (into-water) direction, so it alone would let the
+    // bird nose onto the shore; the outward push below is sized to cancel that and net
+    // tangential-to-outward near the brink. If boxed in (no walkable heading within reach) fall
+    // back to a straight reversal — also ramped.
+    let sx, sy;
+    if (bestDot > -2) {
+      const steerMag = this.maxForce * (0.5 + 1.2 * prox);
+      sx = Math.cos(bestAngle) * steerMag; sy = Math.sin(bestAngle) * steerMag;
+    } else {
+      const revMag = this.maxForce * (0.8 + 1.6 * prox);
+      sx = -dirX * revMag; sy = -dirY * revMag;
+    }
+
+    // Push OUTWARD, away from the water ahead (i.e. against the heading), ramped by proximity.
+    // This is both the brake on the into-water momentum AND the guarantee that the net force
+    // near the brink points away from the shore rather than along the least-turn diagonal into
+    // it — so the bird eases up to the edge and turns along it instead of wading across.
+    const outward = this.maxForce * (0.2 + 2.4 * prox);
+    sx -= dirX * outward; sy -= dirY * outward;
+
+    result.set(sx, sy);
     return result;
   }
   
@@ -296,9 +331,22 @@ class Boid {
     
     if (this.pos.x < 5) this.pos.x = 5;
     else if (this.pos.x > w) this.pos.x = w;
-    
+
     if (this.pos.y < 5) this.pos.y = 5;
     else if (this.pos.y > h) this.pos.y = h;
+
+    // Keep flyers inside the visible screen horizontally (see _clampToView). The cover-fit view
+    // runs the map wider than the canvas, so without this a bird can END a frame in the off-screen
+    // left/right overflow. Steering (_landward / avoidEdges) turns it back before this backstop
+    // bites; the clamp only guarantees it never actually leaves view.
+    if (this._clampToView) {
+      const ins = (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+      if (ins > 0) {
+        const xhi = this.terrain.mapWidth - ins;
+        if (this.pos.x < ins) this.pos.x = ins;
+        else if (this.pos.x > xhi) this.pos.x = xhi;
+      }
+    }
 
     // Motion clock. The dt reaching update() is the REAL frame delta — Game.update
     // feeds the un-warped dt here while behave() gets the deep-time-warped one (the
@@ -363,13 +411,19 @@ class Boid {
     if (this._facing > Math.PI) this._facing -= TAU;
     else if (this._facing < -Math.PI) this._facing += TAU;
 
-    // ---- Lateral flip (moa renderer) --------------------------------------
-    // Commit a new horizontal facing only when the sideways movement is clear
-    // (the gate is hysteresis, so a near-vertical path or x-jitter does not
-    // flip-flap), then ease the animated flip toward it — passing through 0 is
-    // the little turn-around pop.
-    if (vx > this._faceGateX) this._faceDir = 1;
-    else if (vx < -this._faceGateX) this._faceDir = -1;
+    // ---- Lateral flip (moa / kererū renderers) ----------------------------
+    // Commit a new horizontal facing only from SUSTAINED sideways travel: low-pass the
+    // horizontal velocity, then re-commit only when the SMOOTHED value clears the gate AND
+    // the bird is actually moving. So a perched bird's jitter (its speed is below the moving
+    // gate) and a grazer's brief back-and-forth at a shore (it averages out of the smoothed
+    // value) both HOLD the last facing instead of flip-flapping the sprite through edge-on.
+    // A real turn sustains one direction and commits within a fraction of a second.
+    const fvk = this._flipVxEase * dt;
+    this._flipVx += (vx - this._flipVx) * (fvk > 1 ? 1 : fvk);
+    if (moving) {
+      if (this._flipVx > this._faceGateX) this._faceDir = 1;
+      else if (this._flipVx < -this._faceGateX) this._faceDir = -1;
+    }
     const fk = this._flipSpeed * dt;
     this._flip += (this._faceDir - this._flip) * (fk > 1 ? 1 : fk);
   }

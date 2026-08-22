@@ -256,7 +256,11 @@ const Debug = {
       liveFauna,
       drawEstimate: pAlive + liveFauna,
       pixelDensity: (typeof pixelDensity === 'function') ? pixelDensity() : 1,
-      canvas: `${CONFIG.canvasWidth}x${CONFIG.canvasHeight}`
+      canvas: `${CONFIG.canvasWidth}x${CONFIG.canvasHeight}`,
+      // Which renderer the sprite cast is actually going through this frame. 'WebGL'
+      // once the DOM-stacked GL layer is live; '2D canvas' on the fallback path
+      // (WebGL unavailable/lost, or ?render=2d).
+      renderMode: (typeof GLBatch !== 'undefined' && GLBatch.domStack) ? 'WebGL' : '2D canvas'
     };
 
     // ---- KIOSK ---------------------------------------------
@@ -487,7 +491,9 @@ const Debug = {
                        this._capColour(s.terrain.cells, this.CAPS.gridCells)],
       ['pixelDensity', String(s.perf.pixelDensity),
                        s.perf.pixelDensity > 1 ? [255, 120, 110] : [150, 230, 170]],
-      ['canvas',       s.perf.canvas]
+      ['canvas',       s.perf.canvas],
+      ['render mode',  s.perf.renderMode,
+                       s.perf.renderMode === 'WebGL' ? [150, 230, 170] : [255, 200, 120]]
     ]);
 
     if (s.kiosk && s.kiosk.resets !== undefined) {

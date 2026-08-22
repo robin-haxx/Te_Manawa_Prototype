@@ -145,7 +145,7 @@ Kowhai 4.)
 
 | Cut | Reason |
 |---|---|
-| **Rimu** | From above it's the same dark conifer mass as tōtara, and tōtara is already drawn |
+| **Totara** | From above it's the same dark conifer mass as tōtara, and tōtara is already drawn |
 | **Kawakawa** | A shrub under a closed canopy — occluded almost everywhere it occurs |
 | **Rewarewa** | The most distinctive shape in the forest *from the side*. From above, a dot |
 

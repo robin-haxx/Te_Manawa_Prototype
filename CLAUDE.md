@@ -205,6 +205,7 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 | `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
 | `?sprites=1\|2\|3` | Backing-canvas supersample for sprites+HUD (default 2); terrain stays 1080. Startup only |
+| `?render=2d` | Opt OUT of the WebGL renderer (aliases: `canvas`, `off`). The DOM-stacked WebGL entity layer (`TeManawa_glbatch.js`) is the **default**: it draws the sprite cast + shadows as batched GPU quads from the atlas, on a canvas stacked between the terrain (bottom) and HUD (top) — ~7× faster render at 4K. It falls back to 2D automatically if WebGL is unavailable or the context is lost. The debug overlay's PERF panel shows the live `render mode` (WebGL / 2D canvas). Startup only. Known GL-mode look compromises: water/washes render at 1080, shadows/halos via a GL disc. See the perf notes |
 
 ## Current phase
 

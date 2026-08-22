@@ -54,34 +54,85 @@ let currentFPS = 60;
 const PLANT_SPRITE_SETS = {
   // Dedicated-folder art, one frame standing in for every state (single). The
   // old root Tussock_/Flax_/Fern_ state files are superseded and left in place.
-  tussock:   { folder: 'Tussock/',  single: 'Tussocks_Sprite_00001.png' },
-  // Harakeke — two size variations (Flax_Size_00/01). A mature plant picks one at
-  // random per instance; while immature it grows in the smaller Size_00 look
-  // (growFromVariant). Flax_Mature stands in for the wilting/dormant states.
-  flax:      { folder: 'Flax/',     single: 'Flax_Mature.png', prefix: 'Flax',
-               matureVariants: 2, growFromVariant: 0 },
+  // Tussock — 6 mature-size variants (Tussocks_Sprite_00001..00006); a grown clump renders one at
+  // random and grows in from the first. The `single` covers the wilting/dormant states for now.
+  tussock:   { folder: 'Tussock/',  single: 'Tussocks_Sprite_00001.png', growFromVariant: 0,
+               variantFiles: ['Tussocks_Sprite_00001.png', 'Tussocks_Sprite_00002.png', 'Tussocks_Sprite_00003.png',
+                              'Tussocks_Sprite_00004.png', 'Tussocks_Sprite_00005.png', 'Tussocks_Sprite_00006.png'] },
+  // Harakeke — wired like tōtara: a dedicated Growing_01 frame plus three size
+  // variations (Flax_Size_00..02), a mature plant picks one at random per instance.
+  // sizeOnly, so it plays the growth frame while immature then holds its size
+  // variant — no seasonal state art (Flax_Mature is superseded; dormancy still dims).
+  flax:      { prefix: 'Flax', folder: 'Flax/', growingFrames: 1,
+               matureVariants: 3, sizeOnly: true, anchor: 'base' },
   // fern is the mamaku/ponga tree-fern stand-in; its art has a trunk, so base-anchor.
-  fern:      { folder: 'TreeFern/', single: 'TreeFern_Mature.png', anchor: 'base' },
-  // PROTOTYPE: rimu renders with Tōtara art. Art swap only — the 'rimu' key
+  // Grows through three Growing frames (TreeFern_Growing_01..03), then holds one of two
+  // variant sprites (TreeFern_Sprite_00001..00002). sizeOnly: no seasonal state art.
+  fern:      { prefix: 'TreeFern', folder: 'TreeFern/', growingFrames: 3, sizeOnly: true, anchor: 'base',
+               variantFiles: ['TreeFern_Sprite_00001.png', 'TreeFern_Sprite_00002.png'] },
+  // PROTOTYPE: Totara renders with Tōtara art. Art swap only — the 'Totara' key
   // still drives nutrition, seasonality, forest banding and level data.
   // Tōtara has only size variants + a growth sequence (no seasonal state art), so
   // sizeOnly keeps it on its size variant instead of switching frames.
-  rimu:      { prefix: 'Totara', folder: 'Totara/', growingFrames: 4,
+  Totara:      { prefix: 'Totara', folder: 'Totara/', growingFrames: 2,
                matureVariants: 3, sizeOnly: true, anchor: 'base', scale: 1.0 },
   // beech (black beech, tawhai) — dedicated-folder art has a trunk, so base-anchor.
-  // Superseded its four root state files.
-  beech:     { folder: 'Beech/', single: 'Beech_Mature.png', anchor: 'base' },
+  // Grows through two Grow frames (Beech_Grow_01..02), then holds one of three variant
+  // sprites (Beech_Sprite_00001..00003). sizeOnly: no seasonal state art.
+  beech:     { folder: 'Beech/', sizeOnly: true, anchor: 'base',
+               growingFiles: ['Beech_Grow_01.png', 'Beech_Grow_02.png'],
+               variantFiles: ['Beech_Sprite_00001.png', 'Beech_Sprite_00002.png', 'Beech_Sprite_00003.png'] },
   // kōwhai — small flowering tree, base-anchor. Lives in Lowland + Podocarp
-  // (level scaffold); single-asset stand-in until its flowering state is drawn.
-  kowhai:    { folder: 'Kowhai/', single: 'Kowhai_Mature.png', anchor: 'base' },
+  // (level scaffold). Grows through one Growing frame, then holds one of three
+  // Size variants (Kowhai_Size_01..03) picked per instance. sizeOnly: no seasonal
+  // state art, so it plays the growth frame while immature then holds its variant.
+  kowhai:    { folder: 'Kowhai/', sizeOnly: true, anchor: 'base',
+               growingFiles: ['Kowhai_Growing.png'],
+               variantFiles: ['Kowhai_Size_01.png', 'Kowhai_Size_02.png', 'Kowhai_Size_03.png'] },
+  // Kahikatea — grows through two dedicated Growing frames (Kahikatea_Growing_01..02),
+  // then holds one of three Size variants (Kahikatea_Size_01..03) picked per instance.
+  // sizeOnly (like tōtara): no seasonal state art. As it senesces (disturbanceRecruit
+  // aging), growth falls back below 1 and it plays the growth frames in reverse.
+  kahikatea:   { prefix: 'Kahikatea', folder: 'Kahikatea/', growingFrames: 2, sizeOnly: true, anchor: 'base',
+                 variantFiles: ['Kahikatea_Size_01.png', 'Kahikatea_Size_02.png', 'Kahikatea_Size_03.png'] },
   // Dedicated-folder species below — all upright, so base-anchor. Single-asset
   // stand-ins; habitats are set in the level scaffold biomes. (Epiphytes are NOT
   // wired — they go into individual trees' art by hand.)
-  kahikatea:   { folder: 'Kahikatea/',  single: 'Kahikatea_Mature.png',  anchor: 'base' },
-  nikau:       { folder: 'Nikau/',      single: 'Nikau_Mature.png',      anchor: 'base' },
-  tawa:        { folder: 'Tawa/',       single: 'Tawa_Mature.png',       anchor: 'base' },
-  manuka:      { folder: 'Manuka/',     single: 'Manuka_Mature.png',     anchor: 'base' },
-  cabbagetree: { folder: 'CabbageTree/', single: 'CabbageTree_Mature.png', anchor: 'base' }
+  // Nīkau — the palm grows through 3 dedicated Grow frames whose ARTWORK carries the
+  // size progression, so fixedGrowthSize holds the footprint at adult width the whole
+  // way (no scale-up) and the frames themselves show it filling out. Mature is a 50/50
+  // pick between two size forms (Size_01/02). sizeOnly — no seasonal state art.
+  nikau:       { folder: 'Nikau/', sizeOnly: true, fixedGrowthSize: true, anchor: 'base',
+                 growingFiles: ['Nikau_Grow_01.png', 'Nikau_Grow_02.png', 'Nikau_Grow_03.png'],
+                 variantFiles: ['Nikau_Size_01.png', 'Nikau_Size_02.png'] },
+  // Tawa — grows through two Growing frames (Tawa_Growing_01..02), then holds one of three
+  // variant sprites (Tawa_Sprite_00001..00003). sizeOnly: no seasonal state art.
+  tawa:        { prefix: 'Tawa', folder: 'Tawa/', growingFrames: 2, sizeOnly: true, anchor: 'base',
+                 variantFiles: ['Tawa_Sprite_00001.png', 'Tawa_Sprite_00002.png', 'Tawa_Sprite_00003.png'] },
+  // Mānuka — grows through two Grow frames (Manuka_Grow_01..02), then holds one of three
+  // variant sprites (Manuka_Sprite_00001..00003). sizeOnly: no seasonal state art.
+  manuka:      { folder: 'Manuka/', sizeOnly: true, anchor: 'base',
+                 growingFiles: ['Manuka_Grow_01.png', 'Manuka_Grow_02.png'],
+                 variantFiles: ['Manuka_Sprite_00001.png', 'Manuka_Sprite_00002.png', 'Manuka_Sprite_00003.png'] },
+  // Tī kōuka / cabbage tree — grows through two Growing frames (CabbageTree_Growing_01..02),
+  // then holds one of two variant sprites (CabbageTree_Sprite_00001..00002). sizeOnly: no state art.
+  cabbagetree: { prefix: 'CabbageTree', folder: 'CabbageTree/', growingFrames: 2, sizeOnly: true, anchor: 'base',
+                 variantFiles: ['CabbageTree_Sprite_00001.png', 'CabbageTree_Sprite_00002.png'] },
+  // GREY SCRUB — code key `coprosma`, but a VISUAL UMBRELLA for the glacial-mosaic grey-scrub taxa
+  // (Coprosma, pōhuehue/Muehlenbeckia, …) drawn under the `Shrub/` folder. Grows through two dedicated
+  // Growing frames, then holds one of six variant sprites (Coprosma_Sprite_00001..00006) picked per
+  // instance. Append variant filenames as more grey-scrub taxa land. sizeOnly: no seasonal state art.
+  // Low divaricate shrub of dry, frosty, exposed open ground — the woody element of the cold shrubland.
+  coprosma:     { folder: 'Shrub/', sizeOnly: true, anchor: 'base',
+                  growingFiles: ['Coprosma_Growing_01.png', 'Coprosma_Growing_02.png'],
+                  variantFiles: ['Coprosma_Sprite_00001.png', 'Coprosma_Sprite_00002.png', 'Coprosma_Sprite_00003.png',
+                                 'Coprosma_Sprite_00004.png', 'Coprosma_Sprite_00005.png', 'Coprosma_Sprite_00006.png'] },
+  // Dracophyllum (inaka / grass-tree) — subalpine + heath cold shrub. Grows through one Grow frame
+  // (Dracophyllum_Grow_01), then holds one of three variant sprites (Dracophyllum_Sprite_00001..00003)
+  // picked per instance. sizeOnly: no seasonal state art.
+  dracophyllum: { folder: 'Dracophyllum/', sizeOnly: true, anchor: 'base',
+                  growingFiles: ['Dracophyllum_Grow_01.png'],
+                  variantFiles: ['Dracophyllum_Sprite_00001.png', 'Dracophyllum_Sprite_00002.png', 'Dracophyllum_Sprite_00003.png'] }
 };
 
 const PLANT_SPRITE_STATES = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
@@ -127,6 +178,17 @@ function preload(){
       }
     }
 
+    // Explicit growth-frame file LIST — for growth art whose filenames don't follow the
+    // prefix_Growing_NN pattern (e.g. nīkau's Nikau_Grow_0N). Plays in order over 0..1
+    // growth exactly like growingFrames.
+    if (def.growingFiles && def.growingFiles.length) {
+      set.growing = [];
+      for (let i = 0; i < def.growingFiles.length; i++) {
+        const f = def.growingFiles[i];
+        set.growing.push(loadImage(`${dir}${f}`, () => {}, () => console.warn(`Could not load ${f}`)));
+      }
+    }
+
     // Mature-size variants: a grown plant renders one of these (chosen per
     // instance) instead of the Mature/Thriving frame, for visual variety.
     if (def.matureVariants) {
@@ -141,10 +203,25 @@ function preload(){
       }
     }
 
+    // Explicit variant file LIST — for art whose filenames don't follow the prefix_Size_NN
+    // pattern (e.g. Tussocks_Sprite_0000N, 5-digit) or a MIXED umbrella set (grey scrub: the one
+    // code key `coprosma`, drawn as Coprosma / Muehlenbeckia / … under the `Shrub/` folder). A
+    // grown plant renders one at random, exactly like matureVariants; append files as they land.
+    if (def.variantFiles && def.variantFiles.length) {
+      set.variants = [];
+      for (let i = 0; i < def.variantFiles.length; i++) {
+        const f = def.variantFiles[i];
+        set.variants.push(loadImage(`${dir}${f}`, () => {}, () => console.warn(`Could not load ${f}`)));
+      }
+    }
+
     // Growing look sourced from a mature-size variant, for a plant with no
-    // dedicated Growing_ sequence: it grows in the chosen variant (shrunk by
-    // `growth`), then holds a random variant once mature. Aliases the already-
-    // loaded variant as a single growth frame — no reload.
+    // dedicated Growing_ sequence: it grows in its OWN assigned variant (shrunk by
+    // `growth`), then holds that same variant once mature. Aliases the loaded
+    // variant `def.growFromVariant` as the fallback single growth frame (no reload);
+    // the per-instance variant is selected at render (see meta.growFromVariant below),
+    // so a growing clump is not stuck on variant 0 — otherwise every regrowing tussock
+    // shows the same frame and the variant spread vanishes.
     if (def.growFromVariant != null && set.variants && set.variants[def.growFromVariant]) {
       set.growing = [set.variants[def.growFromVariant]];
     }
@@ -152,7 +229,11 @@ function preload(){
     // All plant art is now side-on (upright billboards), so it stands on its
     // ground point — base-anchored by default. `anchor:'center'` is only for the
     // legacy top-down crowns, of which none remain. See Plant.render offsetY.
-    set.meta = { anchor: def.anchor || 'base', scale: def.scale || 1.0, sizeOnly: !!def.sizeOnly };
+    // `growFromVariant` flags a variant-grown set so _renderSprite grows the plant in
+    // its assigned variant instead of the fixed fallback frame.
+    set.meta = { anchor: def.anchor || 'base', scale: def.scale || 1.0, sizeOnly: !!def.sizeOnly,
+                 fixedGrowthSize: !!def.fixedGrowthSize,
+                 growFromVariant: def.growFromVariant != null };
     plantSprites[key] = set;
   }
 
@@ -244,7 +325,7 @@ const CONFIG = {
   // ~432×768 = 332k cells; 512² = 262k). TEMANAWA_BUILD_V3.md §5.2 sets the
   // long-term limit at 256 — it can now drop to 256, retuning plantDensity and
   // spawn counts at the same time.
-  mapGrid: 512,
+  mapGrid:256,
 
   // ===== TERRAIN FOOTPRINT MODE =====
   //   'square'  a mapGrid × mapGrid world, letterboxed into the panel. Predictable
@@ -739,7 +820,7 @@ if (typeof window !== 'undefined') window.SANDFLUX = SANDFLUX;
 // to _stormPressure; foredune binders like spinifex/pīngao are colour, not entities, so §10C's
 // "thrives on burial" maps onto the hardy open species that DO exist.) Scaled by wind strength,
 // so a glacial gale bites hardest (§10D). Live-tunable, like HEALTH / SANDFLUX.
-const STORM_EMERGENT = new Set(['rimu', 'kahikatea', 'tawa', 'beech']);                 // killed when tall (leave gaps)
+const STORM_EMERGENT = new Set(['Totara', 'kahikatea', 'tawa', 'beech']);                 // killed when tall (leave gaps)
 const STORM_HARDY    = new Set(['tussock', 'flax', 'manuka', 'matagouri', 'speargrass', // ride it out / thrive (§10C)
                                 'patotara', 'coprosma', 'dracophyllum']);
 const STORM_SOFT     = new Set(['cabbagetree', 'kowhai', 'nikau', 'fern', 'kawakawa', 'lancewood']); // buried out (§10C)
@@ -752,7 +833,15 @@ const STORMFX = {
   softVuln:          1.00,  // salt/burial vulnerability of soft, non-rhizomatous species (§10C buried out)
   midVuln:           0.50,  // default species vulnerability
   hardyVuln:         0.12,  // rhizomatous binders / cold-hardy open species — ride out the storm (§10C thrive/tolerate)
-  minGrowth:         0.08   // growth floor after a knockback (never fully to zero unless an emergent is uprooted)
+  minGrowth:         0.08,  // growth floor after a knockback (never fully to zero unless an emergent is uprooted)
+  // Gradual delivery (beginStorm / _stormStepPlants): the damage a press USED to do
+  // in one jarring frame is now scheduled across the storm window, and softened, so
+  // the storm reads as rising wind that thins the canopy over its course.
+  throwScale:        0.38,  // an exposed emergent's windthrow chance is scaled by this (fewer trees actually snap — a few over the storm, not the whole canopy at once)
+  knockScale:        0.55,  // a non-thrown plant's growth knock = growth × (1 − dmg×knockScale) (a gentler wilt)
+  spreadFrac:        0.85,  // hits are scattered uniformly across this fraction of the storm window
+  swayBoost:         2.4,   // extra leaf sway while the storm blows (× the base sway amplitude)
+  warpRadius:        55     // world-radius of the warp §9 stamped at each thrown/knocked plant, so the storm gap grows back over the ~2 s aftermath beat
 };
 if (typeof window !== 'undefined') window.STORMFX = STORMFX;
 
@@ -1034,10 +1123,18 @@ class Game {
       CONFIG.viewZoom = z;
       CONFIG.viewX = Math.round((CONFIG.canvasWidth - this.terrain.mapWidth * z) / 2);
       CONFIG.viewY = Math.round((CONFIG.canvasHeight - fitH * z) / 2 - crop * z);
+      // World-space width of the off-screen overflow on EACH horizontal side. The COVER fit
+      // (max) above scales the map up to fill the canvas, so when the projected height drives
+      // the zoom the map runs wider than the screen and its left/right edges sit off-frame.
+      // Flyers read this to turn back at the VISIBLE edge instead of the map edge — otherwise a
+      // bird at a valid map-x near 0 / mapWidth is simply off-screen ("clips out of view"). 0
+      // when the map is letterboxed (viewX ≥ 0 → no horizontal overflow).
+      CONFIG.viewInsetX = (z > 0) ? Math.max(0, -CONFIG.viewX / z) : 0;
     } else {
       CONFIG.viewZoom = CONFIG.zoom;
       CONFIG.viewX = CONFIG.gameAreaX;
       CONFIG.viewY = CONFIG.gameAreaY;
+      CONFIG.viewInsetX = 0;
     }
   }
   
@@ -1143,13 +1240,28 @@ class Game {
         if (!p || !p.alive) continue;
         if (killed >= maxKills) break;
         const def = PT ? PT[p.type] : null;
-        const vuln = (def && def.ashVulnerability != null) ? def.ashVulnerability : 0.5;
+        let vuln = (def && def.ashVulnerability != null) ? def.ashVulnerability : 0.5;
+        // The WETLAND is fertilised, not cleared (§6): tephra makes the swamps BLOOM, so the ash
+        // spares most of the standing swamp while the forest above it is knocked back.
+        if (p.biomeKey === 'wetland') vuln *= (M && M.wetlandAshSpare != null ? M.wetlandAshSpare : 0.25);
         if (Math.random() < tier.clearFraction * vuln) {
           p.alive = false; p.growth = 0; p.regrowthTimer = 0;
           killed++;
         }
       }
     }
+    // WETLAND BLOOM (finding #4 — "ash makes the swamps bloom"): the tephra fertilises the wetland,
+    // so as the ash clears the swamps SURGE with new growth (seedling burst + a local warp so they
+    // grow in over the aftermath beat) rather than only dying back (§8/§6). The wetland biome now
+    // exists, so the long-deferred bloom finally has a habitat to land on.
+    const M2 = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (this.simulation && this.simulation.bloomWetland)
+      this.simulation.bloomWetland((M2 && M2.wetlandBloomCount) || 14);
+    // §6 stage 5 — the SEDIMENT PULSE: ash-loaded catchments aggrade the river and lay fresh raw
+    // alluvium, opening a kahikatea recruitment window (like the storm flood; wetland doc §4.1). So
+    // the eruption ENDS by handing the river the material to make new swamp forest.
+    if (this.simulation && this.simulation.recruitKahikatea)
+      this.simulation.recruitKahikatea((M2 && M2.kahiRecruitEruption) || 8);
     if (eruption && this._firedEruptions) this._firedEruptions.add(eruption.yearsBP);
   }
 
@@ -1184,7 +1296,20 @@ class Game {
     const ER = DeepTime.ERUPTIONS;
     for (let i = 0; i < ER.length; i++) {
       const e = ER[i].yearsBP;
-      if (e < prev && e >= y && !this._firedEruptions.has(e)) this._fireEruptionInPlace(ER[i]);
+      if (e < prev && e >= y && !this._firedEruptions.has(e)) {
+        // Give the timeline eruption the SAME ~5 s charge ramp as holding the button — arm
+        // _tmAutoErAt (INDEPENDENT of the button's _tmErDownAt) so the flash builds, the ash
+        // cloud rolls down and the ground rumbles over erLongPressMs, then InstallHUD.update()
+        // rings it out and fires IN PLACE (no seek/reseed). Mark it fired NOW so the crossing
+        // guard can't re-trigger it mid-ramp. If a charge is already running (a manual hold, or
+        // two events cross close together under fast-forward), fire this one instantly instead.
+        this._firedEruptions.add(e);
+        if (!this._tmAutoErAt && !this._tmErDownAt) {
+          this._tmAutoErAt = millis(); this._tmAutoErupt = ER[i];
+        } else {
+          this._fireEruptionInPlace(ER[i]);   // a charge (auto or manual) already running → fire instantly, don't stack
+        }
+      }
     }
   }
 
@@ -1274,6 +1399,70 @@ class Game {
   // HUD button). Emergents past killThresh are windthrown (alive=false → they regrow, leaving a
   // canopy gap); everything else is knocked back down the succession clock. Allocation-free; uses
   // random() for the windthrow roll (a one-shot impulse, never on the morph/determinism path).
+  // Gradual storm (the visitor button). Rather than snapping every exposed tree in
+  // one frame (the old instant applyStormToPlants), roll each plant's fate ONCE at
+  // press — softened (fewer windthrows, gentler knockbacks) — then SCHEDULE it at a
+  // random moment across the storm window. _stormStepPlants applies the due hits and
+  // drives the sway envelope, so the storm reads as rising wind thinning the canopy
+  // over its course instead of a jarring instantaneous break.
+  beginStorm() {
+    const C = (typeof STORMFX !== 'undefined') ? STORMFX : null;
+    if (!C || !this.simulation || !this.simulation.plants) return;
+    const wint = (this.seasonManager && this.seasonManager.getWinterness) ? this.seasonManager.getWinterness() : 0;
+    const wind = Game._windStrength(wint, (typeof SANDFLUX !== 'undefined') ? SANDFLUX : { windBase: 0.35, windGamma: 1.6 });
+    const now = (typeof millis === 'function') ? millis() : 0;
+    const dur = ((typeof TM_TIME !== 'undefined' ? TM_TIME.stormSeconds : 20) * 1000) * (C.spreadFrac ?? 0.85);
+    const hits = this._stormHits || (this._stormHits = []);
+    hits.length = 0;
+    const plants = this.simulation.plants;
+    for (let i = 0; i < plants.length; i++) {
+      const p = plants[i];
+      if (!p || !p.alive) continue;
+      const dmg = Game._stormPlantDamage(p.type, p.growth, p.elevation, wind, C);
+      if (dmg <= 0.02) continue;
+      let kind = null, mul = 1;
+      if (STORM_EMERGENT.has(p.type) && dmg > C.killThresh && Math.random() < dmg * (C.throwScale ?? 0.30)) {
+        kind = 'throw';                                   // this emergent will be windthrown — later, not now
+      } else if (Math.random() < dmg) {                   // only SOME plants are knocked (not the whole canopy)
+        kind = 'knock'; mul = 1 - dmg * (C.knockScale ?? 0.55);
+      }
+      if (kind) hits.push({ p, at: now + Math.random() * dur, kind, mul });
+    }
+    // §7: inland the storm is a FLOOD — it scours the river and lays fresh silt, opening raw
+    // recruitment ground for kahikatea (the swamp-forest disturbance coloniser, wetland doc §4.1).
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (this.simulation.recruitKahikatea) this.simulation.recruitKahikatea((M && M.kahiRecruitStorm) || 8);
+  }
+
+  // Per-frame: apply any storm hits now due, and ease the leaf-sway envelope up while
+  // the storm blows / down after. _stormSway (0..1) is read by Plant render for the
+  // extra sway. Called from update(); cheap (a short scheduled list + one lerp).
+  _stormStepPlants(dt = 1) {
+    const now = (typeof millis === 'function') ? millis() : 0;
+    const active = this._tmStormUntil && now < this._tmStormUntil;
+    const target = active ? 1 : 0;
+    this._stormSway = (this._stormSway || 0) + (target - (this._stormSway || 0)) * Math.min(1, 0.04 * dt);
+    if (this._stormSway < 0.001) this._stormSway = 0;
+
+    const hits = this._stormHits;
+    if (!hits || !hits.length) return;
+    const C = (typeof STORMFX !== 'undefined') ? STORMFX : { minGrowth: 0.08 };
+    let w = 0;
+    for (let i = 0; i < hits.length; i++) {
+      const hIt = hits[i];
+      if (now < hIt.at) { hits[w++] = hIt; continue; }    // not due yet — keep it queued
+      const p = hIt.p;
+      if (p && p.alive && !p._consumed) {
+        if (hIt.kind === 'throw') { p.alive = false; p.growth = 0; p.regrowthTimer = 0; }   // windthrown — regrows from bare
+        else { const g = p.growth * hIt.mul; p.growth = g < C.minGrowth ? C.minGrowth : g; }
+        if (this.simulation && this.simulation.disturb)                                     // warp §9: the thrown/knocked spot grows back into the storm over the aftermath beat
+          this.simulation.disturb(p.pos.x, p.pos.y, C.warpRadius || 55, 'gale', 1);
+      }
+      // applied (or the plant is already gone) → drop it by not copying forward
+    }
+    hits.length = w;
+  }
+
   applyStormToPlants(strength = 1) {
     const C = (typeof STORMFX !== 'undefined') ? STORMFX : null;
     if (!C || !this.simulation || !this.simulation.plants) return 0;
@@ -1393,6 +1582,7 @@ class Game {
     this.updateAshCover();
     this._updateSandFlux(dt);        // coastal dune engine — reads ash, feeds the burial drain below
     this._updateHabitatHealth(dt);   // real dt, not sdt — the saturation ramp is a wall-clock effect
+    this._stormStepPlants(dt);        // deliver scheduled storm damage over the window + drive the leaf-sway envelope
     this._checkAutoEruptions();
     this.updateNotifications(sdt);
     if (this.ui) this.ui.update(dt);
@@ -1466,7 +1656,12 @@ class Game {
       return;
     }
 
-    background(20, 30, 25);
+    // In DOM-stack GL mode the main canvas is the TOP layer (indicators + HUD only)
+    // and must be transparent so the terrain (bottom DOM layer) and GL sprites
+    // (middle) show through; clear() instead of an opaque background(). The letterbox
+    // shows the page background (body '#19231e'), matching the 2D fill closely.
+    const _domGL = (typeof GLBatch !== 'undefined' && GLBatch.domStack);
+    if (_domGL) clear(); else background(20, 30, 25);
 
     // Eruption screen-shake: jitter the WHOLE frame (ground blit + world + HUD) by a few
     // 1080-space px while the eruption button is held / firing. background() above already
@@ -1486,12 +1681,18 @@ class Game {
       ? Projection.projectedWorldHeight() : this.terrain.mapHeight;
     const tg = this._ensureTerrainLayer();
     this._composeTerrainLayer(tg, projH);
-    push();
-    // Soft upscale of the 1080 ground — the same bilinear enlargement the browser
-    // used to do when it CSS-scaled the whole 1080 canvas up to the panel.
-    if ('imageSmoothingEnabled' in drawingContext) drawingContext.imageSmoothingEnabled = true;
-    image(tg, 0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
-    pop();
+    if (_domGL) {
+      // The terrain buffer IS the bottom DOM layer (it also carries water + washes,
+      // drawn into it by _composeTerrainLayer in this mode) — no blit to main.
+      GLBatch.setBottom(tg.canvas || (tg.elt));
+    } else {
+      push();
+      // Soft upscale of the 1080 ground — the same bilinear enlargement the browser
+      // used to do when it CSS-scaled the whole 1080 canvas up to the panel.
+      if ('imageSmoothingEnabled' in drawingContext) drawingContext.imageSmoothingEnabled = true;
+      image(tg, 0, 0, CONFIG.canvasWidth, CONFIG.canvasHeight);
+      pop();
+    }
 
     // ---- ABOVE THE GROUND (supersampled) -------------------------------------
     // Water, seasonal washes and every entity — clipped to the terrain footprint and
@@ -1508,65 +1709,24 @@ class Game {
     translate(CONFIG.viewX, CONFIG.viewY);
     scale(CONFIG.viewZoom);
 
-    // Animated water: river flow / eels / sea shimmer, over the baked ground and
-    // under the seasonal washes + animals. A few hundred small low-contrast decals.
-    if (this.water) this.water.render();
+    // Animated water + seasonal washes (frost/ash/haze), over the baked ground and
+    // under the animals, in the camera transform. In DOM-stack GL mode these are
+    // drawn into the terrain buffer (the bottom layer) by _composeTerrainLayer, so
+    // the main canvas stays a transparent top layer — skip them on main here.
+    if (!_domGL) this._drawGroundOverlays(null, projH);
 
-    // Glacial frost: a single cool haze over the ground (under the animals), scaling
-    // with the glacial index (getWinterness) so it deepens through a glacial and lifts
-    // in an interglacial. Covers the projected terrain area. One rect — no perf cost.
-    const _frost = this.seasonManager.getWinterness ? this.seasonManager.getWinterness() : 0;
-    if (_frost > 0.001) {
-      push();
-      noStroke();
-      rectMode(CORNER);
-      fill(216, 232, 245, 72 * _frost);
-      rect(0, 0, this.terrain.mapWidth, projH);
-      pop();
-    }
-
-    // Volcanic ash: a slow warm-grey wash over the ground while ashCover decays — a fresh
-    // eruption greys the land and it lifts as the cast regrows. Decays over SIM-years, so it
-    // is never a flash (the ramped flash is the HUD's job, InstallHUD.renderAshFlash). One rect.
-    const _ash = this._ashCover || 0;
-    if (_ash > 0.001) {
-      push();
-      noStroke();
-      rectMode(CORNER);
-      fill(120, 116, 110, 105 * _ash);
-      rect(0, 0, this.terrain.mapWidth, projH);
-      pop();
-    }
-
-    // North atmosphere: a soft haze fading DOWN from the top (the far/north edge)
-    // so distance reads — and somewhere the eruption's ash can grow from later.
-    // Over the terrain, under the animals. One static gradient rect (no
-    // photosensitivity concern). LOOK.haze toggles it. 34VIEW §7.
-    if (typeof LOOK !== 'undefined' && LOOK.haze && LOOK.hazeStrength > 0 && drawingContext.createLinearGradient) {
-      // The haze band is STATIC — it only changes when LOOK is retuned (authoring
-      // re-bake) or the projected footprint changes (rebuild/resize). Build the
-      // gradient once and cache it; rebuilding color() + createLinearGradient +
-      // two rgba template strings every frame was a per-frame allocation in the
-      // hottest function ("never allocate in draw()", CLAUDE.md).
-      const _bandH = projH * LOOK.hazeHeight;
-      const _mw = this.terrain.mapWidth;
-      let _hc = this._hazeCache;
-      if (!_hc || _hc.col !== LOOK.hazeColor || _hc.str !== LOOK.hazeStrength ||
-          _hc.bandH !== _bandH || _hc.w !== _mw) {
-        const _hz = color(LOOK.hazeColor);
-        const _hr = red(_hz) | 0, _hg = green(_hz) | 0, _hb = blue(_hz) | 0;
-        const _grad = drawingContext.createLinearGradient(0, 0, 0, _bandH);
-        _grad.addColorStop(0, `rgba(${_hr},${_hg},${_hb},${LOOK.hazeStrength})`);
-        _grad.addColorStop(1, `rgba(${_hr},${_hg},${_hb},0)`);
-        _hc = this._hazeCache = { grad: _grad, col: LOOK.hazeColor, str: LOOK.hazeStrength, bandH: _bandH, w: _mw };
-      }
-      drawingContext.save();
-      drawingContext.fillStyle = _hc.grad;
-      drawingContext.fillRect(0, 0, _mw, _bandH);
-      drawingContext.restore();
-    }
+    // WebGL entity layer (?render=gl): open a batch span so the sprite image()
+    // calls inside simulation.render() enqueue GPU quads. It composites itself back
+    // into this 2D context at the seam before the indicator over-pass (see
+    // Simulation.render). The fallback below closes the span if that seam was missed.
+    if (typeof GLBatch !== 'undefined' && GLBatch.enabled) GLBatch.begin();
 
     this.simulation.render();
+
+    // Safety: if the batch span is somehow still open (e.g. an early return before
+    // the composite seam), flush it here so an open span can never swallow the
+    // HUD's own image() draws on the next frame.
+    if (typeof GLBatch !== 'undefined' && GLBatch.enabled && GLBatch._open) GLBatch.composite(drawingContext);
 
     // Range-authoring overlay (GEO.show() / key R). Drawn in the terrain transform so the
     // footprints + spine axes sit on the lifted ground. Authoring only — off by default.
@@ -1635,8 +1795,67 @@ class Game {
     this.terrain.render(tg);
     if (_desat) _dc.filter = 'none';
 
+    // DOM-stack GL mode: the terrain buffer is the bottom layer, so water and the
+    // seasonal washes are drawn into it here (in the same camera transform, outside
+    // the ground-only saturate filter) instead of onto the main canvas. At 1080 —
+    // consistent with the buffer's resolution and the documented ground-tier design.
+    if (typeof GLBatch !== 'undefined' && GLBatch.domStack) {
+      this._drawGroundOverlays(tg, projH);
+    }
+
     _dc.restore();
     tg.pop();
+  }
+
+  // Animated water + the frost / ash / haze washes, drawn into target `g` (a p5
+  // graphics buffer in DOM-stack mode, or null for the global main-canvas draw).
+  // The camera transform is assumed already applied on the target. Shared so the 2D
+  // and GL paths draw identical overlays; the haze gradient cache is per-session
+  // (the render mode never changes mid-run) so one context owns it.
+  _drawGroundOverlays(g, projH) {
+    const R = g || (typeof window !== 'undefined' ? window : this);
+
+    // Animated water: river flow / eels / sea shimmer.
+    if (this.water) this.water.render(g || null);
+
+    // Glacial frost — one cool rect scaled by the winter index.
+    const _frost = this.seasonManager.getWinterness ? this.seasonManager.getWinterness() : 0;
+    if (_frost > 0.001) {
+      R.push(); R.noStroke(); R.rectMode(CORNER);
+      R.fill(216, 232, 245, 72 * _frost);
+      R.rect(0, 0, this.terrain.mapWidth, projH);
+      R.pop();
+    }
+
+    // Volcanic ash — one warm-grey rect while ashCover decays.
+    const _ash = this._ashCover || 0;
+    if (_ash > 0.001) {
+      R.push(); R.noStroke(); R.rectMode(CORNER);
+      R.fill(120, 116, 110, 105 * _ash);
+      R.rect(0, 0, this.terrain.mapWidth, projH);
+      R.pop();
+    }
+
+    // North atmosphere haze — one cached static gradient rect fading down from the top.
+    const _rdc = R.drawingContext;
+    if (typeof LOOK !== 'undefined' && LOOK.haze && LOOK.hazeStrength > 0 && _rdc && _rdc.createLinearGradient) {
+      const _bandH = projH * LOOK.hazeHeight;
+      const _mw = this.terrain.mapWidth;
+      let _hc = this._hazeCache;
+      if (!_hc || _hc.col !== LOOK.hazeColor || _hc.str !== LOOK.hazeStrength ||
+          _hc.bandH !== _bandH || _hc.w !== _mw) {
+        const _hz = color(LOOK.hazeColor);
+        const _hr = red(_hz) | 0, _hg = green(_hz) | 0, _hb = blue(_hz) | 0;
+        const _grad = _rdc.createLinearGradient(0, 0, 0, _bandH);
+        _grad.addColorStop(0, `rgba(${_hr},${_hg},${_hb},${LOOK.hazeStrength})`);
+        _grad.addColorStop(1, `rgba(${_hr},${_hg},${_hb},0)`);
+        _hc = this._hazeCache = { grad: _grad, col: LOOK.hazeColor, str: LOOK.hazeStrength, bandH: _bandH, w: _mw };
+      }
+      _rdc.save();
+      _rdc.fillStyle = _hc.grad;
+      _rdc.fillRect(0, 0, _mw, _bandH);
+      _rdc.restore();
+    }
   }
 
 
@@ -1649,6 +1868,9 @@ class Game {
   
   handleClick(mx, my) {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
+    // The plant gallery overlays the whole screen — let it claim the pointer (its
+    // SAVE PNG button) before the sim UI sees the click.
+    if (typeof PlantGallery !== 'undefined' && PlantGallery.handleClick(mx, my)) return;
     if (this.ui && this.ui.handleFullscreenClick(mx, my)) return;
   }
 
@@ -1707,6 +1929,10 @@ class Game {
 let game;
 
 let _needsInitialResize = true;
+// The p5 main canvas element. Stored because DOM-stack GL mode inserts extra
+// canvases (terrain, GL) ahead of it, so document.querySelector('canvas') no longer
+// reliably returns the main one — scaleCanvasToFit must style THIS one.
+let _mainCanvasEl = null;
 
 function setup() {
   if (!audioManager) audioManager = initAudioManager();
@@ -1720,6 +1946,7 @@ function setup() {
                    // A p5 pixelDensity of 2 would 4×-back the WHOLE frame, terrain included.
   const _ss = spriteSS();
   let cnv = createCanvas(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
+  _mainCanvasEl = (cnv && cnv.elt) ? cnv.elt : document.querySelector('canvas');
   cnv.style('display', 'block');
   document.body.style.margin = '0';
   document.body.style.overflow = 'hidden';
@@ -1733,6 +1960,21 @@ function setup() {
   initPlaceableColors();
   initPlantSprites(plantSprites);
   initializeRegistry();
+
+  // Consolidate every loaded sprite PNG into shared GPU atlas pages now that
+  // preload() has resolved them all and the canvas exists. Transparent to the
+  // render code (see TeManawa_spriteatlas.js); a no-op if nothing packed.
+  if (typeof SpriteAtlas !== 'undefined') SpriteAtlas.build();
+
+  // Optional WebGL entity layer (?render=gl). Init at the BACKING resolution
+  // (logical × supersample) so sprites stay crisp; disables cleanly on any failure.
+  // Mount stacks the GL canvas between the terrain (bottom) and main (top) canvases.
+  if (typeof GLBatch !== 'undefined') {
+    GLBatch.applyURLFlag();
+    if (GLBatch.requested && GLBatch.init(CONFIG.canvasWidth * spriteSS(), CONFIG.canvasHeight * spriteSS())) {
+      GLBatch.mount((cnv && cnv.elt) ? cnv.elt : document.querySelector('canvas'));
+    }
+  }
 
   // ?terrain=fit | ?terrain=square overrides the CONFIG default without editing
   // this file. Read BEFORE loadLevel so the first terrain is built at the right
@@ -1763,6 +2005,11 @@ function windowResized() {
   // Apply CSS scaling to fill the window (uses the LOGICAL size, so the on-screen
   // footprint is unchanged; the extra backing pixels are the crispness).
   scaleCanvasToFit();
+
+  // Keep the WebGL entity canvas matched to the backing resolution.
+  if (typeof GLBatch !== 'undefined' && GLBatch.enabled) {
+    GLBatch.resize(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
+  }
 
   // Update UI panel positions if game is running
   if (game && game.ui) {
@@ -1823,8 +2070,8 @@ function scheduleTerrainRefit() {
 }
 
 function scaleCanvasToFit() {
-  const cnv = document.querySelector('canvas');
-  if (!cnv) return;
+  const cnv = _mainCanvasEl || document.querySelector('canvas');
+  if (!cnv || !cnv.style) return;   // headless harness stub has no .style
 
   const cw = CONFIG.canvasWidth;
   const ch = CONFIG.canvasHeight;
@@ -1839,6 +2086,9 @@ function scaleCanvasToFit() {
   cnv.style.position = 'absolute';
   cnv.style.left = ((windowWidth - cw * scale) / 2) + 'px';
   cnv.style.top = ((windowHeight - ch * scale) / 2) + 'px';
+
+  // Keep the DOM-stacked GL + terrain layers registered on the main canvas box.
+  if (typeof GLBatch !== 'undefined' && GLBatch.domStack) GLBatch.layout();
 }
 
 function initializeRegistry() {
@@ -1945,3 +2195,13 @@ function mousePressed() { const s = spriteSS(); game.handleClick(mouseX / s, mou
 function mouseReleased() { const s = spriteSS(); game.handleClickUp(mouseX / s, mouseY / s); }
 function keyPressed() { game.handleKey(key); }
 function keyReleased() { game.handleKeyUp(key); }
+
+// Mouse wheel pans the plant gallery when it's up (its true-scale content can run
+// taller than the screen). Returning false stops the page itself from scrolling.
+// The sim never reads the wheel, so it's a no-op otherwise.
+function mouseWheel(e) {
+  if (typeof PlantGallery !== 'undefined' && PlantGallery.active) {
+    PlantGallery.scroll(e.deltaY);
+    return false;
+  }
+}

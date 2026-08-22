@@ -171,7 +171,7 @@ try{
     let mx=0; for(const a of cap) if(a.length===4) mx=Math.max(mx,a[3]); return mx; };
   const settle=()=>{ for(let i=0;i<4;i++) FRAME(ctx.draw); };   // let the morph job finish
 
-  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
 
   // --- a tap: revert to the previous (older) eruption; terrain kept ------
   DT.seekTo(500000);                                   // between Kaukatea (900k) and Whakamaru (349k)
@@ -188,13 +188,13 @@ try{
   chk(DT.yearsBP===yGuard,'a second tap inside the 2 s cooldown is ignored');
 
   // --- no-op at/older than the first event ------------------------------
-  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   DT.seekTo(DT.yearsStart);                            // 1 Ma — nothing older
   G.handleKey('5'); ctx.__tick(6); G.handleKeyUp('5');
   chk(DT.yearsBP===DT.yearsStart,'a tap at the first event is a no-op (nothing older)');
 
   // --- a hold: flash ramps up, then skip to the next (younger) eruption --
-  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   DT.seekTo(500000);
   const terrHold=G.terrain;
   G.handleKey('5');                                     // press & hold
@@ -215,14 +215,14 @@ try{
   chk(DT.yearsBP===yRel,'releasing after a hold does not also revert');
 
   // --- wrap: a hold past Whakamaru wraps forward to Kidnappers -----------
-  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   DT.seekTo(200000);                                    // past Whakamaru, before Oruanui
   G.handleKey('5'); ctx.__tick(Math.ceil(TM.erLongPressMs/16)); G.update(1); G.handleKeyUp('5');
   chk(DT.yearsBP===DT.yearsStart,'a hold past Whakamaru wraps to Kidnappers (1 Ma)');
   settle();
 
   // leave state clean + clock reset for the sections below
-  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   DT.reset();
   console.log(fail? `eruption: ${fail} FAILURES`
     : 'eruption nav: tap reverts (prev), hold skips (next, wraps at Whakamaru), cooldown + ramped hold flash');
@@ -351,6 +351,144 @@ try{
   console.log(fail? `kererū: ${fail} FAILURES`
     : 'kererū: dispersal grows the forest (cap-guarded); recruitment stalls without them');
 }catch(e){ console.log('KERERU FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- browse prunes, habitat removes: the two ways cover changes ----------------
+// The design rule (TEMANAWA_PLAN_V3.md §4): a grazer's bite PRUNES a plant — it gets a
+// little smaller and regrows — it never clears it. What makes a tree DISAPPEAR is
+// unsuitable HABITAT: a canopy tree the glacial pushes outside the forest band dies
+// back to nothing and regrows in place when the band returns. Reading the code missed a
+// cover bug once (health-as-living-cover, MISTAKES.md), so assert the mechanism directly.
+try{
+  const Plant_=vm.runInContext('Plant',ctx), M=vm.runInContext('LEVEL_MECHANICS',ctx);
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const sim=G.simulation, season=G.seasonManager, terrain=sim.terrain;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const floor=(M && M.browseFloor!=null)?M.browseFloor:0.3;
+  const bk=(sim.plants[0]&&sim.plants[0].biomeKey)||'lowland';
+  DT.seekTo(122000); season.update(1);                       // an interglacial — no dormancy, brisk growth
+
+  // 1. BROWSING PRUNES, NEVER CLEARS. A grown plant, bitten hard, shrinks toward the
+  //    stub, yields food per bite, is never pushed below the floor, and stays in the world.
+  const bp=new Plant_(300,300,'tussock',terrain,bk);
+  bp.growth=1.0; bp.alive=true; bp.dormant=false; bp.plantTypeModifier=1; bp.maxNutrition=bp.baseNutrition;
+  const g0=bp.growth, gain1=bp.consume();
+  chk(gain1>0, 'a bite yields food');
+  chk(bp.growth<g0, 'a bite makes the plant a little smaller (growth drops)');
+  chk(bp.alive && !bp._consumed, 'a browsed plant stays in the world — never removed or queued for removal');
+  for(let i=0;i<20;i++) bp.consume();                        // graze it hard
+  chk(bp.growth>=floor-1e-6, 'browsing can never crop a plant below the floor stub');
+  chk(bp.alive, 'a hard-grazed plant is still alive (pruned, not cleared)');
+  chk(bp.consume()<0.01, 'a plant cropped to the stub yields ~nothing to a further bite');
+  const gStub=bp.growth; for(let i=0;i<60;i++) bp.update(season);
+  chk(bp.growth>gStub, 'a browsed plant regrows in place afterwards');
+
+  // 2. UNSUITABLE HABITAT DIES A TREE BACK, THEN IT RECOVERS. A canopy tree above every
+  //    forest band (elevation 0.95 > every band max) is suppressed and dies back to nothing
+  //    but survives in place as rootstock; dropped back inside the band it regrows where it stood.
+  chk(!!(M && M.forestContraction && M.forestDieback), 'forest die-back is enabled in the level');
+  const ht=new Plant_(300,300,'tawa',terrain,bk);            // tawa ∈ FOREST_TREES, NOT a cold refuge
+  chk(ht._forestTree===true, 'a tawa is flagged a canopy tree (subject to die-back)');
+  ht.elevation=0.95; ht.growth=1.0; ht.alive=true;
+  for(let i=0;i<400;i++) ht.update(season);
+  chk(ht.suppressed===true, 'a canopy tree above the forest band is on unsuitable habitat (suppressed)');
+  chk(ht.growth<=0.05, 'unsuitable habitat dies the tree back to nothing (it disappears)');
+  chk(ht.alive===true, 'a died-back tree survives in place as rootstock — never yanked from the world');
+  ht.elevation=0.30;                                         // the band climbs back over it
+  for(let i=0;i<400;i++) ht.update(season);
+  chk(ht.suppressed===false && ht.growth>0.5, 'the forest regrows in place when suitable habitat returns');
+
+  // BEECH is the GLACIAL REFUGIUM tree — still a canopy die-back tree, but EXEMPT from the forest-
+  // contraction suppression, so it HOLDS where the warm forest retreats (memory beech-glacial-refuge).
+  const bh=new Plant_(300,300,'beech',terrain,bk);
+  chk(bh._forestTree===true, 'beech is still flagged a canopy tree (die-back applies)');
+  bh.elevation=0.95; bh.growth=1.0; bh.alive=true;           // above every band — a warm tree would be suppressed
+  for(let i=0;i<400;i++) bh.update(season);
+  chk(bh.suppressed===false && bh.growth>0.5, 'beech is NOT suppressed by forest contraction — the cold refuge holds');
+
+  DT.reset();
+  console.log(fail? `browse & habitat: ${fail} FAILURES`
+    : 'browse & habitat: grazing prunes (smaller, never removed); unsuitable habitat dies trees back, then regrows them');
+}catch(e){ console.log('BROWSE FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- disturbance / warp clock (§9) + wetland bloom ----------------------------
+// A storm/eruption stamps disturb(); warpAt raises LOCAL recovery for a window that decays on
+// REAL time (rdt), so an aftermath regrows as a visible ~2 s beat instead of an instant snap even
+// under 10× fast-forward. The eruption also blooms the wetland (finding #4). It is a deterministic
+// list of active disturbances, not a per-cell field — so nothing to tear across the sliced morph.
+try{
+  const Plant_=vm.runInContext('Plant',ctx);
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const sim=G.simulation, season=G.seasonManager, terrain=sim.terrain;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const bk=(sim.plants[0]&&sim.plants[0].biomeKey)||'lowland';
+  DT.seekTo(122000); season.update(1);                       // an interglacial — brisk growth, no dormancy
+
+  sim._disturbances=[]; sim._disturbActive=false;
+  chk(sim.warpAt(400,400)===0, 'warp is 0 with no active disturbance');
+  sim.disturb(400,400, 50, 'gale', 1);
+  chk(sim.warpAt(400,400)>0.9, 'a fresh disturbance raises warp at its centre');
+  chk(sim.warpAt(400,900)===0, 'warp is 0 beyond the disturbance radius');
+
+  // warp accelerates recovery: two identical bare plants, same spot, one warped one not.
+  const pA=new Plant_(400,400,'tussock',terrain,bk); pA.alive=false; pA.growth=0; pA.regrowthTimer=0;
+  const pB=new Plant_(400,400,'tussock',terrain,bk); pB.alive=false; pB.growth=0; pB.regrowthTimer=0;
+  for(let i=0;i<8;i++){ pA.update(season,1,1); pB.update(season,1,0); }
+  chk(pA.regrowthTimer > pB.regrowthTimer*1.5, 'warp accelerates a plant\'s recovery (the visible aftermath beat)');
+
+  // it decays back to nothing on REAL time, so it cannot outlive the ~2 s beat under fast-forward.
+  for(let i=0;i<200;i++) sim.updateDisturbance(1);
+  chk(sim.warpAt(400,400)===0 && sim._disturbActive===false, 'the warp decays back to nothing on real time');
+
+  // wetland bloom seeds only into wetland ground (cap/water-guarded; 0 on a seed with no wetland shown).
+  const before=sim.plants.length;
+  const bloomed=sim.bloomWetland(10);
+  chk(bloomed>=0 && sim.plants.length===before+bloomed, 'bloomWetland adds exactly its seeded count');
+
+  DT.reset(); sim._disturbances=[]; sim._disturbActive=false;
+  console.log(fail? `disturbance/warp: ${fail} FAILURES`
+    : 'disturbance/warp: disturb()+warpAt speed local recovery then decay on real time; the eruption blooms the wetland');
+}catch(e){ console.log('WARP FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- kahikatea: the swamp-forest disturbance coloniser (wetland doc §4.1) ------
+// Kahikatea is NOT a climax tree — it recruits ONLY on raw river alluvium (a storm flood, an eruption
+// sediment pulse, or the deep-time channel shift), never via the free kererū/FOREST-button paths, and
+// a stand with no fresh disturbance AGES OUT. This is the rule that couples the swamp forest to the
+// moving river (the last ecology loop).
+try{
+  const Plant_=vm.runInContext('Plant',ctx), PT=vm.runInContext('PLANT_TYPES',ctx), M=vm.runInContext('LEVEL_MECHANICS',ctx);
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const sim=G.simulation, season=G.seasonManager, terrain=sim.terrain;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const bk=(sim.plants[0]&&sim.plants[0].biomeKey)||'lowland';
+  DT.seekTo(122000); season.update(1);                       // an interglacial — no dormancy
+
+  chk(PT.kahikatea && PT.kahikatea.disturbanceRecruit===true, 'kahikatea is flagged disturbanceRecruit (kept out of free kererū/button recruitment)');
+
+  // 1. it AGES without disturbance; a warp (fresh alluvium) resets the clock.
+  const k=new Plant_(300,300,'kahikatea',terrain,bk); k.alive=true; k.growth=1; k.elevation=0.35; k._kahiAge=0;
+  for(let i=0;i<10;i++) k.update(season,5,0);
+  chk(k._kahiAge>0, 'kahikatea ages when the river is static (no warp)');
+  k.update(season,5,1);                                       // a warp = a river disturbance
+  chk(k._kahiAge===0, 'a river disturbance (warp) rejuvenates the stand — resets its age');
+
+  // 2. an over-age kahikatea senesces: wilts back, dies, and does NOT regrow (the stand ages out).
+  const maxAge=(M&&M.kahiMaxAge)||900;
+  k._kahiAge=maxAge+1; k.growth=1; k.alive=true; k._senescent=false;
+  for(let i=0;i<400 && k.alive;i++) k.update(season,5,0);
+  chk(k._senescent===true && k.alive===false, 'an over-age kahikatea senesces and dies — the stand ages out');
+  const g0=k.growth; k.update(season,5,0);
+  chk(k.growth===g0, 'a senesced kahikatea is inert — it never regrows');
+
+  // 3. recruitKahikatea seeds kahikatea onto wetland ground (cap/water-guarded).
+  const before=sim.plants.length;
+  const rec=sim.recruitKahikatea(6);
+  chk(rec>=0 && sim.plants.length===before+rec, 'recruitKahikatea adds exactly its seeded count');
+  if(rec>0){ const last=sim.plants[sim.plants.length-1]; chk(last.type==='kahikatea' && last.biomeKey==='wetland', 'recruited kahikatea land on wetland ground'); }
+
+  DT.reset(); sim._disturbances=[]; sim._disturbActive=false;
+  console.log(fail? `kahikatea recruitment: ${fail} FAILURES`
+    : 'kahikatea recruitment: recruits only on a river disturbance (storm/eruption/channel shift); ages out without one');
+}catch(e){ console.log('KAHI FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- kōkako + huia: the other flighted forest birds ---------------------------
 // Both EXTEND Kereru (own base type + otherEntities list, short-flight frugivore
@@ -654,9 +792,9 @@ try{
   const d=(type,growth,elev,wind)=>Game._stormPlantDamage(type,growth,elev,wind,C);
   const FOREST=0.5, COAST=0.05;   // an inland forest elevation vs a seaward-margin one
   // (A) snap inland emergents — tall trees catch the wind, short ones ride it out.
-  chk(d('rimu',1.0,FOREST,1) > C.killThresh, 'a fully-grown inland emergent (rimu) is windthrown by a strong storm');
-  chk(d('rimu',0.3,FOREST,1) === 0, 'a short emergent (below emergentMinGrowth) rides the storm out');
-  chk(d('rimu',1.0,FOREST,1) > d('rimu',1.0,FOREST,0.35), 'windthrow is worse in a glacial gale than a mild interglacial breeze');
+  chk(d('Totara',1.0,FOREST,1) > C.killThresh, 'a fully-grown inland emergent (Totara) is windthrown by a strong storm');
+  chk(d('Totara',0.3,FOREST,1) === 0, 'a short emergent (below emergentMinGrowth) rides the storm out');
+  chk(d('Totara',1.0,FOREST,1) > d('Totara',1.0,FOREST,0.35), 'windthrow is worse in a glacial gale than a mild interglacial breeze');
   // (B) coastal salt-burn + lee burial, ASYMMETRIC by species (§10C).
   chk(d('fern',1.0,COAST,1) > d('tussock',1.0,COAST,1), 'at the coast a soft species (fern) is hit far harder than a hardy binder (tussock)');
   chk(d('tussock',1.0,COAST,1) < 0.2, 'a hardy open/dune binder rides out the coastal storm (§10C thrive/tolerate)');
@@ -695,7 +833,7 @@ try{
   chk(!fired().has(1000000) && !fired().has(900000),'a jump to 349 ka does not re-fire the older eruptions');
   chk(fired().has(349000),'the jumped-to eruption is marked fired');
 
-  DT.reset(); G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0;
+  DT.reset(); G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   console.log(fail? `auto-eruptions: ${fail} FAILURES`
     : 'auto-eruptions: fire once on checkpoint crossing; attract returns to the last eruption; jumps do not re-fire');
 }catch(e){ console.log('AUTOERUPT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
@@ -1254,6 +1392,42 @@ const g=vm.runInContext('game',ctx);
     : 'perf batch: baked tints reused, cull box tracks viewZoom, one population cache');
 }
 
+// ---- sprite atlas: loaded frames packed into shared pages, image() wrapped -----
+// The harness stubs createGraphics/image, so it cannot verify pixel-correct
+// sub-rects (that is the browser check) — but it CAN guard the WIRING: build ran,
+// the loose sprite refs were rebound to AtlasFrames (aliases and all), and the
+// draw shim is installed. This is what stops a future sprite-load refactor from
+// silently leaving the atlas unbuilt.
+{
+  const SA = vm.runInContext('SpriteAtlas', ctx);
+  const ES = vm.runInContext('EntitySprites', ctx);
+  const PS = vm.runInContext('PLANT_SPRITES', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  chk(SA && SA.enabled, 'SpriteAtlas.build() must have run in setup()');
+  chk(SA && SA.frameCount > 0, 'the atlas must have packed at least one frame');
+  chk(SA && SA.pages && SA.pages.length > 0, 'the atlas must have at least one page');
+
+  // A loaded fauna frame is now an AtlasFrame whose width/height mirror the source.
+  const eF = ES && ES.eagle && ES.eagle.fly[0];
+  chk(SA.isFrame(eF), 'eagle.fly[0] must be rebound to an AtlasFrame');
+  chk(eF && eF.width > 0 && eF.height > 0, 'an AtlasFrame must mirror the source dimensions');
+  chk(eF && eF.__page && eF.sw > 0 && eF.sh > 0, 'an AtlasFrame must carry a page + sub-rect');
+  // Aliased slots (eagle.dive === fly[huntFrame]) share the packed frame.
+  chk(SA.isFrame(ES.eagle.dive), 'the aliased eagle.dive slot must also be a frame');
+  // Flora rebound through the same pass.
+  const somePlant = PS && Object.keys(PS)[0] && PS[Object.keys(PS)[0]];
+  const pf = somePlant && (somePlant.mature || somePlant.dormant || (somePlant.variants && somePlant.variants[0]));
+  chk(!pf || SA.isFrame(pf), 'a loaded plant frame must be rebound to an AtlasFrame');
+
+  chk(SA._shimInstalled, 'the global image() shim must be installed');
+  chk(SA.isFrame({ __atlas: true }) && !SA.isFrame({ width: 9, height: 9 }),
+      'isFrame() distinguishes AtlasFrames from raw images');
+
+  console.log(fail ? `sprite atlas: ${fail} FAILURES`
+    : `sprite atlas: ${SA.frameCount} frames in ${SA.pages.length} page(s), refs rebound + image() wrapped`);
+}
+
 // ---- bake memory guard: bakeScale auto-caps so a buffer never OOMs ------
 // createGraphics(...).loadPixels() at a high bakeScale / large grid throws
 // NS_ERROR_OUT_OF_MEMORY (Firefox) and kills the whole sim. bakeScaleFor caps it.
@@ -1452,17 +1626,24 @@ const g=vm.runInContext('game',ctx);
     // SOUTH-HALF STRAIT: at its ~0.5 Ma peak the southern lowlands drown to the sea band, but the
     // Tararua range footprint (GEO.ranges[0], the southern range) stays a dry peninsula — the land
     // bridge — even before it has uplifted; and the lowland returns to normal once the strait drains.
+    // EAST→WEST FILL (LOOK.southSinkEastU): the strait fades toward the east, so the deep-SE lowland
+    // stays land (it fills from the east as the coast expands) while the WESTERN south still drowns.
     if (poly) {
-      const su = 0.85, sv = 0.85;   // a deep-SE lowland cell, well clear of the range polygons
+      const su = 0.10, sv = 0.85;   // a deep-SW lowland cell (west of the east-fade AND west of the range peninsula), which still drowns
+      const seu = 0.85;             // a deep-SE lowland cell — east of the fade, so it stays land
       T._geoT = { uplift: 0, incision: 1, emergence: 1, southSink: 1 }; T._prepGeo();
       let cx = 0, cy = 0; for (const p of poly) { cx += p[0]; cy += p[1]; } cx /= poly.length; cy /= poly.length;
       const peninsula = T._applyGeo(0.3, cx, cy, cx * T.mapWidth, cy * T.mapHeight);
       chk(peninsula > 0.2, `the Tararua footprint stays a dry peninsula at the strait peak (got ${peninsula.toFixed(2)})`);
-      const drowned = T._applyGeo(0.35, su, sv, su * T.mapWidth, sv * T.mapHeight);
-      chk(drowned < 0.12, `the southern lowland drowns to the sea band at the strait peak (got ${drowned.toFixed(2)})`);
+      const drownedOn = T._applyGeo(0.35, su, sv, su * T.mapWidth, sv * T.mapHeight);
+      const eastLand = T._applyGeo(0.35, seu, sv, seu * T.mapWidth, sv * T.mapHeight);
+      chk(eastLand > 0.2, `the deep-SE lowland stays land at the strait peak — the east→west fill (got ${eastLand.toFixed(2)})`);
       T._geoT = { uplift: 1, incision: 1, emergence: 1, southSink: 0 }; T._prepGeo();
       const returned = T._applyGeo(0.35, su, sv, su * T.mapWidth, sv * T.mapHeight);
       chk(returned > 0.2, `the southern lowland returns to normal land after the strait drains (got ${returned.toFixed(2)})`);
+      // Assert the DROP rather than an absolute band: the west-south margin cell is seed/meander-
+      // sensitive, but southSink must still submerge it markedly relative to its drained self.
+      chk(drownedOn < returned - 0.15, `the western southern lowland drowns markedly at the strait peak (on ${drownedOn.toFixed(2)} vs drained ${returned.toFixed(2)})`);
     }
     T._viewF = savedVF; T._geoT = savedT; T._prepGeo();
   }

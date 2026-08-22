@@ -117,6 +117,27 @@ const Kiosk = {
 
   noteInput() {
     this.lastInputAt = Date.now();
+    // A returning visitor cancels a pending attract-loop buildup, so the world is never reset out
+    // from under them mid-charge; the rumble/flash just eases back down as the flag clears.
+    const g = this.game;
+    if (g && g._tmAttractErAt) g._tmAttractErAt = 0;
+  },
+
+  // Arm the attract-loop reset as a volcanic buildup (idle path only). The eruption-charge
+  // visuals (renderAshFlash / eruptionShakeOffset / ashCoverState in TeManawa_hud.js) read
+  // _tmAttractErAt exactly like the timeline eruption's _tmAutoErAt, ramping the rumble +
+  // ash-cloud roll-down over erLongPressMs; InstallHUD.update() then calls resetToAttract at
+  // the crest (under the cover) and plays the reveal. Refused while a charge or ash window is
+  // already live, so it never stacks on a real eruption. millis() is a p5 global, available in
+  // this setInterval tick.
+  beginAttractEruption(g) {
+    if (!g) return false;
+    const now = (typeof millis === 'function') ? millis() : 0;
+    const busy = g._tmAttractErAt || g._tmAutoErAt || g._tmErDownAt ||
+                 (g._ashCloudUntil && now < g._ashCloudUntil);
+    if (busy) return false;
+    g._tmAttractErAt = now;
+    return true;
   },
 
   // ==========================================================
@@ -144,11 +165,15 @@ const Kiosk = {
       return;
     }
 
-    // 2. Idle -> attract reset. In memory, no network.
+    // 2. Idle -> attract reset, STAGED AS A VOLCANIC EVENT. Rather than swapping the world
+    //    silently, arm the same charge the timeline/button eruptions use (rumble + ash-cloud
+    //    roll-down); InstallHUD.update() performs the actual reset at the crest, hidden under the
+    //    ash cover, then plays the reveal. The reset itself stays synchronous (resetToAttract is
+    //    untouched) — only this idle TRIGGER pre-rolls. If a charge/ash window is already live the
+    //    arm is refused and we retry on the next tick (lastInputAt only advances once it takes).
     if (now - this.lastInputAt > this.idleSeconds * 1000) {
       const g = this.game;
-      if (g && g.terrain) {
-        this.resetToAttract(g, 'idle');
+      if (g && g.terrain && this.beginAttractEruption(g)) {
         this.lastInputAt = now;
       }
     }
@@ -189,6 +214,7 @@ const Kiosk = {
       g.playTime = 0;
       g.timeScale = 1;
       g._tmDeepUntil = g._tmGrowWarmUntil = g._tmGrowColdUntil = g._tmStormUntil = 0;
+      g._tmAttractErAt = 0;   // clear any pending attract-loop buildup (the completion clears it too)
       g._regimeFit = 1; g._recruitment = 1;
       g._stormPressure = 0; g._stormOveruse = false;
       g._tmStormCells = null;

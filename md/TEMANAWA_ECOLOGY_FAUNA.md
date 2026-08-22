@@ -168,7 +168,11 @@ stop.
 ### `[BUILD]` Three changes to the predator model
 
 1. **It hunts *in* forest and forest edge, with fast dashes** — goshawk, not
-   circling harrier. The current eagle behaviour probably soars; it shouldn't.
+   circling harrier. ✅ **DONE (flight style):** `EylesHarrier.patrol()` now flies quartering
+   BURSTS — a fast committed dash, then a slow glide, sweeping low back and forth over the
+   territory — instead of the inherited soaring circle, and cruises lower. The hunt/catch model
+   itself (numbers 2–3 below) is still the Haast's-scaled inheritance, left alone as the delicate
+   predation-balance area.
 2. **Its prey is birds, with small and juvenile moa as a subset** — not adult giants.
    40 kg is the ceiling, which excludes an adult *Dinornis* entirely.
 3. **It should be at home in the dry, open phases, not diminished by them.** "Dry

@@ -123,20 +123,29 @@ const MOA_VARIANT_SETS = {
 const ART_SETS = {
   eagle: {
     low: {
-      // 8-frame wingbeat, filenames zero-padded to 5 digits
-      // (EylesHarrier_Flying_00000..00007.png).
-      dir: 'EylesHarrier/',
+      // 8-frame wingbeat, filenames zero-padded to 5 digits, in the Flying/ subfolder
+      // (sprites/EylesHarrier/Flying/EylesHarrier_Flying_00000..00007.png).
+      dir: 'EylesHarrier/Flying/',
       prefix: 'EylesHarrier_Flying_',
       pad: 5,
       first: 0,
       count: 8,
       huntFrame: 4,
       glideFrame: 0,
-      artAngle: 0.74
+      artAngle: 0.74,
+      // Dedicated 8-frame hunting/dive cycle in its own Hunting/ subfolder
+      // (sprites/EylesHarrier/Hunting/EylesHarrier_Hunting_00000..00007.png). Played
+      // through in the hunting state; huntFrame above stays the single-frame fallback
+      // for when this cycle is absent (e.g. the hi-res set).
+      huntDir: 'EylesHarrier/Hunting/',
+      huntPrefix: 'EylesHarrier_Hunting_',
+      huntFirst: 0,
+      huntCount: 8
     },
     high: {
       // 16-frame wingbeat at 500x500. Same pose cycle at double the frame
       // density, so the hunting pose is the phase-equivalent of low's frame 4.
+      // No dedicated hunting cycle at hi-res — hunting holds huntFrame (frame 8).
       dir: 'EylesHarrier_HiRes/',
       prefix: 'EylesHarrier_State_',
       pad: 5,
@@ -177,6 +186,7 @@ const EntitySprites = {
   },
   eagle: {
     fly: [],
+    hunt: [],   // dedicated hunting/dive cycle (low set); empty → falls back to `dive`
     dive: null,
     glide: null,
     // Direction the artwork itself faces, in image space, in radians.
@@ -218,7 +228,10 @@ const EntitySprites = {
     moaWalkSpeed: 0.12,
     eagleFlySpeed: 0.15,
     eagleDiveSpeed: 0.08,
-    // The eagle speeds above were tuned against an 8-frame cycle. Both are
+    // Cadence of the dedicated hunting/dive cycle. A touch faster than the
+    // wingbeat so the strike reads as a committed, quickening stoop.
+    eagleHuntSpeed: 0.18,
+    // The eagle speeds above were tuned against an 8-frame cycle. All are
     // scaled by (frames / this) at playback so a longer cycle plays through
     // faster rather than halving the wingbeat frequency.
     eagleFrameReference: 8
@@ -276,7 +289,24 @@ const EntitySprites = {
       ));
     }
 
-    // Hunting/diving and resting/gliding hold a single frame of the cycle.
+    // Dedicated hunting/dive cycle, where the active art set declares one (the low
+    // set: EylesHarrier_Hunting_00000..). Played through in the hunting state. The
+    // hi-res set has no hunt art, so this stays empty and hunting holds `dive`.
+    if (eagleArt.huntPrefix && eagleArt.huntCount) {
+      const huntDir = eagleArt.huntDir || eagleArt.dir;
+      for (let i = 0; i < eagleArt.huntCount; i++) {
+        const n = String((eagleArt.huntFirst || 0) + i).padStart(eagleArt.pad, '0');
+        const file = `${eagleArt.huntPrefix}${n}.png`;
+        this.eagle.hunt.push(loadImage(
+          `${spritePath}${huntDir}${file}`,
+          () => {},
+          () => console.warn(`Could not load ${file}`)
+        ));
+      }
+    }
+
+    // Resting/gliding holds a single frame; `dive` is the single-frame hunting
+    // fallback used when no dedicated hunt cycle is loaded.
     this.eagle.dive = this.eagle.fly[eagleArt.huntFrame];
     this.eagle.glide = this.eagle.fly[eagleArt.glideFrame];
     this.eagle.artAngle = eagleArt.artAngle;
@@ -391,7 +421,13 @@ const EntitySprites = {
     gph.pixelDensity(1);
     gph.clear();
     gph.tint(r, g, b);
-    gph.image(img, 0, 0);
+    // `img` may be an AtlasFrame once the sprites are packed — the global image()
+    // wrap does not cover the graphics-method draw, so route through drawTo().
+    if (typeof SpriteAtlas !== 'undefined' && SpriteAtlas.isFrame(img)) {
+      SpriteAtlas.drawTo(gph, img, 0, 0);
+    } else {
+      gph.image(img, 0, 0);
+    }
     gph.noTint();
     return gph;
   },
@@ -437,25 +473,58 @@ const EntitySprites = {
     return this.getMoaSprite(animTime, isMoving, null, isMating);
   },
 
-  getEagleSprite(animTime, state) {
-    if ((state === 'hunting' || state === 'diving') && this.isValid(this.eagle.dive)) {
-      return this.eagle.dive;
+  // How many complete wingbeat cycles the fly clock has run through by `animTime`.
+  // Increments exactly when the displayed fly frame wraps 7→0, so the eagle can hold
+  // a hunt entry until the current flap finishes. Frame-count-agnostic by design (the
+  // wingbeat frequency is held constant across art modes).
+  eagleFlapCycle(animTime) {
+    const n = this.eagle.fly.length;
+    if (!n) return 0;
+    const speed = this.animation.eagleFlySpeed * (n / this.animation.eagleFrameReference);
+    return Math.floor(Math.floor(animTime * speed) / n);
+  },
+
+  // Return one EXPLICIT hunting/dive frame by index (0-based). The harrier drives the
+  // talon grab by prey proximity and by a retraction timer, not by a cadence, so it
+  // asks for a specific frame rather than a phase. Clamped to the loaded set; falls
+  // back to the single held dive pose (hi-res set, or a load failure).
+  getEagleHuntFrame(index) {
+    const hunt = this.eagle.hunt;
+    if (hunt && hunt.length > 0) {
+      const i = Math.max(0, Math.min(hunt.length - 1, index | 0));
+      const sprite = hunt[i];
+      if (this.isValid(sprite)) return sprite;
     }
-    
+    return this.isValid(this.eagle.dive) ? this.eagle.dive : null;
+  },
+
+  getEagleSprite(animTime, state) {
+    if (state === 'hunting' || state === 'diving') {
+      // Dedicated hunting/dive cycle where one is loaded (low set). animTime is
+      // passed hunt-relative by the caller, so the cycle begins on its first frame.
+      if (this.eagle.hunt.length > 0) {
+        const speed = this.animation.eagleHuntSpeed * (this.eagle.hunt.length / this.animation.eagleFrameReference);
+        const frameIndex = Math.floor(animTime * speed) % this.eagle.hunt.length;
+        const sprite = this.eagle.hunt[frameIndex];
+        if (this.isValid(sprite)) return sprite;
+      }
+      // Fallback: single held hunting frame (hi-res set, or a load failure).
+      if (this.isValid(this.eagle.dive)) return this.eagle.dive;
+    }
+
     if (state === 'resting' && this.isValid(this.eagle.glide)) {
       return this.eagle.glide;
     }
-    
+
     if (this.eagle.fly.length > 0) {
-      const base = state === 'hunting' ? this.animation.eagleDiveSpeed : this.animation.eagleFlySpeed;
       // Keep the wingbeat frequency constant across art modes: a 16-frame
       // cycle steps twice as fast as the 8-frame cycle it was tuned against.
-      const speed = base * (this.eagle.fly.length / this.animation.eagleFrameReference);
+      const speed = this.animation.eagleFlySpeed * (this.eagle.fly.length / this.animation.eagleFrameReference);
       const frameIndex = Math.floor(animTime * speed) % this.eagle.fly.length;
       const sprite = this.eagle.fly[frameIndex];
       if (this.isValid(sprite)) return sprite;
     }
-    
+
     return null;
   }
 };

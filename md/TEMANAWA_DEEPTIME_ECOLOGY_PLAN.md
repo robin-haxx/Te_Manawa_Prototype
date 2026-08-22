@@ -150,7 +150,7 @@ accurate*, not build-from-scratch.
   the forest **contracts smoothly as the glacial deepens** without stutter. Plants spawn from
   `biome.plantTypes`, so post-rebuild the cast follows; for the immediate "tree ferns vanish,"
   the `winterness`=glacialIndex rebind already lets the existing dormancy path push
-  `FOREST_TREES` (`beech, rimu, fern`) dormant as `glacialIndex` climbs — no new art.
+  `FOREST_TREES` (`beech, Totara, fern`) dormant as `glacialIndex` climbs — no new art.
 
 **Optional, cheap:** a frost scalar off `glacialIndex` applied *topographically*
 (pools in basins/valley floors first, spares slopes). Nice accuracy touch; deferred behind the

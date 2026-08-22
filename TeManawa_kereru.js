@@ -51,7 +51,7 @@ const KERERU_SPECIES = {
 
   // Movement / render — an unhurried flap between trees (kept BELOW the harrier's
   // hunt speed so a chase resolves rather than the bird outrunning it forever).
-  baseSpeed:        0.42,
+  baseSpeed:        0.32,
   maxForce:         0.055,
   size:             6,
   perceptionRadius: 60,
@@ -95,6 +95,7 @@ class Kereru extends Boid {
 
     this.alive = true;
     this.isFlyer = true;                             // rendered above the ground plane (Simulation.render)
+    this._clampToView = true;                        // stay inside the visible screen L/R, not just the map (base Boid.update)
     // Lower-case label for the notification strip ("A kererū is lost…"). Subclasses
     // (kōkako, huia) carry their own; falls back to the species key.
     this._label = sp.label || this.speciesKey;
@@ -112,6 +113,19 @@ class Kereru extends Boid {
     this._cruiseAlt = sp.cruiseAlt ?? 24;
     this._perchAlt  = sp.perchAlt ?? 5;
     this._altitude  = this._cruiseAlt;
+    // Perch VARIETY: each time the bird lands it picks a fresh height up the tree and
+    // a small offset off the trunk, so a flock (and a huia pair) doesn't stack on one
+    // spot. Chosen on the land transition in update(); rendered as a draw offset.
+    this._perchAltCur = this._perchAlt;
+    this._perchDX = 0;
+    this._perchDY = 0;
+    this._wasPerched = false;
+    // Last walkable ground the bird stood over — its bolt-hole. If it strays out to
+    // sea (map geometry can push a bird over an inland channel or a corner where
+    // "inward" leads across water), it beelines straight back here, which is
+    // guaranteed land — see behave(). Seeded at the (walkable) spawn point.
+    this._lastLand = { x, y };
+    this._waterTicks = 0;
 
     // Flight legs
     this._hopRadius  = sp.hopRadius ?? 120;
@@ -198,9 +212,9 @@ class Kereru extends Boid {
 
     this._runState(sim, dt);
 
-    // Keep to land: a forest bird never crosses open water for long. Pulls the bird
-    // back the moment it strays over (or toward) sea/river, so it can't get stranded
-    // out at sea while chasing a tree across the coast (kōkako especially).
+    // Keep to land: a forest bird never crosses open water for long. Near the rim or
+    // heading toward water, this nudges the bird back inward before it strands. The
+    // HARD backstop (never ending a frame over water) is the land clamp in update().
     this.applyForce(this._landward());
 
     // Survival: sustained max-hunger kills, but never below the population floor,
@@ -257,31 +271,49 @@ class Kereru extends Boid {
     return true;
   }
 
-  // A "stay over land" steering force. Zero while the bird is over land and not
-  // heading straight at water; when it strays over (or toward) sea/river it steers
-  // firmly back toward the nearest land — its territory/mate anchor if that is on
-  // land, else a walkable point on a small ring, else the map centre. This is what
-  // stops a forest bird drifting out to sea and getting stuck there.
+  // A "stay in habitat" steering force — zero while the bird is comfortably over
+  // land and away from the rim, otherwise a firm pull back inward. Two triggers:
+  //   · WORLD EDGE — there is no food out at the perimeter, so a bird near the rim
+  //     is always steered inward. This is what stops a harrier pinning a fleeing
+  //     bird against the edge of the screen where it gets stuck.
+  //   · WATER — a forest bird never crosses open sea/river for long, so straying
+  //     over (or straight toward) water pulls it back to the nearest land.
   _landward() {
     const f = this._landForce; f.set(0, 0);
     const t = this.terrain;
     if (!t || typeof t.isWalkable !== 'function') return f;
+    const w = t.mapWidth, h = t.mapHeight, m = 60;
+    // Turn back at the VISIBLE screen edge, not the map edge: the cover-fit view runs the map
+    // wider than the canvas, so the left/right map edges within CONFIG.viewInsetX sit off-frame
+    // (a bird there is valid on the map but not on screen). Inset is 0 when the map letterboxes.
+    const ins = (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+    const px = this.pos.x, py = this.pos.y;
+    const xlo = ins + m, xhi = w - ins - m;
+
+    let ix = 0, iy = 0, edge = false;
+    if (px < xlo)    { ix = 1;  edge = true; } else if (px > xhi) { ix = -1; edge = true; }
+    if (py < m)      { iy = 1;  edge = true; } else if (py > h - m) { iy = -1; edge = true; }
+
     const spd = Math.hypot(this.vel.x, this.vel.y);
     const ux = spd > 0.001 ? this.vel.x / spd : 0, uy = spd > 0.001 ? this.vel.y / spd : 0;
-    const overWater = !t.isWalkable(this.pos.x, this.pos.y);
-    const waterAhead = !t.isWalkable(this.pos.x + ux * 22, this.pos.y + uy * 22);
-    if (!overWater && !waterAhead) return f;                 // clear — no correction
-    let gx = t.mapWidth * 0.5, gy = t.mapHeight * 0.5;       // fallback: head inland
+    const overWater = !t.isWalkable(px, py);
+    const waterAhead = !t.isWalkable(px + ux * 22, py + uy * 22);
+    if (!edge && !overWater && !waterAhead) return f;        // clear — no correction
+
+    let gx, gy, have = false;
     const anc = this._anchorPoint && this._anchorPoint();
-    if (anc && t.isWalkable(anc.x, anc.y)) { gx = anc.x; gy = anc.y; }
-    else {
+    if (anc && t.isWalkable(anc.x, anc.y)) { gx = anc.x; gy = anc.y; have = true; }
+    if (!have && edge) { gx = px + ix * 140; gy = py + iy * 140; have = true; }   // head straight inward
+    if (!have) {
       for (let i = 0; i < 8; i++) {                          // sample a ring for the nearest land
         const a = i * (Math.PI / 4);
-        const rx = this.pos.x + Math.cos(a) * 45, ry = this.pos.y + Math.sin(a) * 45;
-        if (t.isWalkable(rx, ry)) { gx = rx; gy = ry; break; }
+        const rx = px + Math.cos(a) * 45, ry = py + Math.sin(a) * 45;
+        if (t.isWalkable(rx, ry)) { gx = rx; gy = ry; have = true; break; }
       }
     }
-    const s = this.seekPoint(gx, gy, overWater ? 2.5 : 1.1);
+    if (!have) { gx = w * 0.5; gy = h * 0.5; }
+
+    const s = this.seekPoint(gx, gy, overWater ? 2.5 : (edge ? 2.0 : 1.1));
     f.set(s.x, s.y);
     return f;
   }
@@ -431,8 +463,9 @@ class Kereru extends Boid {
     if (anchor) { ox = (ox + anchor.x) * 0.5; oy = (oy + anchor.y) * 0.5; }
     const a = random(TWO_PI), r = random(this._hopRadius * 0.5, this._hopRadius);
     const w = this.terrain.mapWidth, h = this.terrain.mapHeight;
-    const land = this._clampToLand(                 // never hop out over the water
-      constrain(ox + Math.cos(a) * r, 8, w - 8),
+    const ins = (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+    const land = this._clampToLand(                 // never hop out over the water — or off-screen L/R
+      constrain(ox + Math.cos(a) * r, ins + 8, w - ins - 8),
       constrain(oy + Math.sin(a) * r, 8, h - 8)
     );
     this._target.set(land.x, land.y);
@@ -536,9 +569,34 @@ class Kereru extends Boid {
   }
 
   update(dt = 1) {
-    const targetAlt = this._isPerched() ? this._perchAlt : this._cruiseAlt;
+    const perched = this._isPerched();
+    if (perched && !this._wasPerched) {
+      // Just landed — choose a fresh spot: a height anywhere between low and high in
+      // the canopy, and a small sideways offset off the trunk. So birds settle at
+      // varied heights across the tree instead of all at one perch point.
+      const lo = this._perchAlt * 0.7, hi = Math.max(lo + 1, this._cruiseAlt * 0.8);
+      this._perchAltCur = lo + Math.random() * (hi - lo);
+      this._perchDX = (Math.random() * 2 - 1) * this.size * 1.1;
+      this._perchDY = (Math.random() * 2 - 1) * this.size * 0.5;
+    }
+    this._wasPerched = perched;
+    const targetAlt = perched ? this._perchAltCur : this._cruiseAlt;
     this._altitude += (targetAlt - this._altitude) * Math.min(1, 0.08 * dt);
     super.update(dt);
+
+    // Hard land clamp: a forest bird may skim a coast but never ENDS a frame stranded
+    // over open water. If the move put it over sea/river, snap it back to the last
+    // walkable ground and kill the outward momentum. This is the definitive cure for
+    // "stuck over the ocean" — the steering in behave just makes it look natural.
+    const t = this.terrain;
+    if (t && typeof t.isWalkable === 'function') {
+      if (t.isWalkable(this.pos.x, this.pos.y)) {
+        this._lastLand.x = this.pos.x; this._lastLand.y = this.pos.y;
+      } else {
+        this.pos.x = this._lastLand.x; this.pos.y = this._lastLand.y;
+        this.vel.mult(0.3);
+      }
+    }
   }
 
   render() {
@@ -548,6 +606,11 @@ class Kereru extends Boid {
       : this.pos.y;
     const alt = this._altitude || 0;
     const perched = this._isPerched();
+    // Off-trunk perch offset (varied per landing) so a flock / a huia pair spreads
+    // across the tree rather than stacking on one point. Eased in with the altitude.
+    const settle = perched ? Math.min(1, Math.max(0, (this._cruiseAlt - alt) / Math.max(1, this._cruiseAlt - this._perchAltCur))) : 0;
+    const offX = perched ? this._perchDX * settle : 0;
+    const offY = perched ? this._perchDY * settle : 0;
 
     push();
     translate(this.pos.x, gy);
@@ -559,7 +622,7 @@ class Kereru extends Boid {
       fill(0, 0, 0, 26 * sf);
       ellipse(3 * sf, 3 * sf, s * 1.5 * sf, s * 0.55 * sf);
     }
-    translate(0, -alt);
+    translate(offX, -alt + offY);   // body lifts to altitude + the varied perch offset (shadow stays at the base)
 
     const sprite = this._getSprite(perched);
     if (sprite) {

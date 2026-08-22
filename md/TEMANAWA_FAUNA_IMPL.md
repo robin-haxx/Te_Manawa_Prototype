@@ -128,10 +128,13 @@ Config in `EAGLE_SPECIES` (`eyles_harrier`, `young_eyles_harrier`): `baseSpeed` 
 > ✅ **Identity resolved.** The apex predator is now **Eyles' harrier / kērangi** *Circus
 > teauteensis* throughout: class `EylesHarrier`, species keys `eyles_harrier` /
 > `young_eyles_harrier`, notifications say *kērangi*, art in `sprites/EylesHarrier/`. The
-> internal base-type key stays `'eagle'` (mechanical, not visitor-facing). **Behaviour is
-> still the inherited soaring model** — the numbers above are Haast's-scaled; retune toward
-> low quartering flight and a dashing approach when the predator balance is next touched
-> (a delicate area — see `ecology-feedback-model`). Tracked: `raptor-identity-conflation`.
+> internal base-type key stays `'eagle'` (mechanical, not visitor-facing). **Flight retuned
+> off the inherited soaring model:** `patrol()` now flies quartering BURSTS — a fast committed
+> dash, then a slow glide, sweeping low back and forth over the territory — instead of circling
+> a `patrolCenter`, and cruise altitude is lower. The predation numbers above are still
+> Haast's-scaled; the hunt/catch/breeding balance was deliberately left alone (a delicate area —
+> see `ecology-feedback-model`), and patrol only runs when the bird is calm. Tracked:
+> `raptor-identity-conflation`.
 
 ---
 
@@ -230,7 +233,12 @@ See `TEMANAWA_INTERACTION_HEALTH_PLAN.md` §3–4.
 
 - **Art.** All three still use placeholder/partial art; the Phase 5 manifest is
   ~113 new assets (`TEMANAWA_BUILD_V3.md` §4 / `TEMANAWA_SPRITE_BRIEF.md`).
-- ~~**Raptor identity**~~ — ✅ resolved to Eyles' harrier / kērangi (§3). Flight *behaviour* still to retune.
+- ~~**Raptor identity**~~ — ✅ resolved to Eyles' harrier / kērangi (§3). ~~Flight *behaviour* still
+  to retune.~~ ✅ **Flight retuned to quartering bursts** — `patrol()` now alternates a fast committed
+  DASH with a slow glide COAST, sweeping back and forth low over the territory (a goshawk, not a
+  soaring circle), and cruise altitude dropped (`wingspan × 1.05`) for the low-quartering read.
+  Predation (hunt/catch/restraint) untouched — patrol only runs when the bird is calm.
+  `TeManawa_eagle.js`; `md/TEMANAWA_ECOLOGY_FAUNA.md` §5.
 - **Moa roster** — the scaffold now founds 5 moa (`upland`, `little_bush`, `stout_legged`,
   `mantells`, `heavy_footed`) + the goose + mōho/NI takahē; the remaining moa (the two
   `Dinornis` giants, `eastern`, `crested`) are defined but not yet placed. The *Dinornis*

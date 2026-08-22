@@ -14,13 +14,24 @@ const habitatCols = {
 sea : ['#1a3a52','#1e4d6b','#236384'],
 coastal: ['#c2b280','#d4c794','#e6dca8'],
 grassland:['#e6dca8', '#c8d697', '#789762'],
+wetland: ['#324a3e','#40594a','#547053'],
 podocarp: ['#2d5a3d','#346644','#3b724b'],
 montane: ['#4a7c59','#528764','#5a926f'],
 subalpine:['#809a59','#a4b56d','#85a15c'],
 alpine: ['#8b8b8b','#9a9a9a','#a9a9a9'],
 snow: ['#e8e8e8','#f0f0f0','#ffffff']
 };
-
+// const habitatCols = {
+//   sea : ['#3d625a','#3f7972','#44938a'],
+//   coastal: ['#dfc992','#ead6a2','#f4e5b4'],
+//   grassland:['#f4e5b4', '#e8e8a5', '#b6bd79'],
+//  wetland: ['#324a3e','#40594a','#547053'],
+//   podocarp: ['#799156','#7f9a5b','#83a361'],
+//   montane: ['#8faa6d','#94b276','#9ab97e'],
+//   subalpine:['#bcc071','#d3d282','#c0c573'],
+//   alpine: ['#bdb39e','#c7beac','#cfc8b6'],
+//   snow: ['#f3f0ec','#f6f6f3','#fffffa']
+//  }; 
 const LEVEL_TEMANAWA_SCAFFOLD = {
   id: 'temanawa_scaffold',
   name: 'Te Manawa (scaffold)',
@@ -107,7 +118,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // spawnPlants): a type's SHARE of the array is its spawn frequency, and
   // repeating a type weights it up. Habitats follow the research — Lowland is
   // open grass/scrub/wetland margin (tussock, flax, cabbage tree, mānuka scrub,
-  // scattered kōwhai); Podocarp is closed lowland forest (rimu/kahikatea/tawa
+  // scattered kōwhai); Podocarp is closed lowland forest (Totara/kahikatea/tawa
   // canopy, nīkau + tree-fern understory, kōwhai on the margin). Kōwhai sits in
   // both but stays more common in the lowland — 1/5 of grassland vs 1/6 of the
   // richer podocarp mix, and the lowland band is wider so it holds more plants.
@@ -121,16 +132,34 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
                  colors:habitatCols.grassland, contourColor:'#2d3a27', outlineColor:'#789762',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai','coprosma'], canPlace:true },
+    // WETLAND — the Manawatū's riverbank is back-swamp + kahikatea, not beach. This is NOT
+    // an elevation band: its 0.16–0.29 range is deliberately SHADOWED by grassland (0.15–0.30),
+    // so getBiomeFromElevation never returns it (validateBiomeBands WILL warn — that is intended,
+    // like the alpine shadow). It is assigned only by the river-proximity override in
+    // TeManawa_terrain.js (_rebuildBiomeMap + the paint pass), which claims the LOW river reaches
+    // — the banks plus a modest back-swamp margin (LOOK.riverWetlandT / riverWetlandElevMax).
+    // Plants are the readable swamp assemblage: harakeke + tī kōuka, kahikatea swamp forest,
+    // mānuka margin, nīkau accent, mingimingi (coprosma) swamp scrub — PLUS tussock, so the
+    // riverbank feeds the open-country grazers (coastal moa + geese). The dark swampy ground colour
+    // reads as the raupō/reed mass from above (raupō/toetoe are ground-palette, not entities).
+    wetland:   { key:'wetland',   name:"Wetland",         minElevation:0.16, maxElevation:0.29,
+                 colors:habitatCols.wetland, contourColor:'#26382b', outlineColor:'#26382b',
+                 walkable:true,  canHavePlants:true, plantDensityMult:3.8, plantTypes:['flax','tussock','cabbagetree','kahikatea','tussock','manuka','flax','nikau','coprosma'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#3b724b',
-                 walkable:true,  canHavePlants:true, plantTypes:['rimu','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
+    // MONTANE — podocarp-broadleaf, NOT beech forest. Black beech is famously ABSENT from the
+    // Manawatū (the "beech gap": tawa is in every forest type EXCEPT beech; the only beech in
+    // Esler's survey is the ~526 ha Aokautere anomaly on leached terraces — TEMANAWA_ECOLOGY.md
+    // §3.3, SPECIES_SUMMARY row 9). So tawa/Tōtara/fern lead and beech is a scattered minority (its
+    // real role is the GLACIAL REFUGE tree — see the build-plan follow-up on beech's cold behaviour).
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#5a926f',
-                 walkable:true,  canHavePlants:true, plantTypes:['beech','fern','tawa'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
                  colors:habitatCols.subalpine, contourColor:'#bfcda8', outlineColor:'#85a15c',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','manuka'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','coprosma','dracophyllum','manuka'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
                  colors:habitatCols.alpine, contourColor:'#5c5c5c', outlineColor:'#a9a9a9',
                  walkable:false, canHavePlants:false, canPlace:false },
@@ -163,7 +192,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
 
   // kōkako + huia are flighted forest birds (their own otherEntities lists, like the
   // kererū). Huia spawn as bonded pairs, so an even count = whole pairs.
-  initialEntityCounts: { moa: 15, eagle: 3, kereru: 8, kokako: 6, huia: 4 },
+  initialEntityCounts: { moa: 15, eagle: 3, kereru: 1, kokako: 1, huia: 2 },
 
   // Timings only — the economy is gone; startingMauri and the placeable toolbar
   // no longer exist. (`seasonDuration` is vestigial: the cold cycle is driven by
@@ -177,7 +206,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // ==========================================================
   // MECHANICS — opt-in behaviours read via LEVEL_MECHANICS (sketch.js loadLevel).
   // ----------------------------------------------------------
-  // FOREST CONTRACTION. Canopy trees (beech/rimu/fern/kahikatea/tawa;
+  // FOREST CONTRACTION. Canopy trees (beech/Totara/fern/kahikatea/tawa;
   // FOREST_TREES in TeManawa_plant.js) whose elevation
   // falls outside the forest band are suppressed, so the forest visibly retreats
   // downslope as the GLACIAL deepens and climbs back through the interglacial. The
@@ -193,6 +222,28 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // ==========================================================
   mechanics: {
     forestContraction: true,
+
+    // ==========================================================
+    // BROWSE = PRUNING, HABITAT = MORTALITY. The two ways a plant changes size are
+    // kept visibly distinct so each teaches a different idea (TeManawa_plant.js):
+    //   · GRAZING never clears a plant. A grazer's bite takes a slice of foliage —
+    //     the plant gets a little smaller (growth drops by `browseBite`, never below
+    //     the `browseFloor` stub) and yields food in proportion — then it regrows in
+    //     place. Moa crop the bush; they do not clear-fell it (herbivory ≠ removal).
+    //   · UNSUITABLE HABITAT is what makes trees disappear. A canopy tree the glacial
+    //     pushes outside the forest band DIES BACK (`forestDieback`): it shrinks away
+    //     to open ground rather than standing as a wilted sprite, so the forest visibly
+    //     RETREATS in the cold. It survives in place as rootstock and regrows (fast,
+    //     `forestRecoverRate`) when the band climbs back over it — the forest sprouts
+    //     back in the interglacial, reversible with the climate and needing no
+    //     re-dispersal (kiosk-safe; unattended cycles never ratchet the forest away).
+    // Health stays decoupled from live-cover (MISTAKES.md), so none of this desaturates
+    // the scene as animals graze — only ash/regime/recruitment move the readout.
+    browseBite:        0.30,   // most of a plant's growth a single bite removes (a little smaller each time)
+    browseFloor:       0.30,   // browsing can never crop a plant below this stub — it always survives to regrow
+    forestDieback:     true,   // suppressed canopy trees shrink away (disappear), not just wilt in place
+    forestDiebackRate: 0.045,  // growth lost per plant-update while a tree sits outside the forest band
+    forestRecoverRate: 0.020,  // regrowth per plant-update for canopy trees (recovery + sapling establishment)
 
     // NO HYBRIDISING. The whole ground-bird guild (all 5 moa + the goose + the mōho / NI
     // takahē) shares one grazer breeding engine on the same `moas` list, so without this a
@@ -223,6 +274,30 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     moaPopulationFloor: 2,                         // per-species minimum — species at/below this can't
                                                    // be hunted or starved, so no moa species goes extinct
 
+    // DISTURBANCE / WARP CLOCK (§9). A storm or eruption stamps a local disturb() that decays on
+    // REAL time, so the aftermath — plants regrowing into the cleared/buried/fertilised ground —
+    // plays as a visible ~2 s beat even under 10× deep-time fast-forward. STORM windthrows warp
+    // the gap so it grows back over the storm; the ERUPTION seeds a WETLAND BLOOM (finding #4, "ash
+    // makes the swamps bloom") and warps it so the swamps surge as the ash clears. See
+    // Simulation.disturb / warpAt / updateDisturbance / bloomWetland, Plant.handleGrowth.
+    warpFrames:        130,   // real frames a disturbance takes to decay to nothing (~2.2 s at 60 fps)
+    warpRecoverBoost:  6,     // recovery-rate multiplier at full warp: growth/regrowth × (1 + warp×this)
+    warpBloomRadius:   60,    // world-radius of the warp stamped around each wetland-bloom seedling
+    wetlandBloomCount: 20,    // swamp seedlings the eruption's wetland bloom seeds (near the standing swamp)
+    wetlandAshSpare:   0.25,  // the eruption's ash-vulnerability for WETLAND plants × this — the swamp is fertilised, not cleared (§6), so it holds while the forest above is knocked back
+
+    // KAHIKATEA — the swamp-forest DISTURBANCE COLONISER (wetland doc §4.1). It is NOT a climax tree:
+    // it recruits only on raw river alluvium (a storm flood, an eruption sediment pulse, the deep-time
+    // channel shift — never the kererū / FOREST button, via `disturbanceRecruit` in plant_defs), and a
+    // stand with no fresh disturbance AGES OUT (Plant.update senescence). This couples the swamp forest
+    // to the moving river. See Simulation.recruitKahikatea / _recruitKahikateaOnMorph, Plant.update.
+    kahiMaxAge:        900,   // sim-time a kahikatea holds without fresh disturbance before it senesces (a warp resets it)
+    kahiSenesceRate:   0.02,  // growth lost per update while an over-age kahikatea wilts back to death
+    kahiRecruitStorm:  8,     // kahikatea seedlings a STORM flood recruits (opens raw river alluvium)
+    kahiRecruitEruption: 8,   // kahikatea recruited by the eruption's SEDIMENT PULSE (§6 stage 5) — the swamp forest the ash ends up making
+    kahiRecruitMorph:  4,     // kahikatea recruited per deep-time channel shift — the ambient baseline
+    kahiRecruitTarget: 30,    // the morph baseline stops above this kahikatea count; storms/eruptions surge over it
+
     // ==========================================================
     // ECOLOGY FEEDBACK — surplus-aware harrier + per-species carrying targets +
     // a rare last-resort safety net. The intent (per the design chat): this is an
@@ -249,7 +324,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     flyerOverTargetBreed: 0.15,  // over-target flyers only lay 15% of the time
     eagleSurplusBonus:   4,      // how strongly the harrier prefers over-target prey
     eagleMaxChase:       420,    // ticks locked on one prey before the harrier gives up (less fruitless chasing)
-    flyerFleeMult:       1.15,   // flee speed = baseSpeed×this — kept BELOW the harrier's 0.6 hunt speed so chases resolve
+    eagleLoseRange:      169,    // world-px a committed target may open up to before the lock drops (≈huntRadius×1.3); higher = more tenacious, lower = breaks off sooner
+    eagleHuntTurn:       2.4,    // pursuit turn authority (seek urgency): steering clamps to maxForce×this, NOT to top speed — raise to corner a fleeing/juking prey instead of overshooting (the "rubber-band" fix), lower for a lazier chase
+    eagleStoopRange:     46,     // world-px from a committed target at which the final stoop engages
+    eagleStoopSpeed:     0.9,    // top speed during the stoop (huntSpeed 0.6 × 1.5) — above goose/takahē flee speed so the strike closes instead of trailing at parity; raise for a snappier, deadlier stoop, lower toward huntSpeed for more escapes
+    flyerFleeMult:       1.0,    // flee speed = baseSpeed×this (i.e. cruise, no speed-up) — well below the harrier's 0.6 hunt speed so a flee is calm and a chase resolves
 
     // target = comfortable population (harrier crops above it, breeding tapers to it);
     // floor = protected minimum (never hunted/starved below it). Targets sum to ~38

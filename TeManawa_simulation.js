@@ -236,7 +236,7 @@ class Simulation {
     if (type === 'huia') { this._spawnHuiaPairs(count); return; }
 
     for (let i = 0; i < count; i++) {
-      const pos = this.findWalkablePosition(0.15, 0.65);
+      const pos = this.findWalkablePosition(0.15, 0.65, true);   // flyer → spawn on-screen
       const entity = this._createFromRegistry(type, type, pos.x, pos.y, null);
 
       if (entity) {
@@ -255,7 +255,7 @@ class Simulation {
     const list = this.otherEntities.huia || (this.otherEntities.huia = []);
     const pairs = Math.max(1, Math.floor(count / 2));   // whole pairs (an odd count rounds down)
     for (let p = 0; p < pairs; p++) {
-      const base = this.findWalkablePosition(0.2, 0.6);
+      const base = this.findWalkablePosition(0.2, 0.6, true);   // huia pair → found on-screen
       const bx = base.x, by = base.y;                 // copy now — findWalkablePosition reuses _tempPos
       const male = this._createFromRegistry('huia', 'huia',
         bx + random(-8, 8), by + random(-8, 8), null);
@@ -339,6 +339,17 @@ class Simulation {
     }
   }
   
+  // A plant site is valid only on LAND. The biome grid (getBiomeAt) is coarse, so a
+  // canHavePlants cell (e.g. the riverbank WETLAND) can still overlap a finer PAINT-water
+  // cell right at the channel — which is how trees ended up standing in the river after the
+  // wetland biome landed. waterTypeAt (0 land · 1 sea · 2 river) is the authoritative fine
+  // test, the same one cullSubmergedPlants uses. Returns true (allow) before the first bake,
+  // where waterTypeAt reads 0 — cullSubmergedPlants still sweeps afterwards as the backstop.
+  _plantSiteIsLand(x, y) {
+    const t = this.terrain;
+    return !(t && typeof t.waterTypeAt === 'function' && t.waterTypeAt(x, y) !== 0);
+  }
+
   spawnPlants() {
     const spawnScale = 2;
     const spawnCols = Math.ceil(this.worldWidth / spawnScale);
@@ -356,7 +367,9 @@ class Simulation {
         const y = row * spawnScale + random(-1, 1);
         const biome = terrain.getBiomeAt(x, y);
         
-        if (biome.canHavePlants && random() < density) {
+        // Per-biome density multiplier: a thin-corridor habitat (the riverbank WETLAND) reads
+        // sparse at the uniform global density, so it can ask for more via biome.plantDensityMult.
+        if (biome.canHavePlants && random() < density * (biome.plantDensityMult || 1) && this._plantSiteIsLand(x, y)) {
           const plantTypes = biome.plantTypes;
           const plantType = plantTypes[(random() * plantTypes.length) | 0];
           this.plants.push(new Plant(x, y, plantType, terrain, biome.key));
@@ -386,11 +399,12 @@ class Simulation {
       const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
       const biome = terrain.getBiomeAt(px, py);
       if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
+      if (!this._plantSiteIsLand(px, py)) continue;   // never disperse onto river/sea water
       // kererū disperse LARGE forest fruit → only warm (low coldTolerance) types recruit
       const warm = [];
       for (let i = 0; i < biome.plantTypes.length; i++) {
         const t = biome.plantTypes[i], d = PLANT_TYPES[t];
-        if (d && d.coldTolerance <= warmMax) warm.push(t);
+        if (d && d.coldTolerance <= warmMax && !d.disturbanceRecruit) warm.push(t);   // kahikatea needs a river disturbance, not a kererū
       }
       if (!warm.length) continue;
       // Skip this site if the neighbourhood already holds enough live plants.
@@ -405,6 +419,187 @@ class Simulation {
       return p;
     }
     return null;
+  }
+
+  // GROWTH-BUTTON SEEDING. A FOREST / TUSSOCK press doesn't only mature standing cover (InstallHUD.
+  // _growPulse) — it also SEEDS a few new seedlings of that set into the habitat that suits them, so
+  // the boost visibly starts new plants, not just fattens existing ones. warm=true → FOREST (low
+  // coldTolerance) into forest-capable biomes; warm=false → TUSSOCK (cold-hardy) into open biomes.
+  // Only biomes whose own plantTypes include the set take a seed, so forest lands in forest ground
+  // and tussock in open ground; a press against the climate seeds plants the forest-band / dormancy
+  // machinery then suppresses (the same lesson _growPulse teaches). Cap- and density-gated. Returns
+  // how many established. Fired from the button ACTION (a burst per press), off the per-frame path.
+  seedGrowth(warm, count = 6) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const cap = (M && M.maxLivePlants) || 900;
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65, coldMin: 0.75 };
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    const terrain = this.terrain;
+    if (!TYPES || !terrain) return 0;
+    let seeded = 0;
+    for (let tries = 0; tries < count * 10 && seeded < count; tries++) {
+      if (this.plants.length >= cap) break;
+      const px = random(this.worldWidth), py = random(this.worldHeight);
+      const biome = terrain.getBiomeAt(px, py);
+      if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
+      if (!this._plantSiteIsLand(px, py)) continue;   // never seed onto river/sea water
+      // Only the requested set from THIS biome's palette — so the seed lands in matching habitat.
+      const set = [];
+      for (let i = 0; i < biome.plantTypes.length; i++) {
+        const t = biome.plantTypes[i], d = TYPES[t];
+        if (!d || d.disturbanceRecruit) continue;   // kahikatea recruits only on a river disturbance, not the FOREST button
+        const ct = d.coldTolerance ?? 0.5;
+        if (warm ? (ct <= G.warmMax) : (ct >= G.coldMin)) set.push(t);
+      }
+      if (!set.length) continue;
+      // Density gate: don't carpet an already-dense stand (mirrors disperseSeed).
+      let live = 0;
+      const near = this.getNearbyPlants(px, py, 26);
+      for (let i = 0; i < near.length; i++) { if (near[i].alive && ++live >= 3) break; }
+      if (live >= 3) continue;
+      const type = set[(random() * set.length) | 0];
+      const p = new Plant(px, py, type, terrain, biome.key);
+      p.growth = 0.08;               // a fresh seedling — grows in visibly
+      this.plants.push(p);
+      seeded++;
+    }
+    return seeded;
+  }
+
+  // ============================================================
+  // DISTURBANCE / WARP CLOCK (PLAN_V3 §9). A storm or eruption stamps a local `disturb()` — a warp
+  // bump that DECAYS ON REAL TIME, so the aftermath (plants regrowing into the cleared/buried/
+  // fertilised ground) plays out as a visible ~2 s beat REGARDLESS of how fast the deep-time clock
+  // runs. Implemented as a small list of active disturbances (usually 0–3), not a per-cell
+  // Float32Array: same `warpAt(x,y)` query, but allocation-free and deterministic — no field to
+  // tear across the sliced terrain morph. Read by Plant.handleGrowth via updatePlantsBatched.
+  // ============================================================
+  disturb(x, y, radius, kind = 'gale', strength = 1) {
+    const D = this._disturbances || (this._disturbances = []);
+    if (D.length >= 64) D.shift();                  // bound the list (spam-safe)
+    D.push({ x, y, r2: radius * radius, kind, strength, life: 1 });
+    this._disturbActive = true;
+  }
+
+  // Warp multiplier at (x,y): 0 undisturbed → up to `strength` at a fresh disturbance, fading to 0
+  // as it decays. Max over the covering disturbances. O(active disturbances), usually 0–3.
+  warpAt(x, y) {
+    const D = this._disturbances;
+    if (!D) return 0;
+    let w = 0;
+    for (let i = 0; i < D.length; i++) {
+      const d = D[i];
+      const dx = x - d.x, dy = y - d.y;
+      if (dx * dx + dy * dy < d.r2) { const v = d.strength * d.life; if (v > w) w = v; }
+    }
+    return w;
+  }
+
+  // Decay every active disturbance on the REAL frame clock (rdt) so the aftermath beat is a fixed
+  // wall-time length even under 10× deep-time fast-forward. Compacts expired entries in place.
+  updateDisturbance(rdt) {
+    const D = this._disturbances;
+    if (!D || !D.length) { this._disturbActive = false; return; }
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const frames = (M && M.warpFrames) || 130;      // ~2.2 s at 60 fps
+    const dec = rdt / frames;
+    let w = 0;
+    for (let i = 0; i < D.length; i++) {
+      D[i].life -= dec;
+      if (D[i].life > 0) D[w++] = D[i];
+    }
+    D.length = w;
+    this._disturbActive = w > 0;
+  }
+
+  // WETLAND BLOOM (PLAN_V3 §8, finding #4 — "ash makes the swamps bloom"). After an eruption the
+  // tephra fertilises the wetland: seed a burst of swamp seedlings into wetland ground and warp
+  // their neighbourhood so they grow in over the aftermath beat — the swamps visibly SURGE as the
+  // ash clears, rather than everything simply dying (the truer, more watchable read). Cap- and
+  // water-guarded, same as the other spawn paths. Returns how many established.
+  bloomWetland(count = 14) {
+    const terrain = this.terrain;
+    if (!terrain || typeof terrain.getBiomeAt !== 'function') return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const cap = (M && M.maxLivePlants) || 900;
+    const R = (M && M.warpBloomRadius) || 60;
+    // Anchor the bloom on the STANDING wetland — gather the live swamp plants (the eruption spares
+    // most of them, see Game.applyAsh); seeding NEAR them reliably lands in the thin corridor, and
+    // warping the survivors makes them surge in too, so the swamps visibly fill in after the ash.
+    const anchors = [];
+    for (let i = 0; i < this.plants.length; i++) {
+      const p = this.plants[i];
+      if (p.alive && p.biomeKey === 'wetland') anchors.push(p);
+    }
+    if (!anchors.length) return 0;
+    let seeded = 0;
+    for (let tries = 0; tries < count * 6 && seeded < count; tries++) {
+      if (this.plants.length >= cap) break;
+      const a = anchors[(random() * anchors.length) | 0];
+      const ang = random(TWO_PI), r = random(44);
+      const px = a.pos.x + Math.cos(ang) * r, py = a.pos.y + Math.sin(ang) * r;
+      const biome = terrain.getBiomeAt(px, py);
+      if (!biome || biome.key !== 'wetland' || !biome.plantTypes) continue;
+      if (!this._plantSiteIsLand(px, py)) continue;
+      const type = biome.plantTypes[(random() * biome.plantTypes.length) | 0];
+      const p = new Plant(px, py, type, terrain, biome.key);
+      p.growth = 0.06;
+      this.plants.push(p);
+      this.disturb(px, py, R, 'bloom', 1);          // warp so the new growth surges in fast
+      seeded++;
+    }
+    // Surge the survivors too — a spread of large warp stamps over the standing swamp (a sample,
+    // not one per plant, so the active-disturbance list stays small).
+    const step = Math.max(1, (anchors.length / 12) | 0);
+    for (let i = 0; i < anchors.length; i += step) this.disturb(anchors[i].pos.x, anchors[i].pos.y, R, 'bloom', 1);
+    return seeded;
+  }
+
+  // KAHIKATEA RECRUITMENT (wetland doc §4.1). Kahikatea colonises raw river alluvium, so it recruits
+  // ONLY on a disturbance — a storm flood, an eruption's sediment pulse, or the deep-time channel
+  // shift — never through the free kererū/FOREST-button paths (gated by `disturbanceRecruit`). Seeds
+  // young kahikatea on the wetland ground near the standing swamp and warps them in.
+  recruitKahikatea(count = 6) {
+    const terrain = this.terrain;
+    if (!terrain || typeof terrain.getBiomeAt !== 'function') return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const cap = (M && M.maxLivePlants) || 900;
+    const R = (M && M.warpBloomRadius) || 60;
+    const anchors = [];
+    for (let i = 0; i < this.plants.length; i++) {
+      const p = this.plants[i];
+      if (p.alive && p.biomeKey === 'wetland') anchors.push(p);
+    }
+    if (!anchors.length) return 0;
+    let seeded = 0;
+    for (let tries = 0; tries < count * 8 && seeded < count; tries++) {
+      if (this.plants.length >= cap) break;
+      const a = anchors[(random() * anchors.length) | 0];
+      const ang = random(TWO_PI), r = random(52);
+      const px = a.pos.x + Math.cos(ang) * r, py = a.pos.y + Math.sin(ang) * r;
+      const biome = terrain.getBiomeAt(px, py);
+      if (!biome || biome.key !== 'wetland' || !biome.plantTypes) continue;
+      if (!this._plantSiteIsLand(px, py)) continue;
+      const p = new Plant(px, py, 'kahikatea', terrain, biome.key);
+      p.growth = 0.06; p._kahiAge = 0;
+      this.plants.push(p);
+      this.disturb(px, py, R, 'flood', 1);
+      seeded++;
+    }
+    return seeded;
+  }
+
+  // The river MOVED (once per morph re-bake, called from cullSubmergedPlants): a small kahikatea pulse
+  // — the ambient equivalent of the storm flood — keeps the swamp forest at a modest baseline as the
+  // channel shifts, so a storm/eruption reads as a SURGE above it rather than the only thing keeping
+  // kahikatea alive. Gated by a target so it stays a trickle.
+  _recruitKahikateaOnMorph() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const target = (M && M.kahiRecruitTarget) || 30;
+    let n = 0;
+    for (let i = 0; i < this.plants.length; i++) { const p = this.plants[i]; if (p.alive && p._kahikatea) n++; }
+    if (n >= target) return 0;
+    return this.recruitKahikatea((M && M.kahiRecruitMorph) || 4);
   }
 
   spawnMoas(count, speciesKey = null) {
@@ -433,10 +628,10 @@ class Simulation {
   }
 
   spawnEagle(speciesKey = null) {
-    let pos = this.findWalkablePosition(0.25, 0.7);
+    let pos = this.findWalkablePosition(0.25, 0.7, true);   // flyer → spawn on-screen
     const eagles = this.eagles;
     const minDistSq = 6400;
-    
+
     for (let attempts = 0; attempts < 20; attempts++) {
       let tooClose = false;
       for (let i = 0, len = eagles.length; i < len; i++) {
@@ -445,7 +640,7 @@ class Simulation {
         if (dx * dx + dy * dy < minDistSq) { tooClose = true; break; }
       }
       if (!tooClose) break;
-      pos = this.findWalkablePosition(0.25, 0.7);
+      pos = this.findWalkablePosition(0.25, 0.7, true);
     }
     
     // Pick from active eagle species if no specific key given
@@ -595,24 +790,30 @@ class Simulation {
     return (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.kereruMaxPopulation) ?? 16;
   }
 
-  findWalkablePosition(minElev, maxElev) {
+  // clampView: keep the picked X inside the VISIBLE screen band. The cover-fit view runs the map
+  // wider than the canvas (CONFIG.viewInsetX px off-frame each side), so a FLYER spawned in that
+  // off-screen L/R overflow reads as "missing" — and its bolt-hole (Kereru._lastLand) can trap it
+  // there. Flyers pass true; ground animals leave it false and use the full map width.
+  findWalkablePosition(minElev, maxElev, clampView = false) {
     const terrain = this.terrain;
     const padding = this.spawnPadding;
-    const maxX = this.worldWidth - padding;
+    const ins = (clampView && typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+    const minX = padding + ins;
+    const maxX = this.worldWidth - padding - ins;
     const maxY = this.worldHeight - padding;
-    
+
     for (let attempts = 0; attempts < 100; attempts++) {
-      const x = padding + random() * (maxX - padding);
+      const x = minX + random() * Math.max(1, maxX - minX);
       const y = padding + random() * (maxY - padding);
       const elev = terrain.getElevationAt(x, y);
-      
+
       if (elev > minElev && elev < maxElev && terrain.isWalkable(x, y)) {
         this._tempPos.set(x, y);
         return this._tempPos;
       }
     }
-    
-    this._tempPos.set(this.worldWidth * 0.5, this.worldHeight * 0.5);
+
+    this._tempPos.set(this.worldWidth * 0.5, this.worldHeight * 0.5);   // centre — always on-screen
     return this._tempPos;
   }
   
@@ -957,6 +1158,7 @@ class Simulation {
   // caller keeps the old fully-warped behaviour.
   update(dt = 1, rdt = dt) {
     this.updateSpatialGrids();
+    this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
     
     if (this.seasonManager.justChanged) this.onSeasonChange();
@@ -1106,7 +1308,7 @@ class Simulation {
       x = p.x; y = p.y;
     } else {
       const pref = this.seasonManager.getPreferredElevation();
-      const p = this.findWalkablePosition(pref.min, pref.max);
+      const p = this.findWalkablePosition(pref.min, pref.max, isFlyer);   // flyers refound on-screen
       x = p.x; y = p.y;
     }
 
@@ -1188,8 +1390,14 @@ class Simulation {
     const batchSize = Math.ceil(this._plantBatchSize * Math.min(dt, 2));
     const endIdx = Math.min(this._plantBatchIndex + batchSize, len);
     
+    const warpActive = this._disturbActive;
+    // Lifecycle accelerator for kahikatea while a matched FOREST boost is held (set in
+    // InstallHUD.update). 1 = normal; >1 hurries a kahikatea through its CURRENT process
+    // (grow/age/senesce), rather than force-growing it. Ignored by every other plant type.
+    const kahiBoost = (this.game && this.game._kahiBoost) || 1;
     for (let i = this._plantBatchIndex; i < endIdx; i++) {
-      plants[i].update(this.seasonManager, dt);
+      const p = plants[i];
+      p.update(this.seasonManager, dt, warpActive ? this.warpAt(p.pos.x, p.pos.y) : 0, kahiBoost);
     }
     
     this._plantBatchIndex = endIdx >= len ? 0 : endIdx;
@@ -1242,6 +1450,9 @@ class Simulation {
     }
     if (writeIdx !== plants.length) plants.length = writeIdx;
     if (culled && CONFIG.debugMode) console.log(`cullSubmergedPlants: removed ${culled} plant(s) now in water`);
+    // The channel just shifted (this runs once per morph re-bake) → a small kahikatea recruitment
+    // pulse on the freshly-worked alluvium, so the swamp forest tracks the moving river ambiently.
+    this._recruitKahikateaOnMorph();
     return culled;
   }
 
@@ -1496,30 +1707,17 @@ class Simulation {
   // RENDER (unified viewport culling)
   // ============================================
 
-  // Advance the death fade on every dying entity once per REAL frame (called at
-  // the top of render, so it ticks at wall-clock rate regardless of the deep-time
-  // warp). Birds fade on death (!alive); a browsed plant fades while _consumed and
-  // is finalised into its regrowth cycle when the fade runs out. Off the hot sim
-  // path — this is O(entities) once a frame, no allocation.
+  // Advance the death fade on every dying BIRD once per REAL frame (called at the top
+  // of render, so it ticks at wall-clock rate regardless of the deep-time warp). Birds
+  // fade out on death (!alive) before cleanup() compacts them. Plants no longer fade:
+  // browsing prunes them in place (Plant.consume) and habitat die-back shrinks them
+  // away (Plant.update), so neither needs a removal fade. Off the hot sim path —
+  // O(birds) once a frame, no allocation.
   _advanceFades() {
     const step = ((typeof deltaTime === 'number' && deltaTime > 0) ? deltaTime : 16.7) / TM_FADE_MS;
     this._fadeDeadList(this.moas, step);
     this._fadeDeadList(this.eagles, step);
     for (const type in this.otherEntities) this._fadeDeadList(this.otherEntities[type], step);
-
-    // Plants stay .alive while they fade (so they keep rendering their real
-    // sprite), keyed off _consumed; when the fade ends they drop into the normal
-    // regrowth path (alive=false, growth=0) that grows them back in.
-    const plants = this.plants;
-    for (let i = 0, len = plants.length; i < len; i++) {
-      const p = plants[i];
-      if (!p._consumed) continue;
-      p._fade -= step;
-      if (p._fade <= 0) {
-        p._fade = undefined; p._consumed = false;
-        p.alive = false; p.growth = 0; p.nutrition = 0; p.regrowthTimer = 0;
-      }
-    }
   }
 
   // Arm and advance the fade on dead birds in `list`. A freshly-dead entity has
@@ -1576,8 +1774,10 @@ class Simulation {
     const list = this._sortList || (this._sortList = []);
     list.length = 0;
 
-    // A browsed plant stays .alive while it fades, so `e.alive` already carries it.
-    for (let i = 0; i < plants.length; i++) { const e = plants[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
+    // A canopy tree that has died back to a sub-pixel stub (habitat die-back,
+    // Plant.update) is still .alive as rootstock but draws nothing, so skip it here
+    // rather than sorting an invisible into the depth pass; it re-enters as it regrows.
+    for (let i = 0; i < plants.length; i++) { const e = plants[i]; if (e.alive && e.growth > 0.03 && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (let i = 0; i < placeables.length; i++) { const e = placeables[i]; if (e.alive && e.type !== 'Storm' && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     for (let i = 0; i < eggs.length; i++) { const e = eggs[i]; if (e.alive && inView(e.pos.x, e.pos.y, GM)) list.push(e); }
     // Dead-but-fading birds (_fade > 0) keep drawing until the fade runs out.
@@ -1613,6 +1813,16 @@ class Simulation {
     }
     // Storms sit above everything.
     this._renderFiltered(placeables, 80, p => p.type === 'Storm', true, inView);
+
+    // WebGL entity layer (?render=gl): every sprite draw above landed in the GPU
+    // batch. Composite it into the 2D frame HERE — after all sprites, before the
+    // indicator over-pass — so hearts/rings (and the HUD, later) stay on top. A
+    // no-op when GL is off; when on, it also drew the shadows/halos underneath on
+    // the 2D canvas during the passes above.
+    if (typeof GLBatch !== 'undefined' && GLBatch.enabled && GLBatch._open) {
+      GLBatch.composite(drawingContext);
+    }
+
     // Moa indicators (debug-only layer).
     this._renderFiltered(moas, 0, null, true, inView, 'renderIndicators');
 

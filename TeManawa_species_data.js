@@ -410,7 +410,7 @@ const MOA_SPECIES = {
     camouflage: 0.5,       // 50% chance eagle doesn't see
 
     // Unique: when migrating, passively biases toward dense forest
-    // (beech/rimu/fern cover). 0..1 — weight added to migration target scoring.
+    // (beech/Totara/fern cover). 0..1 — weight added to migration target scoring.
     forestAffinity: 0.8,
     
     // Little Bush Moa (Anomalopteryx) — dense closed-forest bird; thrives in the

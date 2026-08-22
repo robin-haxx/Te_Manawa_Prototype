@@ -1060,7 +1060,18 @@ class Moa extends Boid {
         if (p.favouredSpecies === this.speciesKey) score *= 0.6;  // prefer own resource
         else score *= 4.0;                                        // largely ignore others'
       }
-      
+
+      // Deprioritise food on the FAR side of water: the straight path crosses the river/sea,
+      // so a moa can't graze it without a detour — chasing it just noses into the shore and
+      // rubber-bands (the "sand band around the river, not finding food" report). A soft
+      // penalty, not a hard skip, so a moa in a genuine one-sided food desert can still fall
+      // back to it rather than starve. Cheap: one water-type sample at the path midpoint.
+      const mx = (this.pos.x + p.pos.x) * 0.5, my = (this.pos.y + p.pos.y) * 0.5;
+      const midWater = (typeof this.terrain.waterTypeAt === 'function')
+        ? this.terrain.waterTypeAt(mx, my) !== 0
+        : !this.terrain.isWalkable(mx, my);
+      if (midWater) score *= 6.0;
+
       if (score < bestScore) { bestScore = score; best = p; }
     }
     return best;
@@ -1100,7 +1111,7 @@ class Moa extends Boid {
     const mapW = this.terrain.mapWidth - 20, mapH = this.terrain.mapHeight - 20;
 
     // Forest-seeking species (e.g. little bush moa) bias candidate scoring
-    // toward dense tree cover (beech/rimu/fern).
+    // toward dense tree cover (beech/Totara/fern).
     const forestAffinity =
       (simulation && typeof FOREST_TREES !== 'undefined' &&
        this.speciesConfig.forestAffinity) || 0;
@@ -1204,8 +1215,14 @@ class Moa extends Boid {
     push();
     // Sit on the 3/4 ground: the anchor y is projected (Projection.groundY, which
     // now lifts with terrain elevation), so the sprite rides the relief while
-    // staying undistorted. x is unchanged. Centre-anchored for now — foot-
-    // anchoring is a later pass.
+    // staying undistorted. x is unchanged. FOOT-ANCHORED (the image is drawn with its
+    // base on this point below) — the moa's ground-contact is now pos.y, the SAME
+    // convention base-anchored trees use, so the painter's y-sort (Simulation.render)
+    // orders a moa against a tree by where they actually stand. Centre-anchoring hung
+    // the lower body a half-sprite SOUTH of pos.y, so a moa clearly in front of a tree
+    // sorted behind it and drew occluded (the "moa render behind trees they're in
+    // front of" report). The Moa/ art fills its frame with no bottom padding, so the
+    // feet land exactly on the ground point.
     translate(this.pos.x, Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y)));
 
     // Species highlight: a soft pulsing halo under the moa, driven purely by
@@ -1247,7 +1264,10 @@ class Moa extends Boid {
     // Moa/ art is landscape and would stretch tall if forced into a square box.
     const _drawW = this.size * 2.5 * (this.speciesConfig.spriteScale || 1);
     const _drawH = (sprite.width > 0) ? _drawW * (sprite.height / sprite.width) : _drawW;
-    image(sprite, 0, 0, _drawW, _drawH);
+    // Foot-anchored: centre the image a half-height ABOVE the ground point so its base
+    // sits on it (see the translate note). The vertical squash-stretch above scales about
+    // the feet, so the turn-around bounce now springs from planted feet rather than the belly.
+    image(sprite, 0, -_drawH * 0.5, _drawW, _drawH);
     pop();
   }
 

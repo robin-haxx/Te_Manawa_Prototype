@@ -249,7 +249,7 @@ stand-in, not the final look.
 
 | Folder | Sim plant type | Native px | Wired | State |
 |---|---|---|---|---|
-| `Totara/` | `rimu` (tōtara art) | 526×920 | ✓ | complete — 4 growing + 3 size variants, `sizeOnly` |
+| `Totara/` | `Totara` (tōtara art) | 526×920 | ✓ | complete — 4 growing + 3 size variants, `sizeOnly` |
 | `Tussock/` | `tussock` | 143×82 | ✓ `single` | one frame, all states |
 | `Flax/` | `flax` (harakeke) | 175×193 | ✓ `single` | one frame, all states |
 | `TreeFern/` | `fern` (mamaku/ponga stand-in) | 183×227 | ✓ `single`, `anchor: base` | one frame, all states |
@@ -263,7 +263,7 @@ stand-in, not the final look.
 | `Epiphytes/` | — (epiphytes) | 133×123 | **deferred** | going into individual trees' art by hand, not a plant type |
 
 `Totara` is complete (covers tōtara's tier-S 5). **Eleven of the twelve folders are now
-live plant types** — the six podocarp/lowland/subalpine species above joined `rimu`,
+live plant types** — the six podocarp/lowland/subalpine species above joined `Totara`,
 `tussock`, `flax`, `fern` and `beech`. Habitats follow the research and are set in the
 level scaffold biomes (see the `plantTypes` comment there). `Epiphytes/` is intentionally
 NOT a plant type — those go into individual trees' artwork by hand. **New plant assets
@@ -272,7 +272,7 @@ TreeFern, Beech, Kōwhai, Mānuka, Kahikatea, Nīkau, Tawa, Cabbage tree — inc
 tier-K flowering frame, plus the palette micro-textures).
 
 **Superseded root files.** The old root `Beech_*`, `Fern_*`, `Flax_*` and `Tussock_*`
-state files (and `Rimu_*`, aliased to tōtara) are no longer referenced now those keys
+state files (and `Totara_*`, aliased to tōtara) are no longer referenced now those keys
 point at their folders; they are left in `sprites/` for reference, not deleted.
 `Patotara` and `Lancewood` were never in `PLANT_SPRITE_SETS` and render procedurally.
 

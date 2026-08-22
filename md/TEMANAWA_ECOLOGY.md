@@ -46,7 +46,7 @@ honest about all four being weak:
 
 **The four biases to carry through everything below:**
 
-- **Timber selection.** Tōtara, kahikatea, rimu and mātai were logged first. Remnants
+- **Timber selection.** Tōtara, kahikatea, Totara and mātai were logged first. Remnants
   are systematically *depleted* in the species that defined the forest. Tawa is
   over-represented today for exactly this reason — Esler notes Kitchener Park almost
   certainly has more tawa now than before milling.
@@ -142,7 +142,7 @@ fire — and regenerated slowly, so the "scrub country" of mānuka, toetoe, koro
 tutu and bracken the settlers found was **recently burnt forest, not natural
 shrubland**, evidenced by stumps under the scrub.
 
-Associates recalled: mātai, miro, rimu, and **very large northern rātā near
+Associates recalled: mātai, miro, Totara, and **very large northern rātā near
 Rongotea** (still burning 25 years after clearance).
 
 `[BUILD]` This is our best-evidenced **fire-edge / ecotone** habitat and the natural
@@ -150,16 +150,16 @@ home of a forest↔shrubland flip in the sim.
 
 ### 2.3 Mixed podocarp–broadleaf forest
 
-Intermediate between §2.1 and §2.2 — rimu, mātai, tōtara, kahikatea, miro over an
+Intermediate between §2.1 and §2.2 — Totara, mātai, tōtara, kahikatea, miro over an
 invariably tawa-containing canopy. Occupied recent alluvium, the terraces east of the
 river, and the Tiritea/Kahuterawa headwater basins.
 
-**Keebles Bush** is the reference stand: emergent podocarps >30 m (rimu most
+**Keebles Bush** is the reference stand: emergent podocarps >30 m (Totara most
 conspicuous, mātai as numerous, then kahikatea/tōtara/miro), **main canopy only
 9–15 m** of tawa and māhoe with tītoki, kāmahi, rewarewa, hīnau, mapou, lancewood.
 Kawakawa-dominant shrub layer; 29 fern species; podocarp regeneration negligible.
 
-The 1868 surveyor's line on the Linton terraces — "Fine level land. Rimu and tawa
+The 1868 surveyor's line on the Linton terraces — "Fine level land. Totara and tawa
 predominate" — is one of the few direct descriptions of this forest standing.
 
 ### 2.4 Tawa forest
@@ -225,7 +225,7 @@ ready-made deep-time event, and it is *local and evidenced* rather than invented
 ### 3.1 Northern rātā–kāmahi forest, upper Tararua flanks
 
 The montane forest, and the one Esler watched die. Reconstructed from stumps plus
-F. G. Hayes' 1927 recollections. **Multi-tiered:** northern rātā, miro and rimu
+F. G. Hayes' 1927 recollections. **Multi-tiered:** northern rātā, miro and Totara
 emergent over a subordinate layer of kāmahi, tawa and black maire; **above ~365 m,
 *Griselinia littoralis* and Hall's tōtara come in and tawa drops out.** Rātā >30 m
 stood on ridges that now carry cropped turf.

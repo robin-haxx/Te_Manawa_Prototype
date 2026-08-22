@@ -24,7 +24,7 @@ contemporary written record amounts to roughly two sentences:
   ***"Flat land. Totara matai, tawa and other timber."*** Esler: *"This seems to be
   the most detailed and, in fact, the only description of the early forest available
   to me."*
-- A surveyor's line on the Linton terraces, 1868: ***"Fine level land. Rimu and tawa
+- A surveyor's line on the Linton terraces, 1868: ***"Fine level land. Totara and tawa
   predominate but there is some secondary forest in the gullies."***
 
 Everything else is stumps, logs, place names, and interviews conducted in the 1960s
@@ -70,8 +70,8 @@ Wettest to driest, the lowland forest is a single drainage/moisture gradient:
 | Position | Forest type | Dominants | Where |
 |---|---|---|---|
 | Permanently wet, fine sediment | **Kahikatea–pukatea semi-swamp** *(Deep Dive 2)* | kahikatea, pukatea | Taonui basin, back-swamps behind levées |
-| Moist recent alluvium and terraces | **Mixed podocarp–broadleaf** | rimu, mātai, tōtara, kahikatea, miro **over tawa** | plains, terraces east of the river, Tiritea and Kahuterawa basins |
-| Free-draining levées and terraces | **Tōtara forest** | tōtara, mātai, with miro, rimu, northern rātā | riparian levées; the Rongotea–Ohakea terraces |
+| Moist recent alluvium and terraces | **Mixed podocarp–broadleaf** | Totara, mātai, tōtara, kahikatea, miro **over tawa** | plains, terraces east of the river, Tiritea and Kahuterawa basins |
+| Free-draining levées and terraces | **Tōtara forest** | tōtara, mātai, with miro, Totara, northern rātā | riparian levées; the Rongotea–Ohakea terraces |
 | Droughty NW downlands | **Dry margin** | tōtara at the climatic edge, giving way to shrubland | Rongotea–Ohakea, <914 mm rain |
 | Hills, gorge, older terraces | **Tawa forest** | tawa, near-pure in places | Manawatū Gorge, Tiritea, terraces |
 
@@ -79,7 +79,7 @@ Wettest to driest, the lowland forest is a single drainage/moisture gradient:
 
 From Keebles Bush, the only relic still holding numerous podocarps:
 
-- **Emergent podocarps exceed 30 m**, diameters 0.3–1.5 m. Rimu most conspicuous,
+- **Emergent podocarps exceed 30 m**, diameters 0.3–1.5 m. Totara most conspicuous,
   **mātai about as numerous**, then kahikatea, tōtara and miro.
 - **The main canopy sits at only 9–15 m** — tawa and māhoe, with tītoki, kāmahi,
   rewarewa, hīnau, *Pittosporum tenuifolium*, mapou and lancewood.
@@ -91,9 +91,9 @@ From Keebles Bush, the only relic still holding numerous podocarps:
 > over a continuous 9–15 m canopy. That silhouette is the single most important visual
 > fact about this forest, and it is *not* what a modern remnant looks like (§8).
 
-Rimu reaches ~50 m on good sites and lives **600–800 years, possibly to 1,200**;
+Totara reaches ~50 m on good sites and lives **600–800 years, possibly to 1,200**;
 tōtara to ~35 m. `[BUILD]` These trees are older than most of the events the
-installation renders between them — an emergent rimu can stand through several
+installation renders between them — an emergent Totara can stand through several
 storms and a whole vegetation re-sort.
 
 ---
@@ -117,7 +117,7 @@ large-scale disturbance in old-growth podocarp–broadleaved forest is what prod
 podocarp regeneration gap.**
 
 Species differ in how they respond. **Tōtara and kahikatea show the greatest
-height-growth response to increased light**; mātai, rimu and miro respond less
+height-growth response to increased light**; mātai, Totara and miro respond less
 (Ebbett & Ogden 1998).
 
 > ### `[BUILD]` This is the most important mechanic in this document
@@ -137,7 +137,7 @@ height-growth response to increased light**; mātai, rimu and miro respond less
 > centuries-long trend Esler observed and couldn't name.
 >
 > Two refinements: give **tōtara and kahikatea a stronger light response** than mātai,
-> rimu and miro, so a gap fills with a different mix depending on how big it is; and
+> Totara and miro, so a gap fills with a different mix depending on how big it is; and
 > let cohorts **age out visibly**, so a long quiet stretch produces a thinning of
 > giants rather than a static scene.
 
@@ -167,7 +167,7 @@ near the climatic margin of forest and grassland."**
 
 Edgar Dear's recollection, written for Esler shortly before his death: a line from
 Rongotea cemetery toward Ōhakea held *"the finest stand of tōtara in the Manawatū"*,
-with mātai, miro, rimu and **northern rātā** — *"some of the largest rātā that I have
+with mātai, miro, Totara and **northern rātā** — *"some of the largest rātā that I have
 ever seen… too large to be felled, killed by fire when the area was burnt. These trees
 were a feature of the landscape for 25 years after the bush was felled."*
 
@@ -356,7 +356,7 @@ nothing did here for sixty million years.**
 
 > ℹ️ **Input, not commitment.** The built plant list is `TEMANAWA_PLAN_V3.md` §4.
 > Tawa, tōtara, kahikatea, mamaku, nīkau, kōwhai, mānuka and tī kōuka are built;
-> **rimu, kawakawa and rewarewa are cut** (§2.3 gives the reasons, all of which are
+> **Totara, kawakawa and rewarewa are cut** (§2.3 gives the reasons, all of which are
 > about the bird's-eye read rather than the ecology); bracken is ground palette; mātai
 > and tutu are not built. This shortlist remains the reference for composition.
 
@@ -365,7 +365,7 @@ are already built (Dive 2) and belong on the wet end of this gradient too.
 
 | Habitat | Species | Read at distance | Shared? |
 |---|---|---|---|
-| **Mixed podocarp–broadleaf** | **Rimu** | weeping, drooping foliage, emergent above everything | — |
+| **Mixed podocarp–broadleaf** | **Totara** | weeping, drooping foliage, emergent above everything | — |
 | | **Mātai** | rounded dense crown; hammer-marked flaking bark | — |
 | | **Rewarewa** | narrow upright spire, red bottlebrush flowers — the most distinctive shape in the forest | — |
 | | **Tawa** | rounded canopy, fine willowy leaves | ✓ coast |
@@ -400,7 +400,7 @@ both.
 3. **Make tawa the default state** the map decays toward (§5). It gives every
    disturbance button something to interrupt.
 4. **Differentiate light response** — tōtara and kahikatea respond strongly to gaps,
-   mātai/rimu/miro weakly — so gap size changes what fills it.
+   mātai/Totara/miro weakly — so gap size changes what fills it.
 5. **Restrict browse to the 0–3 m layer** (§7.1). Moa should visibly shape shrub
    architecture and visibly *not* affect the canopy.
 6. **Make the dry NW margin climate-driven** (§6) — the map's most responsive
@@ -426,7 +426,7 @@ Information Series 127 — tōtara, mixed podocarp and tawa forest sections
 - [Factors influencing natural regeneration of tōtara on grazed hill country, Northland. *NZ J. Forestry Science*](https://link.springer.com/article/10.1186/s40490-014-0013-8) — catastrophic regeneration mode; Ogden & Stewart's lozenge model; Ebbett & Ogden on light response
 - [Norton, D. 1988. The ecology of *Dacrydium cupressinum*: a review. *NZ J. Botany*](https://rsnz.onlinelibrary.wiley.com/doi/abs/10.1080/0028825X.1988.10410098)
 - [Smale et al. — Dynamics of upland podocarp/broadleaved forest, Mamaku Plateau](https://www.researchgate.net/profile/M-Smale/publication/202000872_Dynamics_of_upland_podocarpbroadleaved_forest_on_Mamaku_Plateau_central_North_Island_New_Zealand)
-- [DOC — Podocarp–hardwood forests](https://www.doc.govt.nz/nature/native-plants/podocarp-hardwood-forests/); [Te Ara — Rimu and kahikatea](https://teara.govt.nz/en/conifers/page-3)
+- [DOC — Podocarp–hardwood forests](https://www.doc.govt.nz/nature/native-plants/podocarp-hardwood-forests/); [Te Ara — Totara and kahikatea](https://teara.govt.nz/en/conifers/page-3)
 
 **Moa browse and divaricates**
 

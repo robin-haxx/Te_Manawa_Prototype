@@ -10,7 +10,12 @@ class EylesHarrier extends Boid {
     super(x, y, terrain);
     
     this.config = config;
-    
+
+    // A flyer: keep it inside the VISIBLE screen L/R, not just the map. The cover-fit view runs
+    // the map wider than the canvas, so a harrier soaring to the map edge would drift off-screen
+    // (base Boid.update reads this; avoidEdges below steers off the same visible bound).
+    this._clampToView = true;
+
     // Movement
     this.baseSpeed = 0.4;
     this.huntSpeed = 0.6;
@@ -48,9 +53,21 @@ class EylesHarrier extends Boid {
     // Patrol
     this.patrolCenter = createVector(x, y);
     this.patrolRadius = random(70, 100);
-    this.patrolAngle = random(TWO_PI);
+    this.patrolAngle = random(TWO_PI);        // legacy — relocate() still reseeds it; patrol() no longer circles on it
     this.patrolSpeed = random(0.008, 0.012);
     this._driftTimer = 0;
+
+    // Quartering / BURST flight (goshawk build, NOT a soaring circle — the received Haast's-eagle
+    // model was wrong; see md/TEMANAWA_ECOLOGY_FAUNA.md §5 and TEMANAWA_PLAN_V3.md §"raptor").
+    // patrol() alternates a fast committed DASH with a slow glide COAST, sweeping back and forth
+    // low over the territory. _speedCap (Boid.update) ramps between the two speeds, so each dash
+    // accelerates in and each coast decays out — that ramp IS the visible burst rhythm.
+    this._burstPhase = 'coast';
+    this._burstTimer = random(18, 34);
+    this._sweepDir   = random() < 0.5 ? 1 : -1;   // alternates each dash → a back-and-forth quartering sweep
+    this._burstTarget = createVector(x, y);
+    this.dashSpeed  = this.baseSpeed * 1.25;       // the burst — a low pass; kept BELOW huntSpeed (0.6) so a calm patrol never outpaces a committed hunt
+    this.coastSpeed = this.baseSpeed * 0.35;       // the glide between bursts
     
     // State
     this.state = 'patrol';
@@ -66,9 +83,30 @@ class EylesHarrier extends Boid {
     this.wingPhase = random(TWO_PI);
     this.bodyLength = this.wingspan * 0.45;
     this.animTime = random(1000);
+
+    // Sprite-animation state, gated so it changes at wing-cycle boundaries rather
+    // than snapping mid-flap. `_animState` is the pose actually being drawn (it lags
+    // the logical hunt/rest/fly state, and adds a 'retract' phase); `_flapCyclePrev`
+    // tracks completed wingbeats to detect the boundary; `_flyAnimStart` is the fly
+    // clock origin, reset after a strike so the wingbeat resumes from its first frame.
+    // See _resolveAnimState / render.
+    this._animState = 'flying';
+    this._flyAnimStart = 0;
+    this._flapCyclePrev = EntitySprites.eagleFlapCycle(this.animTime);
+
+    // The dedicated 8-frame hunting/dive art is a talon GRAB, not a loop: frames 0→5
+    // reach the talons forward as the bird closes on its prey (driven by proximity, not
+    // a timer), and frames 6→7 pull them back in after the strike — then flight resumes.
+    // `_huntFrame` is the frame currently drawn in the hunting/retract states;
+    // `_retractTimer` counts the post-strike retraction down in real frames.
+    this._huntFrame = 0;
+    this._retractTimer = 0;
+    this.clawExtendDist = 90;   // world-px at which the talons begin to reach (frame 0); fully out (frame 5) at catchRadius
+    this.retractFrames = 10;    // real frames the talon retraction (frames 6→7) plays before flight resumes
     // Eased flight altitude in world px (visual only — the sim stays 2D). Cruises
-    // while flying, eases to 0 to dive/rest so a swoop-to-catch reads at 3/4.
-    this._altitude = this.wingspan * 1.6;
+    // while flying, eases to 0 to dive/rest so a swoop-to-catch reads at 3/4. Kept LOW —
+    // a harrier quarters close to the ground, it does not soar high like Haast's eagle.
+    this._altitude = this.wingspan * 1.05;
     
     // Reusable vectors
     this._tempForce = createVector();
@@ -150,7 +188,7 @@ class EylesHarrier extends Boid {
     // Eased so it never pops. Runs before the early-returns below and uses last
     // frame's state/target — a single frame of lag is invisible.
     const _diving = this.hunting && this.target !== null;
-    const _cruiseAlt = this.wingspan * 1.6;
+    const _cruiseAlt = this.wingspan * 1.05;   // low quartering flight (see constructor)
     const _targetAlt = (_diving || this.state === 'resting') ? 0 : _cruiseAlt;
     this._altitude += (_targetAlt - this._altitude) * Math.min(1, 0.05 * dt);
 
@@ -258,17 +296,23 @@ class EylesHarrier extends Boid {
     const mapH = this.terrain.mapHeight;
     const px = this.pos.x;
     const py = this.pos.y;
-    
+    // Steer off the VISIBLE screen edge, not the map edge: the cover-fit view runs the map wider
+    // than the canvas, so the L/R map edges within CONFIG.viewInsetX are off-frame (0 when the
+    // map letterboxes). Only X insets — the projected height fits, so top/bottom stay map-bound.
+    const ins = (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+    const loX = ins + margin, hiX = mapW - ins - margin;
+    const loXs = ins + strongMargin, hiXs = mapW - ins - strongMargin;
+
     let urgency = 1;
-    
-    if (px < margin) {
-      force.x += (margin - px) / margin * 2;
-      if (px < strongMargin) urgency = 3;
-    } else if (px > mapW - margin) {
-      force.x -= (px - (mapW - margin)) / margin * 2;
-      if (px > mapW - strongMargin) urgency = 3;
+
+    if (px < loX) {
+      force.x += (loX - px) / margin * 2;
+      if (px < loXs) urgency = 3;
+    } else if (px > hiX) {
+      force.x -= (px - hiX) / margin * 2;
+      if (px > hiXs) urgency = 3;
     }
-    
+
     if (py < margin) {
       force.y += (margin - py) / margin * 2;
       if (py < strongMargin) urgency = 3;
@@ -359,27 +403,69 @@ class EylesHarrier extends Boid {
     this.edges();
   }
   
+  // Quartering BURST patrol (see the constructor and md/TEMANAWA_ECOLOGY_FAUNA.md §5): a fast
+  // committed dash, then a slow glide, sweeping back and forth low over the territory — a
+  // goshawk-build harrier, not the soaring circle the inherited Haast's-eagle model flew. Only
+  // ever runs when the bird is calm (hunger below threshold); the hunt/catch path is untouched.
   patrol(dt = 1) {
-    this.maxSpeed = this.baseSpeed;
-    
-    this.patrolAngle += this.patrolSpeed * this.wanderStrength * dt;
-    
-    this._targetVec.set(
-      this.patrolCenter.x + cos(this.patrolAngle) * this.patrolRadius,
-      this.patrolCenter.y + sin(this.patrolAngle) * this.patrolRadius
-    );
-    
-    this.applyForce(this.seek(this._targetVec, 0.4));
-    
-    const wander = this.wander();
-    wander.mult(0.25);
-    this.applyForce(wander);
-    
+    this._burstTimer -= dt;
+
+    if (this._burstPhase === 'dash') {
+      // Commit to the dash heading and drive hard toward the target point (high urgency), so
+      // the bird holds a straight fast line rather than meandering.
+      this.maxSpeed = this.dashSpeed;
+      this.applyForce(this.seek(this._burstTarget, 1.2));
+      if (this._burstTimer <= 0) {
+        this._burstPhase = 'coast';
+        this._burstTimer = random(18, 34);
+      }
+    } else {
+      // COAST — glide and let _speedCap decay; a gentle wander keeps the line alive, and a pull
+      // back toward the territory centre reins it in if the last dash carried it past patrolRadius.
+      this.maxSpeed = this.coastSpeed;
+      const w = this.wander();
+      w.mult(0.2);
+      this.applyForce(w);
+      const dcx = this.patrolCenter.x - this.pos.x, dcy = this.patrolCenter.y - this.pos.y;
+      if (dcx * dcx + dcy * dcy > this.patrolRadius * this.patrolRadius) {
+        this.applyForce(this.seek(this.patrolCenter, 0.5));
+      }
+      if (this._burstTimer <= 0) this._beginDash();
+    }
+
+    // Slowly drift the territory anchor so the bird works a fresh patch over time (kept from the
+    // old patrol — only the flight WITHIN the territory changed, not that it wanders the map).
     this._driftTimer += dt;
     if (this._driftTimer >= 256) {
       this._driftTimer -= 256;
       this.driftPatrolCenter(20);
     }
+  }
+
+  // Choose the next dash and commit a target point ahead. Quartering: a hard turn off the current
+  // heading, alternating side each dash, to rake back and forth across the ground — but head back
+  // across the territory centre instead when the bird has ranged beyond patrolRadius, so it keeps
+  // working its patch rather than drifting away on a run of same-side turns.
+  _beginDash() {
+    this._burstPhase = 'dash';
+    this._burstTimer = random(28, 52);
+
+    const dcx = this.patrolCenter.x - this.pos.x, dcy = this.patrolCenter.y - this.pos.y;
+    let ang;
+    if (dcx * dcx + dcy * dcy > this.patrolRadius * this.patrolRadius) {
+      ang = Math.atan2(dcy, dcx) + random(-0.7, 0.7);          // ranged out → sweep back across centre
+    } else {
+      const cur = Math.atan2(this.vel.y, this.vel.x);          // inside patch → hard quartering turn
+      ang = cur + this._sweepDir * random(1.1, 1.9);
+      this._sweepDir = -this._sweepDir;                         // alternate the sweep side
+    }
+
+    const reach = this.patrolRadius * random(0.8, 1.3);
+    const mapW = this.terrain.mapWidth, mapH = this.terrain.mapHeight;
+    this._burstTarget.set(
+      constrain(this.pos.x + Math.cos(ang) * reach, 40, mapW - 40),
+      constrain(this.pos.y + Math.sin(ang) * reach, 40, mapH - 40)
+    );
   }
   
   rest() {
@@ -406,60 +492,81 @@ class EylesHarrier extends Boid {
   hunt(simulation, dt = 1) {
     this.maxSpeed = this.huntSpeed;
     
-    // Surplus-aware scan across BOTH grazers and forest flyers. The harrier only
-    // ever crops a species that is OVER its comfortable target (a booming kererū
-    // flock, a fast-breeding moa); anything at or below target is left alone to
-    // recover. So predation is pure feedback on overabundance — it thins booms and
-    // never drives a species down, which is exactly what an ambient sim wants. When
-    // nothing is over-target the harrier finds no prey and simply keeps patrolling.
-    const nearbyPrey = simulation.getHuntablePrey(this.pos.x, this.pos.y, this.huntRadius);
-
-    let nearestDistSq = Infinity;
-    let bestEff = Infinity;
-    let nearestPrey = null;
-    const px = this.pos.x, py = this.pos.y;
-
     const _M = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS) ? LEVEL_MECHANICS : {};
     const _overBonus = _M.eagleSurplusBonus ?? 4;
+    const px = this.pos.x, py = this.pos.y;
 
-    for (let i = 0; i < nearbyPrey.length; i++) {
-      const prey = nearbyPrey[i];
-      if (!prey.alive) continue;
-      if (simulation.isPreyProtected(prey)) continue;                 // never crop below the floor
-      if (prey.inShelter && this.target !== prey) continue;           // moa in cover (flyers: field undefined → no-op)
-      if (prey.eagleResistance > 0 && random() < prey.eagleResistance) continue;
-      // Camouflage makes prey harder to FIND, not harder to chase: once it's the
-      // current target, camo no longer hides it.
-      if (prey.camouflage > 0 && this.target !== prey && random() < prey.camouflage) continue;
-
-      const dx = prey.pos.x - px;
-      const dy = prey.pos.y - py;
-      const dSq = dx * dx + dy * dy;
-
-      const key = prey.speciesKey;
-      const count = simulation.getCachedSpeciesCount(key);
-      const surplus = count - simulation._speciesTarget(key);
-      // Crop the SURPLUS only. A species at or below its comfortable target is
-      // left entirely alone (surplus <= 0 → skip), so predation never pins a
-      // struggling kind at its floor — it only ever removes the overshoot. Among
-      // over-target prey, prefer the most-over-target and nearest.
-      if (surplus <= 0) continue;
-      const weight = (count - simulation._speciesFloor(key)) + _overBonus * surplus;
-      const eff = dSq / (weight > 0.5 ? weight : 0.5);
-
-      if (eff < bestEff) {
-        bestEff = eff;
-        nearestDistSq = dSq;   // keep the TRUE distance for the catch check
-        nearestPrey = prey;
+    // --- Target COMMITMENT ---------------------------------------------------
+    // Stay locked on the CURRENT prey instead of re-picking the "best" bird every
+    // frame. Re-scanning each frame made the harrier swerve between near-equal prey
+    // in a gaggle or herd — the distracting "swoop at the goose, then rubber-band
+    // away". A committed dive reads as a single intent: it connects, or the bird
+    // cleanly breaks off. The lock drops only when the prey dies, becomes
+    // floor-protected, slips into cover, or opens the range past eagleLoseRange;
+    // ONLY THEN is a fresh target scanned for. (The floor/surplus weighting and the
+    // eagleResistance / camouflage rolls therefore decide ACQUISITION, not every
+    // frame of the chase — camo hides prey from being spotted, it doesn't shake a
+    // committed pursuit.)
+    let prey = this.target;
+    let preyDistSq = Infinity;
+    if (prey) {
+      const stillOk = prey.alive && !simulation.isPreyProtected(prey) && !prey.inShelter;
+      if (stillOk) {
+        const dx = prey.pos.x - px, dy = prey.pos.y - py;
+        preyDistSq = dx * dx + dy * dy;
+        const loseR = _M.eagleLoseRange ?? (this.huntRadius * 1.3);
+        if (preyDistSq > loseR * loseR) prey = null;   // it has pulled away — give up the lock
+      } else {
+        prey = null;
       }
     }
 
-    if (nearestPrey) {
+    // --- Acquire a new target only when uncommitted --------------------------
+    // Surplus-aware scan across BOTH grazers and forest flyers. The FLOOR is the hard
+    // guarantee — a species at/below its protected minimum is off the menu entirely —
+    // so predation can never take the last few of a kind. Above the floor the harrier
+    // feeds, but it strongly PREFERS the abundant: a species booming over its target is
+    // cropped first, the scarce taken only when nothing better is in reach. (History:
+    // this used to require prey be OVER target, but the cast breeds to a taper AT target
+    // and sits at/below it, so that gate starved the harrier — see MISTAKES.md.)
+    if (!prey) {
+      const nearbyPrey = simulation.getHuntablePrey(px, py, this.huntRadius);
+      let bestEff = Infinity;
+      for (let i = 0; i < nearbyPrey.length; i++) {
+        const cand = nearbyPrey[i];
+        if (!cand.alive) continue;
+        if (simulation.isPreyProtected(cand)) continue;             // never crop below the floor
+        if (cand.inShelter) continue;                               // moa in cover (flyers: field undefined → no-op)
+        if (cand.eagleResistance > 0 && random() < cand.eagleResistance) continue;
+        if (cand.camouflage > 0 && random() < cand.camouflage) continue;   // camo hides prey from being SPOTTED
+
+        const dx = cand.pos.x - px;
+        const dy = cand.pos.y - py;
+        const dSq = dx * dx + dy * dy;
+
+        const key = cand.speciesKey;
+        const count = simulation.getCachedSpeciesCount(key);
+        // Weight by HEADROOM above the floor (how much of this species is fair game),
+        // plus an extra pull toward any species booming over its target.
+        const headroom = count - simulation._speciesFloor(key);    // > 0 for anything past the floor gate
+        const surplus  = count - simulation._speciesTarget(key);   // > 0 only for a boom
+        const weight = headroom + _overBonus * Math.max(0, surplus);
+        const eff = dSq / (weight > 0.5 ? weight : 0.5);
+
+        if (eff < bestEff) {
+          bestEff = eff;
+          preyDistSq = dSq;   // keep the TRUE distance for the catch check
+          prey = cand;
+        }
+      }
+    }
+
+    if (prey) {
       const hadNoTarget = this.target === null;
 
       this.state = 'hunting';
       this.hunting = true;
-      this.target = nearestPrey;
+      this.target = prey;
       this.huntSearchTimer = 0;
       this.lastTargetTime = frameCount;
 
@@ -481,15 +588,35 @@ class EylesHarrier extends Boid {
         return;
       }
 
-      // Pursue with prediction
-      this._targetVec.set(
-        nearestPrey.pos.x + nearestPrey.vel.x * 12,
-        nearestPrey.pos.y + nearestPrey.vel.y * 12
-      );
-      this.applyForce(this.seek(this._targetVec, 1.4));
+      // Pursue. Lead the aim by the prey's velocity, but SHORTEN the lead as the bird
+      // closes so it strikes AT the prey instead of a point 12 frames beyond it — that
+      // far-lead aim, with the harrier only a shade faster than a fleeing goose, is what
+      // made a near-speed chase whip past and swing back. Steer with extra turn
+      // authority (eagleHuntTurn: the seek clamps to maxForce×urgency, NOT to top speed,
+      // so this tightens cornering without making the bird faster) so it tracks a
+      // fleeing/juking prey into the strike rather than sailing past it.
+      const _dist = Math.sqrt(preyDistSq);
 
-      if (nearestDistSq < this.catchRadiusSq) {
-        simulation.handleEagleCatch(this, nearestPrey);
+      // Final STOOP: over the last stretch, accelerate above cruise-hunt speed so the
+      // strike actually CLOSES. Without it the harrier (0.6) only shades a fleeing goose
+      // (0.55) / takahē (0.5), so a stern chase trails at parity — it can neither catch
+      // nor pull away, and small prediction errors make the gap wobble ("swoop in, drift
+      // out") until the chase times out. The stoop turns that trailing wobble into a
+      // decisive committed dive. Ramps in via _speedCap (~8 frames), so cruise is
+      // untouched; only engages inside eagleStoopRange of a committed target.
+      if (_dist < (_M.eagleStoopRange ?? 46)) {
+        this.maxSpeed = _M.eagleStoopSpeed ?? (this.huntSpeed * 1.5);
+      }
+
+      const _lead = Math.min(12, _dist * 0.35);
+      this._targetVec.set(
+        prey.pos.x + prey.vel.x * _lead,
+        prey.pos.y + prey.vel.y * _lead
+      );
+      this.applyForce(this.seek(this._targetVec, _M.eagleHuntTurn ?? 2.0));
+
+      if (preyDistSq < this.catchRadiusSq) {
+        simulation.handleEagleCatch(this, prey);
       }
     } else {
       this.huntSearchTimer += dt;
@@ -580,7 +707,9 @@ class EylesHarrier extends Boid {
   
   relocate(dt = 1) {
     this.relocateTimer -= dt;
-    this.maxSpeed = this.huntSpeed * 1.2;
+    // A purposeful glide to a fresh patch, not a chase — hold it at hunt speed rather
+    // than above it, so relocating never reads faster than an actual hunt.
+    this.maxSpeed = this.huntSpeed * 0.85;
     
     if (!this.relocateTarget) {
       this.relocateTimer = 0;
@@ -726,12 +855,90 @@ class EylesHarrier extends Boid {
   // ============================================
   // RENDERING
   // ============================================
-  
+
+  // Resolve which pose the bird actually DRAWS this frame, and which hunt frame.
+  // The hunting/dive art is a talon GRAB played by proximity, not a loop:
+  //   · flying  — the wingbeat (fly-relative, so it resumes from frame 0 after a strike)
+  //   · hunting — talons reaching, frames 0→5 mapped to distance-to-prey (closer = further out)
+  //   · retract — after the strike ends (catch OR target lost while the talons were out),
+  //               frames 6→7 pull them back in over `retractFrames`, THEN flight resumes
+  //   · resting — the single held glide frame
+  // Entering hunting from flying still waits for the current wingbeat to finish so the
+  // talons don't snap in mid-flap. Called once per frame (real frame) from render().
+  _resolveAnimState() {
+    const logical = (this.hunting && this.target !== null)
+      ? 'hunting'
+      : (this.state === 'resting' ? 'resting' : 'flying');
+
+    // Track wingbeat completions (fly-relative) so a flying→hunting switch can wait for
+    // a clean boundary. A completion is the flap clock's cycle count ticking over.
+    const cycle = EntitySprites.eagleFlapCycle(this.animTime - this._flyAnimStart);
+    const flapCompleted = cycle !== this._flapCyclePrev;
+    this._flapCyclePrev = cycle;
+
+    // RETRACT holds until its timer runs out (or the bird re-locks on a target).
+    if (this._animState === 'retract') {
+      this._retractTimer -= 1;
+      if (logical === 'hunting') {
+        this._animState = 'hunting';           // re-acquired mid-retract → back on the strike
+      } else {
+        const prog = 1 - Math.max(0, this._retractTimer) / this.retractFrames;
+        this._huntFrame = prog >= 0.5 ? 7 : 6; // 6 then 7 — talons pulling in
+        if (this._retractTimer <= 0) {
+          this._animState = logical;
+          this._flyAnimStart = this.animTime;  // wingbeat resumes from its first frame
+        }
+        return this._animState;
+      }
+    }
+
+    if (logical === 'hunting') {
+      // From flying, hold the switch until the wingbeat finishes so the talons don't
+      // snap in mid-flap; from resting/retract there's no flap to wait on.
+      if (this._animState === 'flying' && !flapCompleted) return this._animState;
+      this._animState = 'hunting';
+      // Reach the talons out as the bird closes: distance-to-prey → frames 0..5.
+      let f = this._huntFrame;
+      if (this.target) {
+        const dx = this.target.pos.x - this.pos.x, dy = this.target.pos.y - this.pos.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const span = this.clawExtendDist - this.catchRadius;
+        const t = Math.max(0, Math.min(1, (this.clawExtendDist - d) / (span > 1 ? span : 1)));
+        f = Math.round(t * 5);
+      }
+      this._huntFrame = f;
+      return this._animState;
+    }
+
+    // Leaving hunting after the talons had reached → play the retraction first.
+    if (this._animState === 'hunting') {
+      this._animState = 'retract';
+      this._retractTimer = this.retractFrames;
+      this._huntFrame = 6;
+      return this._animState;
+    }
+
+    // Plain flying / resting. Reset the fly clock when (re)entering flight so the
+    // wingbeat starts from its first frame.
+    if (this._animState !== logical) {
+      if (logical === 'flying') this._flyAnimStart = this.animTime;
+      this._animState = logical;
+    }
+    return this._animState;
+  }
+
   render() {
-    const isActiveHunt = this.hunting && this.target !== null;
-    const spriteState = isActiveHunt ? 'hunting' : (this.state === 'resting' ? 'resting' : 'flying');
-    const sprite = EntitySprites.getEagleSprite(this.animTime, spriteState);
-    
+    const spriteState = this._resolveAnimState();
+    const isActiveHunt = spriteState === 'hunting' || spriteState === 'retract';
+    // Hunting/retract draw an explicit talon frame (proximity- / retraction-driven);
+    // resting holds the glide; flying reads the fly-relative clock so the wingbeat
+    // resumes from its first frame after a strike.
+    const sprite = isActiveHunt
+      ? EntitySprites.getEagleHuntFrame(this._huntFrame)
+      : EntitySprites.getEagleSprite(
+          spriteState === 'resting' ? this.animTime : (this.animTime - this._flyAnimStart),
+          spriteState);
+
     if (sprite) {
       push();
       // Anchor on the 3/4 ground (rides terrain relief), draw the shadow there,

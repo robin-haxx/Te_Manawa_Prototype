@@ -179,26 +179,30 @@ class WaterLayer {
   // Drawn inside Game.render()'s camera transform, right after terrain.render()
   // and under the seasonal frost/ash washes and all entities. Same space and the
   // same Projection every entity uses, so decals sit on the lifted ground.
-  render() {
+  // `g` optionally targets a p5 graphics buffer (DOM-stack GL mode draws water into
+  // the terrain layer); null/undefined draws on the global main canvas as before.
+  render(g) {
     if (!this._on() || !this.terrain || typeof Projection === 'undefined') return;
+    const R = g || (typeof window !== 'undefined' ? window : null);
+    if (!R) return;
     const K = Projection.K;
     const t = this.terrain;
-    const dc = drawingContext, ga0 = dc.globalAlpha;
+    const dc = R.drawingContext, ga0 = dc.globalAlpha;
 
-    push();
-    imageMode(CENTER);        // saved/restored by this push()/pop()
+    R.push();
+    R.imageMode(CENTER);        // saved/restored by this push()/pop()
 
     const D = this.decals;
     for (let i = 0; i < D.length; i++) {
       const d = D[i];
       const fr = Math.floor(d.animTime * d.animSpeed + d.phase);
       dc.globalAlpha = d.alpha;
-      push();
-      translate(Projection.projX(d.x), Projection.groundY(d.y, d.elev));
-      scale(1, K);            // squash vertically so the mark lies flat on the surface
-      if (d.angle) rotate(d.angle);
-      SpriteStrips.draw(d.strip, fr, 0, 0, d.size, d.size);
-      pop();
+      R.push();
+      R.translate(Projection.projX(d.x), Projection.groundY(d.y, d.elev));
+      R.scale(1, K);            // squash vertically so the mark lies flat on the surface
+      if (d.angle) R.rotate(d.angle);
+      SpriteStrips.draw(d.strip, fr, 0, 0, d.size, d.size, g);
+      R.pop();
     }
 
     const E = this.eels;
@@ -210,16 +214,16 @@ class WaterLayer {
       const elev = t.getElevationAt(e._x, e._y);   // eels ride the river like entities
       const fr = Math.floor(e.animTime * this.cfg.eelAnimSpeed);
       dc.globalAlpha = e.alpha;
-      push();
-      translate(Projection.projX(e._x), Projection.groundY(e._y, elev));
-      scale(1, K);
-      rotate(e._angle + (e.dir < 0 ? Math.PI : 0));   // face the way it is actually travelling
-      SpriteStrips.draw('eel_swim', fr, 0, 0, e.size * 1.6, e.size * 0.8);
-      pop();
+      R.push();
+      R.translate(Projection.projX(e._x), Projection.groundY(e._y, elev));
+      R.scale(1, K);
+      R.rotate(e._angle + (e.dir < 0 ? Math.PI : 0));   // face the way it is actually travelling
+      SpriteStrips.draw('eel_swim', fr, 0, 0, e.size * 1.6, e.size * 0.8, g);
+      R.pop();
     }
 
     dc.globalAlpha = ga0;     // p5 push/pop does not restore the raw context alpha
-    pop();
+    R.pop();
   }
 
   stats() { return { decals: this.decals.length, eels: this.eels.length, capped: this._capped }; }

@@ -52,7 +52,13 @@ window.TM_TIME = TM_TIME;
 // FOREST button grows warm/forest cover (low tolerance), the TUSSOCK button grows cold-hardy
 // open country (high tolerance); mid-tolerance plants (e.g. flax 0.7) are neutral to both, so
 // neither press is a universal win. See md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §2.
-const TM_GROW = { warmMax: 0.65, coldMin: 0.75, step: 0.02 };
+const TM_GROW = { warmMax: 0.65, coldMin: 0.75, step: 0.02, seedCount: 6,   // seedCount: seedlings a press starts (Simulation.seedGrowth)
+  // Kahikatea is NOT force-grown by the FOREST button (it's disturbance-governed — see
+  // Plant.update). Instead the button ACCELERATES its lifecycle by this factor: a growing stand
+  // grows faster, an aging one ages faster, a senescing one senesces (shrinks) faster. So the
+  // press hurries a swamp-forest stand through whatever it is doing, rather than forcing growth
+  // onto a stand that is meant to be shrinking.
+  kahiLifecycleBoost: 3 };
 window.TM_GROW = TM_GROW;
 
 // The ambient colour band that frames the scene at all times — the on-screen twin of the
@@ -71,9 +77,26 @@ const TM_EDGE = {
   breatheMs:  5200,         // one full breath, ms (slow — an ebb, not a flicker)
   colorEase:  0.010,        // per-frame low-pass of the band colour toward target (the latency)
   desatMax:   0.80,         // health=0 → colour blended this far toward neutral grey (keeps a little hue)
-  warm: [40, 140, 74],      // interglacial peak — deep green
+  warm: [84, 120, 50],      // interglacial peak — a warmer, yellower, slightly LESS bright green (was [40,140,74])
   cold: [150, 205, 236],    // glacial peak — light blue
-  grey: [122, 130, 132]     // the neutral the band desaturates toward
+  grey: [122, 130, 132],    // the neutral the band desaturates toward
+  // Hue CONTRAST: bias the climate index toward the extremes so the band reads DECISIVELY green
+  // (interglacial → FOREST helps) or blue (glacial → TUSSOCK helps), with only a narrow ambiguous
+  // middle. Without it a cooler interglacial sits in a mid-teal that sends mixed signals about which
+  // boost is right. The flip is at index 0.5 — the same getWinterness≥0.5 split the boosts use. 1 = off.
+  hueContrast:   2.4,
+  // ---- interaction PULSE: a quick rim flash laid over the ambient band on a button press or a
+  // lightning strike. Its COLOUR names the interaction (green FOREST, blue TUSSOCK, white STORM,
+  // grey = wrong boost for the climate). A single smooth rise+fall, rate-limited so repeat
+  // lightning can't strobe (photosensitivity).
+  pulseMs:       700,            // one pulse (default): quick rise, slower fall
+  pulseStormMs:  320,           // STORM's pulse is SHORTER — a quick lightning blink, not a lingering wash
+  pulseStrength: 0.70,          // peak opacity of the pulse rim over the base band
+  pulseMinGapMs: 500,           // a new pulse can't start sooner than this → ≤2/s, under the ≤3/s budget
+  pulseForest:  [84, 210, 96],  // FOREST boost (matched) — green
+  pulseTussock: [150, 205, 236],// TUSSOCK boost (matched) — glacial blue
+  pulseWrong:   [128, 132, 130],// wrong boost for the current climate — neutral grey (and no growth happens)
+  pulseStorm:   [255, 255, 255] // STORM press + each lightning strike — pure white
 };
 window.TM_EDGE = TM_EDGE;
 
@@ -97,16 +120,29 @@ const InstallHUD = {
     // the scene quietly desaturates (Game._updateHabitatHealth); the maturation itself is the
     // same per-set nudge (InstallHUD.update).
     { id: 'growWarm', key: '2', label: 'FOREST',
-      action: (g) => { g._tmGrowWarmUntil = millis() + TM_TIME.growWarmSeconds * 1000; },
+      action: (g) => { g._tmGrowWarmUntil = millis() + TM_TIME.growWarmSeconds * 1000;   // timer set either way: lights the button + drives the regime-fit desaturation lesson
+                       if (InstallHUD._growMatches(g, true)) {                            // right for the climate → it actually grows
+                         if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
+                         InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
+                       } else {
+                         InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // wrong boost for the climate → grey pulse, and no growth (gated in update)
+                       } },
       isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
     { id: 'growCold', key: '3', label: 'TUSSOCK',
-      action: (g) => { g._tmGrowColdUntil = millis() + TM_TIME.growColdSeconds * 1000; },
+      action: (g) => { g._tmGrowColdUntil = millis() + TM_TIME.growColdSeconds * 1000;
+                       if (InstallHUD._growMatches(g, false)) {
+                         if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
+                         InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
+                       } else {
+                         InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // grey pulse, no growth
+                       } },
       isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
     { id: 'storm',  key: '4', label: 'STORM',
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        g._stormPressure = Math.min(1, (g._stormPressure || 0) + TM_TIME.stormPressureAdd);
-                       if (g.applyStormToPlants) g.applyStormToPlants(1);   // §10B–C habitat effects: snap emergents, salt-burn/bury the coast
-                       InstallHUD.initStormCells(g); },
+                       if (g.beginStorm) g.beginStorm();   // §10B–C habitat effects, but spread OVER the storm (staggered windthrow + gradual knockback), not one instant snap
+                       InstallHUD.initStormCells(g);
+                       InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs); },   // one short white blink on press, then one per lightning strike
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
     // Eruption is a press-and-hold TIME-NAVIGATION control between the volcanic events.
     // A TAP reverts to the previous (older) eruption and replays it; a HOLD
@@ -218,6 +254,17 @@ const InstallHUD = {
     else if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption-reseed', { reseed: true });
   },
 
+  // Is a FOREST/TUSSOCK boost climate-appropriate right now? FOREST (warm) suits the
+  // interglacial, TUSSOCK (cold) suits the glacial — the SAME getWinterness ≥ 0.5 split the
+  // habitat-health regime-fit lesson uses (Game._updateHabitatHealth). A mismatched press does
+  // not grow anything (the grow effects below and seedGrowth on press are gated on this) and
+  // pulses the rim grey instead of its colour, so a wrong boost reads as wrong.
+  _growMatches(g, warm) {
+    const sm = g && g.seasonManager;
+    const glacial = (sm && sm.getWinterness) ? sm.getWinterness() >= 0.5 : false;
+    return warm ? !glacial : glacial;
+  },
+
   // ==========================================================
   // PER-FRAME UPDATE — called from Game.update()
   // ==========================================================
@@ -243,8 +290,18 @@ const InstallHUD = {
     // it matures against the climate get suppressed anyway by the existing forest-band /
     // dormancy machinery, so a mismatched press is doubly futile.
     const nowMs = millis();
-    if (g._tmGrowWarmUntil && nowMs < g._tmGrowWarmUntil) this._growPulse(g, true);
-    if (g._tmGrowColdUntil && nowMs < g._tmGrowColdUntil) this._growPulse(g, false);
+    // Only the climate-appropriate boost matures cover; a wrong-climate press still lights the
+    // button and drains regime fit (the desaturation lesson), but grows nothing (user request).
+    // Gated per frame on the current climate, so a boost held across a phase flip stops growing.
+    const warmBoosting = g._tmGrowWarmUntil && nowMs < g._tmGrowWarmUntil && this._growMatches(g, true);
+    if (warmBoosting) this._growPulse(g, true);
+    if (g._tmGrowColdUntil && nowMs < g._tmGrowColdUntil && this._growMatches(g, false)) this._growPulse(g, false);
+    // Kahikatea is disturbance-governed, so the FOREST button never force-grows it (_growPulse
+    // skips it). Instead, while a matched FOREST boost is held, it ACCELERATES the kahikatea
+    // lifecycle: this shared per-frame factor (read in Simulation.updatePlantsBatched → Plant.update)
+    // scales a kahikatea's grow / age / senesce all together, so a growing stand grows in faster and
+    // a shrinking one dies out faster — the press speeds the process along instead of fighting it.
+    g._kahiBoost = warmBoosting ? (TM_GROW.kahiLifecycleBoost ?? 3) : 1;
 
     // Storm: map-wide hunt-breaker + drifting thunderheads while the window is open.
     if (g._tmStormUntil && millis() < g._tmStormUntil) {
@@ -258,6 +315,33 @@ const InstallHUD = {
     if (g._tmErDownAt && !g._tmErFired &&
         millis() - g._tmErDownAt >= TM_TIME.erLongPressMs) {
       this.fireEruptionReseed(g);
+    }
+
+    // AUTO/timeline eruption ramp — INDEPENDENT of the button state machine. Game.
+    // _checkAutoEruptions arms _tmAutoErAt as the clock crosses an event; its own timer drives
+    // the SAME charge visuals (flash + rumble + ash-cloud roll — renderAshFlash /
+    // eruptionShakeOffset / ashCoverState all read it), then it fires the event IN PLACE (no
+    // seek/reseed) with the flash falling from the charged peak. No _tmErDownAt, so it never
+    // touches erDown/erUp/hold behaviour.
+    if (g._tmAutoErAt && millis() - g._tmAutoErAt >= TM_TIME.erLongPressMs) {
+      const nowA = millis(), er = g._tmAutoErupt;
+      g._tmAshUntil = nowA + TM_TIME.ashMillis;      g._tmAshMode    = 'hold';
+      g._ashCloudUntil = nowA + TM_TIME.cloudMillis; g._ashCloudMode = 'hold';
+      g._tmAutoErAt = 0; g._tmAutoErupt = null;
+      if (typeof g.applyAsh === 'function') g.applyAsh(er);
+    }
+
+    // ATTRACT-LOOP reset staged as an eruption (Kiosk.beginAttractEruption armed _tmAttractErAt on
+    // idle). The buildup rumbled + rolled the ash cloud down over erLongPressMs; now, at the crest,
+    // do the actual reset UNDER the cover — the same hidden-hitch trick the long-press reseed uses
+    // — then play the reveal (flash falls from the charged peak, cloud hangs + fades on the fresh
+    // world). Clear the flag FIRST so the rebuilt world never inherits the charge.
+    if (g._tmAttractErAt && millis() - g._tmAttractErAt >= TM_TIME.erLongPressMs) {
+      g._tmAttractErAt = 0;
+      if (typeof Kiosk !== 'undefined' && Kiosk.resetToAttract) Kiosk.resetToAttract(g, 'idle');
+      const nowR = millis();
+      g._tmAshUntil = nowR + TM_TIME.ashMillis;      g._tmAshMode    = 'hold';
+      g._ashCloudUntil = nowR + TM_TIME.cloudMillis; g._ashCloudMode = 'hold';
     }
 
     return g.timeScale;
@@ -274,7 +358,20 @@ const InstallHUD = {
     for (let i = 0; i < plants.length; i++) {
       const p = plants[i];
       if (!p || !p.alive || p.growth >= 1) continue;
+      // Don't fight a habitat that is itself moving this plant's growth THIS frame: a
+      // forest tree dying back outside its band (suppressed), a cold-dormant plant, or an
+      // aged-out kahikatea (senescent) are all being SHRUNK by Plant.update the same frame
+      // this would grow them — the two cancel and the sprite flickers grown/ungrown (the
+      // "boosted trees flicker in wetland / changing habitats" report). Leave them to the
+      // habitat. The _growMatches climate gate already keeps FOREST out of the glacial, so a
+      // healthy interglacial forest is unaffected. See MISTAKES.md.
+      if (p.dormant || p.suppressed || p._senescent) continue;
       const def = TYPES ? TYPES[p.type] : null;
+      // Kahikatea (disturbanceRecruit) establishes and fattens ONLY on a river disturbance
+      // — a storm flood / eruption pulse / channel shift — never the FOREST button. Same
+      // gate seedGrowth() and disperseSeed() already apply; without it the button pumps
+      // growth into a stand Plant.update is senescing, which is the wetland flicker.
+      if (def && def.disturbanceRecruit) continue;
       const ct = def ? def.coldTolerance : 0.5;
       const inSet = warm ? (ct <= G.warmMax) : (ct >= G.coldMin);
       if (inSet) p.growth = Math.min(1, p.growth + G.step);
@@ -321,7 +418,9 @@ const InstallHUD = {
       });
     }
     g._tmStormCells = cells;
-    g._tmBolt = { active: false, timer: 20 + Math.random() * 40, duration: 0, x: 0, y: 0, scale: 1, rot: 0 };
+    // Bolts are spaced well apart (frames @ ~60fps → ~1.2–2.7 s to the first) so the white rim
+    // blink stays occasional — one on press, then one per bolt — rather than a rapid strobe.
+    g._tmBolt = { active: false, timer: 70 + Math.random() * 90, duration: 0, x: 0, y: 0, scale: 1, rot: 0 };
   },
 
   updateStormCells(g, dt) {
@@ -338,7 +437,7 @@ const InstallHUD = {
     if (!b) return;
     if (b.active) {
       b.duration -= dt;
-      if (b.duration <= 0) { b.active = false; b.timer = 25 + Math.random() * 45; }
+      if (b.duration <= 0) { b.active = false; b.timer = 80 + Math.random() * 100; }   // long gap to the next bolt → occasional flashes
     } else {
       b.timer -= dt;
       if (b.timer <= 0) {
@@ -347,6 +446,7 @@ const InstallHUD = {
         b.x = c.x; b.y = c.y + 10;
         b.scale = 0.6 + Math.random() * 0.4;
         b.rot = (Math.random() - 0.5) * 0.6;
+        InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs);   // one short white blink per lightning strike
       }
     }
   },
@@ -533,11 +633,11 @@ const InstallHUD = {
   VIS_STRIP_H: 64,
   renderVisitorTimeline(g, W, H) {
     const x0 = 48, w = W - 96;
-    const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = yTop + 34;
+    const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = yTop - 128;
     push();
     // Light backing — kept low-alpha so the edge band glows THROUGH behind the axis while
     // the marks still have enough contrast to read (the band is now drawn under the HUD).
-    noStroke(); fill(14, 21, 19, 120); rect(0, yTop, W, stripH);
+    //noStroke(); fill(14, 21, 19, 120); rect(0, yTop, W, stripH);
     this._timelineBody(g, x0, w, ay);
     if (DeepTime.isDeep()) {
       this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [255, 210, 120]);
@@ -563,6 +663,16 @@ const InstallHUD = {
   // saturation by habitat health, low-passed + breathing so it ebbs. The four edge
   // gradients are cached and rebuilt only when the quantised colour (or the canvas size)
   // changes, so the per-frame cost is a save + four fillRects — no allocation in draw().
+  // Fire a quick edge-ring pulse in colour `col` ([r,g,b]) — a button press or a lightning
+  // strike. Rate-limited (TM_EDGE.pulseMinGapMs) so repeated strikes can't strobe the rim.
+  edgePulse(g, col, ms) {
+    if (!g || !col) return;
+    const E = (typeof TM_EDGE !== 'undefined') ? TM_EDGE : null; if (!E) return;
+    const now = (typeof millis === 'function') ? millis() : 0;
+    if (g._tmEdgePulse && (now - g._tmEdgePulse.t0) < (E.pulseMinGapMs || 400)) return;
+    g._tmEdgePulse = { col, t0: now, ms: (ms != null ? ms : (E.pulseMs || 700)) };   // per-pulse duration (STORM passes a short one)
+  },
+
   _edgeCache: null,
   renderEdgeGlow(g, W, H) {
     const E = (typeof TM_EDGE !== 'undefined') ? TM_EDGE : null;
@@ -570,8 +680,16 @@ const InstallHUD = {
     if (!E || !dc || !dc.createLinearGradient) return;
 
     // --- target colour: hue by climate (glacial index), desaturation by habitat health ---
-    const gi = (typeof DeepTime !== 'undefined' && DeepTime.climate)
+    let gi = (typeof DeepTime !== 'undefined' && DeepTime.climate)
       ? Math.max(0, Math.min(1, DeepTime.climate().glacialIndex || 0)) : 0;
+    // Bias the hue toward the extremes so the band reads DECISIVELY green (interglacial → FOREST
+    // is right) or blue (glacial → TUSSOCK is right), with only a narrow ambiguous middle —
+    // otherwise a cooler interglacial sits in a mid-teal that sends mixed signals about which
+    // boost helps. The flip stays at 0.5 (matching the getWinterness ≥ 0.5 boost split). Monotonic
+    // + continuous, and gi drifts slowly over deep time, so the band never snaps (photosensitivity).
+    const hc = (E.hueContrast != null) ? E.hueContrast : 1;
+    if (hc > 1) gi = (gi < 0.5) ? 0.5 * Math.pow(gi / 0.5, hc)
+                                : 1 - 0.5 * Math.pow((1 - gi) / 0.5, hc);
     const health = (g._habitatHealth == null) ? 1 : Math.max(0, Math.min(1, g._habitatHealth));
     let tr = E.warm[0] + (E.cold[0] - E.warm[0]) * gi;
     let tg = E.warm[1] + (E.cold[1] - E.warm[1]) * gi;
@@ -624,6 +742,30 @@ const InstallHUD = {
     dc.fillStyle = c.bottom; dc.fillRect(0, H - depth, W, depth);
     dc.fillStyle = c.left;   dc.fillRect(0, 0, depth, H);
     dc.fillStyle = c.right;  dc.fillRect(W - depth, 0, depth, H);
+
+    // --- interaction pulse overlay: a quick rim flash in the pulse colour over the ambient band.
+    // One smooth rise+fall (sin envelope); gradients built only while a pulse is live (<pulseMs). ---
+    const P = g._tmEdgePulse;
+    if (P) {
+      const pt = (now - P.t0) / (P.ms || E.pulseMs || 700);
+      if (pt >= 1) { g._tmEdgePulse = null; }
+      else if (pt >= 0) {
+        const pa = Math.sin(pt * Math.PI) * (E.pulseStrength != null ? E.pulseStrength : 0.7);
+        const pr = P.col[0] | 0, pg = P.col[1] | 0, pb = P.col[2] | 0;
+        const pmk = (x0, y0, x1, y1) => {
+          const grd = dc.createLinearGradient(x0, y0, x1, y1);
+          grd.addColorStop(0,    'rgba(' + pr + ',' + pg + ',' + pb + ',1)');
+          grd.addColorStop(0.45, 'rgba(' + pr + ',' + pg + ',' + pb + ',0.55)');
+          grd.addColorStop(1,    'rgba(' + pr + ',' + pg + ',' + pb + ',0)');
+          return grd;
+        };
+        dc.globalAlpha = pa;
+        dc.fillStyle = pmk(0, 0, 0, depth);       dc.fillRect(0, 0, W, depth);
+        dc.fillStyle = pmk(0, H, 0, H - depth);   dc.fillRect(0, H - depth, W, depth);
+        dc.fillStyle = pmk(0, 0, depth, 0);       dc.fillRect(0, 0, depth, H);
+        dc.fillStyle = pmk(W, 0, W - depth, 0);   dc.fillRect(W - depth, 0, depth, H);
+      }
+    }
     dc.restore();
   },
 
@@ -704,6 +846,14 @@ const InstallHUD = {
       const c = Math.max(0, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
       a = Math.max(a, c * c * TM_TIME.ashPeak);
     }
+    if (g._tmAutoErAt) {                                    // auto/timeline eruption charge — same ramp
+      const c = Math.max(0, Math.min(1, (now - g._tmAutoErAt) / TM_TIME.erLongPressMs));
+      a = Math.max(a, c * c * TM_TIME.ashPeak);
+    }
+    if (g._tmAttractErAt) {                                 // attract-loop reset buildup — same ramp
+      const c = Math.max(0, Math.min(1, (now - g._tmAttractErAt) / TM_TIME.erLongPressMs));
+      a = Math.max(a, c * c * TM_TIME.ashPeak);
+    }
 
     if (g._tmAshUntil && now < g._tmAshUntil) {
       const p = Math.max(0, Math.min(1, 1 - (g._tmAshUntil - now) / TM_TIME.ashMillis));
@@ -739,6 +889,12 @@ const InstallHUD = {
     if (g._tmErDownAt && !g._tmErFired) {
       s = Math.max(s, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
     }
+    if (g._tmAutoErAt) {                                    // auto/timeline eruption rumble — same ramp
+      s = Math.max(s, Math.min(1, (now - g._tmAutoErAt) / TM_TIME.erLongPressMs));
+    }
+    if (g._tmAttractErAt) {                                 // attract-loop reset rumble — same ramp
+      s = Math.max(s, Math.min(1, (now - g._tmAttractErAt) / TM_TIME.erLongPressMs));
+    }
     if (g._ashCloudUntil && now < g._ashCloudUntil) {
       s = Math.max(s, (g._ashCloudUntil - now) / TM_TIME.cloudMillis);   // 1 at the fire -> 0 at the end
     }
@@ -761,6 +917,14 @@ const InstallHUD = {
     if (g._tmErDownAt && !g._tmErFired) {
       const c = Math.max(0, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
       descend = c; alpha = Math.min(1, c * 1.4);
+    }
+    if (g._tmAutoErAt) {                                    // auto/timeline eruption — ash cloud rolls down over the ramp
+      const c = Math.max(0, Math.min(1, (now - g._tmAutoErAt) / TM_TIME.erLongPressMs));
+      if (c > descend) { descend = c; alpha = Math.max(alpha, Math.min(1, c * 1.4)); }
+    }
+    if (g._tmAttractErAt) {                                 // attract-loop reset — ash cloud rolls down over the ramp
+      const c = Math.max(0, Math.min(1, (now - g._tmAttractErAt) / TM_TIME.erLongPressMs));
+      if (c > descend) { descend = c; alpha = Math.max(alpha, Math.min(1, c * 1.4)); }
     }
     // POST-FIRE (tap, auto/timeline, and the tail of a hold): the ash STARTS fully covering
     // the screen, hangs, then fades to reveal the recovered land — NO roll-in. So a live

@@ -109,7 +109,7 @@ const HUIA_SPECIES = {
   rarity:         'uncommon',
 
   // Movement / render — a weak flier like the kōkako: slow, short hops, low cruise.
-  baseSpeed:        0.34,
+  baseSpeed:        0.24,
   maxForce:         0.05,
   size:             6,
   perceptionRadius: 60,
@@ -119,7 +119,7 @@ const HUIA_SPECIES = {
   // Short flight legs, kept close to the partner.
   hopRadius:        36,
   feedRadius:       90,
-  homeLeash:        70,      // how far it strays from its mate before drifting back
+  homeLeash:        105,     // how far it strays from its mate before drifting back — loose enough the pair reads as two birds, not one
 
   // Frugivore crop / dispersal — dispersal well under half the kererū's.
   cropCapacity:     1,

@@ -62,10 +62,13 @@ const LOOK = {
   riverSeaLevel: 0.3,  // geo river: the bed only sinks to this (the sea band) where the land is already near it — the coast. Upstream it rides the terrain. Regenerate to apply.
   riverWaterT:   0.5,  // geo river: mask ≥ this reads as open WATER — the (narrow) blue thread. Raise = narrower water. Regenerate to apply (paint + walkability).
   riverBankT:    0.32,  // geo river: mask in [riverBankT, riverWaterT) reads as exposed RIVERBED / bank (sandy shingle, walkable) framing the water. Lower = wider bed. Raised from 0.22 to trim the wide sand bands that pooled where tributaries meet the main (the confluence seam-fallback bank keys off this too). Only affects river banks — sea beaches are elevation-classified (coastal band). Regenerate to apply.
+  riverWetlandT: 0.20,  // WETLAND: mask ≥ this (and BELOW riverWaterT), on LOW ground (< riverWetlandElevMax), reads as WETLAND (swamp margin) instead of bare sand — so the lower river's banks + a modest back-swamp margin are Manawatū raupō/harakeke/kahikatea, not beach. Set BELOW riverBankT so the wet zone is wider than the old sand bank. The gorge reaches (above the elev cap) keep shingle; the open sea beach (far from any river) keeps sand. Robust to land re-tuning: it keys off the live river-proximity field, so it tracks the channel wherever it morphs. Regenerate to apply.
+  riverWetlandElevMax: 0.30,  // WETLAND: only the low reaches turn to swamp — a near-river cell above this normalised elevation stays shingle bank (the incised gorge in the hills has no back-swamp). ≈ the lowland/grassland ceiling. Regenerate to apply.
   coastEase:     1,   // coast FALLOFF: land-rise exponent off the shore (>1 = gentle shelf/beach; <1 = the old steep cliff). This is knob (a) — how gently the land falls to the sea. Higher is gentler but widens the near-sea-level zone (softer waterline); pull toward ~1.1 if the coastline reads mushy. Regenerate to apply.
   coastInland:   0.14,  // coast POSITION (knob b, uniform): how far inland (east, as a fraction of screen X) the FINAL western shoreline sits — raise to bring the coast inland / expose more sea. 0.02 = the original tight coast; useful range ~0.2–0.7. Added to the per-row meander, so the actual waterline sits a little east of this. The SEVERE early southern strait is the marine submergence (seaSWReach), which recedes by ~0.5 Ma to leave this final coast. Regenerate to apply.
   coastInlandSouth: 0.1,  // coast POSITION (knob b, south bias): EXTRA inland reach added toward the south (v→1), 0 at the north edge → this many X-fractions at the south edge — so the southern/SW coast curves further in while the north stays put. This is the PERMANENT (present) curve; the strait's harsher early curve flattens onto it by ~0.5 Ma as seaSWReach recedes. Regenerate to apply.
   coastSmooth:   3,     // coast: light smoothing passes over the low-elevation shelf ONLY (0 = off) — clears waterline speckle and blocky relief steps without touching plains or ranges. Regenerate to apply.
+  coastRampWidth: 0.06,  // coast: WIDTH (in shore-distance units, 0..1) of a clean monotonic RAMP either side of the waterline where the shelf-relief noise is suppressed to 0 — so the shoreline crosses the sea band once, cleanly, instead of the noise straddling it and shattering the emerging shelf into floaty bits. Relief resumes just beyond the ramp. 0 = off (noise right up to the waterline, the old fragmented look). Regenerate to apply.
   cliffSmooth:   0.16,  // DE-CLIFF: after the carve/uplift, ease any elevation step to a neighbour STEEPER than this (0..1 per cell) — kills the extremely harsh vertical "jumps" the 3/4 relief bake would otherwise paint as a tall dark wall (e.g. a bank against the strait, a channel edge drifted off the new ground mid-morph). Gentle relief — plains, range flanks — sits below the threshold and is untouched. 0 = off. Regenerate (G/N) to apply.
   cliffSmoothPasses: 2, // DE-CLIFF: how many smoothing passes (more = softer, wider blend). Runs on the sim heightMap, deterministically, so the sliced morph stays identical to the synchronous one.
   riverFrontJitter: 0.09, // geo river: low-freq wander of the emerging tip so the growing river tapers off naturally instead of ending on a straight line. Regenerate to apply.
@@ -78,6 +81,7 @@ const LOOK = {
   straitWidthMult: 6.0,   // main river is this many times wider at ~1 Ma (the Manawatū Strait). Narrows to 1× by straitCloseTo. Regenerate to apply.
   seaRise:       0.10,  // EMERGENCE (deep time): at ~1 Ma the basin is a shallow-marine embayment. The flood is water RISING (attenuated by elevation, see seaFloodCeil), not the ground sinking, scaled by submergence and easing to 0 (present shoreline) by GEO_EPOCHS.emergeTo (~0.5 Ma). Tune live (press B/G/N).
   seaFloodCeil:  1.,  // EMERGENCE reach: the flood's lowering fades to nothing at this elevation — ground above it never submerges, so the eastern uplands stay legible land at 1 Ma instead of the whole map reading as a grey flood. Lower = flood hugs the coast; higher = deeper inundation. Tune live (press B/G/N).
+  seaFloodFlatten: 0.85,  // EMERGENCE de-speckle (0..1): the elevation-attenuated flood above LOWERS the basin but keeps its base-noise relief, so a deeply-drowned floor emerges as scattered shallow speckle / a shattered coast. This pulls drowned ground toward the mottled sea floor — full effect deep in the basin, ~0 at the waterline — so the open sea reads as coherent water while the immediate shore keeps its sandbar texture. Scaled by submergence, so it only bites during the emergence and is gone by the present coast. 0 = off (the old fragmented look). Tune live (press B/G/N).
   seaSWReach:    1.60,  // SW MARINE STRAIT (Axis A, positional): at ~1 Ma the Whanganui basin SW of the river is open sea — the strait. Regardless of elevation, the ground SW of a diagonal front (measured u+(1−v), so the lower-LEFT corner) is pulled fully under, then fills back into the normally-generated terrain by GEO_EPOCHS.emergeTo (~0.5 Ma). This is how far that full submergence reaches toward the NE; larger = more of the map starts drowned. Raised with seaSWFeather (1.25→1.60) so the WIDER taper still reaches the NE dry edge — the basin keeps its extent but shelves in gradually instead of dropping off. Tune live (press B/G/N).
   seaSWFeather:  3.0,  // SW MARINE STRAIT: softness of that diagonal front (0 = a hard shoreline). Its taper is what leaves the SE with intermittently more land — a basic 'land bridge'. Widened 0.7→1.40 so the basin's INNER (NE, landward) shore grades in over a broad shelf rather than the obvious early drop-off; paired with seaSWReach above so the deep SW core survives. Tune live (press B/G/N).
 
@@ -133,6 +137,8 @@ const LOOK = {
   southSinkFeather: 0.50,  // width of that shore ramp (in v). WIDE = the land eases under gradually (the brief's "not a sharp drop off at all"); small = a crisp coastline. Widened 0.22→0.50 so the southern shore ramp reaches to v~0.88 — the "especially southward" part of the gentler basin. Tune live (press B/G/N).
   southSinkProtect: 1.0,   // how strongly the Tararua range mass RESISTS submergence (1 = the range footprint + foothills stay fully dry — the land bridge; 0 = the strait floods straight over it). Tune live (press B/G/N).
   southSinkWobble:  0.05,  // meander the strait's north SHORE off the straight latitude line (in v), so the drowned area is not a square-edged patch. Also mottles the sea floor so it reads as varied open water. 0 = a straight, latitude-aligned coast. Tune live (press B/G/N).
+  southSinkEastU:      0.60,  // EAST→WEST FILL: fade the south strait out toward the east — full west of the taper, 0 by this screen-X fraction — so the eastern/SE ground (and the axial Tararua block) emerges FIRST and the southern land fills westward as the pulse drains, instead of a uniform latitude band whose north shore lifts all at once (the jarring "rising bank" in the SE). 0 = off (the old full-width band). Tune live (press B/G/N).
+  southSinkEastFeather: 0.30,  // width (in screen-X) of that east taper, west of southSinkEastU. WIDE = the south strait thins gradually into the eastern land; narrow = a crisper east edge. Tune live (press B/G/N).
 
   // ---- NORTH UP-RAMP (the far/top edge) ---------------------------------------
   // Raise the top of the SCREEN so the far edge is genuinely-higher generated terrain instead of
@@ -418,8 +424,12 @@ class TerrainGenerator {
     this._snowBiome = null;
     this._fallbackBiome = null;
     this._bedBiome = null;
+    this._wetlandBiome = null;   // riparian swamp, assigned by the river-proximity override (not elevation)
 
     for (const biome of this.biomeList) {
+      // Wetland: matched by key — it has no elevation niche of its own (its band is
+      // shadowed by grassland on purpose), so it is only ever placed by the classify override.
+      if (biome.key === 'wetland') this._wetlandBiome = biome;
       // Water: the lowest non-walkable biome, or anything flagged isWater
       if (biome.isWater || (!biome.walkable && biome.maxElevation <= 0.15)) {
         if (!this._waterBiome || biome.minElevation < this._waterBiome.minElevation) {
@@ -564,6 +574,9 @@ class TerrainGenerator {
     const inlandSouth = (typeof LOOK !== 'undefined' && LOOK.coastInlandSouth != null) ? LOOK.coastInlandSouth : 0;
     const coastlinePosition = inland + inlandSouth * ny + coastNoise * 0.4;
     
+    // Clean-ramp width: within this shore-distance the shelf-relief noise is suppressed to 0, so the
+    // waterline crosses the sea band once (a clear ramp) instead of the noise shattering it into bits.
+    const rampW = (typeof LOOK !== 'undefined' && LOOK.coastRampWidth != null) ? LOOK.coastRampWidth : 0;
     let falloff;
     if (warpedNx < coastlinePosition) {
       const seaDepth = (coastlinePosition - warpedNx) / coastlinePosition;   // 0 at shore → 1 deep offshore
@@ -574,8 +587,11 @@ class TerrainGenerator {
       // give the waterline real slope instead of a sharp step.
       const shelf = ((noise(x * 0.018 + this.seed * 5, y * 0.018 + this.seed * 6) - 0.5)
                    + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * 0.5) * 0.11;
-      const shallow = (1 - seaDepth) * (1 - seaDepth);
-      falloff = (1 - seaDepth) * 0.12 + shelf * shallow;
+      // Fade the relief IN off the waterline (0 at the shore → full by rampW) as well as OUT into
+      // the deep, so the immediate shoreline is a clean monotone ramp, not a shattered noisy edge.
+      let shelfW = (rampW > 0) ? (seaDepth < rampW ? seaDepth / rampW : 1) : 1;
+      shelfW *= (1 - seaDepth) * (1 - seaDepth);
+      falloff = (1 - seaDepth) * 0.12 + shelf * shelfW;
       if (falloff < 0) falloff = 0;
     } else {
       const landProgress = (warpedNx - coastlinePosition) / (1 - coastlinePosition);
@@ -587,10 +603,13 @@ class TerrainGenerator {
       // Coastal-plain undulation near the shore (fading inland), so the just-emerged land
       // carries the same natural relief as the shelf it rose from — no flat monotone apron.
       const ridgeNoise = noise(x * 0.012 + this.seed * 4, y * 0.012) * 0.2;
-      const nearShore = Math.exp(-landProgress * 6);
+      // Suppress the shelf noise across the clean-ramp band just inland of the waterline (0 at the
+      // shore → full by rampW), then fade it out inland — so the shoreline itself stays a clear ramp.
+      let shelfW = (rampW > 0) ? (landProgress < rampW ? landProgress / rampW : 1) : 1;
+      shelfW *= Math.exp(-landProgress * 6);
       const shelf = ((noise(x * 0.018 + this.seed * 5, y * 0.018 + this.seed * 6) - 0.5)
                    + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * 0.5) * 0.11;
-      falloff += ridgeNoise * landProgress + shelf * nearShore;
+      falloff += ridgeNoise * landProgress + shelf * shelfW;
     }
     
     // Clamp ny to [0,1] here: the VIEW ZOOM-OUT can hand this function coords a little past the
@@ -654,7 +673,7 @@ class TerrainGenerator {
     // via gridNy (captured pre-remap). Regenerate / re-bake (B) to apply.
     const nAmt = (typeof LOOK !== 'undefined' && LOOK.northLiftAmt != null) ? LOOK.northLiftAmt : 0;
     const nFrac = (typeof LOOK !== 'undefined' && LOOK.northLiftFrac != null) ? LOOK.northLiftFrac : 0;
-    elevation += TerrainGenerator._northLift(gridNy, nFrac, nAmt);
+    elevation += TerrainGenerator._northLift(gridNy, nFrac, nAmt, elevation);   // gated off sea/coast (no top-left smear)
     // EAST DOWN-RAMP: grade the right LOOK.eastLowerFrac of the SCREEN down by up to
     // LOOK.eastLowerAmt (max at the east edge → 0 at eastLowerFrac inland), so the ranges fall
     // away into the inland/eastern Manawatū instead of climbing to a bright plateau. Screen-space
@@ -1113,7 +1132,7 @@ class TerrainGenerator {
   // Combine the geo field for one cell with the deep-time factors. Pure/static so
   // the cached morph path and the direct _applyGeo share it (no divergence), and
   // tools/bootcheck.js can assert it.
-  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil) {
+  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat) {
     const e0 = e;                                  // pre-range LOCAL ground — the level the river follows
     if (rMask > 0 && uplift > 0 && rH > 0) {
       // RANGES scale the EXISTING ground instead of replacing it with a crest template.
@@ -1182,6 +1201,24 @@ class TerrainGenerator {
       if (e < fc) {
         const f = 1 - e / fc;
         e -= seaLift * f * f * (3 - 2 * f);
+        // FLOOD FLATTEN: the subtraction above lowers the basin but PRESERVES the base-noise
+        // relief, so a deeply-drowned floor keeps its bumps and reads as scattered shallow
+        // speckle / a shattered coast as it emerges. Pull the drowned ground toward the same
+        // mottled sea floor the straits use, by an amount that grows with flood strength
+        // (floodFlat = submergence·LOOK.seaFloodFlatten, from the caller) and with how far the
+        // cell sits BELOW the sea/water band — so the open basin flattens to coherent water
+        // while the immediate waterline (small depth) keeps its emerging-sandbar texture. Only
+        // ever lowers; a caller that omits it (harness/older paths) passes undefined → no-op.
+        if (floodFlat > 0) {
+          const sfl = (seaFloor > 0) ? seaFloor : 0.04;
+          const band = 0.12;                       // sea/water band top
+          if (e < band && e > sfl) {
+            let d = (band - e) / band;             // 0 at the waterline → 1 at the floor
+            let pull = floodFlat * d * d;          // quadratic: gentle near shore, strong deep
+            if (pull > 1) pull = 1;
+            e += (sfl - e) * pull;
+          }
+        }
       }
     }
     // SW MARINE STRAIT (Axis A, positional). Distinct from the elevation-attenuated seaLift
@@ -1252,6 +1289,21 @@ class TerrainGenerator {
     let sp = (v - lat) / (feather > 0 ? feather : 1e-6);
     sp = sp < 0 ? 0 : sp > 1 ? 1 : sp;
     return sp * sp * (3 - 2 * sp) * sink;
+  }
+
+  // EAST→WEST fill factor for the south-half strait (0..1): 1 west of the taper, easing to 0 by
+  // `eastU` (screen-X fraction). Multiplied into southSub so the south strait FADES toward the
+  // east — the eastern / Tararua side emerges first and the southern land fills WESTWARD as the
+  // pulse drains, instead of a uniform latitude band whose north shore lifts all at once (which
+  // read as a jarring "rising bank" in the SE). eastU ≤ 0 disables it (a clean no-op → the old
+  // full-width band). Pure/static so the cached and on-the-fly paths share it.
+  static _southEastFade(u, eastU, feather) {
+    if (!(eastU > 0)) return 1;
+    const start = eastU - (feather > 0 ? feather : 1e-6);
+    if (u <= start) return 1;
+    let t = (u - start) / (eastU - start);
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return 1 - t * t * (3 - 2 * t);
   }
 
   // LOCALIZED submergence strength for a cell: an elliptical mask centred at (cx,cy) with radii
@@ -1352,10 +1404,17 @@ class TerrainGenerator {
   // the very top edge (gridNy 0) to 0 at gridNy = frac. Fills the far edge with real, slightly
   // higher terrain (paired with a thin _geoTopMargin) instead of an eased-plains smear. Pure/static
   // (gridNy is screen-space, captured before the view remap) so bootcheck can assert the shape.
-  static _northLift(gridNy, frac, amt) {
+  static _northLift(gridNy, frac, amt, base) {
     if (!(amt > 0) || !(frac > 0) || gridNy >= frac) return 0;
     const tt = 1 - gridNy / frac;
-    return amt * tt * tt * (3 - 2 * tt);
+    let lift = amt * tt * tt * (3 - 2 * tt);
+    // Never manufacture raised land over the SEA/COAST at the far edge: fade the lift out for
+    // low base ground (below the lowland). Without this, the top edge lifted the north-west
+    // shoreline into a step the thin top-margin ease can't flatten, which the 3/4 relief bake
+    // painted as a vertical smear at the top-left. Ranges/plains (base ≥ ~0.20) get the full
+    // lift. A 3-arg call (base omitted, e.g. the harness) keeps the old unconditional behaviour.
+    if (base != null && base < 0.20) lift *= (base > 0 ? base / 0.20 : 0);
+    return lift;
   }
 
   // EAST DOWN-RAMP: lower the right `frac` of the SCREEN by up to `amt`, max at the east edge
@@ -1706,6 +1765,8 @@ class TerrainGenerator {
     const seaRise = (typeof LOOK !== 'undefined' && LOOK.seaRise != null) ? LOOK.seaRise : 0;
     const seaLift = (t.submergence > 0 ? t.submergence : 0) * seaRise;   // Axis A: marine emergence
     const floodCeil = (typeof LOOK !== 'undefined' && LOOK.seaFloodCeil != null) ? LOOK.seaFloodCeil : 0.42;
+    const floodFlatK = (typeof LOOK !== 'undefined' && LOOK.seaFloodFlatten != null) ? LOOK.seaFloodFlatten : 0;
+    const floodFlat = (t.submergence > 0 ? t.submergence : 0) * floodFlatK;   // de-speckle: pull drowned ground to the sea floor, strongest at full submergence
     // Strait: the main stem is widened by straitWidthMult, but only WEST of the east→west retreat
     // front (LOOK.straitReach*, driven by t.straitRetreat); east of it the stem is narrow — the
     // revealed NE source. straitWide is a per-cell factor computed in the loop from u.
@@ -1732,6 +1793,8 @@ class TerrainGenerator {
     const southFeather = (typeof LOOK !== 'undefined' && LOOK.southSinkFeather != null) ? LOOK.southSinkFeather : 0.22;
     const southProtect = (typeof LOOK !== 'undefined' && LOOK.southSinkProtect != null) ? LOOK.southSinkProtect : 1;
     const southWob = (typeof LOOK !== 'undefined' && LOOK.southSinkWobble != null) ? LOOK.southSinkWobble : 0.05;
+    const southEastU = (typeof LOOK !== 'undefined' && LOOK.southSinkEastU != null) ? LOOK.southSinkEastU : 0;   // EAST→WEST fill taper
+    const southEastF = (typeof LOOK !== 'undefined' && LOOK.southSinkEastFeather != null) ? LOOK.southSinkEastFeather : 0.3;
     // Mottle the drowned SEA FLOOR and MEANDER the strait's north shore with the cached wobble field,
     // so the submergence reads as varied open water with a natural (not latitude-straight) coast —
     // not a flat square slab. Cached (deterministic) → the sliced morph stays identical to the sync one.
@@ -1821,12 +1884,13 @@ class TerrainGenerator {
         const swSub = TerrainGenerator._swStrength(u, v, sub, swReach, swFeather);
         let southSub = TerrainGenerator._southStrength(v + wv * southWob, southSink, southLat, southFeather);   // meander the shore off the straight latitude line
         if (southSub > 0) { const pr = 1 - southProtect * rMask[i]; southSub *= pr > 0 ? pr : 0; }   // Tararua stays a dry peninsula
+        if (southSub > 0 && southEastU > 0) southSub *= TerrainGenerator._southEastFade(u, southEastU, southEastF);   // EAST→WEST fill: east emerges first
         const patchSub = TerrainGenerator._patchStrength(u + wv * southWob, v, sub, patchU, patchV, patchRX, patchRY, patchFeather, patchFeatherE);   // meander the patch shore off a straight ellipse too
         // GLACIAL EUSTATIC sea: WEST-gate the signed shift (full at the west edge → 0 by gSeaEastU),
         // so it moves only the western coast, never the trans-range eastern lowland.
         let gSea = 0;
         if (gSeaOn && u < gSeaEastU) { const wg = 1 - u / gSeaEastU; gSea = glacialSea * wg * wg * (3 - 2 * wg); }
-        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, wDepthArr[i], up, inc, relief, incise, sea, wPosArr[i], cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil);
+        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, wDepthArr[i], up, inc, relief, incise, sea, wPosArr[i], cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat);
         // DROWNED-VALLEY ESTUARY: at a warm highstand the sea backs up the main-stem valley. Drown
         // the low valley floor near the main channel (wMDist/wMPos) toward the sea floor, elevation-
         // gated so terraces stay dry, reaching further inland as the highstand strengthens.
@@ -1948,6 +2012,8 @@ class TerrainGenerator {
     const seaRise = (typeof LOOK !== 'undefined' && LOOK.seaRise != null) ? LOOK.seaRise : 0;
     const seaLift = (t.submergence > 0 ? t.submergence : 0) * seaRise;
     const floodCeil = (typeof LOOK !== 'undefined' && LOOK.seaFloodCeil != null) ? LOOK.seaFloodCeil : 0.42;
+    const floodFlatK = (typeof LOOK !== 'undefined' && LOOK.seaFloodFlatten != null) ? LOOK.seaFloodFlatten : 0;
+    const floodFlat = (t.submergence > 0 ? t.submergence : 0) * floodFlatK;
     const swReach = (typeof LOOK !== 'undefined' && LOOK.seaSWReach != null) ? LOOK.seaSWReach : 1.15;
     const swFeather = (typeof LOOK !== 'undefined' && LOOK.seaSWFeather != null) ? LOOK.seaSWFeather : 0.55;
     const swSub = TerrainGenerator._swStrength(u, v, (t.submergence > 0 ? t.submergence : 0), swReach, swFeather);
@@ -1956,11 +2022,14 @@ class TerrainGenerator {
     const southFeather = (typeof LOOK !== 'undefined' && LOOK.southSinkFeather != null) ? LOOK.southSinkFeather : 0.22;
     const southProtect = (typeof LOOK !== 'undefined' && LOOK.southSinkProtect != null) ? LOOK.southSinkProtect : 1;
     const southWob = (typeof LOOK !== 'undefined' && LOOK.southSinkWobble != null) ? LOOK.southSinkWobble : 0.05;
+    const southEastU = (typeof LOOK !== 'undefined' && LOOK.southSinkEastU != null) ? LOOK.southSinkEastU : 0;   // EAST→WEST fill taper
+    const southEastF = (typeof LOOK !== 'undefined' && LOOK.southSinkEastFeather != null) ? LOOK.southSinkEastFeather : 0.3;
     // Off-cache path (harness): a live-noise twin of the cached mottle/meander in _applyGeoToHeightMap.
     const wv = ((t.southSink > 0) || (t.submergence > 0)) ? (noise(u * 8 + this.seed * 5, v * 8 + this.seed * 7) * 2 - 1) : 0;
     const seaFloor = 0.02 + wv * 0.015;
     let southSub = TerrainGenerator._southStrength(v + wv * southWob, (t.southSink > 0 ? t.southSink : 0), southLat, southFeather);
     if (southSub > 0) { const pr = 1 - southProtect * rMask; southSub *= pr > 0 ? pr : 0; }   // Tararua stays a dry peninsula
+    if (southSub > 0 && southEastU > 0) southSub *= TerrainGenerator._southEastFade(u, southEastU, southEastF);   // EAST→WEST fill: east emerges first
     // LOCALIZED SUBMERGENCE PATCH (Axis A): elliptical spot on the submergence clock (LOOK.patchSub*).
     const patchU = (typeof LOOK !== 'undefined' && LOOK.patchSubU != null) ? LOOK.patchSubU : 0.58;
     const patchV = (typeof LOOK !== 'undefined' && LOOK.patchSubV != null) ? LOOK.patchSubV : 0.72;
@@ -1969,7 +2038,7 @@ class TerrainGenerator {
     const patchFeather = (typeof LOOK !== 'undefined' && LOOK.patchSubFeather != null) ? LOOK.patchSubFeather : 0.45;
     const patchFeatherE = (typeof LOOK !== 'undefined' && LOOK.patchSubFeatherE != null) ? LOOK.patchSubFeatherE : patchFeather;
     const patchSub = TerrainGenerator._patchStrength(u + wv * southWob, v, (t.submergence > 0 ? t.submergence : 0), patchU, patchV, patchRX, patchRY, patchFeather, patchFeatherE);
-    const out = TerrainGenerator._combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, t.uplift, t.incision, relief, incise, sea, wPos, cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub);
+    const out = TerrainGenerator._combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, t.uplift, t.incision, relief, incise, sea, wPos, cellEmg, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, undefined, undefined, floodFlat);
     return TerrainGenerator._nsEdgeFalloff(out, v, this._geoEdgeMargin, this._geoTopMargin);
   }
 
@@ -2116,6 +2185,12 @@ class TerrainGenerator {
     const wTribEarlyArr = C ? C.wTribEarly : null;
     const riverT = (typeof LOOK !== 'undefined' && LOOK.riverWaterT != null) ? LOOK.riverWaterT : 0.55;
     const riverBankT = (typeof LOOK !== 'undefined' && LOOK.riverBankT != null) ? LOOK.riverBankT : 0.30;
+    // WETLAND override: on LOW ground a near-river cell reads as swamp, not sand (see the wetland
+    // biome header in the scaffold). wetT sits below riverBankT so the wet zone is a touch wider
+    // than the old bank; wetElevMax caps it to the lowland so the gorge keeps shingle. Kept
+    // IDENTICAL to the paint pass so the sliced/sync bake and the sim biome map agree.
+    const wetT = (typeof LOOK !== 'undefined' && LOOK.riverWetlandT != null) ? LOOK.riverWetlandT : 0.20;
+    const wetElevMax = (typeof LOOK !== 'undefined' && LOOK.riverWetlandElevMax != null) ? LOOK.riverWetlandElevMax : 0.30;
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
     const straitW = (typeof LOOK !== 'undefined' && LOOK.straitWidthMult != null) ? LOOK.straitWidthMult : 3.0;
@@ -2142,7 +2217,8 @@ class TerrainGenerator {
         const elevation = this.heightMap[idx];
         const eClass = wob ? elevation + wob[idx] * w : elevation;
         let biome = this.getBiomeFromElevation(eClass);
-        let waterHit = false, bedHit = false;
+        let waterHit = false, bedHit = false, wetHit = false;
+        const wetLow = eClass < wetElevMax;   // only the lowland river reaches turn to swamp
         if (wDistArr && this._waterBiome) {
           const dist = wDistArr[idx];
           let effW = wBaseWArr[idx];
@@ -2168,6 +2244,7 @@ class TerrainGenerator {
                 wT += hi; bT += hi;   // bank thins WITH the water (a gully stream), not a widening sand ring
               }
               if (m >= wT) waterHit = true; else if (m >= bT) bedHit = true;
+              if (wetLow && m >= wetT) wetHit = true;   // low reaches: swamp margin, wider than the bank
             }
           }
           // Seam fallback: a TRIBUTARY-owned cell whose paint was gated off — OR that the
@@ -2184,13 +2261,16 @@ class TerrainGenerator {
               let mM = tt * tt * (3 - 2 * tt);
               if (mainArm > 0) mM *= TerrainGenerator._mainArmPresence(wMPosArr ? wMPosArr[idx] : 0, mainArm, mArmKeep, mArmFeather);   // fallback recedes with the arm
               if (mM >= riverTeff) waterHit = true; else if (mM >= riverBankT) bedHit = true;
+              if (wetLow && mM >= wetT) wetHit = true;
             }
           }
         }
         if (waterHit) {
           biome = this._waterBiome;
+        } else if (wetHit && this._wetlandBiome) {
+          biome = this._wetlandBiome;   // low riparian swamp — overrides the sand bank + the plain margin
         } else if (bedHit && this._bedBiome) {
-          biome = this._bedBiome;
+          biome = this._bedBiome;       // gorge reaches: exposed shingle
         } else if (biome === this.biomeList[1] && this._waterBiome) {
           if (!this.hasAdjacentWater(row, col)) biome = this._fallbackBiome;
         }
@@ -2539,6 +2619,12 @@ class TerrainGenerator {
       ? this._waterBiome.minElevation + (this._waterBiome.maxElevation - this._waterBiome.minElevation) * 0.5 : 0.05;
     const bedColorElev = this._bedBiome
       ? this._bedBiome.minElevation + (this._bedBiome.maxElevation - this._bedBiome.minElevation) * 0.5 : 0.12;
+    // WETLAND override (paint) — MUST stay identical to _rebuildBiomeMap so the render matches the
+    // sim biome map (and the sliced bake matches the synchronous one). See the wetland biome header.
+    const wetT = (typeof LOOK !== 'undefined' && LOOK.riverWetlandT != null) ? LOOK.riverWetlandT : 0.20;
+    const wetElevMax = (typeof LOOK !== 'undefined' && LOOK.riverWetlandElevMax != null) ? LOOK.riverWetlandElevMax : 0.30;
+    const wetlandColorElev = this._wetlandBiome
+      ? this._wetlandBiome.minElevation + (this._wetlandBiome.maxElevation - this._wetlandBiome.minElevation) * 0.5 : 0.22;
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
     const straitW = (typeof LOOK !== 'undefined' && LOOK.straitWidthMult != null) ? LOOK.straitWidthMult : 3.0;
@@ -2582,6 +2668,8 @@ class TerrainGenerator {
         let biome = this.getBiomeFromElevation(eClass);
         let wa = (biome.isWater || biome === this._waterBiome) ? 1 : 0;   // true sea → rendered flat
         let colorElev = eClass;
+        let wetHit = false;
+        const wetLow = eClass < wetElevMax;   // only the lowland river reaches turn to swamp
         if (wa === 0 && C_wDist && this._waterBiome) {
           // Bilinear distance from sim-resolution geo cache
           const d00 = C_wDist[rowA + x0], d10 = C_wDist[rowA + x1];
@@ -2615,6 +2703,7 @@ class TerrainGenerator {
               }
               if (m >= wT) { biome = this._waterBiome; colorElev = riverColorElev; wa = 2; }
               else if (m >= bT && this._bedBiome) { biome = this._bedBiome; colorElev = bedColorElev; }
+              if (wetLow && m >= wetT) wetHit = true;   // low reaches: swamp margin, wider than the bank
             }
           }
           // Seam fallback (same rule as _rebuildBiomeMap): a tributary cell inside the
@@ -2639,9 +2728,13 @@ class TerrainGenerator {
               }
               if (mM >= riverTeff) { biome = this._waterBiome; colorElev = riverColorElev; wa = 2; }
               else if (mM >= riverBankT && this._bedBiome) { biome = this._bedBiome; colorElev = bedColorElev; }
+              if (wetLow && mM >= wetT) wetHit = true;
             }
           }
         }
+        // Low riparian swamp overrides the sand bank + the near-river plain margin (land cells only,
+        // never actual water). Matches _rebuildBiomeMap's wetHit branch so sim biome == painted biome.
+        if (wetHit && wa === 0 && this._wetlandBiome) { biome = this._wetlandBiome; colorElev = wetlandColorElev; }
         biomeA[i] = this.biomeIndexByKey[biome.key];
         waterA[i] = wa;
 
@@ -2802,6 +2895,9 @@ class TerrainGenerator {
             duneCoastX, duneCoastXS } = st;
 
     const invPW = 1 / PW, invPH = 1 / PH;
+    // A wetland cell (river mouth / estuary / back-swamp) must not take the wind-blown dune
+    // sand tint — swamp and dune are distinct neighbours. Gate the dune blend off it below.
+    const wetIdx = this._wetlandBiome ? this.biomeIndexByKey[this._wetlandBiome.key] : -1;
 
     for (let pc = c0; pc < c1; pc++) {
       let ceiling = fullHeight;
@@ -2832,7 +2928,7 @@ class TerrainGenerator {
         // thinning inland to 0 at this phase's reach (the Koputaroa surge grows with cold).
         // Before snow (dunes sit below the snow line anyway) and before the edge ink, so biome
         // outlines + the shoreline stroke still draw over the sand. waterA 0 = land only.
-        if (duneOn && waterA[i] === 0) {
+        if (duneOn && waterA[i] === 0 && biomeA[i] !== wetIdx) {
           const di = TerrainGenerator._duneIntensity(nx, pr * invPH, e, duneCoastX, duneCoastXS, duneReach, duneOff, duneELo, duneEHi);
           if (di > 0) {
             const a = di * duneAmt;

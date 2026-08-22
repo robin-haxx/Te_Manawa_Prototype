@@ -85,6 +85,18 @@
     <script src="TeManawa_plant.js"></script>
     <script src="TeManawa_placeable.js"></script>
 
+    <!-- Runtime texture atlas: packs all loaded sprite PNGs (fauna, flora,
+         weather) into a few shared GPU pages at setup() and wraps image() so the
+         cast draws from them transparently. Must load after every sprite-holding
+         module above and before sketch.js (which calls SpriteAtlas.build()). -->
+    <script src="TeManawa_spriteatlas.js"></script>
+
+    <!-- Optional WebGL entity-sprite layer (?render=gl). Draws the sprite cast as
+         batched textured quads on an offscreen GL canvas sourced from the atlas
+         pages, composited back into the 2D frame. Default off; needs the atlas, so
+         load after it and before sketch.js. -->
+    <script src="TeManawa_glbatch.js"></script>
+
     <!-- Deep time + parametric climate. Pure modules, no p5 dependency;
          must load before the HUD, which renders from them. -->
     <script src="TeManawa_climate.js"></script>

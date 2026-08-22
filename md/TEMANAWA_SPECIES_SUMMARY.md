@@ -129,7 +129,7 @@ the same totals down by what is drawn versus outstanding.)
 
 ## 7. Cut, in one line each
 
-**Plants (20).** Rimu *(duplicates tōtara from above)* · kawakawa *(occluded under
+**Plants (20).** Totara *(duplicates tōtara from above)* · kawakawa *(occluded under
 canopy)* · rewarewa *(a spire is a dot from above)* · mingimingi *(folded into grey
 scrub)* · pukatea, mātai, ngaio, akeake, māhoe, oioi, *Dracophyllum*, tutu, pōhuehue,
 tauhinu, rangiora, tūpari, mountain flax, pūrei, *Raoulia*, kānuka *(absorbed into
