@@ -10,6 +10,24 @@
 // clouds use), so nothing in an entity's own render() needs to know about it.
 const TM_FADE_MS = 380;
 
+// PLANT GHOSTING — keep a moa (or any ground bird) from being lost behind the canopy.
+// In the depth-sorted ground pass a plant is drawn in FRONT of everything already
+// rendered, so if a live animal sits just BEHIND a plant and under its footprint, the
+// plant briefly fades so the animal reads through it. The fade eases off the plant's
+// centre-line: strongest when the animal's centre is dead under the trunk, nothing at
+// the footprint edge — so a bird only dissolves the bit of canopy it is actually
+// behind, and the forest stays solid everywhere else. All-real-time-safe (no state,
+// recomputed each frame). Console-tunable via window.PLANT_GHOST.
+const PLANT_GHOST = {
+  on: true,
+  maxReduce:   0.55,   // deepest opacity cut: a plant dead-centre over an animal drops to 1-this alpha
+  minHalfW:    9,      // world half-width below which a plant is too small to bother ghosting (tussock etc.)
+  widthMul:    1.0,    // scales the footprint used for the horizontal overlap test
+  depthBehind: 60,     // world units NORTH (behind) a plant to look for a covered animal
+  depthFalloff: true   // also ease the ghost by how far behind the animal sits (front of the band = strongest)
+};
+if (typeof window !== 'undefined') window.PLANT_GHOST = PLANT_GHOST;
+
 class Simulation {
   constructor(terrain, config, game, seasonManager) {
     this.terrain = terrain;
@@ -1742,6 +1760,37 @@ class Simulation {
     dc.globalAlpha = a;
   }
 
+  // Opacity multiplier for a plant so a live ground animal behind it reads through the
+  // canopy (see PLANT_GHOST). `list` is the depth-sorted ground pass and `i` the plant's
+  // index in it, so every entry BEFORE i is already drawn and sits at/behind this plant's
+  // depth. We scan back over that window for an animal (a Boid) whose centre falls inside
+  // the plant's footprint; the fade eases off the plant's centre-line (and, optionally, off
+  // the back of the depth band), taking the strongest cover found. Returns 1 (no change)
+  // for a plant clear of any animal. Allocation-free.
+  _plantGhostAlpha(p, list, i, G) {
+    const halfW = p.size * (p.growth || 1) * 0.5 * G.widthMul;
+    if (halfW < G.minHalfW) return 1;                 // too small to hide anything
+    const py = p.pos.y, pxw = p.pos.x;
+    const band = G.depthBehind;
+    let strongest = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const a = list[j];
+      const dy = py - a.pos.y;                         // >0: a is behind (north of) p
+      if (dy > band) break;                            // list is depth-sorted → nothing older is nearer
+      if (dy < 0) continue;
+      if (!(a instanceof Boid)) continue;              // only ground animals are worth revealing
+      if (!a.alive && !(a._fade > 0)) continue;
+      const dx = pxw - a.pos.x;
+      const adx = dx < 0 ? -dx : dx;
+      if (adx >= halfW) continue;                      // animal centre outside the footprint
+      let t = 1 - adx / halfW;                         // 1 on the centre-line, 0 at the footprint edge
+      t = t * t * (3 - 2 * t);                         // smoothstep — gentle near both ends
+      if (G.depthFalloff) t *= 1 - dy / band;          // an animal at the back of the band ghosts less
+      if (t > strongest) { strongest = t; if (strongest >= 1) break; }
+    }
+    return strongest > 0 ? 1 - strongest * G.maxReduce : 1;
+  }
+
   render() {
     this._advanceFades();
     this.updateViewport();
@@ -1796,7 +1845,24 @@ class Simulation {
       while (j >= 0 && list[j].pos.y > key) { list[j + 1] = list[j]; j--; }
       list[j + 1] = e;
     }
-    for (let i = 0; i < list.length; i++) this._renderWithFade(list[i], 'render');
+    const ghost = (typeof PLANT_GHOST !== 'undefined' && PLANT_GHOST.on) ? PLANT_GHOST : null;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      // A canopy plant sitting in front of a live animal fades over it (centre-line
+      // falloff) so the bird reads through — see _plantGhostAlpha. Applied via the shared
+      // globalAlpha the sprites (2D and GL) both honour; _renderWithFade leaves it alone
+      // for a non-fading plant, so the two compose cleanly.
+      let ga = 1;
+      if (ghost && e instanceof Plant) ga = this._plantGhostAlpha(e, list, i, ghost);
+      if (ga < 1) {
+        const dc = drawingContext, prev = dc.globalAlpha;
+        dc.globalAlpha = prev * ga;
+        this._renderWithFade(e, 'render');
+        dc.globalAlpha = prev;
+      } else {
+        this._renderWithFade(e, 'render');
+      }
+    }
 
     // ---- Above the ground plane (flyers, storms, indicators) -----------------
     // Eagles (aliveCheck true so a just-starved bird stops drawing immediately).

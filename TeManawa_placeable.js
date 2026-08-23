@@ -4,8 +4,11 @@
 let placeableSprites = {
   cloud1: null,
   cloud2: null,
-  bolt: null,
-  ashCloud: null,   // eruption takeover cover — see InstallHUD.renderAshCloud
+  bolt: null,          // legacy 64px lightning glyph — kept as the fallback for `lightning`
+  lightning: null,     // Storm_Lightning illustration; drawn via globalAlpha (no per-frame tint) — see the stutter note in loadPlaceableSprites
+  windWarm: null,      // interglacial "wind gust" — blows on the FOREST boost / warming (InstallHUD wind system)
+  windCold: null,      // glacial "chill" — blows on the TUSSOCK boost / cooling
+  ashCloud: null,      // eruption takeover cover — see InstallHUD.renderAshCloud
   loaded: false
 };
 
@@ -23,6 +26,24 @@ function loadPlaceableSprites() {
   placeableSprites.cloud1 = loadImage('sprites/cloud1.png');
   placeableSprites.cloud2 = loadImage('sprites/cloud2.png');
   placeableSprites.bolt = loadImage('sprites/bolt.png');
+  // Lightning: the old 64px `bolt` was drawn with a per-frame tint() whose alpha
+  // changed every frame, so p5 rebaked its tinted-image cache each frame — the stutter
+  // on every strike. This full-colour illustration replaces it and is drawn via
+  // globalAlpha instead (no tint), so no per-frame rebake. bolt stays as the fallback.
+  placeableSprites.lightning = loadImage(
+    'sprites/Environmental/Storm_Lightning.png',
+    () => {},
+    () => console.warn('Could not load sprites/Environmental/Storm_Lightning.png'));
+  // Wind gusts — scattered sprites that blow W→E on a climate turn or a boost press
+  // (InstallHUD wind system). Warm = interglacial (FOREST), cold = glacial (TUSSOCK).
+  placeableSprites.windWarm = loadImage(
+    'sprites/Environmental/WindGust_Blowing.png',
+    () => {},
+    () => console.warn('Could not load sprites/Environmental/WindGust_Blowing.png'));
+  placeableSprites.windCold = loadImage(
+    'sprites/Environmental/GlacialChill_Blowing.png',
+    () => {},
+    () => console.warn('Could not load sprites/Environmental/GlacialChill_Blowing.png'));
   // Eruption ash-cloud cover. NEVER a silent failure callback (CLAUDE.md): if the PNG
   // is missing, renderAshCloud no-ops on the un-sized image and the shake + flash still play.
   placeableSprites.ashCloud = loadImage(
@@ -174,22 +195,28 @@ class PlaceableObject {
     }
     _dc.globalAlpha = 1;
     
-    if (this.boltActive && placeableSprites.bolt) {
+    const lightning = placeableSprites.lightning || placeableSprites.bolt;
+    if (this.boltActive && lightning) {
       push();
       translate(this.boltX, this.boltY);
       rotate(this.boltRotation);
-      
-      tint(255, 255, 200, min(255, (this.boltDuration / 8) * 255 + 150));
-      image(placeableSprites.bolt, 0, 0, 64 * this.boltScale, 64 * this.boltScale);
-      
-      // Screen flash on first frame
+
+      // Fade the strike via globalAlpha, NOT a per-frame tint() — tinting an image with a
+      // value that changes every frame makes p5 rebake its tint cache each frame (the strike
+      // stutter). Bright at the strike, easing over the bolt's short life.
+      noTint();
+      _dc.globalAlpha = Math.min(1, this.boltDuration / 8 + 0.6);
+      const bh = 130 * this.boltScale, bw = bh * (lightning.width / lightning.height);
+      image(lightning, 0, 0, bw, bh);
+      _dc.globalAlpha = 1;
+
+      // Screen flash on first frame (a plain fill, not an image tint — no rebake)
       if (this.boltDuration > 6) {
-        noTint();
-        fill(255, 255, 200, 60);
         noStroke();
+        fill(255, 255, 200, 60);
         ellipse(0, 0, this.radius * 1.5, this.radius * 1.5);
       }
-      
+
       pop();
     }
     

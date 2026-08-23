@@ -2112,6 +2112,10 @@ function initializeRegistry() {
   // Mōho / North Island takahē — same moa-guild pattern (own `class: Takahe`). Guarded.
   if (typeof Takahe !== 'undefined' && typeof TAKAHE_SPECIES !== 'undefined')
     for (const [key, config] of Object.entries(TAKAHE_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
+  // North Island brown kiwi — the forest-floor bird, same moa-guild pattern (own `class:
+  // Kiwi`). Its soil-turning quirk lives in the class; registered here like the others. Guarded.
+  if (typeof Kiwi !== 'undefined' && typeof KIWI_SPECIES !== 'undefined')
+    for (const [key, config] of Object.entries(KIWI_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
   if (typeof Kereru !== 'undefined' && typeof KERERU_SPECIES !== 'undefined')
     REGISTRY.registerSpecies('kereru', 'kereru', KERERU_SPECIES);
   // Kōkako (singing, territorial) + huia (pair-bonded) — each its own species of its

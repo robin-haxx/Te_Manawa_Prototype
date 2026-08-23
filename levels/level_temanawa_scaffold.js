@@ -128,10 +128,10 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  colors:habitatCols.sea, contourColor:'#0f2533', outlineColor:habitatCols.sea[2],
                  walkable:false, canHavePlants:false, canPlace:false },
     coastal:   { key:'coastal',   name:"Coast",           minElevation:0.10, maxElevation:0.15,
-                 colors:habitatCols.coastal, contourColor:'#8a7d5a', outlineColor:'#c2b280',
+                 colors:habitatCols.coastal, contourColor:'#8a7d5a', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
-                 colors:habitatCols.grassland, contourColor:'#2d3a27', outlineColor:'#789762',
+                 colors:habitatCols.grassland, contourColor:'#2d3a27', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai','coprosma'], canPlace:true },
     // WETLAND — the Manawatū's riverbank is back-swamp + kahikatea, not beach. This is NOT
     // an elevation band: its 0.16–0.29 range is deliberately SHADOWED by grassland (0.15–0.30),
@@ -171,7 +171,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   species: {
     // The goose registers under the `moa` base type (own Goose class) so it lives in
     // the moa list and shares the grazer engine — hence it belongs in this list too.
-    moa: ['upland_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'heavy_footed_moa', 'giant_goose', 'north_island_takahe'],
+    // The kiwi (own Kiwi class) is the forest-floor member of the same guild.
+    moa: ['upland_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'heavy_footed_moa', 'giant_goose', 'north_island_takahe', 'north_island_brown_kiwi'],
     eagle: ['eyles_harrier']
   },
   startingSpecies: 'upland_moa',
@@ -179,7 +180,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // Multi-species founder spawn (used instead of startingSpecies when present).
   // A mix of forest and OPEN-COUNTRY grazers so the cold-phase reading works: the
   // goose + plains/coastal moa (all `openCountry`) fill the lowland when the visitor
-  // grows TUSSOCK in a glacial, while the forest moa hold the interglacial.
+  // grows TUSSOCK in a glacial, while the forest moa + the kiwi hold the interglacial.
   initialSpeciesDistribution: {
     upland_moa:       3,   // small cold-forest moa (not open-country)
     little_bush_moa:  3,   // forest floor (not open-country)
@@ -187,7 +188,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     mantells_moa:     2,   // lowland grazer (open-country)
     heavy_footed_moa: 2,   // lowland flats specialist (open-country)
     giant_goose:      5,   // North Island goose — open grassland/coast (open-country)
-    north_island_takahe: 3 // mōho — territorial rail of grassland/scrub/forest margin (open-country)
+    north_island_takahe: 3, // mōho — territorial rail of grassland/scrub/forest margin (open-country)
+    north_island_brown_kiwi: 3 // kiwi — forest-floor prober (NOT open-country; the warm-phase mirror)
   },
 
   // kōkako + huia are flighted forest birds (their own otherEntities lists, like the
@@ -265,6 +267,20 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     openCountryBoostHungerRelief: 0.04,   // per-tick hunger shaved while the flush holds (≈ offsets base hunger)
     openCountryBoostCooldownMult: 0.7,    // open-country grazers breed ~30% faster during the flush
 
+    // KIWI SOIL-TURNING — the forest-floor mirror of the open-country boost above. The
+    // North Island brown kiwi (TeManawa_kiwi.js) is the one bird that HEALS the forest
+    // floor rather than only consuming it: as it probes the leaf litter for food it stamps
+    // a gentle, short-lived warp (the disturbance clock below) that speeds nearby plant
+    // regrowth — the aerated, recycled ground of a worked forest floor. It pairs with the
+    // kererū (which spreads the forest OUTWARD) to close the forest loop and reinforces the
+    // warm-phase reading: the interglacial forest is healthier where the kiwi work. Gentle
+    // by design (strength ≪ the storm/bloom's 1.0) and throttled, so the active-disturbance
+    // list stays tiny. Wired in Kiwi.behave; decays on REAL time (updateDisturbance).
+    kiwiSoilTurning:   true,
+    kiwiProbeInterval: 150,   // sim-dt between a kiwi's litter-turning warp stamps (jittered +0..60)
+    kiwiWarpRadius:    34,     // world-px patch a kiwi's probing tends (about its home range)
+    kiwiWarpStrength:  0.22,   // regrowth warp strength — gentle vs the storm/eruption-bloom's 1.0
+
     maxLivePlants: 900,                          // cap for kererū seed dispersal (≤1000 live-plant budget)
     disperseDensityRadius: 26,                   // a kererū seed only establishes where the canopy is
     disperseDensityMax: 3,                       // sparse: < this many live plants within the radius
@@ -341,6 +357,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
       heavy_footed_moa:    { target: 4, floor: 2 },
       giant_goose:         { target: 8, floor: 3 },
       north_island_takahe: { target: 5, floor: 2 },
+      north_island_brown_kiwi: { target: 5, floor: 2 },
       kereru:              { target: 10, floor: 3 },
       kokako:              { target: 6, floor: 2 },
       huia:                { target: 6, floor: 2 }

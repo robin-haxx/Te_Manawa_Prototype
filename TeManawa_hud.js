@@ -100,6 +100,28 @@ const TM_EDGE = {
 };
 window.TM_EDGE = TM_EDGE;
 
+// WIND — scattered gust sprites that stream West→East across the screen as a climate cue.
+// It blows the WARM gust (interglacial, WindGust art) when the world turns interglacial or the
+// FOREST boost is pressed, and the COLD chill (glacial, GlacialChill art) when it turns glacial
+// or TUSSOCK is pressed — i.e. the wind of whichever regime the boost is FOR. A soft, slow,
+// semi-transparent drift (no flashing) so it stays inside the photosensitivity budget. Positions
+// are stored as fractions of the canvas so a resize is a no-op. Console-tunable.
+const TM_WIND = {
+  count:      10,      // gust sprites per burst ("several scattered")
+  speed:      0.008,   // horizontal travel, fraction of canvas WIDTH per frame (~a few s to cross)
+  speedJitter:0.5,     // ± share of speed, per gust
+  sizeFrac:   0.11,    // gust HEIGHT as a fraction of canvas height (width follows the art aspect)
+  sizeJitter: 0.45,    // ± share of size, per gust
+  yTop:       0.10,    // gusts scatter vertically between these fractions of canvas height
+  yBottom:    0.82,    // (kept clear of the top year and bottom timeline)
+  peakAlpha:  0.55,    // strongest opacity of a gust mid-screen
+  bobAmp:     0.012,   // vertical bob amplitude, fraction of height
+  bobSpeed:   0.05,    // bob phase advance per frame
+  startSpread:0.30,    // gusts start staggered across this fraction just off the left edge
+  minGapMs:   600      // a new burst of the SAME kind can't start sooner than this (debounce presses)
+};
+window.TM_WIND = TM_WIND;
+
 const InstallHUD = {
   TOP_H: 88,
   BOT_H: 132,
@@ -121,6 +143,7 @@ const InstallHUD = {
     // same per-set nudge (InstallHUD.update).
     { id: 'growWarm', key: '2', label: 'FOREST',
       action: (g) => { g._tmGrowWarmUntil = millis() + TM_TIME.growWarmSeconds * 1000;   // timer set either way: lights the button + drives the regime-fit desaturation lesson
+                       InstallHUD.beginWind(g, 'warm');                                   // the interglacial gust blows W→E on the FOREST boost
                        if (InstallHUD._growMatches(g, true)) {                            // right for the climate → it actually grows
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
                          InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
@@ -130,6 +153,7 @@ const InstallHUD = {
       isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
     { id: 'growCold', key: '3', label: 'TUSSOCK',
       action: (g) => { g._tmGrowColdUntil = millis() + TM_TIME.growColdSeconds * 1000;
+                       InstallHUD.beginWind(g, 'cold');                                   // the glacial chill blows W→E on the TUSSOCK boost
                        if (InstallHUD._growMatches(g, false)) {
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
                          InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
@@ -344,6 +368,12 @@ const InstallHUD = {
       g._ashCloudUntil = nowR + TM_TIME.cloudMillis; g._ashCloudMode = 'hold';
     }
 
+    // Wind: blow the regime's gust when the climate crosses the glacial↔interglacial line
+    // (the boosts also fire it on press, in their button actions), then advance any live burst
+    // on the real frame clock.
+    this._updateClimateWind(g);
+    this.updateWind(g, dt);
+
     return g.timeScale;
   },
 
@@ -497,15 +527,20 @@ const InstallHUD = {
       }
       _dc.globalAlpha = 1;
       const b = g._tmBolt;
-      if (b && b.active && placeableSprites.bolt) {
+      const lightning = placeableSprites.lightning || placeableSprites.bolt;
+      if (b && b.active && lightning) {
         push();
         translate(zx + b.x * z, zy + b.y * z);
         rotate(b.rot);
-        tint(255, 255, 200, Math.min(255, (b.duration / 8) * 255 + 150) * env);
-        const bs = 64 * b.scale * z;
-        image(placeableSprites.bolt, 0, 0, bs, bs);
+        // Fade the strike via globalAlpha, NOT a per-frame tint(): a tint value that changes
+        // every frame makes p5 rebake the image's tint cache each frame — the strike stutter.
+        noTint();
+        _dc.globalAlpha = Math.min(1, b.duration / 8 + 0.6) * env;
+        const bh = 130 * b.scale * z, bw = bh * (lightning.width / lightning.height);
+        image(lightning, 0, 0, bw, bh);
+        _dc.globalAlpha = 1;
         if (b.duration > 6) {   // brief, soft glow — kept gentle for photosensitivity
-          noTint(); noStroke();
+          noStroke();
           fill(255, 255, 200, 50 * env);
           ellipse(0, 0, 150 * z, 150 * z);
         }
@@ -515,6 +550,85 @@ const InstallHUD = {
     }
     pop();
   },
+
+  // ==========================================================
+  // WIND — W→E gust drift (see the TM_WIND config header)
+  // ==========================================================
+  // Start a burst. kind 'warm' (interglacial gust) or 'cold' (glacial chill). Debounced per
+  // kind so a rapid double-press doesn't stack bursts; a press of the OTHER kind replaces it
+  // (latest boost wins). Positions are stored as canvas fractions, so a resize is a no-op.
+  beginWind(g, kind) {
+    const E = (typeof TM_WIND !== 'undefined') ? TM_WIND : null;
+    if (!g || !E) return;
+    const now = (typeof millis === 'function') ? millis() : 0;
+    if (g._tmWind && g._tmWind.kind === kind && (now - g._tmWind.t0) < (E.minGapMs || 500)) return;
+    const parts = [];
+    for (let i = 0; i < E.count; i++) {
+      parts.push({
+        fx: -Math.random() * E.startSpread,                       // staggered just off the left edge
+        fy: E.yTop + Math.random() * (E.yBottom - E.yTop),
+        sp: E.speed * (1 + (Math.random() * 2 - 1) * E.speedJitter),
+        size: 1 + (Math.random() * 2 - 1) * E.sizeJitter,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+    g._tmWind = { kind, t0: now, parts };
+  },
+
+  // Advance the live burst on the real frame clock; drop a gust once it clears the right edge,
+  // clear the burst when the last one is gone. Allocation-free.
+  updateWind(g, dt) {
+    const w = g && g._tmWind;
+    if (!w) return;
+    const E = TM_WIND, parts = w.parts;
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.fx += p.sp * dt;
+      p.phase += E.bobSpeed * dt;
+      if (p.fx > 1.15) parts.splice(i, 1);
+    }
+    if (parts.length === 0) g._tmWind = null;
+  },
+
+  // Blow the regime's wind as the climate crosses the glacial↔interglacial line (getWinterness
+  // ≥ 0.5 — the boosts' own split). Hysteresis (0.45/0.55) stops a hovering climate re-firing;
+  // the first frame just seeds the state so the boot doesn't blow a gust.
+  _updateClimateWind(g) {
+    const sm = g && g.seasonManager;
+    if (!sm || !sm.getWinterness) return;
+    const w = sm.getWinterness();
+    if (g._tmLastGlacial === undefined) { g._tmLastGlacial = w >= 0.5; return; }
+    if (!g._tmLastGlacial && w > 0.55) { g._tmLastGlacial = true;  this.beginWind(g, 'cold'); }
+    else if (g._tmLastGlacial && w < 0.45) { g._tmLastGlacial = false; this.beginWind(g, 'warm'); }
+  },
+
+  // Draw the live burst — scattered gust sprites in screen space, faded in over the left edge
+  // and out over the right so they enter and leave softly. No-op when idle or the art is absent.
+  renderWind(g, W, H) {
+    const w = g && g._tmWind;
+    if (!w) return;
+    if (typeof placeableSprites === 'undefined' || !placeableSprites.loaded) return;
+    const sp = (w.kind === 'cold') ? placeableSprites.windCold : placeableSprites.windWarm;
+    if (!sp || !sp.width) return;
+    const E = TM_WIND;
+    push();
+    imageMode(CENTER);
+    noTint();
+    const _dc = drawingContext;
+    const oldA = _dc.globalAlpha;
+    for (let i = 0; i < w.parts.length; i++) {
+      const p = w.parts[i];
+      const a = E.peakAlpha * Math.min(1, (p.fx + 0.1) / 0.2) * Math.min(1, (1.1 - p.fx) / 0.2);
+      if (a <= 0) continue;
+      const h = H * E.sizeFrac * p.size;
+      const dw = h * (sp.width / sp.height);
+      _dc.globalAlpha = a;
+      image(sp, p.fx * W, (p.fy + Math.sin(p.phase) * E.bobAmp) * H, dw, h);
+    }
+    _dc.globalAlpha = oldA;
+    pop();
+  },
+
   // ==========================================================
   // TIMELINE — visitor-facing, deliberately sparse
   // ----------------------------------------------------------
@@ -631,18 +745,55 @@ const InstallHUD = {
   // higher via renderVisitorYear. On the wall the five buttons are physical, so their
   // on-screen twins only appear in debug — this is the clean, uncluttered visitor layout.
   VIS_STRIP_H: 64,
+  VIS_INSET: 0.10,           // horizontal inset each side, as a fraction of canvas width (compacted from the debug strip)
   renderVisitorTimeline(g, W, H) {
-    const x0 = 48, w = W - 96;
+    const inset = Math.round(W * this.VIS_INSET);
+    const x0 = inset, w = W - 2 * inset;
     const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = yTop - 128;
     push();
     // Light backing — kept low-alpha so the edge band glows THROUGH behind the axis while
     // the marks still have enough contrast to read (the band is now drawn under the HUD).
     //noStroke(); fill(14, 21, 19, 120); rect(0, yTop, W, stripH);
-    this._timelineBody(g, x0, w, ay);
+    this._visitorTimelineBody(g, x0, w, ay);
     if (DeepTime.isDeep()) {
-      this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [255, 210, 120]);
+      this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [240, 240, 240]);
     }
     pop();
+  },
+
+  // The VISITOR timeline body — a deliberately spare, all-white restyle of the shared
+  // debug body (_timelineBody). One long line only (the debug strip's second full-width
+  // rule — the uplift backing bar — is dropped; uplift stays as a faint white progress
+  // wedge riding ON that single line, so the "river older than the mountains" takeaway
+  // survives). Eruption markers are white ticks + labels; the playhead is a white dot with
+  // a black outline so it stays legible over any climate colour. Assumes an active push().
+  _visitorTimelineBody(g, x0, w, ay) {
+    const yr = DeepTime.yearsBP;
+    // ---- the single white axis line -------------------------
+    stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    // ---- uplift: a faint white wedge on the line (no backing bar) ----
+    const upNow = DeepTime.yearToX(yr, x0, w);
+    const upH = 6;
+    noStroke(); fill(255, 90);
+    beginShape();
+    vertex(x0, ay);
+    vertex(upNow, ay);
+    vertex(upNow, ay - upH * DeepTime.progress());
+    endShape(CLOSE);
+    // ---- the two eruptions, in white ------------------------
+    for (const m of DEEP_TIME_MARKERS) {
+      if (m.kind !== 'eruption') continue;
+      const mx = DeepTime.yearToX(m.yearsBP, x0, w);
+      stroke(255); strokeWeight(2);
+      line(mx, ay - 5, mx, ay + 5);
+      const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
+      this._blitText(m.label, OpenDyslexic, 'dys', 11,
+                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, ay - 8, [255, 255, 255, 235]);
+    }
+    // ---- playhead: white dot, black outline -----------------
+    const px = DeepTime.yearToX(yr, x0, w);
+    stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
+    stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
   },
 
   // VISITOR year — the one always-on readout, large and lowered to float over the northern

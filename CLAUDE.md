@@ -213,9 +213,11 @@ The build runs ahead of the old phase ledger — see `md/TEMANAWA_PLAN_V3.md` §
 status. Done or substantially built: the terrain (SVG skeleton + uplift/incision/emergence morph +
 3/4 cel look + water layer), the glacial-cycle climate to 1 Ma, forest contraction, the four
 eruptions, the **five buttons**, habitat health, and the kererū dispersal loop. The **frontier** is
-four things: the **fauna cast** turning on (the scaffold now founds a 7-species grazer mix — 5 moa +
-the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli`, both moa-guild
-grazers on dedicated art that make the cold phase busier; the remaining moa and the raptor identity
-are still unresolved), the
+four things: the **fauna cast** turning on (the scaffold now founds an 8-species grazer-guild mix — 5 moa +
+the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli` + the North Island
+brown kiwi `Apteryx mantelli`, all moa-guild birds on dedicated multi-state art. The goose/mōho make
+the cold phase busier; the kiwi is the warm-phase forest counterweight, and its quirk — soil-turning —
+gently heals the forest floor where it forages, closing the forest loop with the kererū. The remaining
+moa and the raptor identity are still unresolved), the
 **flora art** (~113 assets — all fauna run on placeholder art), the **disturbance clocks** (`disturb()`
 + `warp`, not yet built), and the **interaction tuning**. `CONFIG.mapGrid` is still 512 (can now drop).

@@ -42,6 +42,16 @@ const GLBatch = {
   canvas: null,          // the GL (middle) canvas
   W: 0, H: 0,
 
+  // ---- edge fade --------------------------------------------------------------
+  // Sprites (and their shadow/halo discs) fade toward transparent as they approach
+  // the canvas edge, so the cast dissolves off-screen instead of hard-clipping at
+  // the frame. Computed PER VERTEX from the vertex's distance to the nearest edge,
+  // so a large sprite straddling the edge gradates smoothly across its own quad.
+  // marginFrac is the share of the SHORTER canvas dimension the fade spans (so the
+  // band is the same pixel width top/bottom as left/right). Console-tunable.
+  edgeFade: { on: true, marginFrac: 0.08 },
+  _edgeMarginPx: 0,      // marginFrac × min(W,H), recomputed each begin()
+
   // GL objects
   _prog: null, _aPos: 0, _aUV: 1, _aCol: 2, _uSampler: null,
   _vbo: null,
@@ -247,6 +257,9 @@ const GLBatch = {
     gl.useProgram(this._prog);
     this._n = 0; this._curTex = null;
     this._open = true;
+    // Recompute the edge-fade band each frame so a live tweak to edgeFade takes hold.
+    this._edgeMarginPx = (this.edgeFade && this.edgeFade.on)
+      ? this.edgeFade.marginFrac * Math.min(this.W, this.H) : 0;
   },
 
   // Renderer state, read live each capture (push/pop restore _imageMode/_tint
@@ -312,16 +325,33 @@ const GLBatch = {
     if (this._n + 6 > this._cap) this._flush();
     const W = this.W, H = this.H;
     const ma = m.a, mb = m.b, mc = m.c, md = m.d, me = m.e, mf = m.f;
-    const CX = (lx, ly) => ((ma * lx + mc * ly + me) / W) * 2 - 1;
-    const CY = (lx, ly) => 1 - ((mb * lx + md * ly + mf) / H) * 2;
-    const xTL = CX(lx0, ly0), yTL = CY(lx0, ly0);
-    const xTR = CX(lx1, ly0), yTR = CY(lx1, ly0);
-    const xBR = CX(lx1, ly1), yBR = CY(lx1, ly1);
-    const xBL = CX(lx0, ly1), yBL = CY(lx0, ly1);
+    // Each corner: map local → screen pixels (for both the clip position and the
+    // per-vertex edge-fade alpha), then pixels → clip space.
+    const SX = (lx, ly) => ma * lx + mc * ly + me;
+    const SY = (lx, ly) => mb * lx + md * ly + mf;
+    const mp = this._edgeMarginPx;
+    // Edge fade: 1 in the interior, smoothstep down to 0 at the very edge across the
+    // outer mp px. Nearest of the four edges wins, so a corner near two edges is dimmest.
+    const edgeA = (sx, sy) => {
+      if (mp <= 0) return a;
+      let d = sx; const rr = W - sx; if (rr < d) d = rr;
+      if (sy < d) d = sy; const bb = H - sy; if (bb < d) d = bb;
+      if (d >= mp) return a;
+      if (d <= 0) return 0;
+      const t = d / mp;
+      return a * t * t * (3 - 2 * t);
+    };
+    const sxTL = SX(lx0, ly0), syTL = SY(lx0, ly0);
+    const sxTR = SX(lx1, ly0), syTR = SY(lx1, ly0);
+    const sxBR = SX(lx1, ly1), syBR = SY(lx1, ly1);
+    const sxBL = SX(lx0, ly1), syBL = SY(lx0, ly1);
     const V = this._verts; let o = this._n * this.FLOATS_PER_VERT;
-    const put = (x, y, u, v) => { V[o]=x; V[o+1]=y; V[o+2]=u; V[o+3]=v; V[o+4]=r; V[o+5]=g; V[o+6]=b; V[o+7]=a; o+=8; };
-    put(xTL, yTL, u0, v0); put(xTR, yTR, u1, v0); put(xBR, yBR, u1, v1);
-    put(xTL, yTL, u0, v0); put(xBR, yBR, u1, v1); put(xBL, yBL, u0, v1);
+    const put = (sx, sy, u, v) => {
+      const x = (sx / W) * 2 - 1, y = 1 - (sy / H) * 2, va = edgeA(sx, sy);
+      V[o]=x; V[o+1]=y; V[o+2]=u; V[o+3]=v; V[o+4]=r; V[o+5]=g; V[o+6]=b; V[o+7]=va; o+=8;
+    };
+    put(sxTL, syTL, u0, v0); put(sxTR, syTR, u1, v0); put(sxBR, syBR, u1, v1);
+    put(sxTL, syTL, u0, v0); put(sxBR, syBR, u1, v1); put(sxBL, syBL, u0, v1);
     this._n += 6;
   },
 

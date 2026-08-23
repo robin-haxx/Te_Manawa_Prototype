@@ -643,6 +643,60 @@ try{
   const MVS=vm.runInContext('MOA_VARIANT_SETS',ctx);
   chk(gs && gs.config.spriteSet==='goose' && MVS && MVS.goose, 'goose is wired to its dedicated sprite set');
   chk(ts && ts.config.spriteSet==='takahe' && MVS && MVS.takahe, 'mōho is wired to its dedicated sprite set');
+  // the goose/takahē art is MULTI-STATE now (was a flat placeholder): looking/eating/walking.
+  chk(MVS && MVS.goose && MVS.goose.states && MVS.goose.states.eating, 'goose art is multi-state (looking/eating/walking)');
+  chk(MVS && MVS.takahe && MVS.takahe.states && MVS.takahe.states.walking, 'mōho art is multi-state');
+
+  // NI brown kiwi — the forest-floor member of the guild, and the WARM-phase mirror of the
+  // open-country grazers: NOT open-country, favours the forest band, and its unique quirk
+  // HEALS the forest floor (a gentle soil-turning warp where it forages).
+  const Kiwi=vm.runInContext('Kiwi',ctx);
+  const ks = REG.getSpecies('north_island_brown_kiwi');
+  chk(!!ks, 'north_island_brown_kiwi is registered');
+  chk(ks && ks.baseType==='moa' && ks.class===Kiwi, 'kiwi is a moa-guild grazer with the Kiwi class');
+  chk(ks && ks.config.scientificName==='Apteryx mantelli', 'kiwi is A. mantelli (the NI brown kiwi)');
+  chk(ks && !ks.config.openCountry, 'kiwi is NOT open-country (the forest mirror of the goose/mōho)');
+  chk(ks && ks.config.preferredElevation && ks.config.preferredElevation.min>=0.25,
+      `kiwi favours the forest band (band min ${ks && ks.config.preferredElevation && ks.config.preferredElevation.min})`);
+  chk(ks && ks.config.spriteSet==='kiwi' && MVS && MVS.kiwi && MVS.kiwi.states,
+      'kiwi is wired to its dedicated multi-state sprite set');
+  // forest bird, so cold is HARDER — glacial hungerRate above interglacial (opposite of the grazers).
+  chk(ks && ks.config.seasonalModifiers &&
+      ks.config.seasonalModifiers.fullGlacial.hungerRate > ks.config.seasonalModifiers.interglacial.hungerRate,
+      'kiwi struggles in the glacial and thrives in the interglacial (opposite the open-country grazers)');
+
+  const kiwi = sim.moas.find(m=>m.alive && m.speciesKey==='north_island_brown_kiwi');
+  chk(!!kiwi, 'kiwi spawns into the moa list');
+  chk(kiwi && Kiwi && kiwi instanceof Kiwi, 'a spawned kiwi is a Kiwi instance');
+
+  // the quirk: a foraging kiwi on forest floor stamps a gentle soil-turning warp (the §9
+  // disturbance clock). Stub the biome to forest and pin it into a foraging state, then
+  // drive a few ticks until it probes — robust to the odd flee/idle tick. NOTE: the pinned
+  // hunger MUST stay below the kiwi's maxHunger (70), or super.behave correctly starves it
+  // (alive=false) and the quirk's own `if (!this.alive) return` fires before the stamp —
+  // that killed an earlier hunger=90 version intermittently (food-availability dependent).
+  // hunger 50 forces FORAGING (>threshold 30, localFoodScore≥0.3) without dying.
+  if (kiwi){
+    const origBiome = kiwi.terrain.getBiomeAt;
+    kiwi.terrain.getBiomeAt = ()=>({key:'montane'});
+    let kd=null;
+    for (let t=0;t<60 && !kd;t++){
+      kiwi.hunger=50; kiwi.localFoodScore=1; kiwi._probeTimer=0;
+      kiwi.behave(sim, season, 1);
+      const D=sim._disturbances||[]; kd=D.find(d=>d.kind==='kiwi')||null;
+    }
+    kiwi.terrain.getBiomeAt = origBiome;
+    chk(kiwi.alive, 'the test kiwi survived the probe (pinned hunger below maxHunger)');
+    chk(!!kd, 'a foraging kiwi turns the forest floor (stamps a kiwi soil-turning warp)');
+    chk(kd && kd.strength < 0.5, 'the kiwi warp is GENTLE (strength < 0.5, vs 1.0 for a storm/bloom)');
+    // and it never fires on open ground.
+    kiwi.terrain.getBiomeAt = ()=>({key:'grassland'});
+    const nBefore=(sim._disturbances||[]).filter(d=>d.kind==='kiwi').length;
+    kiwi.hunger=50; kiwi.localFoodScore=1; kiwi._probeTimer=0; kiwi.behave(sim, season, 1);
+    const nAfter=(sim._disturbances||[]).filter(d=>d.kind==='kiwi').length;
+    kiwi.terrain.getBiomeAt = origBiome;
+    chk(nAfter===nBefore, 'a kiwi does NOT turn open ground (soil-turning is forest-only)');
+  }
 
   // the flush flag: only TUSSOCK grown in a glacial arms it.
   const FAR=1e15;
@@ -662,7 +716,7 @@ try{
 
   G._tmGrowWarmUntil=0; G._tmGrowColdUntil=0; G._tussockFlush=false; G._regimeFit=1; DT.reset();
   console.log(fail? `grazers: ${fail} FAILURES`
-    : 'grazers: goose + mōho are moa-guild birds (dedicated art); open-country lift on TUSSOCK-in-glacial; mōho territorial');
+    : 'grazers: goose + mōho + kiwi are moa-guild birds (dedicated multi-state art); open-country lift on TUSSOCK-in-glacial; mōho territorial; kiwi turns the forest floor');
 }catch(e){ console.log('GRAZERS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- fauna stability: nothing goes extinct, forest birds don't run away -------

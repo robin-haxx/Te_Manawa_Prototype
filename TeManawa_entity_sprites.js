@@ -101,19 +101,53 @@ const ArtMode = {
 // They are drawn untinted and face RIGHT, so each carries its own faceSign (+1)
 // for the render mirror (TeManawa_moa.js render()); the mechanism is per-set so
 // a future set that faces the other way can just declare -1.
-// Currently a single 'Running' frame per species; add frames by bumping `count`
-// (files are zero-padded <prefix><nnnnn>.png, numbered first..first+count-1).
-// A species opts in by setting `spriteSet: '<key>'` in its registry config; the
-// three keys below are shared by the nine species (see TeManawa_species_data.js).
-// The moa-GUILD grazers (goose, mōho/takahē) share this mechanism too — they are
-// registered under the `moa` base type and render through the same path, so their
-// dedicated art drops in here exactly like a moa variant.
+// Every set here is now MULTI-STATE: the final per-species art, three cel cycles apiece
+// in their own subfolders: LOOKING (idle), EATING (graze cycle) and WALKING (movement).
+// `base` is the species folder; each state names its subfolder, prefix, and frame count
+// (files are zero-padded <prefix><nnnnn>.png, first..first+count-1). A species opts in by
+// setting `spriteSet: '<key>'` in its registry config; the three moa keys (bush/northGiant/
+// stoutLegged) are shared by the nine moa species (see TeManawa_species_data.js). The
+// moa-GUILD birds share this mechanism too — goose, mōho/takahē and the kiwi each render
+// through the same path from their own dedicated art. (A flat single-'Running'-frame schema
+// used to coexist here for the goose/takahē placeholders; both now carry full art.)
+// CoastalMoa art is the stout-legged genus family (Euryapteryx/Pachyornis stocky build);
+// GiantMoa is the Dinornis giants (files carry the NorthMoa_ prefix); the goose art carries
+// the NorthGoose_ prefix.
 const MOA_VARIANT_SETS = {
-  bush:        { dir: 'Moa/', prefix: 'BushMoa_Running_',             pad: 5, first: 1, count: 1, faceSign: 1 },
-  northGiant:  { dir: 'Moa/', prefix: 'NorthIslandGiantMoa_Running_', pad: 5, first: 1, count: 1, faceSign: 1 },
-  stoutLegged: { dir: 'Moa/', prefix: 'StoutLeggedMoa_Running_',      pad: 5, first: 1, count: 1, faceSign: 1 },
-  goose:       { dir: 'Moa/', prefix: 'Goose_Running_',              pad: 5, first: 1, count: 1, faceSign: 1 },
-  takahe:      { dir: 'Moa/', prefix: 'Takahe_Running_',             pad: 5, first: 1, count: 1, faceSign: 1 }
+  bush: { base: 'Moa/BushMoa/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'BushMoa_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'BushMoa_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'BushMoa_Walking_', pad: 5, first: 0, count: 8  }
+  } },
+  northGiant: { base: 'Moa/GiantMoa/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'NorthMoa_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'NorthMoa_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'NorthMoa_Walking_', pad: 5, first: 0, count: 8  }
+  } },
+  stoutLegged: { base: 'Moa/CoastalMoa/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'CoastalMoa_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'CoastalMoa_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'CoastalMoa_Walking_', pad: 5, first: 0, count: 8  }
+  } },
+  // North Island goose (Cnemiornis gracilis) — moa-guild open-country grazer. NorthGoose_ prefix.
+  goose: { base: 'Moa/Goose/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'NorthGoose_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'NorthGoose_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'NorthGoose_Walking_', pad: 5, first: 0, count: 8  }
+  } },
+  // Mōho / NI takahē (Porphyrio mantelli) — moa-guild territorial rail.
+  takahe: { base: 'Moa/Takahe/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'Takahe_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'Takahe_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'Takahe_Walking_', pad: 5, first: 0, count: 8  }
+  } },
+  // North Island brown kiwi (Apteryx mantelli) — the forest-floor litter-prober. A moa-guild
+  // grazer mechanically; its unique role is soil-turning (see TeManawa_kiwi.js).
+  kiwi: { base: 'Moa/Kiwi/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'Kiwi_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'Kiwi_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'Kiwi_Walking_', pad: 5, first: 0, count: 8  }
+  } }
 };
 
 // Declarative description of each species' artwork per mode.
@@ -177,12 +211,16 @@ const EntitySprites = {
   // Dedicated per-species sprite sets, one per key in MOA_VARIANT_SETS above. A
   // species whose registry config sets e.g. `spriteSet: 'bush'` renders from
   // here (untinted) instead of the generic moa art. Populated in load().
+  // looking/eating/walking hold the multi-state cel cycles; walk/idle/mate are the
+  // legacy aliases the generic tint path and the fallback selection still read (walk
+  // aliases walking, idle/mate the first looking frame — set in load()).
   moaVariants: {
-    bush:        { walk: [], idle: null, mate: null, faceSign: 1 },
-    northGiant:  { walk: [], idle: null, mate: null, faceSign: 1 },
-    stoutLegged: { walk: [], idle: null, mate: null, faceSign: 1 },
-    goose:       { walk: [], idle: null, mate: null, faceSign: 1 },   // North Island goose (moa-guild grazer)
-    takahe:      { walk: [], idle: null, mate: null, faceSign: 1 }    // mōho / NI takahē (moa-guild grazer)
+    bush:        { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },
+    northGiant:  { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },
+    stoutLegged: { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },
+    goose:       { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },   // North Island goose (moa-guild grazer)
+    takahe:      { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },   // mōho / NI takahē (moa-guild grazer)
+    kiwi:        { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 }    // NI brown kiwi (moa-guild; forest-floor prober)
   },
   eagle: {
     fly: [],
@@ -243,25 +281,38 @@ const EntitySprites = {
     
     const spritePath = 'sprites/';
 
-    // Per-species dedicated moa art (sprites/Moa/). Every moa species now renders
-    // from one of these full-colour illustrations (the old Side_Moa_Walk generic
-    // placeholder is gone). Each set is loaded from MOA_VARIANT_SETS; currently one
-    // 'Running' frame apiece, so idle and mate alias that single frame — when a
-    // walk cycle lands, bump `count` and the frame selection picks it up.
-    // Juveniles share the adult frame, drawn smaller (see TeManawa_moa.js updateSize).
-    for (const [key, art] of Object.entries(MOA_VARIANT_SETS)) {
-      const set = this.moaVariants[key];
-      for (let i = 0; i < art.count; i++) {
-        const n = String(art.first + i).padStart(art.pad, '0');
-        const file = `${art.prefix}${n}.png`;
-        set.walk.push(loadImage(
-          `${spritePath}${art.dir}${file}`,
+    // Per-species dedicated moa art (sprites/Moa/). Each set is loaded from
+    // MOA_VARIANT_SETS. A multi-state set (base + states{looking,eating,walking})
+    // loads three cel cycles into those arrays; every set is multi-state now, but the
+    // flat-set path (a bare dir/prefix/count, loaded into walk) is kept for robustness.
+    // In both cases walk/idle/mate are aliased so the tint path and the state fallbacks
+    // always have a valid frame. Juveniles share the adult frames, drawn smaller (see
+    // TeManawa_moa.js updateAge).
+    const loadFrames = (into, base, spec) => {
+      for (let i = 0; i < spec.count; i++) {
+        const n = String(spec.first + i).padStart(spec.pad, '0');
+        const file = `${spec.prefix}${n}.png`;
+        into.push(loadImage(
+          `${spritePath}${base}${spec.dir || ''}${file}`,
           () => {},
           () => console.warn(`Could not load ${file}`)
         ));
       }
-      set.idle = set.walk[0];
-      set.mate = set.walk[0];
+    };
+    for (const [key, art] of Object.entries(MOA_VARIANT_SETS)) {
+      const set = this.moaVariants[key];
+      if (art.states) {
+        loadFrames(set.looking, art.base, art.states.looking);
+        loadFrames(set.eating,  art.base, art.states.eating);
+        loadFrames(set.walking, art.base, art.states.walking);
+        set.walk = set.walking;                              // generic/tint alias
+        set.idle = set.looking[0] || set.walking[0];
+        set.mate = set.looking[0] || set.walking[0];
+      } else {
+        loadFrames(set.walk, '', art);                       // flat set: art carries dir/prefix/… directly
+        set.idle = set.walk[0];
+        set.mate = set.walk[0];
+      }
     }
 
     // The generic set is no longer authored art — it ALIASES the stout-legged
@@ -389,19 +440,29 @@ const EntitySprites = {
     return this.moa;
   },
 
-  getMoaSprite(animTime, isMoving, variant = null, isMating = false) {
+  // The frame list for an animation state, with graceful fallbacks so a set that
+  // has no art for the requested state (e.g. a flat set that only has `walk`, or the
+  // generic tint set) still returns something: eating → walking → walk; walking → walk;
+  // looking → its own frames or null (→ set.idle in getMoaSprite).
+  _framesForState(set, state) {
+    if (state === 'walking') return (set.walking && set.walking.length) ? set.walking : set.walk;
+    if (state === 'eating') return (set.eating && set.eating.length) ? set.eating
+      : ((set.walking && set.walking.length) ? set.walking : set.walk);
+    return (set.looking && set.looking.length) ? set.looking : null;   // looking / idle
+  },
+
+  // Pick the frame for a moa's animation STATE ('walking' | 'eating' | 'looking').
+  // animTime advances on the real frame clock (Boid.update), so the cel cadence is
+  // wall-clock steady at any deep-time multiplier (see the animation block).
+  getMoaSprite(animTime, state, variant = null) {
     const set = this._resolveMoaSet(variant);
-
-    // Mating holds a dedicated pose, overriding the walk cycle.
-    if (isMating && this.isValid(set.mate)) return set.mate;
-
-    if (isMoving && set.walk.length > 0) {
-      const frameIndex = Math.floor(animTime * this.animation.moaWalkSpeed) % set.walk.length;
-      if (this.isValid(set.walk[frameIndex])) return set.walk[frameIndex];
+    const list = this._framesForState(set, state);
+    if (list && list.length > 0) {
+      const frameIndex = Math.floor(animTime * this.animation.moaWalkSpeed) % list.length;
+      if (this.isValid(list[frameIndex])) return list[frameIndex];
     }
-
     if (this.isValid(set.idle)) return set.idle;
-
+    if (list && list.length > 0 && this.isValid(list[0])) return list[0];
     return null;
   },
 
@@ -462,7 +523,8 @@ const EntitySprites = {
   // selection mirrors getMoaSprite exactly so the animation is identical; only the
   // source is the baked tinted mirror — no tint() call per frame (#6).
   getMoaSpriteTinted(animTime, isMoving, tint, isMating = false) {
-    if (!tint) return this.getMoaSprite(animTime, isMoving, null, isMating);
+    const _state = isMoving ? 'walking' : 'looking';
+    if (!tint) return this.getMoaSprite(animTime, _state, null);
     const set = this._ensureTintSet(tint);
     if (isMating && this.isValid(set.mate)) return set.mate;
     if (isMoving && set.walk.length > 0) {
@@ -470,7 +532,7 @@ const EntitySprites = {
       if (this.isValid(set.walk[fi])) return set.walk[fi];
     }
     if (this.isValid(set.idle)) return set.idle;
-    return this.getMoaSprite(animTime, isMoving, null, isMating);
+    return this.getMoaSprite(animTime, _state, null);
   },
 
   // How many complete wingbeat cycles the fly clock has run through by `animTime`.

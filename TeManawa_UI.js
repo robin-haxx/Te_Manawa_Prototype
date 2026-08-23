@@ -54,6 +54,7 @@ class GameUI {
     const debug = (typeof Debug !== 'undefined' && Debug.enabled);
 
     InstallHUD.renderWorldLayer(g, W, H);   // storm cells — under the strips
+    InstallHUD.renderWind(g, W, H);         // W→E climate/boost gusts — an atmospheric wash over the scene
 
     // The ambient LED colour band frames the scene at all times, drawn UNDER the HUD so the
     // timeline (axis / markers / playhead) and the year read cleanly OVER the band rather

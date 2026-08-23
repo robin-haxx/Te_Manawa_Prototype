@@ -1205,11 +1205,16 @@ class Moa extends Boid {
     // Skip it for species with their own dedicated sprite set (e.g. bush moa).
     const _tint = variant ? null : this.speciesConfig.tint;
     const _moving = this.vel.magSq() > 0.01;
-    // Mating holds a dedicated pose (frame 05) regardless of movement.
-    const _mating = this.currentState === MOA_STATE.MATING;
+    // Animation state selects which cel cycle plays: WALKING while moving, EATING
+    // while grazing/feeding in place, LOOKING (idle) otherwise. Mating is a calm
+    // stand, so it reads as LOOKING — the final art has no dedicated mate pose.
+    let _animState;
+    if (_moving) _animState = 'walking';
+    else if (this.isFeeding || this.currentState === MOA_STATE.FEEDING || this.currentState === MOA_STATE.FORAGING) _animState = 'eating';
+    else _animState = 'looking';
     const sprite = _tint
-      ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, _tint, _mating)
-      : EntitySprites.getMoaSprite(this.animTime, _moving, variant, _mating);
+      ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, _tint, this.currentState === MOA_STATE.MATING)
+      : EntitySprites.getMoaSprite(this.animTime, _animState, variant);
     if (!sprite) return;
     
     push();
