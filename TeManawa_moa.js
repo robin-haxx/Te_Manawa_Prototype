@@ -122,6 +122,11 @@ class Moa extends Boid {
     this.targetPlant = null;
     this.isFeeding = false;
     this.feedingAt = null;
+    // Eat-cycle commitment: an animTime deadline. Once a bite lands (or the bird
+    // settles at a feeder) it holds planted until animTime passes this, so it always
+    // finishes a full eating animation cycle before walking off (see _commitEatCycle
+    // / executeState). 0 = free to move.
+    this._eatHoldUntil = 0;
     
     // Security & reproduction
     this.securityTime = 0;
@@ -527,16 +532,43 @@ class Moa extends Boid {
     return MOA_STATE.IDLE;
   }
 
+  // Commit to eating one full cel cycle before moving on. Called when a bite lands
+  // (forage) or the bird settles at a feeder (executeState FEEDING). Only (re)starts
+  // a cycle when one isn't already running, so successive bites read as successive
+  // eating cycles rather than an endless freeze — and the bird gets a free frame at
+  // each cycle boundary to move on if it's no longer eating. A threat clears it.
+  _commitEatCycle() {
+    if (this.animTime >= this._eatHoldUntil) {
+      const period = (typeof EntitySprites !== 'undefined' && EntitySprites.moaEatCyclePeriod)
+        ? EntitySprites.moaEatCyclePeriod(this.speciesConfig.spriteSet) : 0;
+      this._eatHoldUntil = this.animTime + period;
+    }
+  }
+
   executeState(simulation, seasonCache, moas, placeables, dt) {
     this.panicLevel = 0;
     const starving = this.hunger > this.criticalHunger;
     const speedMod = starving ? 0.6 : 1;
-    
+
+    // Eat-cycle commitment (see _commitEatCycle): once a bite starts, hold planted
+    // through a full eating animation cycle before moving again, so a ground bird never
+    // walks off mid-chew. Never while FLEEING — a threat always breaks off the meal.
+    if (this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil) {
+      this.maxSpeed = this.baseSpeed * 0.5;
+      this.vel.x *= 0.6;                 // plant the feet for the meal
+      this.vel.y *= 0.6;
+      // Keep it in an eating-context state so the renderer shows the eating cel cycle
+      // (FEEDING and FORAGING both map to the 'eating' pose in render()).
+      if (this.currentState !== MOA_STATE.FEEDING) this.currentState = MOA_STATE.FORAGING;
+      return;
+    }
+
     switch (this.currentState) {
       case MOA_STATE.FLEEING:
         this.isMigrating = false;
         this.targetPlant = null;
         this.targetMate = null;
+        this._eatHoldUntil = 0;         // a threat cancels any in-progress meal
         this.maxSpeed = this.fleeSpeed * speedMod;
         // Use cached threatening eagles
         for (let i = 0; i < this._threateningEagles.length; i++) {
@@ -578,7 +610,14 @@ class Moa extends Boid {
           if (dx * dx + dy * dy > r * r * 0.64) {
             this.applyForce(this.seek(this.feedingAt.pos, 0.3, r * 0.8));
           } else {
-            const w = this.wander(); w.mult(0.2); this.applyForce(w);
+            // Well inside the stand: plant the feet and graze in place. The old wander
+            // nudge here kept the bird drifting UNDER its stationary EATING pose, which
+            // read as sliding (the "ground birds slide while eating" report). Braking the
+            // residual velocity settles it to eat, and it still walks between stands via
+            // the outer-band steer above and FORAGING re-targeting — so a herd still spreads.
+            this.vel.x *= 0.8;
+            this.vel.y *= 0.8;
+            this._commitEatCycle();   // hold a full eating cycle before drifting on
           }
         }
         break;
@@ -925,7 +964,10 @@ class Moa extends Boid {
     }
     
     this.hungerRate = this.baseHungerRate * hungerMod;
-    if (feedTotal > 0) this.hunger = Math.max(0, this.hunger - feedTotal);
+    if (feedTotal > 0) {
+      feedTotal *= (typeof CONFIG !== 'undefined' && CONFIG.faunaNutritionScale) ? CONFIG.faunaNutritionScale : 1;
+      this.hunger = Math.max(0, this.hunger - feedTotal);
+    }
   }
 
   seekAttractions(placeables) {
@@ -1028,9 +1070,13 @@ class Moa extends Boid {
           gain *= (LEVEL_MECHANICS.nonFocalGeneralistBonus ?? 1); // wild plant + generalist
         }
 
+        // Global diet richness (CONFIG.faunaNutritionScale): every bite is this much more
+        // nourishing, so a bird that now spends a full (longer) eating cycle per meal stays fed.
+        gain *= (typeof CONFIG !== 'undefined' && CONFIG.faunaNutritionScale) ? CONFIG.faunaNutritionScale : 1;
         this.hunger = Math.max(0, this.hunger - gain);
         this.targetPlant = null;
         this.vel.mult(0.3);
+        this._commitEatCycle();   // finish a full eating cycle before seeking the next plant
       } else {
         this.applyForce(this.seek(this.targetPlant.pos, map(this.hunger, this.hungerThreshold, this.maxHunger, 0.5, 0.9), 10));
       }
@@ -1081,11 +1127,27 @@ class Moa extends Boid {
   // MIGRATION
   // ============================================
 
+  // True when standing on WALKABLE but plant-less ground — the coastal/riverbed band
+  // (canHavePlants:false). Nothing grazes there, so a grazer that wanders or spawns onto
+  // it should move off to plant-bearing land instead of "feeding" on bare sand (the
+  // "coastal species try to eat on the empty riverbed" report). The only walkable no-plant
+  // biome is the coast; the high no-plant bands (alpine/snow) are unwalkable, so this never
+  // false-fires up top. Opt-in per level via LEVEL_MECHANICS.grazerAvoidBarrenGround.
+  _onBarrenGround() {
+    if (typeof LEVEL_MECHANICS === 'undefined' || !LEVEL_MECHANICS.grazerAvoidBarrenGround) return false;
+    const b = (typeof this.terrain.getBiomeAt === 'function') ? this.terrain.getBiomeAt(this.pos.x, this.pos.y) : null;
+    return !!(b && b.walkable && b.canHavePlants === false);
+  }
+
   shouldMigrate(sc) {
+    // On the barren coast/riverbed there is no food at any hunger level — leave for
+    // plant-bearing ground rather than lingering to graze bare sand.
+    if (this._onBarrenGround()) return true;
+
     const elev = this.terrain.getElevationAt(this.pos.x, this.pos.y);
     const p = this.preferredElevation;
     const err = elev < p.min ? p.min - elev : (elev > p.max ? elev - p.max : 0);
-    
+
     return err > 0.08 || (this.localFoodScore < 0.3 && this.hunger > 30) || (err > 0.03 && sc.migrationStrength > 0.7);
   }
 

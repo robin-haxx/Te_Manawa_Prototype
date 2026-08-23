@@ -35,7 +35,7 @@ const LOOK = {
   facetAmp:      1.2,  // FACET break-up: how far a cel-band boundary may wander, in BAND-WIDTHS
                         //   (0 = grid-locked steps; ~0.5 = edges roam half a band into organic rock
                         //   facets; >1 can skip a band). Nudges the quantizer threshold, bake-time.
-  facetFreq:     0.1,   // FACET: spatial frequency of the LARGE facets (the flat rock planes).
+  facetFreq:     0.2,   // FACET: spatial frequency of the LARGE facets (the flat rock planes).
                         //   Lower = broader facets; higher = busier. World units, like wobbleFreq.
   facetDetail:   0.3,   // FACET: weight of a 2nd (high-freq) octave that frays facet edges into
                         //   cracks (0 = smooth wander; ~0.4 = ragged rock edges). Fraction of octave 1.
@@ -62,6 +62,8 @@ const LOOK = {
   riverSeaLevel: 0.3,  // geo river: the bed only sinks to this (the sea band) where the land is already near it — the coast. Upstream it rides the terrain. Regenerate to apply.
   riverWaterT:   0.5,  // geo river: mask ≥ this reads as open WATER — the (narrow) blue thread. Raise = narrower water. Regenerate to apply (paint + walkability).
   riverBankT:    0.32,  // geo river: mask in [riverBankT, riverWaterT) reads as exposed RIVERBED / bank (sandy shingle, walkable) framing the water. Lower = wider bed. Raised from 0.22 to trim the wide sand bands that pooled where tributaries meet the main (the confluence seam-fallback bank keys off this too). Only affects river banks — sea beaches are elevation-classified (coastal band). Regenerate to apply.
+  mainRiverWidthMult: 1.2,  // geo river: scales the MAIN stem's authored base width (geo width 0.05) at PRESENT — a thicker main riverbed. Multiplies the whole channel (water + shingle bed), and the early strait scales off it too. Independent of the tributary width below. Regenerate (G/N) to apply.
+  tribWidthMult:  0.8,   // geo river: scales every TRIBUTARY's authored base width (geo width 0.02) — thinner side-streams. The thread is still floored by tribThinCap so it never beads to bare gully. Lower = thinner tributaries; keep ≥ ~0.6 so a few-cell-wide channel stays continuous. Regenerate to apply.
   riverWetlandT: 0.20,  // WETLAND: mask ≥ this (and BELOW riverWaterT), on LOW ground (< riverWetlandElevMax), reads as WETLAND (swamp margin) instead of bare sand — so the lower river's banks + a modest back-swamp margin are Manawatū raupō/harakeke/kahikatea, not beach. Set BELOW riverBankT so the wet zone is wider than the old sand bank. The gorge reaches (above the elev cap) keep shingle; the open sea beach (far from any river) keeps sand. Robust to land re-tuning: it keys off the live river-proximity field, so it tracks the channel wherever it morphs. Regenerate to apply.
   riverWetlandElevMax: 0.30,  // WETLAND: only the low reaches turn to swamp — a near-river cell above this normalised elevation stays shingle bank (the incised gorge in the hills has no back-swamp). ≈ the lowland/grassland ceiling. Regenerate to apply.
   coastEase:     1,   // coast FALLOFF: land-rise exponent off the shore (>1 = gentle shelf/beach; <1 = the old steep cliff). This is knob (a) — how gently the land falls to the sea. Higher is gentler but widens the near-sea-level zone (softer waterline); pull toward ~1.1 if the coastline reads mushy. Regenerate to apply.
@@ -69,13 +71,15 @@ const LOOK = {
   coastInlandSouth: 0.1,  // coast POSITION (knob b, south bias): EXTRA inland reach added toward the south (v→1), 0 at the north edge → this many X-fractions at the south edge — so the southern/SW coast curves further in while the north stays put. This is the PERMANENT (present) curve; the strait's harsher early curve flattens onto it by ~0.5 Ma as seaSWReach recedes. Regenerate to apply.
   coastSmooth:   3,     // coast: light smoothing passes over the low-elevation shelf ONLY (0 = off) — clears waterline speckle and blocky relief steps without touching plains or ranges. Regenerate to apply.
   coastRampWidth: 0.06,  // coast: WIDTH (in shore-distance units, 0..1) of a clean monotonic RAMP either side of the waterline where the shelf-relief noise is suppressed to 0 — so the shoreline crosses the sea band once, cleanly, instead of the noise straddling it and shattering the emerging shelf into floaty bits. Relief resumes just beyond the ramp. 0 = off (noise right up to the waterline, the old fragmented look). Regenerate to apply.
+  coastShelfRelief: 0.06,  // coast: AMPLITUDE of the undulating shelf/coastal-plain relief (0..1 elevation). This is the fractal detail on the emerging shore. Kept WELL BELOW the offshore base gradient so the shelf deepens MONOTONICALLY — the coast reads as a gradual elevation gain, not scattered noise patches (bars that independently poke through the eustatic waterline as the shelf emerges). Was 0.11 (nearly the base gradient → local reversals → the fragmented look). Raise for more sandbars/inlets, lower for a smoother shelf. Regenerate to apply.
+  coastShelfDetail: 0.3,   // coast: weight of the HIGH-frequency 2nd shelf octave, as a fraction of the low octave — the fine speckle on the shelf relief. Lower = broader, more coherent shelf undulation (fewer isolated specks); higher = busier. Was 0.5. Regenerate to apply.
   cliffSmooth:   0.16,  // DE-CLIFF: after the carve/uplift, ease any elevation step to a neighbour STEEPER than this (0..1 per cell) — kills the extremely harsh vertical "jumps" the 3/4 relief bake would otherwise paint as a tall dark wall (e.g. a bank against the strait, a channel edge drifted off the new ground mid-morph). Gentle relief — plains, range flanks — sits below the threshold and is untouched. 0 = off. Regenerate (G/N) to apply.
   cliffSmoothPasses: 2, // DE-CLIFF: how many smoothing passes (more = softer, wider blend). Runs on the sim heightMap, deterministically, so the sliced morph stays identical to the synchronous one.
   riverFrontJitter: 0.09, // geo river: low-freq wander of the emerging tip so the growing river tapers off naturally instead of ending on a straight line. Regenerate to apply.
   riverEdgeNoise: 0.015,  // geo river: HIGH-frequency wobble on the channel edge (world frac) — breaks the authored polyline's smooth banks into a natural ragged waterline. Cached with the distance field, so it costs nothing per frame. 0 = off. Regenerate to apply.
   riverEdgeFreq:  26,     // geo river: spatial frequency of the edge noise. Higher = choppier banks.
   riverEdgeNoisePow: 2,   // geo river: how the edge-noise amplitude scales DOWN for narrow channels — the wobble is multiplied by (channelWidth / mainWidth)^this. A thin tributary's water thread is only a few cells wide, so the main's full-amplitude wobble (linear scaling) beat it into disconnected pools; squaring the ratio (2) cuts the tributary wobble ~3× while leaving the wide main almost untouched. 1 = the old linear scaling. Regenerate to apply.
-  tribHighlandThin: 1.1,  // tributaries: how fast the painted WATER/BED thins with elevation above the lowland (tribHighlandLo). High ground carries only a thread — a stream running downhill — instead of band-water and beaches perched on a ridge. Bounded by tribThinCap so the thread never starves. 0 = off.
+  tribHighlandThin: 0.45,  // tributaries: how fast the painted WATER/BED thins with elevation above the lowland (tribHighlandLo). This elevation-driven thinning is the main source of a tributary's WIDTH VARIANCE along its length (full near the low confluence, pinched where it climbs), so it is kept gentle for a more UNIFORM ribbon; the thread is still floored by tribThinCap so no perched band-water. High ground carries only a thin thread. Bounded by tribThinCap so the thread never starves. 0 = off (dead-uniform width).
   tribHighlandLo: 0.30,   // tributaries: elevation at which highland thinning STARTS. Below this the tributary keeps its full lowland water width; above it the thread narrows at tribHighlandThin per unit elevation. Regenerate to apply.
   tribThinCap: 0.12,      // tributaries: CAP on how much highland thinning may raise the water/bed threshold — floors the water thread so a tributary always keeps a small consistent ribbon of water (never beads to bare gully). The whole authored tributary sits near ~0.48 elevation, so without this the thinning starved the thread along its entire length. 0 = uncapped (old behaviour). Regenerate to apply.
   straitWidthMult: 6.0,   // main river is this many times wider at ~1 Ma (the Manawatū Strait). Narrows to 1× by straitCloseTo. Regenerate to apply.
@@ -228,9 +232,9 @@ const LOOK = {
 
   // ---- colours ----
   hazeColor:    '#20303a', // uniform tone the sky fades to (keeps the top streak-free)
-  outlineColor: '#16210f', // fallback boundary ink (a biome's own `outlineColor` wins)
+  outlineColor: '#ffffff', // fallback boundary ink (a biome's own `outlineColor` wins)
   shoreColor:   '#eee9b9', // shoreline stroke
-  reliefEdgeColor: '#d9b525', // bold dark outline on relief steps (matches the sprite ink)
+  reliefEdgeColor: '#ffffff', // bold dark outline on relief steps (matches the sprite ink)
 
   dump() { const o = {}; for (const k in this) if (typeof this[k] !== 'function') o[k] = this[k]; console.log('[LOOK]', o); return o; }
 };
@@ -577,16 +581,20 @@ class TerrainGenerator {
     // Clean-ramp width: within this shore-distance the shelf-relief noise is suppressed to 0, so the
     // waterline crosses the sea band once (a clear ramp) instead of the noise shattering it into bits.
     const rampW = (typeof LOOK !== 'undefined' && LOOK.coastRampWidth != null) ? LOOK.coastRampWidth : 0;
+    // Shelf-relief amplitude / detail (LOOK): kept well below the offshore base gradient so the shelf
+    // deepens monotonically (a gradual coast) instead of relief bars poking through the waterline.
+    const shelfAmp = (typeof LOOK !== 'undefined' && LOOK.coastShelfRelief != null) ? LOOK.coastShelfRelief : 0.11;
+    const shelfDetail = (typeof LOOK !== 'undefined' && LOOK.coastShelfDetail != null) ? LOOK.coastShelfDetail : 0.5;
     let falloff;
     if (warpedNx < coastlinePosition) {
       const seaDepth = (coastlinePosition - warpedNx) / coastlinePosition;   // 0 at shore → 1 deep offshore
       // Undulating shelf relief. Without it the submerged floor is a dead-flat ramp, so as
       // the marine embayment recedes over deep time it surfaces in uniform sheets ("patches").
       // Two octaves of relief, strongest in the shallows (squared taper) and fading to a
-      // smooth deep floor, make the emerging shelf read as natural sandbars and inlets and
-      // give the waterline real slope instead of a sharp step.
+      // smooth deep floor, give the emerging shelf natural low undulation and the waterline
+      // real slope — but capped (shelfAmp) below the base gradient so it never fragments.
       const shelf = ((noise(x * 0.018 + this.seed * 5, y * 0.018 + this.seed * 6) - 0.5)
-                   + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * 0.5) * 0.11;
+                   + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * shelfDetail) * shelfAmp;
       // Fade the relief IN off the waterline (0 at the shore → full by rampW) as well as OUT into
       // the deep, so the immediate shoreline is a clean monotone ramp, not a shattered noisy edge.
       let shelfW = (rampW > 0) ? (seaDepth < rampW ? seaDepth / rampW : 1) : 1;
@@ -608,7 +616,7 @@ class TerrainGenerator {
       let shelfW = (rampW > 0) ? (landProgress < rampW ? landProgress / rampW : 1) : 1;
       shelfW *= Math.exp(-landProgress * 6);
       const shelf = ((noise(x * 0.018 + this.seed * 5, y * 0.018 + this.seed * 6) - 0.5)
-                   + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * 0.5) * 0.11;
+                   + (noise(x * 0.045 + this.seed * 8, y * 0.045) - 0.5) * shelfDetail) * shelfAmp;
       falloff += ridgeNoise * landProgress + shelf * shelfW;
     }
     
@@ -1651,6 +1659,10 @@ class TerrainGenerator {
         if (flipAxis) poly = TerrainGenerator._flipRangeAxis(poly);   // run the ranges along the opposite diagonal (LOOK.flipRangeAxis)
         return TerrainGenerator._prepRange(r.height != null ? r.height : 0.85, (r.spread || 0.14) * s, poly);
       });
+    // Per-type width multipliers (LOOK): a thicker main riverbed, thinner tributaries. Applied to
+    // the authored base width, so the strait scaling, edge-noise raggedness and carve all inherit it.
+    const mainWMult = (typeof LOOK !== 'undefined' && LOOK.mainRiverWidthMult != null) ? LOOK.mainRiverWidthMult : 1;
+    const tribWMult = (typeof LOOK !== 'undefined' && LOOK.tribWidthMult != null) ? LOOK.tribWidthMult : 1;
     this._geoRivers = (g.rivers || []).filter(rv => rv.pts && rv.pts.length >= 2)
       .map(rv => {
         const pts = rv.pts.map(ins);
@@ -1659,7 +1671,8 @@ class TerrainGenerator {
         // Arc length for parametric position (wPos as distance along the polyline)
         let arcLen = 0;
         for (let i = 0; i + 1 < pts.length; i++) arcLen += Math.hypot(pts[i+1][0] - pts[i][0], pts[i+1][1] - pts[i][1]);
-        return { width: (rv.width || 0.045) * s, depth: rv.depth != null ? rv.depth : 1.0, pts,
+        const wMult = (rv.type === 'tributary') ? tribWMult : mainWMult;
+        return { width: (rv.width || 0.045) * s * wMult, depth: rv.depth != null ? rv.depth : 1.0, pts,
                  type: rv.type || 'main', arcLen,
                  u0, uSpan: (u1 - u0) > 1e-6 ? (u1 - u0) : 1e-6 };
       });
@@ -2286,7 +2299,7 @@ class TerrainGenerator {
   // visitor path uses morphBegin()/morphStep() below, which produce an
   // identical result spread across frames (the harness asserts the identity).
   morphTo(yearsBP, bakeScaleOverride) {
-    this.morphBegin(yearsBP, bakeScaleOverride);
+    this.morphBegin(yearsBP, bakeScaleOverride, true);   // allPhases: a hard scene change re-bakes all four (hitch hidden)
     while (this._morphJob) this.morphStep(Infinity);
   }
 
@@ -2302,8 +2315,9 @@ class TerrainGenerator {
   //   phase 1  paint-grid allocation               (one slice)
   //   phase 2  paint pass 1 (elev/biome/colour)    (row bands)
   //   phase 3  paint pass 2 (boundary edges)       (row bands)
-  //   phase 4  season bakes, CURRENT season first  (column bands — the pc loop
-  //            in _bakeSeasonColumns is independent per column, so it slices
+  //   phase 4  season bakes — only the VISIBLE glacial-phase pair (current +
+  //            next), current first (column bands — the pc loop in
+  //            _bakeSeasonColumns is independent per column, so it slices
   //            cleanly), each into a BACK buffer that swaps in atomically when
   //            finished. The visible season's swap arms a >=500 ms crossfade
   //            (photosensitivity budget) in render().
@@ -2311,7 +2325,12 @@ class TerrainGenerator {
   // The sim-facing state (heightMap / biomeIndexMap) updates in phase 0, same
   // as the synchronous path; only the painted buffers lag by a few frames.
   // A generate()/reseed/refit cancels the job (the new land supersedes it).
-  morphBegin(yearsBP, bakeScaleOverride) {
+  //
+  // allPhases (morphTo only): re-bake all four phases in one job, for a HARD
+  // scene change (eruption / authoring) where every buffer must be consistent
+  // and the one-frame hitch is hidden (the ash flash). The incremental
+  // visitor-path morph leaves it off — see _seasonBakeOrder.
+  morphBegin(yearsBP, bakeScaleOverride, allPhases) {
     if (!this._baseNoise) return this.generate();   // parity with morphTo()
     this._morphJob = {
       yearsBP,
@@ -2320,18 +2339,29 @@ class TerrainGenerator {
       // Snapshot the live sand surge ONCE per morph, so every season buffer in this re-bake uses
       // the same value and the sliced bake can't tear across slices (sliced==sync invariant).
       duneSurge: this._duneSurge || 0,
-      seasonIdx: 0, seasons: this._seasonBakeOrder(), st: null
+      seasonIdx: 0, seasons: this._seasonBakeOrder(allPhases), st: null
     };
   }
 
   get morphInProgress() { return !!this._morphJob; }
 
-  // Bake the season on screen first so the visible land updates soonest; the
-  // other three swap invisibly behind it.
-  _seasonBakeOrder() {
+  // Which glacial-phase buffers this morph re-bakes, current first (so the visible
+  // land updates soonest). The incremental visitor-path morph re-bakes ONLY the
+  // pair that render() can put on screen — currentKey (drawn full) + nextKey (the
+  // crossfade target, always the next colder phase, drawn at transitionProgress).
+  // The other two are left as they are and refresh when they next enter the visible
+  // pair: a phase always ENTERS the pair at ~0 effective alpha (covered by its
+  // neighbour) and is revealed gradually, so it has a full morph interval of grace
+  // to be re-baked before it reads. Baking two buffers instead of four is the
+  // per-morph cost cut — the per-season loadPixels/updatePixels transfers are the
+  // machine-independent morph stutter. allPhases (morphTo, a hard scene change)
+  // re-bakes all four; init/generate() also bakes all four.
+  _seasonBakeOrder(allPhases) {
     const all = ['interglacial', 'cooling', 'glacial', 'fullGlacial'];
     const cur = this.seasonManager ? this.seasonManager.currentKey : 'interglacial';
-    return [cur, ...all.filter(s => s !== cur)];
+    if (allPhases) return [cur, ...all.filter(s => s !== cur)];
+    const nxt = this.seasonManager ? this.seasonManager.nextKey : cur;
+    return (nxt && nxt !== cur) ? [cur, nxt] : [cur];
   }
 
   // Run the morph job for up to budgetMs. Returns true when the job is done
@@ -2402,24 +2432,45 @@ class TerrainGenerator {
     const old = this.seasonBuffers[seasonKey];
     this.seasonBuffers[seasonKey] = newBuf;
     if (!old) return;
-    const visible = this.seasonManager
-      ? (seasonKey === this.seasonManager.currentKey || seasonKey === this.seasonManager.nextKey)
+    const sm = this.seasonManager;
+    const visible = sm
+      ? (seasonKey === sm.currentKey || seasonKey === sm.nextKey)
       : seasonKey === 'interglacial';
     if (visible && !this._morphFade) {
       const fadeMs = (typeof CONFIG !== 'undefined' && CONFIG.morphFadeMs) || 600;
+      // Crossfade BASE = a frozen snapshot of the whole OLD on-screen composite: the old
+      // current-phase land blended with the old next-phase land at the live glacial weight.
+      // It has to be the full composite, not just this one old buffer — otherwise the freshly
+      // re-baked NEXT-phase land (drawn on top at its phase weight during the fade) lays a
+      // second, new-time shoreline over the old one for the length of the fade (the "ghost"
+      // of a receded coast while the shore is meant to expand). The visible phases bake
+      // CURRENT-first, so at this first swap seasonBuffers[nextKey] is still the OLD next
+      // buffer — composite the two here, once, into a pooled buffer (cheaper than holding both
+      // and re-blending every frame). old is captured into the snapshot, then recycled.
+      const base = this._acquireBakeBuffer(old.width, old.height);
+      const bdc = base.drawingContext;
+      base.clear();
+      bdc.globalAlpha = 1;
+      base.image(old, 0, 0, base.width, base.height);
+      const nextKey = sm ? sm.nextKey : null;
+      const tp = sm ? sm.transitionProgress : 0;
+      const oldNext = (nextKey && nextKey !== seasonKey) ? this.seasonBuffers[nextKey] : null;
+      if (oldNext && tp > 0.01) {
+        bdc.globalAlpha = tp;
+        base.image(oldNext, 0, 0, base.width, base.height);
+        bdc.globalAlpha = 1;
+      }
       this._morphFade = {
-        buf: old,
-        // The glacial PHASE this retired buffer belongs to. The fade draws it at full
-        // as the crossfade base, which is only correct while that phase is still the
-        // one on screen. Deep time keeps moving during the >=500 ms fade and the
-        // glacial index oscillates across phase boundaries, so the current phase can
-        // step off this one mid-fade — then the base is a stale, wrong-phase, OLD-land
-        // buffer drawn at full, and the terrain flicks to that previous state for a
-        // frame. render() checks this key and retires the fade early if it happens.
+        buf: base,
+        // The glacial PHASE the snapshot was taken in. Deep time keeps moving during the
+        // >=500 ms fade and the glacial index can oscillate across a phase boundary, so the
+        // visible phase may step off this one mid-fade — then crossfading from a now-wrong-phase
+        // frozen frame would flick the terrain. render() checks this key and retires early.
         key: seasonKey,
         t0: (typeof millis === 'function') ? millis() : Date.now(),
         ms: Math.max(500, fadeMs)   // photosensitivity: large changes ramp >= 500 ms
       };
+      this._releaseBakeBuffer(old);   // captured into the snapshot; recycle it
     } else {
       this._releaseBakeBuffer(old);
     }
@@ -2853,7 +2904,7 @@ class TerrainGenerator {
       CLIFF: 3 * S,
       reliefEdgeOn: LOOK.reliefEdge,
       reR: red(reC), reG: green(reC), reB: blue(reC),
-      EDGEW: Math.max(1, Math.round(1.3 * S)),         // relief outline thickness, px
+      EDGEW: Math.max(1, Math.round(1 * S)),         // relief outline thickness, px
       jit: LOOK.outlines ? LOOK.outlineJitter : 0,
       facetA, facetAmp: facetOn ? LOOK.facetAmp : 0,   // FACET break-up (domain-warped posterize)
       // COASTAL DUNE sand tint (per-phase reach; blended before snow/edges so outlines ink over it)
@@ -2945,16 +2996,20 @@ class TerrainGenerator {
           cr = cr + (sRGB[0] - cr) * cov; cg = cg + (sRGB[1] - cg) * cov; cb = cb + (sRGB[2] - cb) * cov;
         }
 
+        // Boundary ink: the SHORELINE (water's edge, edge === 2) draws; the biome-to-biome
+        // habitat OUTLINES (edge === 1) are intentionally OFF. To bring outlines back, restore the
+        // commented `edge === 1` branch below as the leading clause of this if / else-if.
         const edge = edgeA[i];
-        if (edge === 1 && LOOK.outlines) {
-          const oc = this._getCachedColor(this.biomeArray[biomeA[i]].outlineColor || LOOK.outlineColor);
-          let orr = red(oc), ogg = green(oc), obb = blue(oc);
-          if (jit > 0) {// change outline width
-            const ink = 3 - jit * (3 - noise(pc * invS * 0.5 + this.seed, pr * invS * 0.5 + this.seed));
-            orr = cr + (orr - cr) * ink; ogg = cg + (ogg - cg) * ink; obb = cb + (obb - cb) * ink;
-          }
-          cr = orr; cg = ogg; cb = obb;
-        } else if (edge === 2 && LOOK.shore) {
+        // if (edge === 1 && LOOK.outlines) {
+        //   const oc = this._getCachedColor(this.biomeArray[biomeA[i]].outlineColor || LOOK.outlineColor);
+        //   let orr = red(oc), ogg = green(oc), obb = blue(oc);
+        //   if (jit > 0) {// change outline width
+        //     const ink = 3 - jit * (3 - noise(pc * invS * 0.5 + this.seed, pr * invS * 0.5 + this.seed));
+        //     orr = cr + (orr - cr) * ink; ogg = cg + (ogg - cg) * ink; obb = cb + (obb - cb) * ink;
+        //   }
+        //   cr = orr; cg = ogg; cb = obb;
+        // } else
+        if (edge === 2 && LOOK.shore) {
           cr = shoreR; cg = shoreG; cb = shoreB;
         }
 
@@ -3070,9 +3125,17 @@ class TerrainGenerator {
     // smoothScale=false → crisp nearest-neighbour (the pixel look). Saved/restored
     // so sprites and HUD keep whatever the frame set.
     const _dc = R.drawingContext, _ps = _dc.imageSmoothingEnabled, _pq = _dc.imageSmoothingQuality;
+    // Smooth a buffer ONLY while it is being MINIFIED (baked LARGER than its on-screen
+    // size) — that anti-aliased downsample is the resting look (LOOK.bakeScale 3 bakes
+    // above the ~2.5x camera zoom). A buffer baked BELOW the camera zoom — a cheap morph
+    // re-bake at CONFIG.morphBakeScale — is MAGNIFIED, and smoothing a magnified raster is
+    // exactly what turned it BLURRY after the first morph; draw those NEAREST-NEIGHBOUR
+    // (crisp) instead. So the resting ground stays smooth and the post-morph land stays
+    // sharp. Set inline before each draw below (no per-frame closure — CLAUDE.md).
+    // LOOK.smoothScale=false still forces nearest everywhere (the chunky pixel look).
     const _sm = (typeof LOOK === 'undefined') ? true : LOOK.smoothScale !== false;
-    _dc.imageSmoothingEnabled = _sm;
-    if (_sm && 'imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = 'high';
+    const _screenW = this.mapWidth * ((typeof CONFIG !== 'undefined' && CONFIG.viewZoom) || 1);
+    if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = 'high';
 
     // Morph crossfade: when the incremental morph swapped the on-screen bake,
     // draw the retired buffer underneath and ease the fresh land in on top over
@@ -3080,34 +3143,37 @@ class TerrainGenerator {
     // as a cut — the photosensitivity budget, TEMANAWA_BUILD_V3.md §5.2. When
     // the fade ends the retired buffer is recycled into the bake pool.
     const drawW = this.mapWidth, drawH = this._paintWorldH || this.mapHeight;
+    const _ga = _dc.globalAlpha;
     let fadeAlpha = 1;
     const mf = this._morphFade;
     if (mf) {
       const nowMs = (typeof millis === 'function') ? millis() : Date.now();
-      // Retire early if the visible glacial phase has stepped off the one this retired
-      // buffer belongs to (a boundary crossed / the index oscillated during the fade):
-      // its base would otherwise draw a stale wrong-phase OLD buffer at full and flick
-      // the terrain back to that state. Dropping to the live composite is correct — the
-      // right phase, at full — and per-morph land change is small, so no hard cut reads.
+      // Retire early if the visible glacial phase has stepped off the one this snapshot was
+      // taken in (a boundary crossed / the index oscillated during the fade): crossfading from
+      // a now-wrong-phase frozen frame would flick the terrain. Dropping to the live composite
+      // is correct, and per-morph land change is small, so no hard cut reads.
       const stalePhase = this.seasonManager && mf.key != null && this.seasonManager.currentKey !== mf.key;
       const t = stalePhase ? 1 : (nowMs - mf.t0) / mf.ms;
       if (t >= 1) {
         this._releaseBakeBuffer(mf.buf);
         this._morphFade = null;
       } else {
+        _dc.imageSmoothingEnabled = _sm && mf.buf.width >= _screenW;
+        _dc.globalAlpha = 1;                    // the frozen OLD composite is the opaque crossfade base
         R.image(mf.buf, 0, 0, drawW, drawH);
         const tt = t < 0 ? 0 : t;
         fadeAlpha = tt * tt * (3 - 2 * tt);   // eased ramp, no step
       }
     }
-    const _ga = _dc.globalAlpha;
     if (fadeAlpha < 1) _dc.globalAlpha = fadeAlpha;
 
     if (!this.seasonManager) {
       // No phase manager - just draw the interglacial. The buffer is bakeScale× the world
       // footprint, so draw it at (mapWidth × paintWorldH) — p5 downsamples the S×
       // detail into the footprint, then the view zoom scales it up (higher-res).
-      R.image(this.seasonBuffers.interglacial, 0, 0, drawW, drawH);
+      const _bi = this.seasonBuffers.interglacial;
+      _dc.imageSmoothingEnabled = _sm && !!_bi && _bi.width >= _screenW;
+      R.image(_bi, 0, 0, drawW, drawH);
       _dc.globalAlpha = _ga;
       _dc.imageSmoothingEnabled = _ps; if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = _pq;
       return;
@@ -3118,31 +3184,31 @@ class TerrainGenerator {
 
     if (transitionProgress < 0.01) {
       // No transition - just draw current season
-      R.image(this.seasonBuffers[currentKey], 0, 0, drawW, drawH);
+      const _bc = this.seasonBuffers[currentKey];
+      _dc.imageSmoothingEnabled = _sm && !!_bc && _bc.width >= _screenW;
+      R.image(_bc, 0, 0, drawW, drawH);
     } else {
       // Crossfade between current and next season
       const nextKey = this.seasonManager.nextKey;
 
       // Draw current season
-      R.image(this.seasonBuffers[currentKey], 0, 0, drawW, drawH);
+      const _bc = this.seasonBuffers[currentKey];
+      _dc.imageSmoothingEnabled = _sm && !!_bc && _bc.width >= _screenW;
+      R.image(_bc, 0, 0, drawW, drawH);
 
-      // Draw next season with alpha — globalAlpha, not tint(), so p5 skips the
-      // per-call tinted-canvas composite (#7). The buffers are opaque, so the
-      // crossfade is identical at a fraction of the cost.
+      // Draw next season with alpha — globalAlpha, not tint(), so p5 skips the per-call
+      // tinted-canvas composite (#7). The buffers are opaque, so the crossfade is identical at
+      // a fraction of the cost.
       //
-      // Alpha is the raw transitionProgress, NOT transitionProgress·fadeAlpha.
-      // The morph crossfade lives entirely between the retired buffer (drawn full,
-      // above) and the fresh CURRENT-phase land (drawn at fadeAlpha, above) — it is
-      // the current phase's own land morphing. The glacial-phase blend is a separate
-      // axis and must stay at its true weight throughout. Folding fadeAlpha in here
-      // collapsed the next-phase layer to ~0 the instant a morph swapped in, so the
-      // composite snapped from "current+next phases blended" to "pure current phase"
-      // (the old, warmer land) for the length of the fade — the terrain visibly
-      // flicked back to its previous state mid-morph. At fadeAlpha 0 this now leaves
-      // exactly the pre-swap composite (retired current·(1−tp) + next·tp), so the
-      // swap is seamless; the fresh current land then eases in underneath the blend.
-      _dc.globalAlpha = transitionProgress;
-      R.image(this.seasonBuffers[nextKey], 0, 0, drawW, drawH);
+      // During a morph fade the whole NEW composite eases in on top of the frozen OLD-composite
+      // snapshot (drawn full, above), so the next-phase layer scales by fadeAlpha as well as by
+      // transitionProgress. At fadeAlpha 0 only the snapshot shows — seamless, and no new-time
+      // shoreline ghosts over the old; at fadeAlpha 1 it is the full live current·(1−tp)+next·tp
+      // blend. With no fade fadeAlpha is 1, so this is exactly that ordinary blend.
+      _dc.globalAlpha = fadeAlpha * transitionProgress;
+      const _bn = this.seasonBuffers[nextKey];
+      _dc.imageSmoothingEnabled = _sm && !!_bn && _bn.width >= _screenW;
+      R.image(_bn, 0, 0, drawW, drawH);
     }
     _dc.globalAlpha = _ga;
     _dc.imageSmoothingEnabled = _ps; if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = _pq;

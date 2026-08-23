@@ -295,31 +295,43 @@ class Boid {
   }
   
   update(dt = 1) {
-    // Apply acceleration (scaled by dt)
-    this.vel.x += this.acc.x * dt;
-    this.vel.y += this.acc.y * dt;
+    // Two clocks WITHIN motion+anim (both fed the REAL frame dt by the sim):
+    //   • mdt — the MOTION clock, scaled by CONFIG.faunaTimeScale, so the cast TRAVELS at a
+    //     calm diorama pace (position + velocity integration + the speed-cap ramp).
+    //   • dt  — the ANIMATION clock, left at the real frame rate, so the walk/wingbeat cel
+    //     cycles still play through EVERY frame at their authored cadence.
+    // They are kept separate on purpose: scaling both together slowed the animation too, so
+    // the cel cycles played "on twos" (choppy). The cadence was never speed-linked here — it
+    // is a fixed floor(animTime*speed) — so running it at full rate just restores the original
+    // look while the body moves slower. (Deep-time life events ride the warped clock in
+    // behave(); water, storm-warp decay and habitat health ride real dt elsewhere.)
+    const mdt = (typeof CONFIG !== 'undefined' && CONFIG.faunaTimeScale) ? dt * CONFIG.faunaTimeScale : dt;
+
+    // Apply acceleration (motion clock)
+    this.vel.x += this.acc.x * mdt;
+    this.vel.y += this.acc.y * mdt;
 
     // Speed ramp: the effective cap eases toward the state's maxSpeed instead
     // of snapping, so state changes (idle→flee, flee→idle, terrain slowdowns)
     // accelerate/decelerate over ~10-20 frames rather than teleport-clamping.
     const targetMax = this.maxSpeed * this.personality.speedVariation;
     if (this._speedCap === null) this._speedCap = targetMax;
-    this._speedCap += (targetMax - this._speedCap) * Math.min(1, 0.12 * dt);
+    this._speedCap += (targetMax - this._speedCap) * Math.min(1, 0.12 * mdt);
 
     // Limit speed (inline for performance)
     const maxSpd = this._speedCap;
     const maxSpdSq = maxSpd * maxSpd;
     const spdSq = this.vel.x * this.vel.x + this.vel.y * this.vel.y;
-    
+
     if (spdSq > maxSpdSq) {
       const invSpd = maxSpd / Math.sqrt(spdSq);
       this.vel.x *= invSpd;
       this.vel.y *= invSpd;
     }
-    
-    // Apply velocity (scaled by dt)
-    this.pos.x += this.vel.x * dt;
-    this.pos.y += this.vel.y * dt;
+
+    // Apply velocity (motion clock)
+    this.pos.x += this.vel.x * mdt;
+    this.pos.y += this.vel.y * mdt;
     
     // Reset acceleration
     this.acc.x = 0;
@@ -348,13 +360,14 @@ class Boid {
       }
     }
 
-    // Motion clock. The dt reaching update() is the REAL frame delta — Game.update
-    // feeds the un-warped dt here while behave() gets the deep-time-warped one (the
-    // two-clock split). So the sprite's facing AND its walk/wingbeat cadence advance
-    // at wall-clock rate: a moa keeps a calm, deliberate step in 10x deep-time rather
-    // than a sped-up cartoon scramble. Aging, hunger and breeding ride the warped
-    // clock in behave(). See CLAUDE.md (water/habitat health already do this).
-    this.animTime += dt;
+    // Animation clock — the real frame dt scaled by CONFIG.faunaAnimScale (NOT the paced motion
+    // clock mdt, and never the deep-time-warped clock). At 0.5 each walk/eat/wingbeat cel cycle
+    // takes 2x longer, matching the slowed body so the legs aren't racing a slow shuffle. The cel
+    // index is floor(animTime*rate), so slowing animTime still steps through EVERY frame in order
+    // (it never skips). Facing/flip easing stays on the real dt so turns keep their responsiveness.
+    // Aging/hunger/breeding ride the warped clock in behave() (CLAUDE.md: water/habitat do the same).
+    const adt = (typeof CONFIG !== 'undefined' && CONFIG.faunaAnimScale) ? dt * CONFIG.faunaAnimScale : dt;
+    this.animTime += adt;
     this.updateFacing(dt);
   }
 

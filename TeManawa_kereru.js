@@ -421,7 +421,9 @@ class Kereru extends Boid {
     this._feedTimer -= dt;
     if (this._feedTimer <= 0) {
       this.crop = this._cropCapacity;                // a full crop of fruit
-      this.hunger = Math.max(0, this.hunger - this._feedRelief);
+      // Global diet richness (CONFIG.faunaNutritionScale) applies to flyers too.
+      const _relief = this._feedRelief * ((typeof CONFIG !== 'undefined' && CONFIG.faunaNutritionScale) ? CONFIG.faunaNutritionScale : 1);
+      this.hunger = Math.max(0, this.hunger - _relief);
       this._targetTree = null;
       this.state = KERERU_STATE.PERCHED;             // rest a beat before dispersing
       this._restTimer = this._restFrames;

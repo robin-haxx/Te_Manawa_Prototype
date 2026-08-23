@@ -367,7 +367,16 @@ const CONFIG = {
   morphEnabled: true,
   morphIntervalYears: 12000,   // re-bake once yearsBP has drifted this far from the baked land
   morphMinMs: 1100,           // ...and at least this long since the last morph re-bake (throttle)
-  morphBakeScale: 2,          // supersample for morph re-bakes (lower = cheaper + softer while moving)
+  morphBakeScale: 2,          // supersample for morph re-bakes (the original baseline). Baked below the
+                              //   camera zoom (~3), so a re-bake buffer is MAGNIFIED on screen — terrain.render()
+                              //   now draws a magnified buffer NEAREST-NEIGHBOUR (crisp), never smoothed (which
+                              //   is what made it blurry). This is the SAME resolution the land already dropped
+                              //   to on the first morph before, so no new detail loss and no extra bake cost.
+                              //   Going lower (1) magnifies harder → chunky; matching LOOK.bakeScale (3) keeps
+                              //   full detail but makes each morph bake ~2.25x pricier (MORE stutter). Neither
+                              //   the machine-independent transfer cost changes here. The zero-compromise
+                              //   stutter cut is structural: bake only the visible glacial phase per morph, not
+                              //   all four — see md/TEMANAWA_TERRAIN_PLAN.md.
   morphBudgetMs: 3,           // per-frame time slice for the incremental re-bake (60fps frame = 16.6ms)
   morphFadeMs: 600,           // crossfade for the on-screen buffer swap (floored at 500ms — photosensitivity)
 
@@ -384,8 +393,28 @@ const CONFIG = {
   // PER-ENTITY UI
   // OFF by default
   //
-  // Renamed showEntityUI from showHungerBars 
+  // Renamed showEntityUI from showHungerBars
   showEntityUI: false,
+
+  // ===== FAUNA MOTION / ANIMATION / DIET =====
+  // Three independent global knobs on the cast, all read in the entity code (Boid.update / Moa /
+  // Kereru). Deep-time life events (aging, breeding) ride their own warped clock and are unaffected.
+  //
+  //   faunaTimeScale — multiplier on TRAVEL speed (position integration in Boid.update). 1 = wall-
+  //     clock, 0.5 = half-speed. The calm-diorama pace knob; the cast read ~2x too fast at 1.0.
+  //
+  //   faunaAnimScale — multiplier on the CEL ANIMATION cadence (animTime in Boid.update). 1 = the
+  //     authored rate, 0.5 = each walk/eat/wingbeat cycle takes 2x longer. Kept separate from
+  //     travel so the two can be tuned apart; at 0.5 the animation slows to match the slowed body
+  //     (no "fast legs on a slow shuffle"). The cel index is floor(animTime*rate), so slowing this
+  //     still plays through EVERY frame in order — it never skips or drops frames.
+  //
+  //   faunaNutritionScale — multiplier on the hunger relief PER feeding (Moa grazing + feeders,
+  //     Kereru fruit). 2.5 = eating is 2.5x more nourishing, so a bird that now spends a full
+  //     (longer) eating cycle planted per meal still stays fed.
+  faunaTimeScale: 0.5,
+  faunaAnimScale: 0.5,
+  faunaNutritionScale: 2.5,
 
   // ===== LEVEL-VARIABLE PARAMS (written by loadLevel) =====
   noiseScale: 0.005,

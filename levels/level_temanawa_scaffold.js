@@ -37,6 +37,14 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   name: 'Te Manawa (scaffold)',
   unlockCondition: null,
 
+  // NOTE: mapGrid stays at the 512 default here. Dropping it to 256 does shrink the
+  // morph re-bake transfers, but it also halves the RESTING paint/elevation resolution
+  // (softer ground) AND doubles viewZoom (canvasWidth/mapWidth), which scales every
+  // world-space sprite up — both visible all the time, not just during a morph. A real
+  // drop to 256 needs sprite sizing decoupled from cell size first. See morphBakeScale
+  // in TeManawa_sketch.js for the change that cuts the morph transfer cost without either
+  // side effect.
+
   terrain: {
     noiseScale: 0.007, octaves: 3, persistence: 0.35, lacunarity: 3.0,
     ridgeInfluence: 1.6, elevationPower: 1.2, islandFalloff: 0.1,
@@ -144,10 +152,10 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // riverbank feeds the open-country grazers (coastal moa + geese). The dark swampy ground colour
     // reads as the raupō/reed mass from above (raupō/toetoe are ground-palette, not entities).
     wetland:   { key:'wetland',   name:"Wetland",         minElevation:0.16, maxElevation:0.29,
-                 colors:habitatCols.wetland, contourColor:'#26382b', outlineColor:'#26382b',
+                 colors:habitatCols.wetland, contourColor:'#26382b', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantDensityMult:3.8, plantTypes:['flax','tussock','cabbagetree','kahikatea','tussock','manuka','flax','nikau','coprosma'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
-                 colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#3b724b',
+                 colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
     // MONTANE — podocarp-broadleaf, NOT beech forest. Black beech is famously ABSENT from the
     // Manawatū (the "beech gap": tawa is in every forest type EXCEPT beech; the only beech in
@@ -155,16 +163,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // §3.3, SPECIES_SUMMARY row 9). So tawa/Tōtara/fern lead and beech is a scattered minority (its
     // real role is the GLACIAL REFUGE tree — see the build-plan follow-up on beech's cold behaviour).
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
-                 colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#5a926f',
+                 colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'], canPlace:true },
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
-                 colors:habitatCols.subalpine, contourColor:'#bfcda8', outlineColor:'#85a15c',
+                 colors:habitatCols.subalpine, contourColor:'#bfcda8', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantTypes:['tussock','coprosma','dracophyllum','manuka'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
-                 colors:habitatCols.alpine, contourColor:'#5c5c5c', outlineColor:'#a9a9a9',
+                 colors:habitatCols.alpine, contourColor:'#5c5c5c', outlineColor:'#ffffff',
                  walkable:false, canHavePlants:false, canPlace:false },
     snow:      { key:'snow',      name:"Snow",            minElevation:0.90, maxElevation:1.0,
-                 colors:habitatCols.snow, contourColor:'#b0b0b0', outlineColor:'#9aa6ad',
+                 colors:habitatCols.snow, contourColor:'#b0b0b0', outlineColor:'#ffffff',
                  walkable:false, canHavePlants:false, canPlace:false }
   },
 

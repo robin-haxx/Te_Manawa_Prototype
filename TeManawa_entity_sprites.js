@@ -473,6 +473,19 @@ const EntitySprites = {
     return this._resolveMoaSet(variant).faceSign;
   },
 
+  // animTime span of ONE full eating cel cycle for a variant (frames ÷ cadence).
+  // The moa uses this to hold a bite for a complete eating animation before moving
+  // on (TeManawa_moa.js executeState). Measured in animTime — the same clock the
+  // renderer indexes frames from — so it is exactly one cycle at any pace, and it
+  // resolves through the same fallback as getMoaSprite so it matches the art that
+  // actually plays (a set with no dedicated eating art falls back to walk frames).
+  moaEatCyclePeriod(variant = null) {
+    const set = this._resolveMoaSet(variant);
+    const list = this._framesForState(set, 'eating');
+    const n = (list && list.length) ? list.length : 1;
+    return n / this.animation.moaWalkSpeed;
+  },
+
   // Bake one tinted copy of a loaded frame into an offscreen buffer, so the tint
   // is applied once here instead of per draw. Falls back to the untinted frame if
   // it hasn't loaded yet (so a not-yet-loaded frame is never cached as tinted).

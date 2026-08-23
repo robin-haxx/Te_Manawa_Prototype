@@ -184,7 +184,7 @@ const LEVEL_DEFAULTS = {
     ridgeInfluence: 1.3,
     elevationPower: 1.5,
     islandFalloff: 0.6,                             // potential bug/ new similar system per level
-    plantDensity: 0.006                             // !
+    plantDensity: 0.01                             // !
   },
   economy: {
     seasonDuration: 2100,

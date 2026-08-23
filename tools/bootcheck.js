@@ -126,6 +126,13 @@ try{
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
   const m=sim.moas && sim.moas[0];
   chk(!!m,'a moa exists to exercise the two-clock split');
+  // Within update() there are TWO real-clock sub-clocks (neither is the deep-time-warped one):
+  // ANIMATION (animTime) carries CONFIG.faunaAnimScale — the cel cadence, slowed but still stepping
+  // through every frame; MOTION (position) carries CONFIG.faunaTimeScale — the calm travel pace.
+  // Both scale the REAL frame dt, so a 10x fast-forward never touches the walk cadence or ground
+  // speed (guards the "sped-up cartoon" regression). Fold both knobs into the expected deltas.
+  const fts=vm.runInContext('(typeof CONFIG!=="undefined" && CONFIG.faunaTimeScale) ? CONFIG.faunaTimeScale : 1', ctx);
+  const fas=vm.runInContext('(typeof CONFIG!=="undefined" && CONFIG.faunaAnimScale) ? CONFIG.faunaAnimScale : 1', ctx);
   if(m){
     // (1) behave() is the LIFE clock: it ages the moa but must NOT touch animTime or pos.
     const a0=m.animTime, px0=m.pos.x, py0=m.pos.y, age0=m.age;
@@ -134,19 +141,19 @@ try{
     chk(m.pos.x===px0 && m.pos.y===py0,'behave() does not move the body (integration lives in update())');
     chk(Math.abs((m.age-age0)-10)<1e-6,'behave() ages the moa by its warped dt (10)');
 
-    // (2) update() is the MOTION+ANIM clock: animTime and pos advance by ITS dt.
-    // Tiny velocity keeps it under any species speed cap so pos delta is exact.
+    // (2) update(): animTime advances by dt*faunaAnimScale (paced cel cadence), position by
+    // dt*faunaTimeScale (paced travel). Tiny velocity keeps it under any species cap so pos is exact.
     m.vel.set(0.05,0); m.acc.set(0,0); m._speedCap=null;
     const a1=m.animTime, px1=m.pos.x;
     m.update(2);
-    chk(Math.abs((m.animTime-a1)-2)<1e-9,'update() advances animTime by its own (real) dt');
-    chk(Math.abs((m.pos.x-px1)-0.1)<1e-6,'update() moves the body by vel*dt (0.05 * 2)');
+    chk(Math.abs((m.animTime-a1)-2*fas)<1e-9,'update() advances animTime by real dt*faunaAnimScale (2 * '+fas+')');
+    chk(Math.abs((m.pos.x-px1)-0.1*fts)<1e-6,'update() moves the body by vel*dt*faunaTimeScale (0.05 * 2 * '+fts+')');
 
     // (3) wiring: simulation.update(sdt, rdt) sends the warped dt to behave, the real to update.
     m.hunger=0; m.alive=true;                 // keep it alive through the tick
     const a2=m.animTime, age2=m.age;
     sim.update(10, 1);
-    chk(Math.abs((m.animTime-a2)-1)<1e-6,'sim.update: animation advanced by the REAL dt (1), not the warped 10');
+    chk(Math.abs((m.animTime-a2)-1*fas)<1e-6,'sim.update: animation advanced by real dt*faunaAnimScale (1 * '+fas+'), not the warped 10');
     chk((m.age-age2)>=9.9,'sim.update: aging advanced by the WARPED dt (~10)');
   }
   console.log(fail? `two-clock: ${fail} FAILURES`
@@ -1805,9 +1812,20 @@ const g=vm.runInContext('game',ctx);
     chk(eq(T._paintElev,refE)&&eq(T._paintBiome,refPB)&&eq(T._paintEdge,refEd),
         'sliced paint grid must be identical — the time-independent wobble caches hold');
 
-    // (3) every season buffer swapped to a fresh bake
-    chk(['interglacial','cooling','glacial','fullGlacial'].every(k=>T.seasonBuffers[k]&&T.seasonBuffers[k]!==fronts[k]),
-        'all four season buffers must swap to fresh bakes');
+    // (3) only the VISIBLE glacial-phase pair (current + next) re-bakes; the
+    // off-screen phases are left as-is and refresh when they re-enter the visible
+    // pair (at ~0 effective alpha). This is the per-morph cost cut — 1-2 season
+    // bakes, not 4. morphTo (a hard scene change) still bakes all four; see
+    // TerrainGenerator._seasonBakeOrder.
+    {
+      const SMv = T.seasonManager;
+      const vis = new Set([SMv.currentKey, SMv.nextKey]);
+      chk([...vis].every(k=>T.seasonBuffers[k]&&T.seasonBuffers[k]!==fronts[k]),
+          'the visible glacial-phase pair (current+next) must swap to fresh bakes');
+      chk(['interglacial','cooling','glacial','fullGlacial'].filter(k=>!vis.has(k))
+            .every(k=>T.seasonBuffers[k]===fronts[k]),
+          'the off-screen phases must be LEFT un-rebaked (the per-morph cost cut)');
+    }
 
     // (4) crossfade + pool hygiene: the visible season's retired buffer is held
     // for the fade, render() releases it when the fade ends, and releases recycle.
@@ -1817,36 +1835,46 @@ const g=vm.runInContext('game',ctx);
     chk(!T._morphFade,'render() must retire the crossfade buffer once the fade ends');
     chk(T._bufPool.length>0,'retired back buffers must recycle into the bake pool');
 
-    // (4b) the morph crossfade must NOT dim the glacial-phase blend. The land morph
-    // is a crossfade between the retired buffer (drawn full) and the fresh CURRENT-
-    // phase land (drawn at fadeAlpha); the NEXT-phase season blend is a separate axis
-    // and must keep its true transitionProgress weight throughout. Folding fadeAlpha
-    // into the next layer collapsed it to ~0 the instant a morph swapped in, so the
-    // composite snapped to the pure old current-phase land — the terrain visibly
-    // flicked back to its previous state for the length of the fade. Arm a fade at
-    // fadeAlpha 0 during a live phase transition, record the per-layer image() alphas,
-    // and assert the next-phase layer still draws at ~transitionProgress.
+    // (4b) the morph crossfade must fade the whole OLD composite out to the whole NEW composite.
+    // The base is a frozen SNAPSHOT of the old on-screen image (old current+next phases already
+    // blended into it), and it must draw at an EXPLICIT full alpha — not the stale context alpha
+    // it happens to inherit. On top, the freshly re-baked land (BOTH phases) eases in scaled by
+    // fadeAlpha. Two failures this guards, both seen as a double / wrong shoreline mid-morph:
+    //   · a dim base (drawn at the inherited alpha) lets the new land bleed through; and
+    //   · a next-phase layer drawn at full transitionProgress (ignoring fadeAlpha) lays the
+    //     NEW-time shoreline over the old one for the length of the fade (the ghost).
+    // Poison the context alpha to 0.7 to prove the base overrides it, then assert: at fadeAlpha 0
+    // the snapshot draws at full and NOTHING freshly re-baked shows; at fade end the live blend
+    // resumes (next at transitionProgress) and the snapshot is retired.
     {
       const SM = T.seasonManager;
       const s0 = SM.currentSeasonIndex, tp0 = SM.transitionProgress, y0 = DT.yearsBP;
       SM.currentSeasonIndex = 0; SM.transitionProgress = 0.8;    // interglacial --0.8--> cooling
       const nxtKey = SM.nextKey;                                 // 'cooling'
-      T.morphTo(DT.yearsBP, 1);                                  // arms _morphFade (retired current phase)
+      T.morphTo(DT.yearsBP, 1);                                  // arms _morphFade (snapshot of the OLD composite)
       chk(!!T._morphFade, 'guard setup: a morph must arm the crossfade');
-      if (T._morphFade) { T._morphFade.t0 = _t; T._morphFade.ms = 600; }   // (_t - t0)/ms == 0 -> fadeAlpha 0
-      const draws = [], origImage = ctx.image;
-      ctx.image = (buf) => { draws.push({ buf, a: +ctx.drawingContext.globalAlpha }); };
-      T.render();
-      ctx.image = origImage;
       const keyOf = (b) => { for (const k in T.seasonBuffers) if (T.seasonBuffers[k] === b) return k; return 'retired'; };
-      let nextA = -1, retiredFull = false;
-      for (const d of draws) { const k = keyOf(d.buf);
-        if (k === nxtKey) nextA = Math.max(nextA, d.a);
-        if (k === 'retired' && d.a > 0.98) retiredFull = true; }
-      chk(retiredFull, 'the morph fade must draw the retired buffer at full underneath (fadeAlpha 0)');
-      chk(nextA > 0.5 && Math.abs(nextA - SM.transitionProgress) < 0.05,
-          `the next-phase blend must survive the morph crossfade (drew next '${nxtKey}' at alpha ${nextA.toFixed(2)}, `+
-          `want ~${SM.transitionProgress}) — else the terrain flicks back to the old land mid-morph`);
+      const record = () => { const d = [], oi = ctx.image;
+        ctx.drawingContext.globalAlpha = 0.7;                    // a stale inherited alpha the base must override
+        ctx.image = (buf) => d.push({ k: keyOf(buf), a: +ctx.drawingContext.globalAlpha });
+        T.render(); ctx.image = oi; return d; };
+      // (i) fadeAlpha 0: the OLD composite is baked into the snapshot and drawn at FULL; nothing
+      //     freshly re-baked may show, or the new-time shoreline ghosts over the old.
+      if (T._morphFade) { T._morphFade.t0 = _t; T._morphFade.ms = 600; }   // (_t - t0)/ms == 0 -> fadeAlpha 0
+      const d0 = record();
+      let baseFull = false, freshMax = 0;
+      for (const d of d0) { if (d.k === 'retired') { if (d.a > 0.98) baseFull = true; } else freshMax = Math.max(freshMax, d.a); }
+      chk(baseFull, 'the morph fade must draw the OLD-composite snapshot at FULL alpha (fadeAlpha 0), not the inherited context alpha');
+      chk(freshMax < 0.02, `no freshly re-baked land may show at fadeAlpha 0 (a fresh layer drew at ${freshMax.toFixed(2)}) — else the new shoreline ghosts over the old`);
+      // (ii) fade ended: the snapshot is retired and the live glacial blend resumes (next at tp).
+      if (T._morphFade) { T._morphFade.t0 = _t - 10000; T._morphFade.ms = 600; }   // t >= 1 -> retire on next render
+      const d1 = record();
+      let nextA = -1, anyRetired = false;
+      for (const d of d1) { if (d.k === nxtKey) nextA = Math.max(nextA, d.a); if (d.k === 'retired') anyRetired = true; }
+      chk(!anyRetired && !T._morphFade, 'render() must retire the snapshot once the fade ends');
+      chk(Math.abs(nextA - SM.transitionProgress) < 0.05,
+          `the live glacial blend must resume after the fade (next '${nxtKey}' at ${nextA.toFixed(2)}, want ~${SM.transitionProgress})`);
+      ctx.drawingContext.globalAlpha = 1;
 
       // (4c) if the visible phase steps OFF the fade's phase mid-fade (a glacial
       // boundary crossed, or the index oscillated), the retired buffer is a stale,

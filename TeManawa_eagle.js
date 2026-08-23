@@ -170,8 +170,17 @@ class EylesHarrier extends Boid {
     }
   }
   
-  isHunting() { 
-    return this.hunting && this.target !== null; 
+  isHunting() {
+    return this.hunting && this.target !== null;
+  }
+
+  // World-space width of the off-screen L/R overflow (the cover-fit runs the map wider
+  // than the canvas on some aspect ratios). Every target this bird aims at must stay
+  // INSIDE this inset, or it chases a point in the overflow that Boid.update's _clampToView
+  // wall never lets it reach — pinning it against the invisible edge (the "harrier stuck on
+  // the right" report). Returns a scalar (no allocation — safe on the per-frame behave path).
+  _viewInsetX() {
+    return (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
   }
   
   // ============================================
@@ -399,7 +408,9 @@ class EylesHarrier extends Boid {
     } else {
       this.distractedTimer = 0;
     }
-    
+
+    // Respect the VISIBLE edge while orbiting a distraction (see rest()).
+    this.applyForce(this.avoidEdges());
     this.edges();
   }
   
@@ -462,8 +473,12 @@ class EylesHarrier extends Boid {
 
     const reach = this.patrolRadius * random(0.8, 1.3);
     const mapW = this.terrain.mapWidth, mapH = this.terrain.mapHeight;
+    // Dash toward on-screen ground, not into the off-screen L/R overflow.
+    const ins = this._viewInsetX();
+    let loX = ins + 40, hiX = mapW - ins - 40;
+    if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
     this._burstTarget.set(
-      constrain(this.pos.x + Math.cos(ang) * reach, 40, mapW - 40),
+      constrain(this.pos.x + Math.cos(ang) * reach, loX, hiX),
       constrain(this.pos.y + Math.sin(ang) * reach, 40, mapH - 40)
     );
   }
@@ -482,9 +497,13 @@ class EylesHarrier extends Boid {
     // the rest of the rest timer. Easing down inside 45px lets it settle.
     this.applyForce(this.seek(this.patrolCenter, 0.2, 45));
 
+    // Steer off the VISIBLE edge here too: base edges() only turns at the map edge, which
+    // on a wide cover-fit sits in the off-screen overflow BEYOND the clamp — so a bird that
+    // enters rest pinned on the right would never be pushed back into view without this.
+    this.applyForce(this.avoidEdges());
     this.edges();
   }
-  
+
   // ============================================
   // HUNTING
   // ============================================
@@ -660,12 +679,17 @@ class EylesHarrier extends Boid {
     
     const searchAngle = frameCount * 0.02 + this.wingPhase;
     const searchRadius = this.patrolRadius + (this.huntSearchTimer * 0.3);
-    
+
     const mapW = this.terrain.mapWidth;
     const mapH = this.terrain.mapHeight;
-    
+    // Keep the search sweep inside the VISIBLE map: the growing radius would otherwise fling
+    // the target into the off-screen overflow, where the bird pins against the clamp wall.
+    const ins = this._viewInsetX();
+    let loX = ins + 50, hiX = mapW - ins - 50;
+    if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
+
     this._targetVec.set(
-      constrain(this.patrolCenter.x + cos(searchAngle) * searchRadius, 50, mapW - 50),
+      constrain(this.patrolCenter.x + cos(searchAngle) * searchRadius, loX, hiX),
       constrain(this.patrolCenter.y + sin(searchAngle) * searchRadius, 50, mapH - 50)
     );
     
@@ -685,10 +709,14 @@ class EylesHarrier extends Boid {
     const mapW = this.terrain.mapWidth;
     const mapH = this.terrain.mapHeight;
     const minRelocateDistSq = 22500; // 150^2
-    
+    // Relocate only to on-screen ground (exclude the off-screen L/R overflow).
+    const ins = this._viewInsetX();
+    let loX = ins + 80, hiX = mapW - ins - 80;
+    if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
+
     let newX, newY;
     for (let attempts = 0; attempts <= 10; attempts++) {
-      newX = random(80, mapW - 80);
+      newX = random(loX, hiX);
       newY = random(80, mapH - 80);
       
       const dx = newX - this.pos.x;
@@ -729,13 +757,20 @@ class EylesHarrier extends Boid {
     }
     
     this.applyForce(this.seek(this.relocateTarget, 1.2));
+    // Respect the VISIBLE edge in transit (see rest()); the target is already view-bounded.
+    this.applyForce(this.avoidEdges());
     this.edges();
   }
-  
+
   driftPatrolCenter(amount) {
     const mapW = this.terrain.mapWidth;
     const mapH = this.terrain.mapHeight;
-    this.patrolCenter.x = constrain(this.patrolCenter.x + random(-amount, amount), 80, mapW - 80);
+    // Keep the territory anchor on-screen (exclude the off-screen L/R overflow), so the
+    // patrol never settles around a centre the bird can't actually reach.
+    const ins = this._viewInsetX();
+    let loX = ins + 80, hiX = mapW - ins - 80;
+    if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
+    this.patrolCenter.x = constrain(this.patrolCenter.x + random(-amount, amount), loX, hiX);
     this.patrolCenter.y = constrain(this.patrolCenter.y + random(-amount, amount), 80, mapH - 80);
   }
 
