@@ -608,6 +608,15 @@ class Plant {
       return;
     }
 
+    // Climate-affinity authoring tint (warm=amber, cold=blue; see ClimateAffinity /
+    // TintBaker in TeManawa_entity_sprites.js). Off on the wall; when on, swap the chosen
+    // frame for a BAKED tinted copy — no per-frame tint(). Affinity is fixed by plant type,
+    // so classify once and cache on the instance (null = neutral → never tinted).
+    if (typeof CONFIG !== 'undefined' && CONFIG.showClimateAffinity && typeof ClimateAffinity !== 'undefined') {
+      if (this._climateTint === undefined) this._climateTint = ClimateAffinity.tintFor(ClimateAffinity.ofPlantType(this.type));
+      if (this._climateTint) sprite = TintBaker.get(sprite, this._climateTint);
+    }
+
     const meta = (sprites && sprites.meta) || null;
     const anchorBase = meta ? meta.anchor === 'base' : false;
     const setScale = meta ? meta.scale : 1.0;
@@ -671,8 +680,14 @@ class Plant {
   // ============================================
   
   _renderKawakawa(px, py, displaySize, dormant) {
-    const buffer = dormant ? PlantStatics.kawakawaBufferDormant : PlantStatics.kawakawaBuffer;
-    
+    let buffer = dormant ? PlantStatics.kawakawaBufferDormant : PlantStatics.kawakawaBuffer;
+
+    // Climate-affinity authoring tint — same baked path as the sprite plants above.
+    if (typeof CONFIG !== 'undefined' && CONFIG.showClimateAffinity && typeof ClimateAffinity !== 'undefined') {
+      if (this._climateTint === undefined) this._climateTint = ClimateAffinity.tintFor(ClimateAffinity.ofPlantType(this.type));
+      if (this._climateTint) buffer = TintBaker.get(buffer, this._climateTint);
+    }
+
     // Shadow
     if (CONFIG.drawShadows) {
       noStroke();

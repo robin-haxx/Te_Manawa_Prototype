@@ -85,6 +85,14 @@ class Moa extends Boid {
     // A ground bird pivots deliberately: facing eases slowly (Boid.updateFacing).
     this._turnMax = 0.12;
     this._turnEase = 0.10;
+    // Walk-gate: a ground bird only TRANSLATES while the walk animation plays. Below this speed²
+    // (≈0.032 px/frame) update() holds its position, so an idle/peck (looking/eating) pose stays
+    // planted instead of sliding. The renderer reads the SAME gate for walk-vs-static, so the two
+    // are exactly in step. Kept below every foraging state's maxSpeed so it never strands a slow,
+    // hungry (floor-protected) bird from reaching food — it just makes it WALK there, then peck in
+    // place. See Boid.update / render().
+    this._freezeWhenNotWalking = true;
+    this._walkGateSq = 0.001;
     this.flockTendency = s.flockTendency;
     this.flightiness = s.flightiness;
     
@@ -476,7 +484,17 @@ class Moa extends Boid {
       this.targetMate = null;
       return MOA_STATE.FLEEING;
     }
-    
+
+    // Barren coast/riverbed: nothing grows here, so escaping to plant-bearing ground
+    // OUTRANKS foraging — otherwise a hungry grazer forages up and down the empty shore
+    // (the "coastal species try to eat on the riverbed" report) instead of leaving it.
+    // Only a threat (above) is more urgent. shouldMigrate agrees, so executeMigration
+    // then picks a plant-bearing target (findMigrationTarget).
+    if (this._onBarrenGround()) {
+      this.targetMate = null;
+      return MOA_STATE.MIGRATING;
+    }
+
     if (this.matingTimer > 0 || this.matingPartner) return MOA_STATE.MATING;
     
     const _mateGate = this._mateHungerGate ?? this.hungerThreshold;
@@ -549,6 +567,30 @@ class Moa extends Boid {
     this.panicLevel = 0;
     const starving = this.hunger > this.criticalHunger;
     const speedMod = starving ? 0.6 : 1;
+
+    // Barren coast/riverbed escape — highest priority after a threat (handled in the FLEEING
+    // case). Nothing grows here, so leaving OUTRANKS the eat-hold and all foraging: seek an
+    // inland, plant-bearing target at FULL urgency, decoupled from the seasonal migration
+    // strength (executeMigration scales its seek by that, ~0 off-season, stranding a well-fed
+    // grazer on the sand). The seek points inland, ALIGNED with the edge/water-avoidance forces.
+    // findMigrationTarget is bounds-safe and penalises barren destinations. determineState also
+    // routes barren → MIGRATING (clean state label); this override also cancels an in-progress
+    // eat cycle so a bird that bit near the shore doesn't stay planted on the sand mid-chew.
+    if (this.currentState !== MOA_STATE.FLEEING && this._onBarrenGround()) {
+      this._eatHoldUntil = 0;                 // no meal on bare sand
+      this.maxSpeed = this.baseSpeed * speedMod;
+      if (!this.migrationTarget) this.migrationTarget = this.findMigrationTarget(simulation);
+      if (this.migrationTarget) {
+        const dx = this.migrationTarget.x - this.pos.x, dy = this.migrationTarget.y - this.pos.y;
+        if (dx * dx + dy * dy < 400) this.migrationTarget = null;    // arrived → re-evaluate next frame
+        else this.applyForce(this.seek(this.migrationTarget, 1.5, 20));
+      } else {
+        // No inland target within reach (isolated coast fragment) — head for the map interior.
+        this._homeForce.set(this.terrain.mapWidth * 0.5, this.terrain.mapHeight * 0.5);
+        this.applyForce(this.seek(this._homeForce, 1.2));
+      }
+      return;
+    }
 
     // Eat-cycle commitment (see _commitEatCycle): once a bite starts, hold planted
     // through a full eating animation cycle before moving again, so a ground bird never
@@ -1127,23 +1169,23 @@ class Moa extends Boid {
   // MIGRATION
   // ============================================
 
-  // True when standing on WALKABLE but plant-less ground — the coastal/riverbed band
-  // (canHavePlants:false). Nothing grazes there, so a grazer that wanders or spawns onto
-  // it should move off to plant-bearing land instead of "feeding" on bare sand (the
-  // "coastal species try to eat on the empty riverbed" report). The only walkable no-plant
-  // biome is the coast; the high no-plant bands (alpine/snow) are unwalkable, so this never
-  // false-fires up top. Opt-in per level via LEVEL_MECHANICS.grazerAvoidBarrenGround.
+  // True when standing on the WALKABLE but plant-less coast/riverbed — the low sandy strip
+  // below the lowest plant-bearing biome (grassland starts at grazerBarrenMaxElev, 0.15).
+  // Nothing grazes there, so a grazer that wanders or spawns onto it should move off to
+  // plant-bearing land instead of "feeding" on bare sand (the "coastal species try to eat on
+  // the empty riverbed" report). Detected by LIVE elevation, not the biome map: getBiomeAt is
+  // a coarse grid baked at generate() and it drifts out of sync with the deep-time morph (an
+  // inland montane cell can still read "coastal"), which would falsely chase forest birds off
+  // good ground. Water is left to avoidUnwalkable. Opt-in via LEVEL_MECHANICS.grazerAvoidBarrenGround.
   _onBarrenGround() {
     if (typeof LEVEL_MECHANICS === 'undefined' || !LEVEL_MECHANICS.grazerAvoidBarrenGround) return false;
-    const b = (typeof this.terrain.getBiomeAt === 'function') ? this.terrain.getBiomeAt(this.pos.x, this.pos.y) : null;
-    return !!(b && b.walkable && b.canHavePlants === false);
+    const px = this.pos.x, py = this.pos.y;
+    if (!this.terrain.isWalkable(px, py)) return false;                 // water: handled elsewhere
+    const ceil = LEVEL_MECHANICS.grazerBarrenMaxElev ?? 0.15;
+    return this.terrain.getElevationAt(px, py) < ceil;
   }
 
   shouldMigrate(sc) {
-    // On the barren coast/riverbed there is no food at any hunger level — leave for
-    // plant-bearing ground rather than lingering to graze bare sand.
-    if (this._onBarrenGround()) return true;
-
     const elev = this.terrain.getElevationAt(this.pos.x, this.pos.y);
     const p = this.preferredElevation;
     const err = elev < p.min ? p.min - elev : (elev > p.max ? elev - p.max : 0);
@@ -1189,6 +1231,14 @@ class Moa extends Boid {
       let score = 1 - abs(elev - target) * 5;
       if (elev >= this.preferredElevation.min && elev <= this.preferredElevation.max) score += 0.5;
       if ((current < target && elev > current) || (current > target && elev < current)) score += 0.3;
+
+      // Steer migration away from the plant-less coast/riverbed (below grazerBarrenMaxElev): a
+      // heavy penalty, not a hard skip, so it's only ever a last resort if nothing greener is
+      // reachable (never leaves the grazer with no target). Same live-elevation test as _onBarrenGround.
+      if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.grazerAvoidBarrenGround
+          && elev < (LEVEL_MECHANICS.grazerBarrenMaxElev ?? 0.15)) {
+        score -= 2;
+      }
 
       if (forestAffinity > 0) {
         const plants = simulation.getNearbyPlants(x, y, 60);
@@ -1266,7 +1316,9 @@ class Moa extends Boid {
     // caches the tinted frames) instead of a tint() composite every frame (#6).
     // Skip it for species with their own dedicated sprite set (e.g. bush moa).
     const _tint = variant ? null : this.speciesConfig.tint;
-    const _moving = this.vel.magSq() > 0.01;
+    // Same gate update() uses to decide whether to translate, so "moving" and "walking pose" are
+    // exactly equivalent — a static pose (looking/eating) never plays over a sliding body.
+    const _moving = this.vel.magSq() > this._walkGateSq;
     // Animation state selects which cel cycle plays: WALKING while moving, EATING
     // while grazing/feeding in place, LOOKING (idle) otherwise. Mating is a calm
     // stand, so it reads as LOOKING — the final art has no dedicated mate pose.
@@ -1274,10 +1326,19 @@ class Moa extends Boid {
     if (_moving) _animState = 'walking';
     else if (this.isFeeding || this.currentState === MOA_STATE.FEEDING || this.currentState === MOA_STATE.FORAGING) _animState = 'eating';
     else _animState = 'looking';
-    const sprite = _tint
+    let sprite = _tint
       ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, _tint, this.currentState === MOA_STATE.MATING)
       : EntitySprites.getMoaSprite(this.animTime, _animState, variant);
     if (!sprite) return;
+
+    // Climate-affinity authoring tint (warm=amber, cold=blue; see ClimateAffinity /
+    // TintBaker). Off on the wall; when on, swap the frame for a BAKED tinted copy — no
+    // per-frame tint() (the render below already noTint()s, so the baked frame draws clean).
+    // The species' affinity never changes, so classify once and cache it on the instance.
+    if (typeof CONFIG !== 'undefined' && CONFIG.showClimateAffinity && typeof ClimateAffinity !== 'undefined') {
+      if (this._climateTint === undefined) this._climateTint = ClimateAffinity.tintFor(ClimateAffinity.ofSpeciesConfig(this.speciesConfig));
+      if (this._climateTint) sprite = TintBaker.get(sprite, this._climateTint);
+    }
     
     push();
     // Sit on the 3/4 ground: the anchor y is projected (Projection.groundY, which

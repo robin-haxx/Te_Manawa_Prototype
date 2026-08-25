@@ -275,6 +275,17 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     openCountryBoostHungerRelief: 0.04,   // per-tick hunger shaved while the flush holds (≈ offsets base hunger)
     openCountryBoostCooldownMult: 0.7,    // open-country grazers breed ~30% faster during the flush
 
+    // GRAZERS AVOID THE BARREN COAST. The coastal band (0.10–0.15) is beach — walkable but
+    // canHavePlants:false, so nothing grows there (the vegetated riverbank is the separate WETLAND
+    // biome, 0.16–0.29). Some open-country grazers' preferredElevation dipped into the coastal band
+    // (goose 0.10, stout-legged 0.12 — both raised to 0.15 now), which drew them onto bare sand.
+    // With this on, a grazer that finds itself on the plant-less coast treats it as unsuitable and
+    // migrates up to plant-bearing ground (Moa._onBarrenGround / determineState / findMigrationTarget).
+    // grazerBarrenMaxElev is the lowest PLANT-BEARING elevation (grassland's minElevation): walkable
+    // ground below it is the barren beach. Detected by live elevation, robust to the deep-time morph.
+    grazerAvoidBarrenGround: true,
+    grazerBarrenMaxElev:     0.15,
+
     // KIWI SOIL-TURNING — the forest-floor mirror of the open-country boost above. The
     // North Island brown kiwi (TeManawa_kiwi.js) is the one bird that HEALS the forest
     // floor rather than only consuming it: as it probes the leaf litter for food it stamps

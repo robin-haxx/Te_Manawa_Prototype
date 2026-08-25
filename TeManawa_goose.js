@@ -58,6 +58,9 @@ class Goose extends Moa {
 
     const st = this.currentState;
     if (st === MOA_STATE.FLEEING || st === MOA_STATE.MATING || st === MOA_STATE.SEEKING_MATE) return;
+    // Don't let the gaggle pull a goose escaping the barren coast back toward coastal
+    // flockmates — the escape (Moa.executeState) must win over cohesion here.
+    if (this._onBarrenGround()) return;
 
     let cx = 0, cy = 0, n = 0;
     const px = this.pos.x, py = this.pos.y, rSq = this._gaggleRadiusSq;
@@ -115,8 +118,10 @@ const GOOSE_SPECIES = {
     securityTimeBase: 500,
     securityTimeVariation: 250,
 
-    // Habitat — coast + lowland grassland, BELOW the moa forest bands.
-    preferredElevation: { min: 0.10, max: 0.28 },
+    // Habitat — lowland grassland/wetland, BELOW the moa forest bands. The floor is the lowest
+    // PLANT-BEARING band (grassland starts at 0.15); it used to reach into the coastal beach
+    // (0.10–0.15, canHavePlants:false), which drew the geese onto bare sand where nothing grows.
+    preferredElevation: { min: 0.15, max: 0.28 },
     temperatureTolerance: { cold: 0.85, heat: 0.45 },   // a cold-phase bird
 
     // Behaviour habits — distinct from the moa: intensely gregarious, heads-down

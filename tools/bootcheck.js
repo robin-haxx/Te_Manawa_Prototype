@@ -726,6 +726,62 @@ try{
     : 'grazers: goose + mōho + kiwi are moa-guild birds (dedicated multi-state art); open-country lift on TUSSOCK-in-glacial; mōho territorial; kiwi turns the forest floor');
 }catch(e){ console.log('GRAZERS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
+// ---- climate-affinity tag + baked authoring tint ------------------------------
+// The 'warm'/'cold'/'neutral' tag is DERIVED from the same authored fields the sim already
+// uses (coldTolerance for flora, seasonalModifiers for fauna) — no second table to drift
+// out of sync. The render tint bakes once per (frame,colour) and is off unless the C-key
+// authoring toggle (CONFIG.showClimateAffinity) is on. Assert the derivation matches the
+// data, the cache reuses baked frames, and the toggled render path doesn't throw.
+try{
+  const CA=vm.runInContext('ClimateAffinity',ctx), TB=vm.runInContext('TintBaker',ctx);
+  const CONF=vm.runInContext('CONFIG',ctx), REG=vm.runInContext('REGISTRY',ctx);
+  const G=vm.runInContext('game',ctx);
+  const sim=G.simulation;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  chk(!!CA && !!TB, 'ClimateAffinity + TintBaker are defined');
+
+  // FLORA: coldTolerance split at TM_GROW.warmMax(0.65)/coldMin(0.75).
+  chk(CA.ofPlantType('tussock')==='cold',   'tussock (coldTolerance 1.0) tags cold/glacial-boosted');
+  chk(CA.ofPlantType('coprosma')==='cold',  'grey scrub (0.85) tags cold');
+  chk(CA.ofPlantType('fern')==='warm',      'fern (0.1) tags warm/interglacial-boosted');
+  chk(CA.ofPlantType('Totara')==='warm',    'tōtara (0.3) tags warm');
+  chk(CA.ofPlantType('manuka')==='neutral', 'mānuka (0.7, between the thresholds) tags neutral');
+  chk(CA.ofPlantType('nonesuch')==='neutral','an unknown plant type tags neutral (no throw)');
+
+  // FAUNA: interglacial vs fullGlacial hungerRate (lower = thrives).
+  const upl=REG.getSpecies('upland_moa'), lbm=REG.getSpecies('little_bush_moa');
+  chk(upl && CA.ofSpeciesConfig(upl.config)==='cold', 'upland moa (easier in the cold) tags cold');
+  chk(lbm && CA.ofSpeciesConfig(lbm.config)==='warm', 'little bush moa (easier in the warm) tags warm');
+  chk(CA.ofSpeciesConfig({})==='neutral', 'a species with no seasonalModifiers tags neutral');
+
+  // tintFor: a colour for the extremes, null for neutral.
+  chk(Array.isArray(CA.tintFor('warm')) && Array.isArray(CA.tintFor('cold')), 'warm/cold map to [r,g,b] tints');
+  chk(CA.tintFor('neutral')===null, 'neutral maps to no tint');
+
+  // TintBaker: baked ONCE per (frame,colour), reused; a different colour is a different bake.
+  const src=vm.runInContext('loadImage',ctx)();   // a stub frame object
+  const warmA=TB.get(src, CA.tintFor('warm'));
+  const warmB=TB.get(src, CA.tintFor('warm'));
+  const cold =TB.get(src, CA.tintFor('cold'));
+  chk(warmA && warmA===warmB, 'a repeat get() returns the SAME baked frame (no per-frame re-bake)');
+  chk(cold && cold!==warmA, 'a different colour bakes a different frame');
+  chk(TB.get(null, CA.tintFor('warm'))===null && TB.get(src, null)===src, 'get() passes through when src/colour is missing');
+
+  // the toggled render path runs clean (flag on → a moa + a plant render without throwing).
+  const savedFlag=CONF.showClimateAffinity;
+  CONF.showClimateAffinity=true;
+  const m=sim.moas.find(x=>x.alive), p=sim.plants.find(x=>x.alive);
+  if(m) m.render();
+  if(p) p.render();
+  chk(!m || m._climateTint!==undefined, 'a rendered moa cached its climate tint');
+  chk(!p || p._climateTint!==undefined, 'a rendered plant cached its climate tint');
+  CONF.showClimateAffinity=savedFlag;
+
+  console.log(fail? `climate tint: ${fail} FAILURES`
+    : 'climate tint: warm/cold/neutral derived from the sim data; baked once per colour; authoring toggle renders clean');
+}catch(e){ console.log('CLIMATE TINT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
 // ---- fauna stability: nothing goes extinct, forest birds don't run away -------
 // Drives the ecology over a long warm↔cold sweep with NO visitor input (the honest
 // unattended case). The design guarantees: per-species floors + the invisible

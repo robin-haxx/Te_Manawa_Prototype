@@ -225,7 +225,9 @@ const MOA_SPECIES = {
     criticalHunger: 72,
     
     openCountry: true,   // coastal-to-lowland grazer — shares the TUSSOCK-in-glacial lift (see TeManawa_goose.js / Moa.behave)
-    preferredElevation: { min: 0.12, max: 0.35 },
+    // Floor is the lowest PLANT-BEARING band (grassland 0.15); it used to reach into the barren
+    // coastal beach (0.10–0.15), drawing this grazer onto bare sand where nothing grows.
+    preferredElevation: { min: 0.15, max: 0.35 },
     temperatureTolerance: { cold: 0.5, heat: 0.7 },
     
     flockTendency: 0.85,

@@ -396,6 +396,14 @@ const CONFIG = {
   // Renamed showEntityUI from showHungerBars
   showEntityUI: false,
 
+  // CLIMATE-AFFINITY AUTHORING TINT. When on, flora and fauna are washed by which phase
+  // favours them — amber = interglacial-boosted (warm), blue = glacial-boosted (cold),
+  // untinted = neutral (see ClimateAffinity / CLIMATE_TINT in TeManawa_entity_sprites.js).
+  // OFF on the wall (kiosk input is locked to 1-5); toggled with the C key. The tint is
+  // BAKED once per frame+colour (TintBaker), so it costs nothing per frame once warm and
+  // nothing at all while off — the classify + swap is skipped entirely when this is false.
+  showClimateAffinity: false,
+
   // ===== FAUNA MOTION / ANIMATION / DIET =====
   // Three independent global knobs on the cast, all read in the entity code (Boid.update / Moa /
   // Kereru). Deep-time life events (aging, breeding) ride their own warped clock and are unaffected.
@@ -1847,20 +1855,31 @@ class Game {
     // Animated water: river flow / eels / sea shimmer.
     if (this.water) this.water.render(g || null);
 
-    // Glacial frost — one cool rect scaled by the winter index.
-    const _frost = this.seasonManager.getWinterness ? this.seasonManager.getWinterness() : 0;
-    if (_frost > 0.001) {
-      R.push(); R.noStroke(); R.rectMode(CORNER);
-      R.fill(216, 232, 245, 72 * _frost);
-      R.rect(0, 0, this.terrain.mapWidth, projH);
-      R.pop();
-    }
+    // ORDER MATTERS: ash first, then frost ON TOP. The eruption's warm-grey ash and the
+    // ground-only saturate() both wash the scene toward neutral grey, which used to bury
+    // the glacial cue so an eruption in the ice age read the same as one in the warm. The
+    // cold frost is drawn AFTER the ash so its blue punches back through the aftermath —
+    // the glacial state stays legible while the land is greyed. (Alt. considered: cool-
+    // shifting the ash tint by winterness instead — kept the frost-over-ash reorder.)
 
     // Volcanic ash — one warm-grey rect while ashCover decays.
     const _ash = this._ashCover || 0;
     if (_ash > 0.001) {
       R.push(); R.noStroke(); R.rectMode(CORNER);
       R.fill(120, 116, 110, 105 * _ash);
+      R.rect(0, 0, this.terrain.mapWidth, projH);
+      R.pop();
+    }
+
+    // Glacial frost — one cool rect scaled by the winter index. Over the ash (above) so
+    // the cold reads even during the eruption grey. While ash is settling, punch the frost
+    // up toward opacity in proportion to the ash so it isn't swamped by the denser grey;
+    // with no ash this is the plain winterness wash, unchanged.
+    const _frost = this.seasonManager.getWinterness ? this.seasonManager.getWinterness() : 0;
+    if (_frost > 0.001) {
+      const _frostA = 72 * _frost * (1 + 0.9 * _ash);   // 1× normally; up to ~1.9× under full ash
+      R.push(); R.noStroke(); R.rectMode(CORNER);
+      R.fill(216, 232, 245, _frostA);
       R.rect(0, 0, this.terrain.mapWidth, projH);
       R.pop();
     }
@@ -1946,6 +1965,11 @@ class Game {
 
     // R toggles the range-authoring overlay (footprints + spine axes). Authoring only.
     if ((k === 'r' || k === 'R') && typeof GEO !== 'undefined') { GEO.toggle(); return; }
+
+    // C toggles the climate-affinity tint on the cast (warm=amber, cold=blue). Authoring
+    // only — the wall is locked to 1-5. Free while off; the baked tints warm up lazily on
+    // first enable (TintBaker), so the first C-on frame does a one-time bake, then nothing.
+    if (k === 'c' || k === 'C') { CONFIG.showClimateAffinity = !CONFIG.showClimateAffinity; return; }
   }
 
 }

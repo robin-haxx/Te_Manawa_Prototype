@@ -607,3 +607,82 @@ const EntitySprites = {
 function loadEntitySprites() {
   EntitySprites.load();
 }
+
+// ============================================
+// CLIMATE AFFINITY  —  which phase a species/plant is boosted in
+// ============================================
+// A single derived tag — 'warm' (interglacial-boosted), 'cold' (glacial-boosted) or
+// 'neutral' — read from the SAME authored fields the sim already keys off, so there is no
+// second table to keep in sync (CLAUDE.md: the ground/ecology look has one source of truth):
+//   · flora → coldTolerance vs TM_GROW.warmMax(0.65)/coldMin(0.75), the exact split the
+//     FOREST/TUSSOCK buttons and kererū dispersal already use (see TeManawa_hud.js TM_GROW).
+//   · fauna → seasonalModifiers.interglacial vs .fullGlacial hungerRate. hungerRate <1 means
+//     "thrives", so the phase with the LOWER rate is the favoured one; the delta's sign is
+//     the affinity, and a small dead-band keeps the truly balanced species neutral.
+// Computing the tag is free; the only cost is the optional BAKED render tint below, which is
+// gated behind the CONFIG.showClimateAffinity authoring toggle (C key) and off on the wall.
+const CLIMATE_TINT = {
+  warm:    [255, 198, 120],   // amber multiply-tint — interglacial-favoured
+  cold:    [150, 194, 255],   // blue  multiply-tint — glacial-favoured
+  neutral: null               // no wash — favoured by neither extreme
+};
+
+const ClimateAffinity = {
+  faunaEps: 0.02,   // |interglacial − fullGlacial| hungerRate inside this reads as neutral
+
+  // 'warm' | 'cold' | 'neutral' for a plant TYPE key (e.g. 'tussock', 'Totara').
+  ofPlantType(type) {
+    const d = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES[type] : null;
+    if (!d) return 'neutral';
+    const ct = (d.coldTolerance != null) ? d.coldTolerance : 0.5;
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65, coldMin: 0.75 };
+    if (ct <= G.warmMax) return 'warm';
+    if (ct >= G.coldMin) return 'cold';
+    return 'neutral';
+  },
+
+  // 'warm' | 'cold' | 'neutral' for a fauna species CONFIG (the registry config with
+  // seasonalModifiers — moa, goose, mōho/takahē, kiwi; anything without the field is neutral).
+  ofSpeciesConfig(cfg) {
+    const sm = cfg && cfg.seasonalModifiers;
+    if (!sm) return 'neutral';
+    const warm = (sm.interglacial && sm.interglacial.hungerRate != null) ? sm.interglacial.hungerRate : 1;
+    const cold = (sm.fullGlacial  && sm.fullGlacial.hungerRate  != null) ? sm.fullGlacial.hungerRate  : 1;
+    const diff = warm - cold;                 // >0: struggles LESS in the cold → cold-favoured
+    if (diff >  this.faunaEps) return 'cold';
+    if (diff < -this.faunaEps) return 'warm';
+    return 'neutral';
+  },
+
+  // The [r,g,b] multiply-tint for an affinity string, or null for neutral / unknown.
+  tintFor(affinity) { return CLIMATE_TINT[affinity] || null; }
+};
+
+// ============================================
+// TINT BAKER  —  general "bake a tinted frame once, reuse it every frame" cache
+// ============================================
+// TintBaker.get(srcImage, [r,g,b]) returns a tint-baked copy of a loaded frame, baked ONCE
+// per (frame, colour) and then reused — the same rule the terrain buffers and the moa genus
+// tint already follow ("colours baked, not read per frame"; never tint() on the hot path).
+// Keyed off the frame OBJECT via a WeakMap, so it needs no ids and never leaks: when a frame
+// is dropped (art swap, terrain reseed) its tinted copies are collected with it. Fully lazy —
+// nothing bakes until CONFIG.showClimateAffinity is first switched on and a tinted frame is
+// actually asked for, so the disabled (kiosk) path allocates nothing.
+const TintBaker = {
+  _cache: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
+
+  get(src, col) {
+    if (!src || !col || !this._cache) return src;
+    let byColour = this._cache.get(src);
+    if (!byColour) { byColour = new Map(); this._cache.set(src, byColour); }
+    const key = col[0] + ',' + col[1] + ',' + col[2];
+    let baked = byColour.get(key);
+    if (baked === undefined) {
+      baked = (typeof EntitySprites !== 'undefined' && EntitySprites._bakeTintedFrame)
+        ? EntitySprites._bakeTintedFrame(src, col[0], col[1], col[2])
+        : src;
+      byColour.set(key, baked);
+    }
+    return baked || src;
+  }
+};

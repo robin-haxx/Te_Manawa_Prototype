@@ -36,6 +36,14 @@ class Boid {
     this._wanderHeading = Math.atan2(this.vel.y, this.vel.x); // last real heading, for relative wander
     this._speedCap = null; // smoothed effective max speed (ramps toward maxSpeed)
 
+    // Walk-gate (ground birds): a moa only TRANSLATES while it is moving fast enough to show the
+    // walk animation. Below _walkGateSq (speed²) update() holds its position — the feet stay
+    // planted under an idle/peck pose instead of the body sliding out from under it. The moa
+    // renderer picks walk-vs-static off the SAME gate, so "moving" and "walking pose" are exactly
+    // equivalent. Flyers leave _freezeWhenNotWalking false (they glide continuously, no walk cel).
+    this._freezeWhenNotWalking = false;
+    this._walkGateSq = 0.01;
+
     // ---- Smoothed facing (see updateFacing) --------------------------------
     // The direction the SPRITE points, eased toward the direction of travel so
     // rotation glides instead of snapping to a division, ramps up from rest,
@@ -329,9 +337,15 @@ class Boid {
       this.vel.y *= invSpd;
     }
 
-    // Apply velocity (motion clock)
-    this.pos.x += this.vel.x * mdt;
-    this.pos.y += this.vel.y * mdt;
+    // Apply velocity (motion clock). Ground birds only translate while going fast enough to be in
+    // the WALK animation (_walkGateSq); below that they hold position so an idle/peck pose can't
+    // slide. Velocity is kept (not zeroed), so accumulating drive ramps back over the gate and the
+    // bird steps off again. Flyers (_freezeWhenNotWalking false) always integrate.
+    const moveSq = this.vel.x * this.vel.x + this.vel.y * this.vel.y;
+    if (!this._freezeWhenNotWalking || moveSq > this._walkGateSq) {
+      this.pos.x += this.vel.x * mdt;
+      this.pos.y += this.vel.y * mdt;
+    }
     
     // Reset acceleration
     this.acc.x = 0;

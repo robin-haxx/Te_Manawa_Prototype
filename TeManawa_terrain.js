@@ -29,18 +29,18 @@ const LOOK = {
   quietSat:      0.2,   // 0 = full colour ground, 1 = greyscale
   quietContrast: 0.92,   // <1 compresses ground contrast toward mid-grey
   shadeStrength: 10.0,   // slope-shading gain (feeds the cel bands below)
-  shadeSteps:    4,      // CEL bands: 0/1 = smooth gradient, 2–4 = flat toon steps (match the sprites)
+  shadeSteps:    10,      // CEL bands: 0/1 = smooth gradient, 2–4 = flat toon steps (match the sprites)
   shadeShadow:   0.3,   // darkest cel band (shadow side) — multiplier on the ground colour
   shadeHigh:     1.32,   // lightest cel band (NW-lit highlight) — multiplier
-  facetAmp:      1.2,  // FACET break-up: how far a cel-band boundary may wander, in BAND-WIDTHS
+  facetAmp:      1.6,  // FACET break-up: how far a cel-band boundary may wander, in BAND-WIDTHS
                         //   (0 = grid-locked steps; ~0.5 = edges roam half a band into organic rock
                         //   facets; >1 can skip a band). Nudges the quantizer threshold, bake-time.
-  facetFreq:     0.2,   // FACET: spatial frequency of the LARGE facets (the flat rock planes).
+  facetFreq:     0.4,   // FACET: spatial frequency of the LARGE facets (the flat rock planes).
                         //   Lower = broader facets; higher = busier. World units, like wobbleFreq.
-  facetDetail:   0.3,   // FACET: weight of a 2nd (high-freq) octave that frays facet edges into
+  facetDetail:   0.6,   // FACET: weight of a 2nd (high-freq) octave that frays facet edges into
                         //   cracks (0 = smooth wander; ~0.4 = ragged rock edges). Fraction of octave 1.
-  facetDetailFreq: 5.0, // FACET: frequency multiple of that crack octave over facetFreq.
-  bakeScale:     3,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. render() draws
+  facetDetailFreq: 2.0, // FACET: frequency multiple of that crack octave over facetFreq.
+  bakeScale:     4,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. render() draws
                          //   it under the 2.5× camera, so N>2.5 MINIFIES it — that downsample is
                          //   what anti-aliases ink+fill into curves (needs smoothScale). 3 is the
                          //   sweet spot. Higher is sharper but memory grows as N² and is HARD-CAPPED
