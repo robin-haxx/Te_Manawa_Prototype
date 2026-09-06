@@ -35,6 +35,39 @@ const SpriteStrips = {
     return e;
   },
 
+  // Register a strip backed by an ARRAY of loose per-frame images (one loadImage
+  // per frame) rather than a packed horizontal strip. This is the shape the new
+  // environmental + fauna art ships in (sprites/.../<State>/<prefix>_<nnnnn>.png),
+  // so loadFrames() below and EntitySprites' loose-frame sets can both feed the
+  // same frame()/draw() API the water layer and HUD already call. frame() reads
+  // each image's own dimensions at draw time, so a frame that has not decoded yet
+  // (width 0) simply no-ops until it lands (never a silent adult-for-juvenile miss
+  // — the per-frame load carries a real failure callback).
+  registerFrames(name, frames) {
+    if (!frames || !frames.length) return null;
+    const e = { frames, count: frames.length };
+    this._strips[name] = e;
+    return e;
+  },
+
+  // Preload path for loose-frame art: loadImage each frame in
+  // `<dir><prefix><nnnnn>.png` (first..first+count-1, zero-padded to `pad`) and
+  // register the array. Paths are encodeURI()'d so authored folder names with
+  // spaces ("Flowing 1", "Idle 2") resolve — the dev server decodeURIComponent()s
+  // them back (tools/serve.js). NEVER an empty failure callback (CLAUDE.md).
+  loadFrames(name, dir, prefix, count, opts) {
+    opts = opts || {};
+    const pad = opts.pad != null ? opts.pad : 5;
+    const first = opts.first != null ? opts.first : 0;
+    const frames = new Array(count);
+    for (let i = 0; i < count; i++) {
+      const n = String(first + i).padStart(pad, '0');
+      const p = encodeURI(`${dir}${prefix}${n}.png`);
+      frames[i] = loadImage(p, () => {}, () => console.warn(`[strips] could not load ${p}`));
+    }
+    return this.registerFrames(name, frames);
+  },
+
   // Preload path (real art): loadImage the strip PNG, register on success. NEVER
   // pass an empty failure callback — a silent miss is how moa juveniles rendered
   // as adults for months (§2.4). Call from preload() once the strips exist.
@@ -56,8 +89,30 @@ const SpriteStrips = {
     if (!e) return null;
     const k = ((i % e.count) + e.count) % e.count;
     const s = this._scratch;
+    if (e.frames) {
+      // Loose-frame strip: each frame is its own image. Draw the whole image (the
+      // 9-arg draw() below still applies, sub-rect = the full frame). A not-yet-
+      // decoded frame (width 0) no-ops cleanly rather than blitting a zero rect.
+      const img = e.frames[k];
+      if (!img || !(img.width > 0)) return null;
+      s.img = img; s.sx = 0; s.sy = 0; s.sw = img.width; s.sh = img.height;
+      return s;
+    }
     s.img = e.img; s.sx = k * e.frameW; s.sy = 0; s.sw = e.frameW; s.sh = e.frameH;
     return s;
+  },
+
+  // Width/height ratio of frame `i` (packed strips share one frame size; loose
+  // strips carry per-frame dims). 1 when the strip or frame is missing/undecoded,
+  // so callers sizing by a fixed HEIGHT get a sane square until the art lands.
+  aspect(name, i = 0) {
+    const e = this._strips[name];
+    if (!e) return 1;
+    if (e.frames) {
+      const img = e.frames[((i % e.count) + e.count) % e.count];
+      return (img && img.height > 0) ? img.width / img.height : 1;
+    }
+    return e.frameH > 0 ? e.frameW / e.frameH : 1;
   },
 
   // Blit frame i of `name` into the dest rect, honouring the current imageMode

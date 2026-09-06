@@ -33,7 +33,8 @@ class WaterLayer {
     this.terrain = null;
     this.enabled = true;
     this.decals = [];        // sea shimmer + river current + glints (mixed, drawn in order)
-    this.eels = [];          // creatures travelling the main-river polylines
+    this.eels = [];          // tuna/eels travelling the main-river polylines (deep-time feature)
+    this.fish = [];          // a school of smaller fish on every river (always present)
     this._capped = false;    // true if a placement hit the maxDecals cap (logged, never silent)
     this._probe = { _x: 0, _y: 0, _angle: 0 };   // scratch for path sampling — no per-call alloc
 
@@ -65,11 +66,22 @@ class WaterLayer {
       eelAlpha:         0.9,
       eelSpeed:         0.4,    // world px per update tick (real time, not sim time)
       eelAnimSpeed:     0.06,
+      // Fish — a small school travelling every river polyline (main + tributaries),
+      // always present (no deep-time gate). Smaller and quicker than the tuna/eels.
+      fishCount:        5,
+      fishSize:         15,
+      fishAlpha:        0.85,
+      fishSpeed:        0.7,
+      fishAnimSpeed:    0.11,
       maxDecals:        420,    // hard cap; counts toward the ≤1500 image()/frame budget
     };
   }
 
   _on() { return this.enabled && !(typeof LOOK !== 'undefined' && LOOK.water === false); }
+
+  // Is a named strip registered? (Used to pick the '2' art variants only when they
+  // actually loaded, so the placeholder path stays on the single strip.)
+  _hasStrip(name) { return typeof SpriteStrips !== 'undefined' && SpriteStrips.has && SpriteStrips.has(name); }
 
   // Deep-time year in effect for eel presence. build()/reconcile() pass it explicitly (the year
   // the terrain was just baked to); when omitted, fall back to the live clock. eels appear only
@@ -100,6 +112,7 @@ class WaterLayer {
       if (terrain.waterTypeAt(s.x, s.y) === s.needs) this.decals.push(this._mkDecal(s));
     }
     this._buildEels(terrain, year);   // gated: no eels before 500 ka
+    this._buildFish(terrain);         // always present (every river)
     this._flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
     if (this._capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals} — some water left un-stamped`);
   }
@@ -125,6 +138,10 @@ class WaterLayer {
     } else if (this.eels.length === 0 || rev !== this._flowRev) {
       this._buildEels(terrain, year);   // appear on crossing 500 ka, or re-seed swimming the flipped flow
     }
+    // Fish are always present and never stranded (they bounce off any dried stretch),
+    // so a morph leaves the running school alone — only re-seed if it flipped flow or
+    // somehow emptied (e.g. a footprint change dropped every path).
+    if (this.fish.length === 0 || rev !== this._flowRev) this._buildFish(terrain);
     this._flowRev = rev;
 
     // Index the live decals by their slot id so survivors can be reused in place.
@@ -154,22 +171,25 @@ class WaterLayer {
     if (!this._on()) return;
     const D = this.decals;
     for (let i = 0; i < D.length; i++) D[i].animTime += dt;
-    const E = this.eels, sp = this.cfg.eelSpeed, t = this.terrain;
+    this._stepSwimmers(this.eels, this.cfg.eelSpeed, dt);
+    this._stepSwimmers(this.fish, this.cfg.fishSpeed, dt);
+  }
+
+  // Advance a list of swimmers (tuna/eels, fish) along their polylines at `sp` world
+  // px per tick. Shared by both — identical motion: bounce off both ends (the far end
+  // may now be dry, so no wrap) and off any stretch that has dried to LAND. Writes
+  // e._x/_y/_angle via _samplePath; allocation-free.
+  _stepSwimmers(E, sp, dt) {
+    const t = this.terrain;
     for (let i = 0; i < E.length; i++) {
       const e = E[i];
       e.animTime += dt;
       const prevD = e.d;
       e.d += sp * dt * e.dir;
-      // Bounce off both ends of the polyline instead of wrapping — the far end
-      // may now be dry land (the main's NE arm recedes at ~0.6 Ma), so a seamless
-      // wrap would march the eel straight onto it.
       if (e.d <= 0) { e.d = 0; e.dir = 1; }
       else if (e.d >= e.path.len) { e.d = e.path.len; e.dir = -1; }
       this._samplePath(e.path, e.d, e);           // -> e._x, e._y, e._angle
-      // Bounce off any stretch that has dried to LAND (waterTypeAt 0). Sea (1)
-      // and river (2) are both water, so the eel may still dip into the estuary
-      // at the mouth — it just never swims onto the bank.
-      if (t && t.waterTypeAt(e._x, e._y) === 0) {
+      if (t && t.waterTypeAt(e._x, e._y) === 0) { // dried to bank → turn back
         e.d = prevD; e.dir = -e.dir;
         this._samplePath(e.path, e.d, e);
       }
@@ -205,28 +225,36 @@ class WaterLayer {
       R.pop();
     }
 
-    const E = this.eels;
-    for (let i = 0; i < E.length; i++) {
-      const e = E[i];
-      // Safety net: never paint an eel on land, even for the one frame before the
-      // bounce in update() catches a newly-dried cell.
-      if (t.waterTypeAt(e._x, e._y) === 0) continue;
-      const elev = t.getElevationAt(e._x, e._y);   // eels ride the river like entities
-      const fr = Math.floor(e.animTime * this.cfg.eelAnimSpeed);
-      dc.globalAlpha = e.alpha;
-      R.push();
-      R.translate(Projection.projX(e._x), Projection.groundY(e._y, elev));
-      R.scale(1, K);
-      R.rotate(e._angle + (e.dir < 0 ? Math.PI : 0));   // face the way it is actually travelling
-      SpriteStrips.draw('eel_swim', fr, 0, 0, e.size * 1.6, e.size * 0.8, g);
-      R.pop();
-    }
+    // Tuna/eels (longer, slower) then the fish school (smaller, quicker). Both ride
+    // the river like entities and face the way they are actually travelling.
+    this._drawSwimmers(R, g, dc, this.eels, 'eel_swim',  this.cfg.eelAnimSpeed,  1.6, 0.8, K);
+    this._drawSwimmers(R, g, dc, this.fish, 'fish_swim', this.cfg.fishAnimSpeed, 1.5, 0.9, K);
 
     dc.globalAlpha = ga0;     // p5 push/pop does not restore the raw context alpha
     R.pop();
   }
 
-  stats() { return { decals: this.decals.length, eels: this.eels.length, capped: this._capped }; }
+  // Draw a swimmer list with `strip` at `animSpeed`, sized e.size·(wMul × hMul).
+  // Shared by the tuna/eels and the fish. Never paints on land (a safety net for the
+  // one frame before update()'s bounce catches a newly-dried cell).
+  _drawSwimmers(R, g, dc, E, strip, animSpeed, wMul, hMul, K) {
+    const t = this.terrain;
+    for (let i = 0; i < E.length; i++) {
+      const e = E[i];
+      if (t.waterTypeAt(e._x, e._y) === 0) continue;
+      const elev = t.getElevationAt(e._x, e._y);
+      const fr = Math.floor(e.animTime * animSpeed);
+      dc.globalAlpha = e.alpha;
+      R.push();
+      R.translate(Projection.projX(e._x), Projection.groundY(e._y, elev));
+      R.scale(1, K);
+      R.rotate(e._angle + (e.dir < 0 ? Math.PI : 0));
+      SpriteStrips.draw(strip, fr, 0, 0, e.size * wMul, e.size * hMul, g);
+      R.pop();
+    }
+  }
+
+  stats() { return { decals: this.decals.length, eels: this.eels.length, fish: this.fish.length, capped: this._capped }; }
 
   // ---- helpers -----------------------------------------------------------
   // A live decal for a slot. Position/size/look come from the (stable) slot; only the animation
@@ -274,8 +302,12 @@ class WaterLayer {
         const nx = -Math.sin(ang), ny = Math.cos(ang);
         const j = jit(r * 131 + si, si) * cfg.riverStep * cfg.riverJitter;   // stable lateral scatter across the channel
         const x = this._probe._x + nx * j, y = this._probe._y + ny * j;
+        // Alternate the two authored current variants along the channel for visual
+        // variety; fall back to the single strip when the '2' variant is absent
+        // (the placeholder path, or missing art).
+        const curStrip = (((r + si) & 1) && this._hasStrip('water_current2')) ? 'water_current2' : 'water_current';
         slots.push({ id: 'r' + r + '_' + si, needs: 2, x, y, angle: ang,
-                     strip: 'water_current', size: cfg.currentSize, alpha: cfg.currentAlpha, animSpeed: cfg.currentAnimSpeed });
+                     strip: curStrip, size: cfg.currentSize, alpha: cfg.currentAlpha, animSpeed: cfg.currentAnimSpeed });
         if (Math.abs(jit(si * 3 + 7, r * 17 + 1)) < cfg.glintChance) {       // ~glintChance of steps also sparkle
           slots.push({ id: 'r' + r + '_' + si + 'g', needs: 2, x, y, angle: 0,
                        strip: 'water_glint', size: cfg.currentSize * 0.6, alpha: cfg.glintAlpha, animSpeed: cfg.currentAnimSpeed * 1.7 });
@@ -290,8 +322,9 @@ class WaterLayer {
       for (let x = cfg.seaSpacing * 0.5; x < mapW; x += cfg.seaSpacing, gj++) {
         const jx = x + jit(gi, gj) * cfg.seaSpacing * 0.3;
         const jy = y + jit(gj + 1000, gi) * cfg.seaSpacing * 0.3;
+        const seaStrip = (((gi + gj) & 1) && this._hasStrip('sea_shimmer2')) ? 'sea_shimmer2' : 'sea_shimmer';
         slots.push({ id: 's' + gi + '_' + gj, needs: 1, x: jx, y: jy, angle: 0,
-                     strip: 'sea_shimmer', size: cfg.seaSize, alpha: cfg.seaAlpha, animSpeed: cfg.seaAnimSpeed });
+                     strip: seaStrip, size: cfg.seaSize, alpha: cfg.seaAlpha, animSpeed: cfg.seaAnimSpeed });
       }
     }
 
@@ -333,6 +366,43 @@ class WaterLayer {
         this._samplePath(path, e.d, e);
       }
       this.eels.push(e);
+    }
+  }
+
+  // (Re)seed the fish school across EVERY river polyline (main + tributaries),
+  // spread over the available paths. Unlike the tuna/eels there is no deep-time gate
+  // — fish are always in the water — and no flow orientation matters (they mill both
+  // ways along the channel, bouncing off dried stretches like the eels). Seeded onto
+  // a wet stretch so a fish never starts on a dry bank.
+  _buildFish(terrain) {
+    this.fish.length = 0;
+    const mapW = terrain.mapWidth, mapH = terrain.mapHeight, cfg = this.cfg;
+    const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
+    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
+    const paths = [];
+    for (let r = 0; r < rivers.length; r++) {
+      const rv = rivers[r];
+      if (!rv.pts || rv.pts.length < 2) continue;
+      const isMain = rv.type !== 'tributary';
+      const path = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
+      if (path.len > 0) paths.push(path);
+    }
+    for (let i = 0; i < cfg.fishCount && paths.length; i++) {
+      const path = paths[i % paths.length];
+      const e = { path, d: random() * path.len, dir: random() < 0.5 ? 1 : -1, animTime: random(1000),
+                  size: cfg.fishSize, alpha: cfg.fishAlpha, _x: 0, _y: 0, _angle: 0 };
+      // Land on a wet stretch (a tributary can have a dry head): resample, then walk
+      // toward the mouth (d→0) as a last resort.
+      this._samplePath(path, e.d, e);
+      for (let tries = 0; tries < 8 && terrain.waterTypeAt(e._x, e._y) === 0; tries++) {
+        e.d = random() * path.len;
+        this._samplePath(path, e.d, e);
+      }
+      while (e.d > 0 && terrain.waterTypeAt(e._x, e._y) === 0) {
+        e.d = Math.max(0, e.d - cfg.riverStep);
+        this._samplePath(path, e.d, e);
+      }
+      this.fish.push(e);
     }
   }
 

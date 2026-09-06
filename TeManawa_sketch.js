@@ -240,12 +240,36 @@ function preload(){
   loadPlaceableSprites();
   loadEntitySprites();
 
-  // Environmental water strips — single-frame fallback art for the eel and river
-  // current. Registered here so they win over SpriteStrips.ensurePlaceholders()
-  // (which only fills gaps) when WaterLayer.build() runs after setup. Sea shimmer
-  // and glints stay on their placeholders until that art lands.
-  SpriteStrips.loadStrip('eel_swim',      'sprites/Environmental/Eels_Swimming.png',           1);
-  SpriteStrips.loadStrip('water_current', 'sprites/Environmental/RiverFlow_Flowing_00001.png', 1);
+  // Environmental animation strips (loose per-frame PNGs → SpriteStrips.loadFrames).
+  // Registered here so real art wins over SpriteStrips.ensurePlaceholders() (which
+  // only fills gaps) when WaterLayer.build() runs after setup. Names are the ones
+  // the water layer + HUD already draw by; the '2' variants are alternated per slot.
+  const ENV = 'sprites/Environmental/';
+  // River currents — two channel variants, drawn along the river polylines.
+  SpriteStrips.loadFrames('water_current',  ENV + 'Currents/Flowing 1/', 'River1_Flowing_', 11);
+  SpriteStrips.loadFrames('water_current2', ENV + 'Currents/Flowing 2/', 'River2_Flowing_', 11);
+  // Sea waves — two variants, stamped across the open-sea grid.
+  SpriteStrips.loadFrames('sea_shimmer',  ENV + 'Waves/Waves 1/', 'Sea1_Waves_', 13);
+  SpriteStrips.loadFrames('sea_shimmer2', ENV + 'Waves/Waves 2/', 'Sea2_Waves_', 13);
+  // River swimmers — tuna (the freshwater eel; the engine's existing 'eel_swim'
+  // path) and a school of smaller fish.
+  SpriteStrips.loadFrames('eel_swim',  ENV + 'Tuna/',          'Tuna_Swimming_', 8);
+  SpriteStrips.loadFrames('fish_swim', ENV + 'Fish/Swimming/', 'Fish_Swimming_', 8);
+  // Winds — animated gusts blown W→E by the HUD wind system (warm = interglacial /
+  // FOREST, cold = glacial / TUSSOCK). These supersede the old single-frame
+  // windWarm/windCold placeables (the warm one pointed at a file that never shipped).
+  SpriteStrips.loadFrames('wind_warm', ENV + 'Wind_Interglacial/Blowing 1/', 'Wind1_Blowing_',  11);
+  SpriteStrips.loadFrames('wind_cold', ENV + 'Wind_Glacial/Blowing 1/',      'Chill1_Blowing_', 11);
+  // Storm — three animated thunderhead cells + three lightning-bolt variants (one
+  // frame each; the bolt object picks a variant per strike).
+  SpriteStrips.loadFrames('storm_cloud1', ENV + 'Storm/Idle 1/', 'Storm1_Idle_', 13);
+  SpriteStrips.loadFrames('storm_cloud2', ENV + 'Storm/Idle 2/', 'Storm2_Idle_', 13);
+  SpriteStrips.loadFrames('storm_cloud3', ENV + 'Storm/Idle 3/', 'Storm3_Idle_', 13);
+  SpriteStrips.registerFrames('storm_bolt', [
+    loadImage(encodeURI(ENV + 'Storm/Lightning 1/Storm1_Lightning_00000.png'), () => {}, () => console.warn('[strips] storm_bolt 1')),
+    loadImage(encodeURI(ENV + 'Storm/Lightning 2/Storm2_Lightning_00000.png'), () => {}, () => console.warn('[strips] storm_bolt 2')),
+    loadImage(encodeURI(ENV + 'Storm/Lightning 3/Storm3_Lightning_00000.png'), () => {}, () => console.warn('[strips] storm_bolt 3'))
+  ]);
 
   preloadAudio();
 }

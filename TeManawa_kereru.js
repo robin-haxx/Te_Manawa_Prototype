@@ -570,6 +570,16 @@ class Kereru extends Boid {
            this.state === KERERU_STATE.SHELTER;
   }
 
+  // Which cel cycle the sprite plays: FLYING (in the air) → the wingbeat; FEEDING
+  // (perched, filling the crop) → the eating cycle; every other perch (resting,
+  // sheltering, and the kōkako's SINGING via _isPerched) → the hopping perch-idle.
+  // Passed to EntitySprites.getKereruSprite; a subclass can override (none need to).
+  _flyerState() {
+    if (!this._isPerched()) return 'flying';
+    if (this.state === KERERU_STATE.FEEDING) return 'eating';
+    return 'hopping';
+  }
+
   update(dt = 1) {
     const perched = this._isPerched();
     if (perched && !this._wasPerched) {
@@ -648,11 +658,11 @@ class Kereru extends Boid {
     if (typeof CONFIG !== 'undefined' && CONFIG.showEntityUI) this._renderDebug(gy, s, alt);
   }
 
-  // Sprite for the current pose. Subclasses point this at their own art
+  // Sprite for the current animation state. Subclasses point this at their own art
   // (EntitySprites.getKokakoSprite / getHuiaSprite); null → the drawn glyph.
   _getSprite(perched) {
     return (typeof EntitySprites !== 'undefined' && EntitySprites.getKereruSprite)
-      ? EntitySprites.getKereruSprite(perched) : null;
+      ? EntitySprites.getKereruSprite(this.animTime, this._flyerState()) : null;
   }
 
   // Fallback glyph when the sprite has not loaded: green-grey back, pale breast,

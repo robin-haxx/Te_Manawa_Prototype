@@ -34,16 +34,18 @@ function loadPlaceableSprites() {
     'sprites/Environmental/Storm_Lightning.png',
     () => {},
     () => console.warn('Could not load sprites/Environmental/Storm_Lightning.png'));
-  // Wind gusts — scattered sprites that blow W→E on a climate turn or a boost press
-  // (InstallHUD wind system). Warm = interglacial (FOREST), cold = glacial (TUSSOCK).
+  // Wind gusts — STATIC fallback frames only. The live wind is the animated
+  // wind_warm / wind_cold strips (SpriteStrips, InstallHUD.renderWind); these single
+  // frames (frame 0 of each cel cycle) are drawn only if those strips are absent.
+  // Warm = interglacial (FOREST), cold = glacial (TUSSOCK).
   placeableSprites.windWarm = loadImage(
-    'sprites/Environmental/WindGust_Blowing.png',
+    encodeURI('sprites/Environmental/Wind_Interglacial/Blowing 1/Wind1_Blowing_00000.png'),
     () => {},
-    () => console.warn('Could not load sprites/Environmental/WindGust_Blowing.png'));
+    () => console.warn('Could not load interglacial wind fallback frame'));
   placeableSprites.windCold = loadImage(
-    'sprites/Environmental/GlacialChill_Blowing.png',
+    encodeURI('sprites/Environmental/Wind_Glacial/Blowing 1/Chill1_Blowing_00000.png'),
     () => {},
-    () => console.warn('Could not load sprites/Environmental/GlacialChill_Blowing.png'));
+    () => console.warn('Could not load glacial wind fallback frame'));
   // Eruption ash-cloud cover. NEVER a silent failure callback (CLAUDE.md): if the PNG
   // is missing, renderAshCloud no-ops on the un-sized image and the shake + flash still play.
   placeableSprites.ashCloud = loadImage(

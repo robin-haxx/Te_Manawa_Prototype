@@ -68,10 +68,10 @@ class Huia extends Kereru {
     if (best) { this._mate = best; if (!best._mate || !best._mate.alive) best._mate = this; }
   }
 
-  // Sprite: sex-specific huia flight frame (perched reuses it — no perched art yet).
+  // Sprite: the sex-specific huia cel cycle for the current animation state.
   _getSprite(perched) {
     return (typeof EntitySprites !== 'undefined' && EntitySprites.getHuiaSprite)
-      ? EntitySprites.getHuiaSprite(perched, this.isFemale) : null;
+      ? EntitySprites.getHuiaSprite(this.animTime, this._flyerState(), this.isFemale) : null;
   }
 
   // Glyph fallback: glossy black body, white tail tip, orange wattle. The bill is

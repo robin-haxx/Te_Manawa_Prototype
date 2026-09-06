@@ -176,10 +176,11 @@ class Kokako extends Kereru {
     }
   }
 
-  // Sprite: the kōkako flight frame (perched reuses it — no perched art yet).
+  // Sprite: the kōkako cel cycle for the current animation state (SINGING resolves
+  // through _isPerched → the hopping perch-idle, like a normal perch).
   _getSprite(perched) {
     return (typeof EntitySprites !== 'undefined' && EntitySprites.getKokakoSprite)
-      ? EntitySprites.getKokakoSprite(perched) : null;
+      ? EntitySprites.getKokakoSprite(this.animTime, this._flyerState()) : null;
   }
 
   // Glyph fallback: blue-grey body, dark bandit mask, a dab of blue wattle.

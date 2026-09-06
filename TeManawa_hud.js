@@ -20,6 +20,7 @@ const TM_TIME = {
   stormPressureAdd:   0.40,   // pressure a single press adds (0..1) — ~2 quick presses cross the line
   stormPressureDecay: 0.999,  // per-frame decay (τ ≈ 17 s at 60 fps): one press bleeds off, spamming stacks
   stormOveruseAt:     0.55,   // pressure above this = overuse (chronic grounding + recruitment stall)
+  stormCloudAnim:  0.07,  // thunderhead cel cadence (frame = floor(animTime·this)); a slow, non-flashing churn
   growWarmSeconds:  8,    // forest growth pulse (interglacial-suited) — button 2
   growColdSeconds:  8,    // open-country growth pulse (glacial-suited) — button 3
   ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
@@ -118,7 +119,8 @@ const TM_WIND = {
   bobAmp:     0.012,   // vertical bob amplitude, fraction of height
   bobSpeed:   0.05,    // bob phase advance per frame
   startSpread:0.30,    // gusts start staggered across this fraction just off the left edge
-  minGapMs:   600      // a new burst of the SAME kind can't start sooner than this (debounce presses)
+  minGapMs:   600,     // a new burst of the SAME kind can't start sooner than this (debounce presses)
+  animSpeed:  0.12     // gust cel cadence (frame = floor(anim·this)); the art is an 11-frame loop
 };
 window.TM_WIND = TM_WIND;
 
@@ -440,7 +442,11 @@ const InstallHUD = {
         y: Math.random() * t.mapHeight,
         vx: (Math.random() - 0.5) * 0.6,
         vy: (Math.random() - 0.5) * 0.4,
-        sprite: Math.random() < 0.5 ? 'cloud1' : 'cloud2',
+        // One of the three animated thunderhead cells (Storm/Idle 1–3). The old
+        // static cloud1/cloud2 stay the fallback in renderWorldLayer if the strips
+        // are absent.
+        sprite: 'storm_cloud' + (1 + ((Math.random() * 3) | 0)),
+        animTime: Math.random() * 100,   // cel clock offset so cells don't churn in lockstep
         scale: 0.5 + Math.random() * 0.4,
         bobPhase: Math.random() * Math.PI * 2,
         bobSpeed: 0.02 + Math.random() * 0.02,
@@ -450,7 +456,8 @@ const InstallHUD = {
     g._tmStormCells = cells;
     // Bolts are spaced well apart (frames @ ~60fps → ~1.2–2.7 s to the first) so the white rim
     // blink stays occasional — one on press, then one per bolt — rather than a rapid strobe.
-    g._tmBolt = { active: false, timer: 70 + Math.random() * 90, duration: 0, x: 0, y: 0, scale: 1, rot: 0 };
+    // `variant` is the lightning-shape variant (0–2), rolled per strike in updateStormCells.
+    g._tmBolt = { active: false, timer: 70 + Math.random() * 90, duration: 0, x: 0, y: 0, scale: 1, rot: 0, variant: 0 };
   },
 
   updateStormCells(g, dt) {
@@ -460,6 +467,7 @@ const InstallHUD = {
     for (let i = 0; i < cells.length; i++) {
       const c = cells[i];
       c.x += c.vx * dt; c.y += c.vy * dt; c.bobPhase += c.bobSpeed * dt;
+      c.animTime += dt;                    // advance the thunderhead's cel clock
       if (c.x < -pad) c.x = t.mapWidth + pad; else if (c.x > t.mapWidth + pad) c.x = -pad;
       if (c.y < -pad) c.y = t.mapHeight + pad; else if (c.y > t.mapHeight + pad) c.y = -pad;
     }
@@ -476,6 +484,7 @@ const InstallHUD = {
         b.x = c.x; b.y = c.y + 10;
         b.scale = 0.6 + Math.random() * 0.4;
         b.rot = (Math.random() - 0.5) * 0.6;
+        b.variant = (Math.random() * 3) | 0;   // pick one of the three bolt shapes
         InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs);   // one short white blink per lightning strike
       }
     }
@@ -512,23 +521,34 @@ const InstallHUD = {
       line(x, y, x + 6, y + 14);   // down-and-RIGHT: rain blown SE by the fixed NW wind (SPRITE_BRIEF §1.1)
     }
 
-    if (cells && typeof placeableSprites !== 'undefined' && placeableSprites.loaded) {
+    if (cells) {
       noStroke();
       imageMode(CENTER);
       noTint();                       // clouds fade via globalAlpha (#7), not tint()
       const _dc = drawingContext;
+      const strips = typeof SpriteStrips !== 'undefined' && SpriteStrips.has;
+      const haveWeather = typeof placeableSprites !== 'undefined' && placeableSprites.loaded;
       for (let i = 0; i < cells.length; i++) {
         const c = cells[i];
-        const sp = placeableSprites[c.sprite];
-        if (!sp) continue;
-        const size = 64 * c.scale * z;
+        const cy = zy + (c.y + Math.sin(c.bobPhase) * 2) * z;
+        const cx = zx + c.x * z;
         _dc.globalAlpha = c.alpha * env;
-        image(sp, zx + c.x * z, zy + (c.y + Math.sin(c.bobPhase) * 2) * z, size, size);
+        if (strips && SpriteStrips.has(c.sprite)) {
+          // Animated thunderhead. Sized by height so the (possibly non-square) art
+          // keeps its proportions; the cel churns slowly (photosensitivity-safe).
+          const h = 64 * c.scale * z, w = h * SpriteStrips.aspect(c.sprite, 0);
+          SpriteStrips.draw(c.sprite, Math.floor(c.animTime * TM_TIME.stormCloudAnim), cx, cy, w, h);
+        } else if (haveWeather) {
+          // Fallback: the old static cloud1/cloud2 glyph (stable per cell, not per frame).
+          const sp = placeableSprites[(i & 1) ? 'cloud2' : 'cloud1'] || placeableSprites.cloud1;
+          if (sp) { const size = 64 * c.scale * z; image(sp, cx, cy, size, size); }
+        }
       }
       _dc.globalAlpha = 1;
       const b = g._tmBolt;
-      const lightning = placeableSprites.lightning || placeableSprites.bolt;
-      if (b && b.active && lightning) {
+      const boltStrip = strips && SpriteStrips.has('storm_bolt');
+      const lightning = haveWeather ? (placeableSprites.lightning || placeableSprites.bolt) : null;
+      if (b && b.active && (boltStrip || lightning)) {
         push();
         translate(zx + b.x * z, zy + b.y * z);
         rotate(b.rot);
@@ -536,8 +556,10 @@ const InstallHUD = {
         // every frame makes p5 rebake the image's tint cache each frame — the strike stutter.
         noTint();
         _dc.globalAlpha = Math.min(1, b.duration / 8 + 0.6) * env;
-        const bh = 130 * b.scale * z, bw = bh * (lightning.width / lightning.height);
-        image(lightning, 0, 0, bw, bh);
+        const asp = boltStrip ? SpriteStrips.aspect('storm_bolt', b.variant) : (lightning.width / lightning.height);
+        const bh = 130 * b.scale * z, bw = bh * asp;
+        if (boltStrip) SpriteStrips.draw('storm_bolt', b.variant, 0, 0, bw, bh);
+        else image(lightning, 0, 0, bw, bh);
         _dc.globalAlpha = 1;
         if (b.duration > 6) {   // brief, soft glow — kept gentle for photosensitivity
           noStroke();
@@ -569,7 +591,8 @@ const InstallHUD = {
         fy: E.yTop + Math.random() * (E.yBottom - E.yTop),
         sp: E.speed * (1 + (Math.random() * 2 - 1) * E.speedJitter),
         size: 1 + (Math.random() * 2 - 1) * E.sizeJitter,
-        phase: Math.random() * Math.PI * 2
+        phase: Math.random() * Math.PI * 2,
+        anim: Math.random() * 100                                 // cel clock offset so gusts don't beat in lockstep
       });
     }
     g._tmWind = { kind, t0: now, parts };
@@ -585,6 +608,7 @@ const InstallHUD = {
       const p = parts[i];
       p.fx += p.sp * dt;
       p.phase += E.bobSpeed * dt;
+      p.anim += dt;                       // advance the gust's cel clock
       if (p.fx > 1.15) parts.splice(i, 1);
     }
     if (parts.length === 0) g._tmWind = null;
@@ -607,10 +631,20 @@ const InstallHUD = {
   renderWind(g, W, H) {
     const w = g && g._tmWind;
     if (!w) return;
-    if (typeof placeableSprites === 'undefined' || !placeableSprites.loaded) return;
-    const sp = (w.kind === 'cold') ? placeableSprites.windCold : placeableSprites.windWarm;
-    if (!sp || !sp.width) return;
     const E = TM_WIND;
+    // Animated gust strip (warm = interglacial, cold = glacial). Falls back to the
+    // old single-frame placeable if the strip is absent, so a missing strip still
+    // blows something rather than nothing.
+    const strip = (w.kind === 'cold') ? 'wind_cold' : 'wind_warm';
+    const hasStrip = typeof SpriteStrips !== 'undefined' && SpriteStrips.has && SpriteStrips.has(strip);
+    let fallback = null, fbAsp = 1;
+    if (!hasStrip) {
+      if (typeof placeableSprites === 'undefined' || !placeableSprites.loaded) return;
+      fallback = (w.kind === 'cold') ? placeableSprites.windCold : placeableSprites.windWarm;
+      if (!fallback || !fallback.width) return;
+      fbAsp = fallback.width / fallback.height;
+    }
+    const asp = hasStrip ? SpriteStrips.aspect(strip, 0) : fbAsp;
     push();
     imageMode(CENTER);
     noTint();
@@ -621,9 +655,11 @@ const InstallHUD = {
       const a = E.peakAlpha * Math.min(1, (p.fx + 0.1) / 0.2) * Math.min(1, (1.1 - p.fx) / 0.2);
       if (a <= 0) continue;
       const h = H * E.sizeFrac * p.size;
-      const dw = h * (sp.width / sp.height);
+      const dw = h * asp;
+      const x = p.fx * W, y = (p.fy + Math.sin(p.phase) * E.bobAmp) * H;
       _dc.globalAlpha = a;
-      image(sp, p.fx * W, (p.fy + Math.sin(p.phase) * E.bobAmp) * H, dw, h);
+      if (hasStrip) SpriteStrips.draw(strip, Math.floor(p.anim * E.animSpeed), x, y, dw, h);
+      else image(fallback, x, y, dw, h);
     }
     _dc.globalAlpha = oldA;
     pop();

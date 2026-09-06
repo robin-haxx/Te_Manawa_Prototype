@@ -150,6 +150,36 @@ const MOA_VARIANT_SETS = {
   } }
 };
 
+// Per-species FLIGHTED-BIRD art, in sprites/Flighted/. Same multi-state shape as
+// MOA_VARIANT_SETS: three cel cycles apiece — FLYING (wingbeat), HOPPING (the perch
+// idle) and EATING (the feed cycle) — each in its own subfolder, files zero-padded
+// <prefix><nnnnn>.png. The kererū + kōkako share one set each; the huia is sexed
+// (male/female were strongly dimorphic) so it carries two. EntitySprites.load()
+// loads these into the matching sets, and the Kereru render path indexes them by
+// the bird's animation state (Kereru._flyerState → flying/eating/hopping).
+const FLYER_VARIANT_SETS = {
+  kereru:     { base: 'Flighted/Kereru/',      states: {
+    flying:  { dir: 'Flying/',  prefix: 'Kereru_Flying_',  pad: 5, first: 0, count: 15 },
+    hopping: { dir: 'Hopping/', prefix: 'Kereru_Hopping_', pad: 5, first: 0, count: 10 },
+    eating:  { dir: 'Eating/',  prefix: 'Kereru_Eating_',  pad: 5, first: 0, count: 8  }
+  } },
+  kokako:     { base: 'Flighted/Kokako/',      states: {
+    flying:  { dir: 'Flying/',  prefix: 'Kokako_Flying_',  pad: 5, first: 0, count: 15 },
+    hopping: { dir: 'Hopping/', prefix: 'Kokako_Hopping_', pad: 5, first: 0, count: 10 },
+    eating:  { dir: 'Eating/',  prefix: 'Kokako_Eating_',  pad: 5, first: 0, count: 8  }
+  } },
+  huiaMale:   { base: 'Flighted/Huia_Male/',   states: {
+    flying:  { dir: 'Flying/',  prefix: 'HuiaMale_Flying_',  pad: 5, first: 0, count: 15 },
+    hopping: { dir: 'Hopping/', prefix: 'HuiaMale_Hopping_', pad: 5, first: 0, count: 10 },
+    eating:  { dir: 'Eating/',  prefix: 'HuiaMale_Eating_',  pad: 5, first: 0, count: 8  }
+  } },
+  huiaFemale: { base: 'Flighted/Huia_Female/', states: {
+    flying:  { dir: 'Flying/',  prefix: 'HuiaFemale_Flying_',  pad: 5, first: 0, count: 15 },
+    hopping: { dir: 'Hopping/', prefix: 'HuiaFemale_Hopping_', pad: 5, first: 0, count: 10 },
+    eating:  { dir: 'Eating/',  prefix: 'HuiaFemale_Eating_',  pad: 5, first: 0, count: 8  }
+  } }
+};
+
 // Declarative description of each species' artwork per mode.
 //   dir/prefix/pad/first/count → how the frame filenames are built
 //   huntFrame / glideFrame     → indices into the loaded frame list
@@ -234,16 +264,15 @@ const EntitySprites = {
     // low- and hi-res sets. Overwritten from ART_SETS at load time.
     artAngle: 0.74
   },
-  // Kererū — two fallback frames: perched (side view, faces right) and flying
-  // (top-down, wings spread). Kereru.render picks by state and mirrors for
-  // leftward travel; the full flight cycle lands later.
-  kereru: { perched: null, flying: null },
-  // Kōkako — a single flight frame (sprites/Flighted); perched reuses it. Extends
-  // the kererū render path (short-flight forest bird).
-  kokako: { perched: null, flying: null },
-  // Huia — sex-specific flight frames (the sexes were strongly dimorphic). Perched
-  // reuses the flying frame.
-  huia:   { male: null, female: null },
+  // Flighted forest birds — the full multi-state cel cycles (FLYING / HOPPING /
+  // EATING), one set per key in FLYER_VARIANT_SETS, populated in load(). The
+  // Kereru render path indexes them by the bird's animation state (getKereruSprite
+  // / getKokakoSprite / getHuiaSprite → _flyerFrame). The huia is sexed (the sexes
+  // were strongly dimorphic), so it carries a male and a female set.
+  kereru:     { flying: [], hopping: [], eating: [] },
+  kokako:     { flying: [], hopping: [], eating: [] },
+  huiaMale:   { flying: [], hopping: [], eating: [] },
+  huiaFemale: { flying: [], hopping: [], eating: [] },
   loaded: false,
   loadAttempted: false,
 
@@ -264,6 +293,9 @@ const EntitySprites = {
   // stepped cadence that reads as the cel look and never scrambles in fast-forward.
   animation: {
     moaWalkSpeed: 0.12,
+    // Flighted forest birds (kererū/kōkako/huia). One wall-clock cadence for all
+    // three cel cycles — a touch quicker than the moa's plod for a lighter wingbeat.
+    flyerSpeed: 0.16,
     eagleFlySpeed: 0.15,
     eagleDiveSpeed: 0.08,
     // Cadence of the dedicated hunting/dive cycle. A touch faster than the
@@ -362,39 +394,17 @@ const EntitySprites = {
     this.eagle.glide = this.eagle.fly[eagleArt.glideFrame];
     this.eagle.artAngle = eagleArt.artAngle;
 
-    // Kererū fallback frames — perched (side) and flying (top-down). The drawn-glyph
-    // fallback in Kereru.render covers a load failure (never a silent () => {}
-    // FAILURE handler — CLAUDE.md).
-    this.kereru.perched = loadImage(
-      `${spritePath}Kereru_Perched.png`,
-      () => {},
-      () => console.warn('Could not load Kereru_Perched.png')
-    );
-    this.kereru.flying = loadImage(
-      `${spritePath}Kereru_Flying.png`,
-      () => {},
-      () => console.warn('Could not load Kereru_Flying.png')
-    );
-
-    // Kōkako + huia — the flighted forest wattlebirds (sprites/Flighted). A single
-    // flight frame each (huia sexed); perched falls back to the flight frame, and a
-    // drawn-glyph fallback in the classes covers a load failure (never a silent
-    // () => {} FAILURE handler — CLAUDE.md).
-    this.kokako.flying = loadImage(
-      `${spritePath}Flighted/Kokako_Flying_00001.png`,
-      () => {},
-      () => console.warn('Could not load Kokako_Flying_00001.png')
-    );
-    this.huia.male = loadImage(
-      `${spritePath}Flighted/HuiaMale_Flying_00001.png`,
-      () => {},
-      () => console.warn('Could not load HuiaMale_Flying_00001.png')
-    );
-    this.huia.female = loadImage(
-      `${spritePath}Flighted/HuiaFemale_Flying_00001.png`,
-      () => {},
-      () => console.warn('Could not load HuiaFemale_Flying_00001.png')
-    );
+    // Flighted forest birds (kererū / kōkako / huia) — the full multi-state cel
+    // cycles from FLYER_VARIANT_SETS, loaded into the matching sets exactly like the
+    // moa. Each frame carries a real failure callback (never a silent () => {} —
+    // CLAUDE.md); a set that fails to load falls back to the drawn glyph in the class.
+    for (const [key, art] of Object.entries(FLYER_VARIANT_SETS)) {
+      const set = this[key];
+      if (!set || !art.states) continue;
+      loadFrames(set.flying,  art.base, art.states.flying);
+      loadFrames(set.hopping, art.base, art.states.hopping);
+      loadFrames(set.eating,  art.base, art.states.eating);
+    }
 
     this.loaded = true;
   },
@@ -403,31 +413,46 @@ const EntitySprites = {
     return sprite && sprite.width > 0 && sprite.height > 0;
   },
 
-  // Kererū frame for the current pose: perched (true) or flying (false). Falls
-  // back to whichever frame did load, then to null (drawn-glyph fallback).
-  getKereruSprite(perched) {
-    const k = this.kereru;
-    const want = perched ? k.perched : k.flying;
-    if (this.isValid(want)) return want;
-    const other = perched ? k.flying : k.perched;
-    return this.isValid(other) ? other : null;
+  // Pick the frame for a flighted bird's animation STATE ('flying' | 'eating' |
+  // 'hopping'). Same wall-clock cel model as the moa: the index is
+  // floor(animTime * flyerSpeed) % frameCount, and animTime rides the REAL frame
+  // clock (Boid.update), so the wingbeat/hop cadence is steady at any deep-time
+  // multiplier. Graceful fallbacks so a set missing one cycle still draws: eating →
+  // hopping → flying; hopping → flying; flying → hopping. null → the drawn glyph.
+  _flyerFrames(set, state) {
+    if (state === 'flying')  return (set.flying && set.flying.length) ? set.flying : set.hopping;
+    if (state === 'eating')  return (set.eating && set.eating.length) ? set.eating
+      : ((set.hopping && set.hopping.length) ? set.hopping : set.flying);
+    return (set.hopping && set.hopping.length) ? set.hopping : set.flying;   // hopping / perch idle
+  },
+  _flyerFrame(set, animTime, state) {
+    if (!set) return null;
+    const list = this._flyerFrames(set, state);
+    if (list && list.length > 0) {
+      const fi = Math.floor(animTime * this.animation.flyerSpeed) % list.length;
+      if (this.isValid(list[fi])) return list[fi];
+    }
+    // Last resort: the first valid frame of any cycle this set actually loaded.
+    const all = [set.flying, set.hopping, set.eating];
+    for (let i = 0; i < all.length; i++) {
+      const l = all[i];
+      if (l && l.length > 0 && this.isValid(l[0])) return l[0];
+    }
+    return null;
   },
 
-  // Kōkako frame. Only a flying frame exists, so perched reuses it; null → glyph.
-  getKokakoSprite(perched) {
-    const k = this.kokako;
-    const want = perched ? (k.perched || k.flying) : (k.flying || k.perched);
-    return this.isValid(want) ? want : null;
-  },
+  // Kererū / kōkako frame for an animation state. null → the class's drawn glyph.
+  getKereruSprite(animTime, state) { return this._flyerFrame(this.kereru, animTime, state); },
+  getKokakoSprite(animTime, state) { return this._flyerFrame(this.kokako, animTime, state); },
 
-  // Huia frame for the bird's sex (the sexes are drawn differently). Falls back to
-  // the other sex's frame if one failed to load, then to null (drawn-glyph fallback).
-  getHuiaSprite(perched, isFemale) {
-    const h = this.huia;
-    const want = isFemale ? h.female : h.male;
-    if (this.isValid(want)) return want;
-    const other = isFemale ? h.male : h.female;
-    return this.isValid(other) ? other : null;
+  // Huia frame for the bird's sex (the sexes are drawn differently — male short-
+  // billed, female long-billed). Falls back to the other sex's set if one failed
+  // to load, then to null (drawn-glyph fallback).
+  getHuiaSprite(animTime, state, isFemale) {
+    const set = isFemale ? this.huiaFemale : this.huiaMale;
+    const s = this._flyerFrame(set, animTime, state);
+    if (s) return s;
+    return this._flyerFrame(isFemale ? this.huiaMale : this.huiaFemale, animTime, state);
   },
 
   // Resolve the sprite set for a variant, falling back to the generic set when

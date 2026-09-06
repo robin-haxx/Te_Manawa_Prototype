@@ -168,7 +168,8 @@ const SpriteAtlas = {
       if (E.moaVariants) for (const key in E.moaVariants) eachIn(E.moaVariants[key]);
       eachIn(E.kereru);
       eachIn(E.kokako);
-      eachIn(E.huia);
+      eachIn(E.huiaMale);
+      eachIn(E.huiaFemale);
     }
 
     // Flora — plantSprites[key] = { <state>:img, growing:[], variants:[], meta }.
