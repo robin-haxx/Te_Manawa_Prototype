@@ -385,6 +385,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     autoRefound:          true,
     refoundCheckInterval: 300,   // check cadence (sim-clock dt)
     refoundDelay:         2400,  // sustained "stuck" time before the safety net fires
+    refoundBelow:         3,     // quiet top-up floor: a still-present tracked species sitting below
+                                 // this is trickled a founder back (one per refoundDelay) even without
+                                 // a same-sex deadlock — so a slow breeder (mōho/kiwi) pinned at 2 is
+                                 // grown back toward a visible group instead of reading as extinct.
+                                 // Silent to the visitor (no notification; debug-logged like refound).
 
     eruptionPlantFloor: 0.15,                      // at least 15% of plants survive any eruption
     forestBand: { min: 0.12, max: 0.80 },        // default / interglacial fallback

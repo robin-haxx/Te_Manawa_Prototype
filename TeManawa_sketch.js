@@ -1191,11 +1191,35 @@ class Game {
       // bird at a valid map-x near 0 / mapWidth is simply off-screen ("clips out of view"). 0
       // when the map is letterboxed (viewX ≥ 0 → no horizontal overflow).
       CONFIG.viewInsetX = (z > 0) ? Math.max(0, -CONFIG.viewX / z) : 0;
+      // Vertical counterpart: the world-Y band that stays on-screen. On a portrait/tall
+      // wall the cover fit crops the map top and bottom too, and the 3/4 relief LIFT
+      // raises high ground (the northern ranges) off the TOP — so a spawn or target keyed
+      // to the map rectangle lands off-frame (moa off the sides, the harrier off the top).
+      // Worst-cased for elevation: viewInsetY keeps even a peak (which draws vz·LIFT higher
+      // than flat ground) clear of the top margin; viewInsetYBottom keeps flat/coastal
+      // ground clear of the bottom. Both in WORLD-Y, so the visible band is
+      // [viewInsetY, mapHeight − viewInsetYBottom]. Consumers: findWalkablePosition (spawns)
+      // and Eagle._visibleY (patrol/hunt/relocate targets).
+      const H = CONFIG.canvasHeight;
+      const K = (typeof Projection !== 'undefined' && Projection.K) ? Projection.K : 1;
+      const LIFT = (typeof Projection !== 'undefined' && Projection.relief) ? Projection.LIFT : 0;
+      const mh = this.terrain.mapHeight;
+      if (z > 0) {
+        const topM = 120, botM = 90;                                   // screen px kept clear of each edge
+        const loY = (topM - CONFIG.viewY) / (z * K);                   // peak-safe top boundary (world-y)
+        const hiY = ((H - botM - CONFIG.viewY) / z - LIFT) / K;        // flat-ground-safe bottom boundary
+        CONFIG.viewInsetY       = Math.max(0, Math.min(loY, mh * 0.45));
+        CONFIG.viewInsetYBottom = Math.max(0, Math.min(mh - hiY, mh * 0.45));
+      } else {
+        CONFIG.viewInsetY = 0; CONFIG.viewInsetYBottom = 0;
+      }
     } else {
       CONFIG.viewZoom = CONFIG.zoom;
       CONFIG.viewX = CONFIG.gameAreaX;
       CONFIG.viewY = CONFIG.gameAreaY;
       CONFIG.viewInsetX = 0;
+      CONFIG.viewInsetY = 0;
+      CONFIG.viewInsetYBottom = 0;
     }
   }
   

@@ -26,7 +26,7 @@ class EylesHarrier extends Boid {
     this.separationDistSq = 10000;
     this.wanderStrength = 1.2;
     // An eagle banks quickly: facing eases faster than a moa's (Boid.updateFacing).
-    this._turnMax = 0.22;
+    this._turnMax = 0.11;
     this._turnEase = 0.16;
     
     // Hunting
@@ -79,7 +79,7 @@ class EylesHarrier extends Boid {
     this.relocateTimer = 0;
     
     // Visual
-    this.wingspan = random(8, 12);
+    this.wingspan = random(6.4, 9.6);   // max 20% smaller than the old 8–12 roll
     this.wingPhase = random(TWO_PI);
     this.bodyLength = this.wingspan * 0.45;
     this.animTime = random(1000);
@@ -93,6 +93,13 @@ class EylesHarrier extends Boid {
     this._animState = 'flying';
     this._flyAnimStart = 0;
     this._flapCyclePrev = EntitySprites.eagleFlapCycle(this.animTime);
+    // Perched clip (the new EylesHarrier/Perched art): a land→idle loop while resting,
+    // then a 'takeoff' launch window as it leaves the perch, before the wingbeat resumes.
+    // `_perchStart` is the perch clock origin (land plays once from it, then idle loops);
+    // `_takeoffTimer` counts the launch window down in real frames. See _resolveAnimState.
+    this._perchStart = this.animTime;
+    this._takeoffTimer = 0;
+    this.perchTakeoffFrames = 26;   // real frames the takeoff window (perched 15→18) plays before flight
 
     // The dedicated 8-frame hunting/dive art is a talon GRAB, not a loop: frames 0→5
     // reach the talons forward as the bird closes on its prey (driven by proximity, not
@@ -182,7 +189,33 @@ class EylesHarrier extends Boid {
   _viewInsetX() {
     return (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
   }
-  
+
+  // The VISIBLE world-Y band [loY, hiY] this bird should keep its targets inside — the
+  // vertical counterpart to _viewInsetX. On a portrait/tall wall the cover-fit crops the
+  // map top and bottom too, and the 3/4 relief LIFT raises high ground (the northern
+  // ranges) off the TOP of the frame, so a target keyed to the map rectangle sends the
+  // harrier over the ranges where its sprite lifts off-screen (the "disappears near the
+  // edge" report). Derived from the live camera + projection, worst-cased for elevation
+  // (a peak lifts by vz·LIFT): loY keeps even a peak clear of the top margin, hiY keeps
+  // flat/coastal ground clear of the bottom. Falls back to the old map bounds (arg N,
+  // e.g. 40) when the camera/projection isn't configured (headless). Writes into the
+  // reused _visYBand — no per-call allocation.
+  _visibleY(fallbackMargin) {
+    const b = this._visYBand || (this._visYBand = { loY: 0, hiY: 0 });
+    const mapH = this.terrain.mapHeight;
+    const N = fallbackMargin || 40;
+    // The band is computed once per layout (Game.recalculateLayout) and stored on CONFIG
+    // as world-Y insets — the same source findWalkablePosition uses, so a spawn and this
+    // bird's targets agree. Falls back to the old map margin when it isn't set (headless).
+    const C = (typeof CONFIG !== 'undefined') ? CONFIG : null;
+    const insT = C && Number.isFinite(C.viewInsetY) ? C.viewInsetY : 0;
+    const insB = C && Number.isFinite(C.viewInsetYBottom) ? C.viewInsetYBottom : 0;
+    b.loY = Math.max(N, Math.min(insT, mapH - N));
+    b.hiY = Math.min(mapH - N, Math.max(mapH - insB, N));
+    if (b.loY >= b.hiY) { b.loY = mapH * 0.25; b.hiY = mapH * 0.75; }   // degenerate → central band
+    return b;
+  }
+
   // ============================================
   // BEHAVIOR
   // ============================================
@@ -477,9 +510,10 @@ class EylesHarrier extends Boid {
     const ins = this._viewInsetX();
     let loX = ins + 40, hiX = mapW - ins - 40;
     if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
+    const vy = this._visibleY(40);
     this._burstTarget.set(
       constrain(this.pos.x + Math.cos(ang) * reach, loX, hiX),
-      constrain(this.pos.y + Math.sin(ang) * reach, 40, mapH - 40)
+      constrain(this.pos.y + Math.sin(ang) * reach, vy.loY, vy.hiY)
     );
   }
   
@@ -688,9 +722,10 @@ class EylesHarrier extends Boid {
     let loX = ins + 50, hiX = mapW - ins - 50;
     if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
 
+    const vyB = this._visibleY(50);
     this._targetVec.set(
       constrain(this.patrolCenter.x + cos(searchAngle) * searchRadius, loX, hiX),
-      constrain(this.patrolCenter.y + sin(searchAngle) * searchRadius, 50, mapH - 50)
+      constrain(this.patrolCenter.y + sin(searchAngle) * searchRadius, vyB.loY, vyB.hiY)
     );
     
     this.applyForce(this.seek(this._targetVec, 0.8));
@@ -714,10 +749,11 @@ class EylesHarrier extends Boid {
     let loX = ins + 80, hiX = mapW - ins - 80;
     if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
 
+    const vyB = this._visibleY(80);
     let newX, newY;
     for (let attempts = 0; attempts <= 10; attempts++) {
       newX = random(loX, hiX);
-      newY = random(80, mapH - 80);
+      newY = random(vyB.loY, vyB.hiY);
       
       const dx = newX - this.pos.x;
       const dy = newY - this.pos.y;
@@ -770,8 +806,9 @@ class EylesHarrier extends Boid {
     const ins = this._viewInsetX();
     let loX = ins + 80, hiX = mapW - ins - 80;
     if (loX >= hiX) { loX = mapW * 0.3; hiX = mapW * 0.7; }
+    const vyB = this._visibleY(80);
     this.patrolCenter.x = constrain(this.patrolCenter.x + random(-amount, amount), loX, hiX);
-    this.patrolCenter.y = constrain(this.patrolCenter.y + random(-amount, amount), 80, mapH - 80);
+    this.patrolCenter.y = constrain(this.patrolCenter.y + random(-amount, amount), vyB.loY, vyB.hiY);
   }
 
   // ============================================
@@ -911,6 +948,18 @@ class EylesHarrier extends Boid {
     const flapCompleted = cycle !== this._flapCyclePrev;
     this._flapCyclePrev = cycle;
 
+    // TAKEOFF holds while the launch window (perched 15→18) plays out, then flight
+    // resumes — unless prey appears, which snaps straight to the hunt (a startled launch).
+    if (this._animState === 'takeoff') {
+      if (logical !== 'hunting') {
+        this._takeoffTimer -= 1;
+        if (this._takeoffTimer > 0) return this._animState;
+        this._animState = 'flying';
+        this._flyAnimStart = this.animTime;                // wingbeat starts from frame 0
+        return this._animState;
+      }
+    }
+
     // RETRACT holds until its timer runs out (or the bird re-locks on a target).
     if (this._animState === 'retract') {
       this._retractTimer -= 1;
@@ -953,10 +1002,20 @@ class EylesHarrier extends Boid {
       return this._animState;
     }
 
-    // Plain flying / resting. Reset the fly clock when (re)entering flight so the
-    // wingbeat starts from its first frame.
+    // Plain flying / resting, with the perched-clip transitions:
+    //   • entering rest  → start the perch clock (land plays once, then idle loops)
+    //   • leaving rest for flight → play the takeoff window first (not an instant pop)
     if (this._animState !== logical) {
-      if (logical === 'flying') this._flyAnimStart = this.animTime;
+      if (logical === 'resting') {
+        this._perchStart = this.animTime;
+      } else if (logical === 'flying') {
+        if (this._animState === 'resting') {
+          this._animState = 'takeoff';
+          this._takeoffTimer = this.perchTakeoffFrames;
+          return this._animState;
+        }
+        this._flyAnimStart = this.animTime;                // wingbeat starts from its first frame
+      }
       this._animState = logical;
     }
     return this._animState;
@@ -966,13 +1025,19 @@ class EylesHarrier extends Boid {
     const spriteState = this._resolveAnimState();
     const isActiveHunt = spriteState === 'hunting' || spriteState === 'retract';
     // Hunting/retract draw an explicit talon frame (proximity- / retraction-driven);
-    // resting holds the glide; flying reads the fly-relative clock so the wingbeat
-    // resumes from its first frame after a strike.
-    const sprite = isActiveHunt
-      ? EntitySprites.getEagleHuntFrame(this._huntFrame)
-      : EntitySprites.getEagleSprite(
-          spriteState === 'resting' ? this.animTime : (this.animTime - this._flyAnimStart),
-          spriteState);
+    // resting/takeoff play the perched clip (land→idle loop, then the launch window);
+    // flying reads the fly-relative clock so the wingbeat resumes from its first frame.
+    let sprite;
+    if (isActiveHunt) {
+      sprite = EntitySprites.getEagleHuntFrame(this._huntFrame);
+    } else if (spriteState === 'resting') {
+      sprite = EntitySprites.getEaglePerchedFrame('perch', this.animTime - this._perchStart);
+    } else if (spriteState === 'takeoff') {
+      const prog = 1 - Math.max(0, this._takeoffTimer) / Math.max(1, this.perchTakeoffFrames);
+      sprite = EntitySprites.getEaglePerchedFrame('takeoff', prog);
+    } else {
+      sprite = EntitySprites.getEagleSprite(this.animTime - this._flyAnimStart, spriteState);
+    }
 
     if (sprite) {
       push();

@@ -131,9 +131,12 @@ const KIWI_SPECIES = {
     fleeSpeed: 0.5,
     maxForce: 0.026,      // nimble in the undergrowth
 
-    // Survival — small body, modest appetite.
+    // Survival — small body, modest appetite. Like the mōho it kept getting pinned at
+    // its floor and reading as absent, so it depletes more slowly and wins more per bite
+    // (eatGainMult, applied in Moa.forage) — enough to hold a small standing population.
     maxHunger: 70,
-    baseHungerRate: 0.028,
+    baseHungerRate: 0.022,   // was 0.028 — gentler depletion so the forest kiwi isn't always critical
+    eatGainMult: 1.3,        // +30% food per bite (paired with the reduced rate)
     hungerThreshold: 30,
     criticalHunger: 58,
 

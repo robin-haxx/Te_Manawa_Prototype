@@ -570,14 +570,25 @@ class Kereru extends Boid {
            this.state === KERERU_STATE.SHELTER;
   }
 
-  // Which cel cycle the sprite plays: FLYING (in the air) → the wingbeat; FEEDING
-  // (perched, filling the crop) → the eating cycle; every other perch (resting,
-  // sheltering, and the kōkako's SINGING via _isPerched) → the hopping perch-idle.
-  // Passed to EntitySprites.getKereruSprite; a subclass can override (none need to).
-  _flyerState() {
-    if (!this._isPerched()) return 'flying';
-    if (this.state === KERERU_STATE.FEEDING) return 'eating';
-    return 'hopping';
+  // Which animation window/pose to draw, and how far through it. Driven by the eased
+  // flight ALTITUDE, so the flying clip's takeoff (0–2) and landing (12–14) frames play
+  // exactly over lift-off and touch-down, its cruise loop (3–11) in between, and the
+  // perched cycles once the bird has settled. Returns { state, t } where t is the 0..1
+  // progress through a takeoff/land window (ignored for the looped states). Passed to
+  // EntitySprites.getKereruSprite; the kōkako/huia subclasses reuse it verbatim.
+  _flyerAnim() {
+    const perched = this._isPerched();
+    const perch = this._perchAltCur || this._perchAlt || 0;
+    const fp = Math.max(0, Math.min(1, (this._altitude - perch) / Math.max(1, this._cruiseAlt - perch)));
+    const KNEE = 0.6;                                    // fp above this = "at cruise"
+    if (perched) {
+      // Still riding high off the perch → the bird is descending: play the landing window.
+      if (fp > 0.35) return { state: 'land', t: Math.min(1, (1 - fp) / 0.65) };
+      return { state: (this.state === KERERU_STATE.FEEDING) ? 'eating' : 'hopping', t: 0 };
+    }
+    // Airborne: rising off the perch → the takeoff window; at cruise → the flap loop.
+    if (fp < KNEE) return { state: 'takeoff', t: fp / KNEE };
+    return { state: 'cruise', t: 0 };
   }
 
   update(dt = 1) {
@@ -661,8 +672,9 @@ class Kereru extends Boid {
   // Sprite for the current animation state. Subclasses point this at their own art
   // (EntitySprites.getKokakoSprite / getHuiaSprite); null → the drawn glyph.
   _getSprite(perched) {
-    return (typeof EntitySprites !== 'undefined' && EntitySprites.getKereruSprite)
-      ? EntitySprites.getKereruSprite(this.animTime, this._flyerState()) : null;
+    if (typeof EntitySprites === 'undefined' || !EntitySprites.getKereruSprite) return null;
+    const a = this._flyerAnim();
+    return EntitySprites.getKereruSprite(this.animTime, a.state, a.t);
   }
 
   // Fallback glyph when the sprite has not loaded: green-grey back, pale breast,

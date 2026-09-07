@@ -437,9 +437,17 @@ class Moa extends Boid {
     // Determine and execute state
     this.currentState = this.determineState(placeables, sc, moas);
     this.executeState(simulation, sc, moas, placeables, dt);
-    
+
+    // While committed to an eating cycle (planted mid-meal, not fleeing), the herd
+    // separation nudge below would push a grazing bird back over the walk-gate for a
+    // frame or two — which flipped the EATING pose to WALKING for ~1 frame (the "snaps
+    // out of eating mid-cycle" flicker) and slid the planted feet. Hold it: skip the
+    // separation so the committed cycle plays clean. avoidUnwalkable / edges still run —
+    // a bird must never be parked into water even mid-meal.
+    const _eatHold = this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil;
+
     // Common behaviors
-    this.applySeparation(moas);
+    if (!_eatHold) this.applySeparation(moas);
     const avoid = this.avoidUnwalkable();
     avoid.mult(2);
     this.applyForce(avoid);
@@ -1115,6 +1123,11 @@ class Moa extends Boid {
         // Global diet richness (CONFIG.faunaNutritionScale): every bite is this much more
         // nourishing, so a bird that now spends a full (longer) eating cycle per meal stays fed.
         gain *= (typeof CONFIG !== 'undefined' && CONFIG.faunaNutritionScale) ? CONFIG.faunaNutritionScale : 1;
+        // Per-species diet efficiency (speciesConfig.eatGainMult): a targeted lever to keep a
+        // vulnerable, slow-breeding bird fed (the mōho / kiwi, which otherwise sit pinned at
+        // their floor) without touching the shared diet-richness scale. Defaults to 1 (no change).
+        const egm = this.speciesConfig.eatGainMult;
+        if (egm && egm !== 1) gain *= egm;
         this.hunger = Math.max(0, this.hunger - gain);
         this.targetPlant = null;
         this.vel.mult(0.3);
@@ -1322,8 +1335,15 @@ class Moa extends Boid {
     // Animation state selects which cel cycle plays: WALKING while moving, EATING
     // while grazing/feeding in place, LOOKING (idle) otherwise. Mating is a calm
     // stand, so it reads as LOOKING — the final art has no dedicated mate pose.
+    // A committed eat cycle (see _commitEatCycle) OWNS the pose until it completes, so
+    // the EATING cel cycle always plays to its end regardless of a stray velocity nudge
+    // — this is what stops the ~1-frame flip to WALKING mid-chew. Outside a commitment,
+    // the pose follows motion: WALKING while moving, EATING while grazing in place,
+    // LOOKING (idle) otherwise. Mating reads as LOOKING (no dedicated mate pose).
+    const _inEatCycle = this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil;
     let _animState;
-    if (_moving) _animState = 'walking';
+    if (_inEatCycle) _animState = 'eating';
+    else if (_moving) _animState = 'walking';
     else if (this.isFeeding || this.currentState === MOA_STATE.FEEDING || this.currentState === MOA_STATE.FORAGING) _animState = 'eating';
     else _animState = 'looking';
     let sprite = _tint

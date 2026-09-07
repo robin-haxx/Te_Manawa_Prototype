@@ -77,6 +77,7 @@ class Boid {
     this._tempVec1 = createVector();
     this._tempVec2 = createVector();
     this._tempVec3 = createVector();
+    this._screenEdgeVec = createVector();   // scratch for the screen-aware edge steer (edges())
     
     // Cache for terrain avoidance
     this._avoidAngles = [];
@@ -283,18 +284,71 @@ class Boid {
   
   // Edge avoidance (force is already frame-independent)
   edges() {
+    // Screen-aware edge steer: keep the SPRITE inside the visible frame, not just the
+    // map. The cover-fit view runs the map wider/taller than the canvas (viewInsetX
+    // L/R, and on a portrait wall a vertical crop too), and the 3/4 relief LIFT raises
+    // high ground / a flyer's altitude off the TOP — so a turn-back keyed to the map
+    // rectangle lets the whole cast wander off-frame (moa off the sides, the harrier off
+    // the top over the ranges). This works in projected screen space, so it accounts for
+    // both. Flyers get a wider margin so they never reach the GL edge-fade band. Falls
+    // back to the old map-edge turn when the camera isn't set up (headless boot).
+    const mPx = this._clampToView ? 110 : 60;
+    const f = this._screenEdgeForce(this._screenEdgeVec, mPx, this._altitude || 0);
+    let steered = false;
+    if (f.x !== 0 || f.y !== 0) { this.acc.x += f.x; this.acc.y += f.y; steered = true; }
+
+    // Deep backstop at the actual MAP edge (also the sole path when the screen-aware
+    // steer is inactive, e.g. the headless harness). Harmless when the screen steer
+    // already turned the bird — both push inward.
     const margin = 25;
     const turnForce = 0.3 * this.personality.turniness;
     const w = this.terrain.mapWidth;
     const h = this.terrain.mapHeight;
     const px = this.pos.x;
     const py = this.pos.y;
-    
+
     if (px < margin) this.acc.x += turnForce;
     else if (px > w - margin) this.acc.x -= turnForce;
-    
+
     if (py < margin) this.acc.y += turnForce;
     else if (py > h - margin) this.acc.y -= turnForce;
+  }
+
+  // A steering force that keeps this entity's SPRITE inside the visible frame. Computes
+  // where the sprite actually DRAWS (projected screen position, including the terrain
+  // relief LIFT and, for a flyer, its altitude) and, if that is within `marginPx` of a
+  // screen edge, returns a world-space force pushing it back in. `out` is a reused
+  // vector; returns it (zeroed) when the sprite is comfortably in view or the camera is
+  // not yet configured (headless). Allocation-free.
+  _screenEdgeForce(out, marginPx, altitude) {
+    out.set(0, 0);
+    if (typeof CONFIG === 'undefined' || typeof Projection === 'undefined') return out;
+    const vz = CONFIG.viewZoom || CONFIG.zoom;
+    const W = CONFIG.gameAreaWidth, H = CONFIG.gameAreaHeight;
+    if (!vz || !W || !H || !this.terrain) return out;
+    const vx = CONFIG.viewX || 0, vy = CONFIG.viewY || 0;
+    const px = this.pos.x, py = this.pos.y;
+    const elev = (typeof this.terrain.getElevationAt === 'function') ? this.terrain.getElevationAt(px, py) : 0;
+    const sX = vx + vz * Projection.projX(px);
+    const sY = vy + vz * (Projection.groundY(py, elev) - (altitude || 0));
+    let ex = 0, ey = 0;                                  // screen-px error past the inner margin
+    if (sX < marginPx)          ex = marginPx - sX;
+    else if (sX > W - marginPx) ex = (W - marginPx) - sX;
+    if (sY < marginPx)          ey = marginPx - sY;
+    else if (sY > H - marginPx) ey = (H - marginPx) - sY;
+    if (ex === 0 && ey === 0) return out;
+    // Screen-px error → world direction: screenX = vx + vz·x (so Δx = Δsx/vz), and
+    // screenY = vy + vz·(y·K − …) (so Δy = Δsy/(vz·K)). Normalise, then scale by
+    // maxForce with an urgency ramp on how far past the margin the sprite has drifted.
+    const K = Projection.K || 1;
+    const wx = ex / vz, wy = ey / (vz * K);
+    const wmag = Math.hypot(wx, wy);
+    if (wmag < 1e-6) return out;
+    const overPx = Math.max(Math.abs(ex), Math.abs(ey));
+    const mf = (this.maxForce || 0.05) * (1 + Math.min(2, overPx / marginPx));   // maxForce·(1..3)
+    out.x = wx / wmag * mf;
+    out.y = wy / wmag * mf;
+    return out;
   }
   
   applyForce(force) {

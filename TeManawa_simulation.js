@@ -815,14 +815,25 @@ class Simulation {
   findWalkablePosition(minElev, maxElev, clampView = false) {
     const terrain = this.terrain;
     const padding = this.spawnPadding;
-    const ins = (clampView && typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+    // Keep spawns inside the VISIBLE frame, not the whole map. On a cover-fit (portrait
+    // or ultrawide) wall a large strip of the map sits off-screen on every side — spawning
+    // there reads as "missing" fauna the visitor never sees, and the off-screen ground
+    // birds only trickle back in under the edge steer. This now applies to GROUND animals
+    // too (the clampView arg is kept for callers but no longer gates the X inset): the
+    // visible band can be a narrow portrait strip. viewInsetY/Bottom are 0 when the map
+    // letterboxes, so this is a no-op on a landscape wall.
+    const C = (typeof CONFIG !== 'undefined') ? CONFIG : null;
+    const ins = (C && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+    const insT = (C && Number.isFinite(CONFIG.viewInsetY)) ? CONFIG.viewInsetY : 0;
+    const insB = (C && Number.isFinite(CONFIG.viewInsetYBottom)) ? CONFIG.viewInsetYBottom : 0;
     const minX = padding + ins;
     const maxX = this.worldWidth - padding - ins;
-    const maxY = this.worldHeight - padding;
+    const minY = Math.max(padding, insT);
+    const maxY = Math.min(this.worldHeight - padding, this.worldHeight - insB);
 
     for (let attempts = 0; attempts < 100; attempts++) {
       const x = minX + random() * Math.max(1, maxX - minX);
-      const y = padding + random() * (maxY - padding);
+      const y = minY + random() * Math.max(1, maxY - minY);
       const elev = terrain.getElevationAt(x, y);
 
       if (elev > minElev && elev < maxElev && terrain.isWalkable(x, y)) {
@@ -1283,9 +1294,18 @@ class Simulation {
       for (let i = 0; i < moas.length; i++) { const m = moas[i]; if (m.alive && m.speciesKey === key) { count++; sample = m; m.isFemale ? females++ : males++; } }
     }
     const floor = this._speciesFloor(key);
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    // Quiet top-up threshold: a still-present species sitting BELOW this (default off)
+    // gets a founder trickled back in even when it isn't strictly deadlocked, so a
+    // slow-breeding bird pinned just above its floor (the mōho/kiwi at 2) is nudged back
+    // toward a visible standing group instead of reading as absent. Extinct (count 0)
+    // and same-sex deadlock are still handled by the stuck test below.
+    const below = (M && M.refoundBelow) || 0;
+    const lowPop = below > 0 && count > 0 && count < below;
     // Stuck = it can't produce a pair: a lone bird, or all survivors one sex while
-    // pinned at/below the floor. A healthy-but-small species is NOT stuck.
-    const stuck = count <= 1 || (count <= floor && (males === 0 || females === 0));
+    // pinned at/below the floor. A healthy-but-small species is NOT stuck — unless the
+    // quiet top-up wants it grown toward `refoundBelow`.
+    const stuck = count <= 1 || (count <= floor && (males === 0 || females === 0)) || lowPop;
     if (!stuck) { timers[key] = 0; return; }
     timers[key] = (timers[key] || 0) + incr;
     if (timers[key] < delay) return;
@@ -1865,8 +1885,6 @@ class Simulation {
     }
 
     // ---- Above the ground plane (flyers, storms, indicators) -----------------
-    // Eagles (aliveCheck true so a just-starved bird stops drawing immediately).
-    this._renderFiltered(eagles, 30, null, true, inView);
     // Flying others (kea, kererū, kōkako, huia) fly over the canopy — render above
     // the ground plane, like the eagles. Keyed off the entity's isFlyer flag so a
     // new flighted species drops in without touching this loop.
@@ -1877,6 +1895,9 @@ class Simulation {
         this._renderFiltered(arr, 30, null, true, inView);
       }
     }
+    // Eagles LAST of the flyers so the harrier — the apex hunter — draws OVER the
+    // flighted prey birds. (aliveCheck true so a just-starved bird stops drawing immediately.)
+    this._renderFiltered(eagles, 30, null, true, inView);
     // Storms sit above everything.
     this._renderFiltered(placeables, 80, p => p.type === 'Storm', true, inView);
 

@@ -67,12 +67,14 @@ class WaterLayer {
       eelSpeed:         0.4,    // world px per update tick (real time, not sim time)
       eelAnimSpeed:     0.06,
       // Fish — a small school travelling every river polyline (main + tributaries),
-      // always present (no deep-time gate). Smaller and quicker than the tuna/eels.
+      // always present (no deep-time gate). A calm school: gentler than the tuna/eels
+      // so the swim cycle actually reads (at the old 0.7 px/tick they streaked past
+      // too fast to see the tail wag). 50% larger than the first pass.
       fishCount:        5,
-      fishSize:         15,
+      fishSize:         22,
       fishAlpha:        0.85,
-      fishSpeed:        0.7,
-      fishAnimSpeed:    0.11,
+      fishSpeed:        0.3,
+      fishAnimSpeed:    0.14,
       maxDecals:        420,    // hard cap; counts toward the ≤1500 image()/frame budget
     };
   }

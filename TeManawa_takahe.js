@@ -100,9 +100,12 @@ const TAKAHE_SPECIES = {
     fleeSpeed: 0.5,
     maxForce: 0.022,
 
-    // Survival.
+    // Survival. A slow K-selected breeder that kept getting pinned at its floor and
+    // reading as absent, so it depletes more slowly and wins more per bite (eatGainMult,
+    // applied in Moa.forage) — enough to hold a small standing population above the floor.
     maxHunger: 90,
-    baseHungerRate: 0.03,
+    baseHungerRate: 0.024,   // was 0.03 — gentler depletion so it isn't chronically at critical
+    eatGainMult: 1.3,        // +30% food per bite (paired with the reduced rate)
     hungerThreshold: 32,
     criticalHunger: 74,
 

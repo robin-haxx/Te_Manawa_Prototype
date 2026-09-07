@@ -204,21 +204,24 @@ const ART_SETS = {
       huntDir: 'EylesHarrier/Hunting/',
       huntPrefix: 'EylesHarrier_Hunting_',
       huntFirst: 0,
-      huntCount: 8
-    },
-    high: {
-      // 16-frame wingbeat at 500x500. Same pose cycle at double the frame
-      // density, so the hunting pose is the phase-equivalent of low's frame 4.
-      // No dedicated hunting cycle at hi-res — hunting holds huntFrame (frame 8).
-      dir: 'EylesHarrier_HiRes/',
-      prefix: 'EylesHarrier_State_',
-      pad: 5,
-      first: 0,
-      count: 16,
-      huntFrame: 8,
-      glideFrame: 0,
-      artAngle: 0.74
+      huntCount: 8,
+      // Perched clip (sprites/EylesHarrier/Perched/, 19 frames, same top-down view
+      // and facing as the wingbeat). It is a full land → idle → takeoff sequence, so
+      // it plays back in three windows (see the eagle 'resting'/'takeoff' render):
+      //   LAND    0–6  — played once as the bird drops onto the perch,
+      //   IDLE    7–14 — looped while it sits (the perched idle),
+      //   TAKEOFF 15–18 — played once as it launches back into flight.
+      perchedDir: 'EylesHarrier/Perched/',
+      perchedPrefix: 'EylesHarrier_Perched_',
+      perchedFirst: 0,
+      perchedCount: 19,
+      perchLandEnd: 6,
+      perchIdleStart: 7,
+      perchIdleEnd: 14,
+      perchTakeoffStart: 15
     }
+    // (The old EylesHarrier_HiRes 'high' set was retired with those PNGs; ArtMode
+    // falls back to 'low', so ?art=high now just loads this set.)
   }
 };
 
@@ -255,6 +258,8 @@ const EntitySprites = {
   eagle: {
     fly: [],
     hunt: [],   // dedicated hunting/dive cycle (low set); empty → falls back to `dive`
+    perched: [],   // land→idle→takeoff clip (see ART_SETS.eagle.low perched*); windows in perchCfg
+    perchCfg: null,   // { landEnd, idleStart, idleEnd, takeoffStart, last } — set in load()
     dive: null,
     glide: null,
     // Direction the artwork itself faces, in image space, in radians.
@@ -296,6 +301,9 @@ const EntitySprites = {
     // Flighted forest birds (kererū/kōkako/huia). One wall-clock cadence for all
     // three cel cycles — a touch quicker than the moa's plod for a lighter wingbeat.
     flyerSpeed: 0.16,
+    // Harrier perched clip — the land/idle cadence (the takeoff window is paced by
+    // the eagle's own takeoff timer instead, so it always finishes before flight).
+    eaglePerchSpeed: 0.12,
     eagleFlySpeed: 0.15,
     eagleDiveSpeed: 0.08,
     // Cadence of the dedicated hunting/dive cycle. A touch faster than the
@@ -388,6 +396,29 @@ const EntitySprites = {
       }
     }
 
+    // Perched clip (land→idle→takeoff), where the active set declares one (the low
+    // set: EylesHarrier_Perched_00000..00018). Played in the 'resting'/'takeoff' render
+    // states; absent (the fallback set) → resting holds the glide frame.
+    if (eagleArt.perchedPrefix && eagleArt.perchedCount) {
+      const perchedDir = eagleArt.perchedDir || eagleArt.dir;
+      for (let i = 0; i < eagleArt.perchedCount; i++) {
+        const n = String((eagleArt.perchedFirst || 0) + i).padStart(eagleArt.pad, '0');
+        const file = `${eagleArt.perchedPrefix}${n}.png`;
+        this.eagle.perched.push(loadImage(
+          `${spritePath}${perchedDir}${file}`,
+          () => {},
+          () => console.warn(`Could not load ${file}`)
+        ));
+      }
+      this.eagle.perchCfg = {
+        landEnd:      eagleArt.perchLandEnd ?? 6,
+        idleStart:    eagleArt.perchIdleStart ?? 7,
+        idleEnd:      eagleArt.perchIdleEnd ?? 14,
+        takeoffStart: eagleArt.perchTakeoffStart ?? 15,
+        last:         eagleArt.perchedCount - 1
+      };
+    }
+
     // Resting/gliding holds a single frame; `dive` is the single-frame hunting
     // fallback used when no dedicated hunt cycle is loaded.
     this.eagle.dive = this.eagle.fly[eagleArt.huntFrame];
@@ -413,21 +444,48 @@ const EntitySprites = {
     return sprite && sprite.width > 0 && sprite.height > 0;
   },
 
-  // Pick the frame for a flighted bird's animation STATE ('flying' | 'eating' |
-  // 'hopping'). Same wall-clock cel model as the moa: the index is
-  // floor(animTime * flyerSpeed) % frameCount, and animTime rides the REAL frame
-  // clock (Boid.update), so the wingbeat/hop cadence is steady at any deep-time
-  // multiplier. Graceful fallbacks so a set missing one cycle still draws: eating →
-  // hopping → flying; hopping → flying; flying → hopping. null → the drawn glyph.
-  _flyerFrames(set, state) {
-    if (state === 'flying')  return (set.flying && set.flying.length) ? set.flying : set.hopping;
-    if (state === 'eating')  return (set.eating && set.eating.length) ? set.eating
-      : ((set.hopping && set.hopping.length) ? set.hopping : set.flying);
-    return (set.hopping && set.hopping.length) ? set.hopping : set.flying;   // hopping / perch idle
+  // The 15-frame flighted-bird FLYING clip is a takeoff → in-flight → landing sequence:
+  //   TAKEOFF 0–2   played once as the bird leaves a perch,
+  //   CRUISE  3–11  looped in sustained flight,
+  //   LAND    12–14 played once as it settles onto the next perch.
+  // The three windows are driven by the bird's altitude (Kereru._flyerAnim): rising off
+  // a perch = takeoff, at cruise = the loop, descending = landing — so the transition
+  // frames play exactly over the take-off / touch-down, no separate clock needed.
+  flightWindow: { takeoff: [0, 2], cruise: [3, 11], land: [12, 14], minFrames: 15 },
+
+  // One frame from [a..b] of `list` by progress t (0..1), clamped (a → b).
+  _windowFrame(list, a, b, t) {
+    const n = b - a + 1;
+    const k = a + Math.min(n - 1, Math.max(0, Math.floor((t || 0) * n)));
+    return list[Math.max(0, Math.min(list.length - 1, k))];
   },
-  _flyerFrame(set, animTime, state) {
+  // Loop [a..b] of `list` on the wall-clock cel cadence.
+  _loopWindow(list, a, b, animTime) {
+    const n = b - a + 1;
+    return list[a + (Math.floor(animTime * this.animation.flyerSpeed) % Math.max(1, n))];
+  },
+
+  // Pick the frame for a flighted bird's animation STATE:
+  //   'takeoff' | 'cruise' | 'land' — windows of the flying clip (t = phase progress),
+  //   'eating' | 'hopping'          — the perched cel cycles (looped on animTime).
+  // Graceful fallbacks so a set missing a cycle still draws. null → the drawn glyph.
+  _flyerFrame(set, animTime, state, t) {
     if (!set) return null;
-    const list = this._flyerFrames(set, state);
+    const F = set.flying, W = this.flightWindow;
+    let list = null;
+    if (state === 'takeoff' || state === 'cruise' || state === 'land' || state === 'flying') {
+      if (F && F.length >= W.minFrames) {
+        if (state === 'takeoff') { const s = this._windowFrame(F, W.takeoff[0], W.takeoff[1], t); if (this.isValid(s)) return s; }
+        else if (state === 'land') { const s = this._windowFrame(F, W.land[0], W.land[1], t); if (this.isValid(s)) return s; }
+        else { const s = this._loopWindow(F, W.cruise[0], W.cruise[1], animTime); if (this.isValid(s)) return s; }
+      }
+      list = (F && F.length) ? F : set.hopping;                 // short/absent clip → loop the whole thing
+    } else if (state === 'eating') {
+      list = (set.eating && set.eating.length) ? set.eating
+        : ((set.hopping && set.hopping.length) ? set.hopping : F);
+    } else {                                                    // hopping / perch idle
+      list = (set.hopping && set.hopping.length) ? set.hopping : F;
+    }
     if (list && list.length > 0) {
       const fi = Math.floor(animTime * this.animation.flyerSpeed) % list.length;
       if (this.isValid(list[fi])) return list[fi];
@@ -441,18 +499,18 @@ const EntitySprites = {
     return null;
   },
 
-  // Kererū / kōkako frame for an animation state. null → the class's drawn glyph.
-  getKereruSprite(animTime, state) { return this._flyerFrame(this.kereru, animTime, state); },
-  getKokakoSprite(animTime, state) { return this._flyerFrame(this.kokako, animTime, state); },
+  // Kererū / kōkako frame for an animation state (+ phase progress t for takeoff/land).
+  getKereruSprite(animTime, state, t) { return this._flyerFrame(this.kereru, animTime, state, t); },
+  getKokakoSprite(animTime, state, t) { return this._flyerFrame(this.kokako, animTime, state, t); },
 
   // Huia frame for the bird's sex (the sexes are drawn differently — male short-
   // billed, female long-billed). Falls back to the other sex's set if one failed
   // to load, then to null (drawn-glyph fallback).
-  getHuiaSprite(animTime, state, isFemale) {
+  getHuiaSprite(animTime, state, isFemale, t) {
     const set = isFemale ? this.huiaFemale : this.huiaMale;
-    const s = this._flyerFrame(set, animTime, state);
+    const s = this._flyerFrame(set, animTime, state, t);
     if (s) return s;
-    return this._flyerFrame(isFemale ? this.huiaMale : this.huiaFemale, animTime, state);
+    return this._flyerFrame(isFemale ? this.huiaMale : this.huiaFemale, animTime, state, t);
   },
 
   // Resolve the sprite set for a variant, falling back to the generic set when
@@ -596,6 +654,35 @@ const EntitySprites = {
       if (this.isValid(sprite)) return sprite;
     }
     return this.isValid(this.eagle.dive) ? this.eagle.dive : null;
+  },
+
+  // Frame of the harrier's perched clip. mode 'perch': a land→idle cycle driven by a
+  // perch clock `t` (animTime − perchStart) — the land window (0..landEnd) plays ONCE,
+  // then the idle window (idleStart..idleEnd) LOOPS. mode 'takeoff': the launch window
+  // (takeoffStart..last) played straight through by progress `t` (0..1). Falls back to
+  // the glide frame when the perched art is absent (the fallback set / a load miss).
+  getEaglePerchedFrame(mode, t) {
+    const p = this.eagle.perched, cfg = this.eagle.perchCfg;
+    if (!p || p.length === 0 || !cfg) {
+      return this.isValid(this.eagle.glide) ? this.eagle.glide : (this.eagle.fly[0] || null);
+    }
+    let idx;
+    if (mode === 'takeoff') {
+      const n = cfg.last - cfg.takeoffStart + 1;
+      const k = Math.floor(Math.max(0, Math.min(1, t)) * n);
+      idx = cfg.takeoffStart + Math.min(n - 1, k);
+    } else {
+      const step = Math.floor(Math.max(0, t) * this.animation.eaglePerchSpeed);
+      const landCount = cfg.landEnd + 1;                 // frames 0..landEnd (played once)
+      if (step < landCount) {
+        idx = step;
+      } else {
+        const idleLen = cfg.idleEnd - cfg.idleStart + 1;
+        idx = cfg.idleStart + ((step - landCount) % Math.max(1, idleLen));
+      }
+    }
+    const s = p[Math.max(0, Math.min(p.length - 1, idx))];
+    return this.isValid(s) ? s : (this.isValid(this.eagle.glide) ? this.eagle.glide : p[0] || null);
   },
 
   getEagleSprite(animTime, state) {

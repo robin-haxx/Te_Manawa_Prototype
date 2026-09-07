@@ -787,8 +787,12 @@ try{
 // unattended case). The design guarantees: per-species floors + the invisible
 // sex-rebalance keep every founding species alive, the surplus-only harrier keeps
 // the forest flyers from booming past their caps, and the add-a-bird refound stays
-// a near-never backstop (never the mechanism). See the scaffold ECOLOGY FEEDBACK
-// block + TeManawa_eagle.js hunt / TeManawa_simulation.js _updateRefounding.
+// BOUNDED — it now also does a deliberate quiet top-up (LEVEL_MECHANICS.refoundBelow)
+// that trickles the smallest, slowest-breeding species back toward a visible group
+// instead of leaving them pinned at their floor, so a few adds over a long harsh sweep
+// is EXPECTED; a runaway count (every species crashing every delay) is the regression
+// this bounds. See the scaffold ECOLOGY FEEDBACK block + TeManawa_eagle.js hunt /
+// TeManawa_simulation.js _updateRefounding.
 try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), REG=vm.runInContext('REGISTRY',ctx);
   const sim=G.simulation, season=G.seasonManager;
@@ -822,11 +826,15 @@ try{
     chk(mx[k]<=cap, `${k} stays under its cap (max ${mx[k]} <= ${cap})`);   // breeding halts at maxPopulation
   }
   const adds=sim.stats.refounds-refound0;
-  chk(adds<=4, `refound (add-a-bird) stays a rare backstop (${adds} adds in ${N} ticks)`);
+  // Bounded, not near-zero: refoundBelow trickles the small species back toward a
+  // visible group, so a handful of adds over this harsh 16k-tick sweep is expected.
+  // The regression this catches is a RUNAWAY — every species collapsing each delay
+  // (~11 species × ~6 fires ≈ 60+); well clear of the ~1-per-species top-up seen here.
+  chk(adds<=20, `refound (add-a-bird) stays bounded, not runaway (${adds} adds in ${N} ticks)`);
 
   DT.reset(); G.resetEcosystem();   // restore a fresh world for the sections that follow
   console.log(fail? `fauna stability: ${fail} FAILURES`
-    : `fauna stability: no extinction over ${N} ticks (warm↔cold, no visitor); flyers under cap; refound backstop rare (${adds})`);
+    : `fauna stability: no extinction over ${N} ticks (warm↔cold, no visitor); flyers under cap; refound top-up bounded (${adds})`);
 }catch(e){ console.log('FAUNA STABILITY FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- storm overuse: the STORM cost (plan §4) ----------------------------------
@@ -1729,16 +1737,42 @@ const g=vm.runInContext('game',ctx);
       const carvedMouth = T._applyGeo(0.08, mouth[0], mouth[1], mouth[0] * T.mapWidth, mouth[1] * T.mapHeight);
       chk(carvedMouth < 0.1, `near the coast the river bed reaches the sea band (got ${carvedMouth.toFixed(2)})`);
     }
-    // Emergence: at the window's start the channel is only a seaward embayment — the upstream
-    // is still land — and it connects inland over deep time (the strait → river transition).
+    // Emergence: the MAIN stem is ANTECEDENT — authored once and carved throughout the window
+    // (TEMANAWA_PLAN_V3 §0: "the river is authored once, so antecedence falls out of the art for
+    // free"). What ASSEMBLES over deep time is the TRIBUTARY network: a tributary is absent at its
+    // emergence start (tribEmergence 0 → the land untouched, no source nub) and carves in as the
+    // front sweeps source→confluence (tribEmergence 1). The 0.5 rework made this per-cell — the main
+    // passes cellEmg 1.0 and no longer honours a channel-wide emergence scalar — so we probe a
+    // tributary here, not the main. (The seaward MARINE embayment at the window start is a separate
+    // mechanism — submergence / seaRise — asserted in the SOUTH-HALF STRAIT block below.)
     if (river) {
-      const mid = river[(river.length / 2) | 0], mouth = river[0];
-      T._geoT.emergence = 0;
-      const dryMid = T._applyGeo(0.4, mid[0], mid[1], mid[0] * T.mapWidth, mid[1] * T.mapHeight);
-      chk(dryMid > 0.38, `at the window start the mid-river is not yet a channel (got ${dryMid.toFixed(2)})`);
+      // Antecedent main: its seaward mouth (already-low ground) carries water regardless of the
+      // tributary clock — the trunk is there for the whole window.
+      T._geoT.tribEmergence = 0; T._geoT.tribEmergenceEarly = 0;
+      const mouth = river[0];
       const wetMouth = T._applyGeo(0.08, mouth[0], mouth[1], mouth[0] * T.mapWidth, mouth[1] * T.mapHeight);
-      chk(wetMouth < 0.12, `at the window start the seaward embayment already carves (got ${wetMouth.toFixed(2)})`);
-      T._geoT.emergence = 1;
+      chk(wetMouth < 0.12, `the antecedent main stem carves its seaward reach throughout (got ${wetMouth.toFixed(2)})`);
+
+      // Tributary emergence front: find a plains tributary cell that genuinely carves once emerged
+      // AND is still land before it has — self-calibrating, so it does not depend on which authored
+      // tributary or vertex happens to sit over carvable plains (range-lifted, off-channel, or
+      // main-valley-dominated cells simply fail one half of the pair and are skipped).
+      const tribs = (GEO.rivers || []).filter(r => r.type === 'tributary');
+      let probed = false, emgWet = 0, preDry = 0;
+      for (const tr of tribs) {
+        const pts = tr.pts;
+        for (let k = 1; k < pts.length - 1; k++) {
+          const p = pts[k], wx = p[0] * T.mapWidth, wy = p[1] * T.mapHeight;
+          T._geoT.tribEmergence = 1; T._geoT.tribEmergenceEarly = 1;
+          const wet = T._applyGeo(0.4, p[0], p[1], wx, wy);
+          T._geoT.tribEmergence = 0; T._geoT.tribEmergenceEarly = 0;
+          const dry = T._applyGeo(0.4, p[0], p[1], wx, wy);
+          if (wet < 0.38 && dry > 0.38) { probed = true; emgWet = wet; preDry = dry; break; }
+        }
+        if (probed) break;
+      }
+      chk(probed, `a tributary carves in as it emerges but is land before (emerged ${emgWet.toFixed(2)} vs pre-emergence ${preDry.toFixed(2)})`);
+      T._geoT.tribEmergence = 1; T._geoT.tribEmergenceEarly = 1; T._geoT.emergence = 1;
     }
     // SOUTH-HALF STRAIT: at its ~0.5 Ma peak the southern lowlands drown to the sea band, but the
     // Tararua range footprint (GEO.ranges[0], the southern range) stays a dry peninsula — the land
