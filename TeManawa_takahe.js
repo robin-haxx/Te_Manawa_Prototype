@@ -92,7 +92,7 @@ const TAKAHE_SPECIES = {
     openCountry: true,
 
     // Physical — a stout rail, smaller than the moa and the goose.
-    size: { min: 6, max: 8 },
+    size: { min: 8, max: 9 },
     bodyColor: { r: [60, 85], g: [95, 125], b: [110, 140] },
 
     // Movement — a deliberate walker that can scurry into cover when flushed.

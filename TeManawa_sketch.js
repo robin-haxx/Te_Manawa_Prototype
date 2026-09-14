@@ -139,7 +139,7 @@ const PLANT_SPRITE_STATES = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
 
 function preload(){
   OpenDyslexic = loadFont('typefaces/OpenDyslexic.ttf');
-  FreckleFace = loadFont('typefaces/FreckleFace-Regular.ttf');
+  FreckleFace = loadFont('typefaces/NF-Nadira-Pro-Regular.ttf');
 
   for (const [key, def] of Object.entries(PLANT_SPRITE_SETS)) {
     const dir = `sprites/${def.folder || ''}`;
@@ -239,6 +239,10 @@ function preload(){
 
   loadPlaceableSprites();
   loadEntitySprites();
+
+  // The nest egg's shell art (Egg.render draws the coded crack lines on top). Real failure
+  // callback — never a silent () => {} (a missing sprite must be logged, CLAUDE.md §conventions).
+  eggSprite = loadImage('sprites/Egg_Sprite.png', () => {}, () => console.warn('Could not load Egg_Sprite.png'));
 
   // Environmental animation strips (loose per-frame PNGs → SpriteStrips.loadFrames).
   // Registered here so real art wins over SpriteStrips.ensurePlaceholders() (which
@@ -967,6 +971,7 @@ class Game {
   // four season buffers. Call this on first load and on a deliberate reseed;
   // attract loop uses soft regen, resetEcosystem()
   init() {
+    
     if (!this.currentLevel) return;
 
     // Free the outgoing generator's season buffers. 
@@ -1132,10 +1137,13 @@ class Game {
     // clock crosses its checkpoint (auto), and again only after a rebuild repositions the
     // clock. Cleared here (every rebuild); applyAsh() adds a year when it fires.
     this._firedEruptions = new Set();
-    // Previous frame's yearsBP, for crossing detection. Seed just ABOVE the current year so
-    // an eruption AT the (re)start year fires on the next frame (e.g. Kidnappers at the 1 Ma
-    // open). applyEruptionAt overrides this to the target so a jump does not re-fire events.
-    this._autoPrevYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP + 1 : Infinity;
+    // Previous frame's yearsBP, for crossing detection. Seed AT the current year (not above it)
+    // so an eruption sitting exactly on the (re)start year does NOT auto-fire on boot — the run
+    // opens on the calm ~1 Ma scene rather than an unbidden Kidnappers takeover (the sim self-
+    // runs, so a forced opening eruption is unnecessary — user request). The mid-timeline events
+    // (Kaukatea, Whakamaru) still fire as the clock crosses them; Kidnappers is still reachable
+    // by a manual hold-wrap. applyEruptionAt overrides this to the target so a jump does not re-fire.
+    this._autoPrevYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : Infinity;
   }
 
   isInGameArea(mx, my) {
@@ -1806,6 +1814,12 @@ class Game {
     // Simulation.render). The fallback below closes the span if that seam was missed.
     if (typeof GLBatch !== 'undefined' && GLBatch.enabled) GLBatch.begin();
 
+    // River swimmers (eels + fish) ride the SUPERSAMPLED sprite layer, not the 1080 ground
+    // buffer their currents/shimmer sit in. Drawn HERE, inside the batch span and before the
+    // animals, so in GL mode the batch captures them at backing resolution (and the 2D path
+    // draws them straight onto the high-res canvas) — crisp like the cast, swimming under it.
+    if (this.water) this.water.renderSwimmers();
+
     this.simulation.render();
 
     // Safety: if the batch span is somehow still open (e.g. an early return before
@@ -1834,7 +1848,7 @@ class Game {
     if (!tg || tg.width !== w || tg.height !== h) {
       if (tg && tg.remove) tg.remove();
       tg = this._terrainLayer = createGraphics(w, h);
-      if (tg.pixelDensity) tg.pixelDensity(1);   // manual supersample lives on the MAIN canvas only
+      if (tg.pixelDensity) tg.pixelDensity(.5);    // manual supersample lives on the MAIN canvas only
     }
     return this._terrainLayer;
   }
@@ -2036,16 +2050,25 @@ let _needsInitialResize = true;
 let _mainCanvasEl = null;
 
 function setup() {
+  //filter(POSTERIZE,2);
   if (!audioManager) audioManager = initAudioManager();
 
   CONFIG.recalculateLayout(windowWidth, windowHeight);
   applySpriteSupersampleFromURL();   // sets CONFIG.spriteSupersample before the canvas is made
+  // Decide the renderer BEFORE sizing the main canvas: in GL mode the main canvas is the
+  // 1080 HUD-only layer, in the 2D path it carries the supersampled sprites too.
+  if (typeof GLBatch !== 'undefined') GLBatch.applyURLFlag();
 
   pixelDensity(1); // must run BEFORE scaleCanvasToFit: it resets the canvas's inline CSS size.
                    // pixelDensity stays 1 — we supersample MANUALLY (backing = logical × SS)
                    // instead, so the terrain can opt out of it via the 1080 offscreen layer.
                    // A p5 pixelDensity of 2 would 4×-back the WHOLE frame, terrain included.
-  const _ss = spriteSS();
+  // GL is the default, so size the main canvas for it (logical 1080) up front and only
+  // resize on a GL init failure below. `requested` is a good proxy for the final mode:
+  // it's wrong only when GL was asked for but the context can't be created — handled by
+  // the resize after init().
+  const _wantGL = !!(typeof GLBatch !== 'undefined' && GLBatch.requested);
+  let _ss = _wantGL ? 1 : spriteSS();
   let cnv = createCanvas(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
   _mainCanvasEl = (cnv && cnv.elt) ? cnv.elt : document.querySelector('canvas');
   cnv.style('display', 'block');
@@ -2067,13 +2090,22 @@ function setup() {
   // render code (see TeManawa_spriteatlas.js); a no-op if nothing packed.
   if (typeof SpriteAtlas !== 'undefined') SpriteAtlas.build();
 
-  // Optional WebGL entity layer (?render=gl). Init at the BACKING resolution
-  // (logical × supersample) so sprites stay crisp; disables cleanly on any failure.
-  // Mount stacks the GL canvas between the terrain (bottom) and main (top) canvases.
+  // WebGL entity layer (DEFAULT; opt out ?render=2d). Init at the SPRITE resolution
+  // (logical × spriteSS) so the cast stays crisp even though the main canvas is now the
+  // 1080 HUD layer; disables cleanly on any failure. Mount stacks the GL canvas between
+  // the terrain (bottom) and main (top) canvases.
   if (typeof GLBatch !== 'undefined') {
-    GLBatch.applyURLFlag();
     if (GLBatch.requested && GLBatch.init(CONFIG.canvasWidth * spriteSS(), CONFIG.canvasHeight * spriteSS())) {
       GLBatch.mount((cnv && cnv.elt) ? cnv.elt : document.querySelector('canvas'));
+    }
+    // GL was expected but did not come up (no WebGL / software rasterizer / lax context):
+    // the main canvas must carry the sprites after all, so bump it up to the supersampled
+    // backing to keep the 2D-fallback cast crisp. (No-op in the common GL-active case.)
+    const _finalSs = mainCanvasSS();
+    if (_finalSs !== _ss) {
+      _ss = _finalSs;
+      resizeCanvas(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
+      scaleCanvasToFit();
     }
   }
 
@@ -2099,17 +2131,19 @@ function windowResized() {
   // Recalculate layout for actual window dimensions
   CONFIG.recalculateLayout(windowWidth, windowHeight);
 
-  // Resize the p5 canvas to the new computed dimensions (backing = logical × SS).
-  const _ss = spriteSS();
+  // Resize the MAIN p5 canvas: logical 1080 in GL mode (HUD only), logical × spriteSS in
+  // the 2D path (it carries the sprites). The GL entity layer is resized separately below.
+  const _ss = mainCanvasSS();
   resizeCanvas(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
 
   // Apply CSS scaling to fill the window (uses the LOGICAL size, so the on-screen
   // footprint is unchanged; the extra backing pixels are the crispness).
   scaleCanvasToFit();
 
-  // Keep the WebGL entity canvas matched to the backing resolution.
+  // Keep the WebGL entity canvas at the SPRITE backing resolution (independent of the
+  // main canvas). GLBatch.resize re-reads the main backing into coordW/coordH.
   if (typeof GLBatch !== 'undefined' && GLBatch.enabled) {
-    GLBatch.resize(CONFIG.canvasWidth * _ss, CONFIG.canvasHeight * _ss);
+    GLBatch.resize(CONFIG.canvasWidth * spriteSS(), CONFIG.canvasHeight * spriteSS());
   }
 
   // Update UI panel positions if game is running
@@ -2138,10 +2172,25 @@ function applyTerrainFitFromURL() {
 }
 
 // Backing-canvas supersample factor, clamped. 1 = logical 1080 (old behaviour);
-// 2 = 4K-native sprites. The one place SS is read, so the clamp lives here.
+// 2 = 4K-native sprites. The one place SS is read, so the clamp lives here. This is the
+// SPRITE resolution — it always sizes the GL entity layer (and, in the 2D path, the
+// whole main canvas).
 function spriteSS() {
   const s = Math.round((typeof CONFIG !== 'undefined' && CONFIG.spriteSupersample) || 1);
   return Math.max(1, Math.min(3, s));
+}
+
+// The supersample applied to the MAIN p5 canvas specifically. In DOM-stacked GL mode
+// the sprite cast lives on the GL layer (kept at spriteSS×), so the main canvas carries
+// ONLY the HUD + indicators and drops to logical 1080 — Chrome then re-uploads and
+// composites a 1080 surface each frame instead of a 4K one, which is the single biggest
+// resting-frame win (the HUD's year / timeline / edge glow dirty essentially the whole
+// canvas every frame). The trade is 4K crispness on HUD text — the same trade the terrain
+// already makes via its 1080 layer. In the 2D path (opt-out or GL init failure) the main
+// canvas still carries the sprites, so it stays at spriteSS× to keep them crisp.
+function mainCanvasSS() {
+  if (typeof GLBatch !== 'undefined' && GLBatch.domStack) return 1;
+  return spriteSS();
 }
 
 // ?sprites=1|2|3 startup override, same pattern as ?terrain / ?art. Must run
@@ -2202,6 +2251,8 @@ function initializeRegistry() {
   // like the kererū). Guarded so a missing file degrades gracefully.
   if (typeof Kokako !== 'undefined') REGISTRY.registerAnimalType('kokako', {}, Kokako);
   if (typeof Huia   !== 'undefined') REGISTRY.registerAnimalType('huia',   {}, Huia);
+  // Tūī — a singing nectar-feeder, its own base type + list like the kererū (extends Kokako).
+  if (typeof Tui    !== 'undefined') REGISTRY.registerAnimalType('tui',    {}, Tui);
 
   for (const [key, config] of Object.entries(MOA_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
   for (const [key, config] of Object.entries(EAGLE_SPECIES)) REGISTRY.registerSpecies(key, 'eagle', config);
@@ -2217,6 +2268,10 @@ function initializeRegistry() {
   // Kiwi`). Its soil-turning quirk lives in the class; registered here like the others. Guarded.
   if (typeof Kiwi !== 'undefined' && typeof KIWI_SPECIES !== 'undefined')
     for (const [key, config] of Object.entries(KIWI_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
+  // Finsch's duck — a moa-guild open-country grazer (own `class: FinschDuck`), same pattern
+  // as the goose. Guarded so a missing finsch_duck.js degrades gracefully.
+  if (typeof FinschDuck !== 'undefined' && typeof FINSCH_DUCK_SPECIES !== 'undefined')
+    for (const [key, config] of Object.entries(FINSCH_DUCK_SPECIES)) REGISTRY.registerSpecies(key, 'moa', config);
   if (typeof Kereru !== 'undefined' && typeof KERERU_SPECIES !== 'undefined')
     REGISTRY.registerSpecies('kereru', 'kereru', KERERU_SPECIES);
   // Kōkako (singing, territorial) + huia (pair-bonded) — each its own species of its
@@ -2225,6 +2280,9 @@ function initializeRegistry() {
     REGISTRY.registerSpecies('kokako', 'kokako', KOKAKO_SPECIES);
   if (typeof Huia !== 'undefined' && typeof HUIA_SPECIES !== 'undefined')
     REGISTRY.registerSpecies('huia', 'huia', HUIA_SPECIES);
+  // Tūī — its own species of its own base type, breeding true via the shared flyer egg path.
+  if (typeof Tui !== 'undefined' && typeof TUI_SPECIES !== 'undefined')
+    REGISTRY.registerSpecies('tui', 'tui', TUI_SPECIES);
   for (const [key, config] of Object.entries(PLANT_TYPES)) REGISTRY.registerPlant(key, config);
   for (const [key, config] of Object.entries(PLACEABLES)) REGISTRY.registerPlaceable(key, config);
 
@@ -2268,12 +2326,13 @@ function draw() {
   game.update(deltaMultiplier);
   const _t1 = performance.now();
 
-  // Split-resolution pipeline: the backing canvas is SS× the logical 1080 size, so a
-  // single scale(SS) here lets every main-canvas drawer keep authoring in 1080-space
-  // and land on the high-res backing. Sprites + HUD gain the resolution; the terrain
-  // opts out inside Game.render() by compositing at 1080 and blitting up. background()
-  // in Game.render() ignores the transform, so it still clears the whole canvas.
-  const _ss = spriteSS();
+  // Split-resolution pipeline: the main canvas is mainCanvasSS× the logical 1080 size, so a
+  // single scale here lets every main-canvas drawer keep authoring in 1080-space and land on
+  // the backing. In GL mode mainCanvasSS is 1 (the main canvas IS 1080 — the HUD layer) so
+  // this is a no-op; in the 2D path it scales the sprites + HUD onto the supersampled backing.
+  // The terrain opts out inside Game.render() by compositing at 1080 and blitting up.
+  // background() in Game.render() ignores the transform, so it still clears the whole canvas.
+  const _ss = mainCanvasSS();
   push();
   if (_ss !== 1) scale(_ss);
   game.render();
@@ -2294,10 +2353,11 @@ function updateFPS() {
 }
 
 
-// mouseX/mouseY are in BACKING pixels (logical × SS); all hit-testing is in
-// 1080-space, so divide back before handing coordinates to the game.
-function mousePressed() { const s = spriteSS(); game.handleClick(mouseX / s, mouseY / s); }
-function mouseReleased() { const s = spriteSS(); game.handleClickUp(mouseX / s, mouseY / s); }
+// mouseX/mouseY are in the MAIN canvas's backing pixels (logical × mainCanvasSS); all
+// hit-testing is in 1080-space, so divide back before handing coordinates to the game.
+// In GL mode mainCanvasSS is 1 (main canvas is already 1080), so this is a no-op there.
+function mousePressed() { const s = mainCanvasSS(); game.handleClick(mouseX / s, mouseY / s); }
+function mouseReleased() { const s = mainCanvasSS(); game.handleClickUp(mouseX / s, mouseY / s); }
 function keyPressed() { game.handleKey(key); }
 function keyReleased() { game.handleKeyUp(key); }
 

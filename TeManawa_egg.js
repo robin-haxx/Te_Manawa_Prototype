@@ -2,6 +2,11 @@
 // EGG CLASS - Simplified rendering
 // ============================================
 
+// The egg shell art (Egg_Sprite.png). Loaded once in preload() (TeManawa_sketch.js) and drawn
+// by _renderEggBody; the coded crack lines still animate on top. Null until loaded / if it
+// fails, in which case _renderEggBody falls back to the procedural shell.
+let eggSprite = null;
+
 // Pre-computed egg colors (avoid creating in render loop)
 const EGG_COLORS = {
   base: null,
@@ -158,33 +163,45 @@ class Egg {
   _renderEggBody(x, y, progress) {
     const size = this.size;
     const c = EGG_COLORS;
-    
-    // Shadow
+
+    // Shadow (grounds the egg on the 3/4 plane, like every other entity)
     if (CONFIG.drawShadows) {
       noStroke();
       fill(c.shadow);
       ellipse(x + 1, y + 1, size * 1.4, size * 0.9);
     }
 
-    // Main egg
-    fill(c.base);
-    stroke(c.stroke);
-    strokeWeight(0.5);
-    ellipse(x, y, size * 1.3, size * 1.7);
-    
-    // Highlight
-    noStroke();
-    fill(c.highlight);
-    ellipse(x - size * 0.15, y - size * 0.25, size * 0.5, size * 0.7);
-    
-    // Speckles (pre-computed positions)
-    fill(c.speckle);
-    for (let i = 0; i < this.speckles.length; i++) {
-      const sp = this.speckles[i];
-      ellipse(x + sp.x, y + sp.y, 1.5, 1.5);
+    // Shell: the drawn egg is now Egg_Sprite.png. Sized to the old body's height (size*1.7) so
+    // the footprint — and the crack lines below — line up, and drawn at the sprite's own aspect
+    // so it never distorts. Falls back to the procedural shell + highlight + speckles if the art
+    // has not loaded (or failed to), so the egg is never invisible.
+    if (eggSprite && eggSprite.width) {
+      const h = size * 1.7, w = h * (eggSprite.width / eggSprite.height);
+      push();
+      imageMode(CENTER);
+      noTint();
+      image(eggSprite, x, y, w, h);
+      pop();
+    } else {
+      // Main egg
+      fill(c.base);
+      stroke(c.stroke);
+      strokeWeight(0.5);
+      ellipse(x, y, size * 1.3, size * 1.7);
+      // Highlight
+      noStroke();
+      fill(c.highlight);
+      ellipse(x - size * 0.15, y - size * 0.25, size * 0.5, size * 0.7);
+      // Speckles (pre-computed positions)
+      fill(c.speckle);
+      for (let i = 0; i < this.speckles.length; i++) {
+        const sp = this.speckles[i];
+        ellipse(x + sp.x, y + sp.y, 1.5, 1.5);
+      }
     }
-    
-    // Cracks when close to hatching
+
+    // Cracks when close to hatching — the coded crack-line animation, drawn on top of the shell
+    // (unchanged; see _renderCracks).
     if (progress > 0.85) {
       this._renderCracks(x, y, progress);
     }

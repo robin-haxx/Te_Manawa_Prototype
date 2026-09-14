@@ -112,7 +112,7 @@ const HUIA_SPECIES = {
   // Movement / render — a weak flier like the kōkako: slow, short hops, low cruise.
   baseSpeed:        0.24,
   maxForce:         0.05,
-  size:             6,
+  size:             8,
   perceptionRadius: 60,
   cruiseAlt:        16,
   perchAlt:         8,

@@ -123,7 +123,7 @@ const KIWI_SPECIES = {
     // openCountry: (absent)
 
     // Physical — small, among the smallest of the cast (near the little bush moa).
-    size: { min: 5, max: 7 },
+    size: { min: 7, max: 9 },
     bodyColor: { r: [95, 120], g: [72, 92], b: [50, 66] },
 
     // Movement — an unhurried prober that can still scurry into cover when flushed.

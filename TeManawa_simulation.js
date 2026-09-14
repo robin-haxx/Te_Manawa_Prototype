@@ -1546,8 +1546,8 @@ class Simulation {
           // the egg (over-cap eggs are simply lost rather than lingering).
           this._hatchEagleEgg(egg);
           egg.alive = false;
-        } else if (egg.offspringType === 'kereru' || egg.offspringType === 'kokako' || egg.offspringType === 'huia') {
-          // Emergent flyer reproduction (kererū / kōkako / huia): hatch a juvenile
+        } else if (egg.offspringType === 'kereru' || egg.offspringType === 'kokako' || egg.offspringType === 'huia' || egg.offspringType === 'tui') {
+          // Emergent flyer reproduction (kererū / kōkako / huia / tūī): hatch a juvenile
           // into that species' flock, then consume the egg (cap-guarded).
           this._hatchFlyerEgg(egg, egg.offspringType);
           egg.alive = false;

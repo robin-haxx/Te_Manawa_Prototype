@@ -1,5 +1,5 @@
 // ============================================
-// GL BATCH — DOM-stacked WebGL entity layer  (opt-in: ?render=gl)
+// GL BATCH — DOM-stacked WebGL entity layer  (DEFAULT; opt OUT with ?render=2d)
 // ============================================
 // The world is drawn on p5's 2D canvas. At 4K (spriteSupersample 2) the frame is
 // fill-rate bound and every sprite is a separate Canvas2D drawImage with real
@@ -18,8 +18,11 @@
 // drawImage entirely — the compositor does the blend — which is what captures the
 // batch's speed. See md / the perf memory.
 //
-// OPT-IN and reversible: without ?render=gl (or if GL init fails) none of this runs
-// and the engine renders the unchanged single-canvas 2D atlas path.
+// DEFAULT and reversible: ?render=2d (or =canvas / =off) opts out, and the engine falls
+// back to the unchanged single-canvas 2D atlas path automatically whenever GL cannot be a
+// win — no WebGL context, a SOFTWARE (SwiftShader) rasterizer, or the context later lost
+// (see applyURLFlag / init's renderer guard / _fallbackTo2D). GL on a CPU rasterizer would
+// be SLOWER than the 2D path with no context-lost event to recover, so it is refused up front.
 //
 // How entity code stays untouched:
 //   • The atlas already wrapped global image() (TeManawa_spriteatlas.js); in GL mode
@@ -40,7 +43,16 @@ const GLBatch = {
   _mounted: false,
   gl: null,
   canvas: null,          // the GL (middle) canvas
-  W: 0, H: 0,
+  W: 0, H: 0,            // this GL canvas's backing (raster) resolution — spriteSS× logical
+
+  // The coordinate space the captured image()/ellipse() calls live in: the MAIN p5
+  // canvas backing (its device pixels), which the CTM maps into. In DOM-stack GL mode
+  // the main canvas drops to logical 1080 (HUD only) while this GL layer stays
+  // spriteSS× (4K) for crisp sprites — so the two differ. Clip mapping + the edge
+  // fade use coordW/coordH (the CTM's space); the GL VIEWPORT uses W/H (the raster
+  // space). Kept equal to W/H until mount()/resize() sync them, so any lone-init path
+  // behaves exactly as before this split.
+  coordW: 0, coordH: 0,
 
   // ---- edge fade --------------------------------------------------------------
   // Sprites (and their shadow/halo discs) fade toward transparent as they approach
@@ -65,8 +77,9 @@ const GLBatch = {
 
   // ---- URL flag + init --------------------------------------------------------
   // GL is the DEFAULT renderer. Opt OUT with ?render=2d (or =canvas / =off); any
-  // other value (including ?render=gl) leaves it on. If the context can't be created
-  // init() returns false and the engine falls back to the 2D path automatically.
+  // other value (including ?render=gl) leaves it on. If the context can't be created —
+  // or only a software rasterizer is available — init() returns false and the engine
+  // falls back to the 2D path automatically.
   applyURLFlag() {
     if (typeof window === 'undefined' || !window.location) { this.requested = true; return; }
     const q = new URLSearchParams(window.location.search).get('render');
@@ -83,6 +96,29 @@ const GLBatch = {
     console.warn('[glbatch] falling back to 2D renderer:', reason);
   },
 
+  // The unmasked GL renderer string (via WEBGL_debug_renderer_info), or '' when that
+  // extension isn't exposed. A kiosk Chrome exposes it; a privacy-hardened browser may
+  // strip it, and then we can't tell and don't reject (init() proceeds).
+  _rendererName(gl) {
+    try {
+      const ext = gl.getExtension && gl.getExtension('WEBGL_debug_renderer_info');
+      const s = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+      return (s || '').toString();
+    } catch (_) { return ''; }
+  },
+
+  // True when the context is a CPU rasterizer — Chrome/ANGLE SwiftShader, Mesa llvmpipe /
+  // softpipe, the Windows "Basic Render Driver" — rather than a real GPU. On these the
+  // batch is slower than the 2D path, so init() refuses it. An unknown/empty string ⇒
+  // false: never reject on a renderer we couldn't read.
+  _isSoftwareRenderer(gl) {
+    const n = this._rendererName(gl).toLowerCase();
+    if (!n) return false;
+    return n.indexOf('swiftshader') >= 0 || n.indexOf('llvmpipe') >= 0 ||
+           n.indexOf('softpipe') >= 0 || n.indexOf('software') >= 0 ||
+           n.indexOf('basic render') >= 0;
+  },
+
   init(width, height) {
     if (!this.requested) return false;
     try {
@@ -91,15 +127,33 @@ const GLBatch = {
       if (!cnv) return false;
       cnv.width = width; cnv.height = height;
       const opts = { premultipliedAlpha: false, antialias: false, alpha: true, depth: false };
-      const gl = cnv.getContext('webgl', opts) || cnv.getContext('experimental-webgl', opts);
+      // Prefer a HARDWARE context. failIfMajorPerformanceCaveat makes Chrome refuse a
+      // software rasterizer (SwiftShader) outright — that would shade the whole batch on
+      // the CPU, slower than the 2D path, and with no context-lost event to trip
+      // _fallbackTo2D it would never recover. If the strict request yields nothing we
+      // still take a lax one, purely to read its renderer string below — so a driver that
+      // ignores the hint is caught too, and the log says "software" rather than "none".
+      const mk = (o) => cnv.getContext('webgl', o) || cnv.getContext('experimental-webgl', o);
+      let gl = mk(Object.assign({}, opts, { failIfMajorPerformanceCaveat: true })) || mk(opts);
       if (!gl) { console.warn('[glbatch] no WebGL context; staying on 2D'); return false; }
+      if (this._isSoftwareRenderer(gl)) {
+        console.warn('[glbatch] software WebGL renderer (' + this._rendererName(gl) +
+                     '); staying on 2D — a CPU rasterizer is slower than the canvas path');
+        return false;
+      }
 
       this.canvas = cnv; this.gl = gl; this.W = width; this.H = height;
+      this.coordW = width; this.coordH = height;   // default: mount()/resize() reset to the MAIN backing
       this._buildProgram();
       this._buildDiscTexture();
       this._cap = 8192 * 6;
       this._verts = new Float32Array(this._cap * this.FLOATS_PER_VERT);
       this._vbo = gl.createBuffer();
+      // Pre-size the buffer store ONCE, then bufferSubData into it each flush (below).
+      // The old per-flush bufferData reallocated the whole store every time — cheap now,
+      // but it scales with the flush count, which climbs as the fauna cast turns on.
+      gl.bindBuffer(gl.ARRAY_BUFFER, this._vbo);
+      gl.bufferData(gl.ARRAY_BUFFER, this._verts.byteLength, gl.DYNAMIC_DRAW);
 
       gl.disable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
@@ -144,7 +198,18 @@ const GLBatch = {
     // Insert the GL canvas into the DOM next to the main canvas.
     if (gc.parentNode == null && mainEl.parentNode) mainEl.parentNode.insertBefore(gc, mainEl);
     this._mounted = true;
+    this._syncCoord();
     this.layout();
+  },
+
+  // Read the MAIN canvas backing into coordW/coordH — the pixel space the captured
+  // draw calls' CTM lives in. In GL mode that is the logical 1080 (HUD-only) canvas,
+  // NOT this GL layer's 4K backing, so they must be tracked separately. Falls back to
+  // W/H when the main element has no numeric size (the headless harness stub).
+  _syncCoord() {
+    const el = this._mainEl;
+    this.coordW = (el && el.width) ? el.width : this.W;
+    this.coordH = (el && el.height) ? el.height : this.H;
   },
 
   // Point the bottom layer at the terrain buffer's canvas. The buffer is a detached
@@ -184,6 +249,7 @@ const GLBatch = {
       this.W = width; this.H = height;
       this.gl.viewport(0, 0, width, height);
     }
+    this._syncCoord();   // the main canvas was resized just before this — re-read its backing
     this.layout();
   },
 
@@ -259,7 +325,7 @@ const GLBatch = {
     this._open = true;
     // Recompute the edge-fade band each frame so a live tweak to edgeFade takes hold.
     this._edgeMarginPx = (this.edgeFade && this.edgeFade.on)
-      ? this.edgeFade.marginFrac * Math.min(this.W, this.H) : 0;
+      ? this.edgeFade.marginFrac * Math.min(this.coordW || this.W, this.coordH || this.H) : 0;
   },
 
   // Renderer state, read live each capture (push/pop restore _imageMode/_tint
@@ -323,7 +389,10 @@ const GLBatch = {
   _emit(te, m, lx0, ly0, lx1, ly1, u0, v0, u1, v1, r, g, b, a) {
     if (te.tex !== this._curTex) { this._flush(); this._curTex = te.tex; }
     if (this._n + 6 > this._cap) this._flush();
-    const W = this.W, H = this.H;
+    // Map through the MAIN-canvas coordinate space (coordW/H), not this layer's raster
+    // size (W/H): in GL mode the sprite draw calls are authored on the 1080 main canvas
+    // while the GL viewport rasterises at 4K, so the clip divisor is the CTM's space.
+    const W = this.coordW || this.W, H = this.coordH || this.H;
     const ma = m.a, mb = m.b, mc = m.c, md = m.d, me = m.e, mf = m.f;
     // Each corner: map local → screen pixels (for both the clip position and the
     // per-vertex edge-fade alpha), then pixels → clip space.
@@ -359,7 +428,8 @@ const GLBatch = {
     const gl = this.gl;
     if (!this._n || !this._curTex) { this._n = 0; return; }
     gl.bindBuffer(gl.ARRAY_BUFFER, this._vbo);
-    gl.bufferData(gl.ARRAY_BUFFER, this._verts.subarray(0, this._n * this.FLOATS_PER_VERT), gl.DYNAMIC_DRAW);
+    // bufferSubData into the pre-sized store (see init) — no per-flush reallocation.
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this._verts.subarray(0, this._n * this.FLOATS_PER_VERT));
     const F = 4, stride = this.FLOATS_PER_VERT * F;
     gl.enableVertexAttribArray(this._aPos); gl.vertexAttribPointer(this._aPos, 2, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this._aUV);  gl.vertexAttribPointer(this._aUV,  2, gl.FLOAT, false, stride, 2 * F);

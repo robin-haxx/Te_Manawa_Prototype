@@ -237,7 +237,7 @@ const KOKAKO_SPECIES = {
   // it barely clears the canopy (low cruise altitude).
   baseSpeed:        0.24,
   maxForce:         0.05,
-  size:             6,
+  size:             8,
   perceptionRadius: 60,
   cruiseAlt:        16,
   perchAlt:         8,

@@ -147,6 +147,12 @@ const MOA_VARIANT_SETS = {
     looking: { dir: 'Looking/', prefix: 'Kiwi_Looking_', pad: 5, first: 0, count: 11 },
     eating:  { dir: 'Eating/',  prefix: 'Kiwi_Eating_',  pad: 5, first: 0, count: 11 },
     walking: { dir: 'Walking/', prefix: 'Kiwi_Walking_', pad: 5, first: 0, count: 8  }
+  } },
+  // Finsch's duck (Chenonetta finschi) — moa-guild open-country grazing duck (own FinschDuck class).
+  finschDuck: { base: 'Moa/FinschsDuck/', faceSign: 1, states: {
+    looking: { dir: 'Looking/', prefix: 'FinschsDuck_Looking_', pad: 5, first: 0, count: 11 },
+    eating:  { dir: 'Eating/',  prefix: 'FinschsDuck_Eating_',  pad: 5, first: 0, count: 11 },
+    walking: { dir: 'Walking/', prefix: 'FinschsDuck_Walking_', pad: 5, first: 0, count: 8  }
   } }
 };
 
@@ -177,6 +183,14 @@ const FLYER_VARIANT_SETS = {
     flying:  { dir: 'Flying/',  prefix: 'HuiaFemale_Flying_',  pad: 5, first: 0, count: 15 },
     hopping: { dir: 'Hopping/', prefix: 'HuiaFemale_Hopping_', pad: 5, first: 0, count: 10 },
     eating:  { dir: 'Eating/',  prefix: 'HuiaFemale_Eating_',  pad: 5, first: 0, count: 8  }
+  } },
+  // Tūī (Prosthemadera novaeseelandiae) — the singing nectar-feeder (own Tui class, extends
+  // Kokako). NB: the Hopping/ folder ships 240 PNGs but they are a 10-frame loop exported 24×
+  // (00010==00000, …) — only the first 10 UNIQUE frames are referenced so the atlas stays lean.
+  tui: { base: 'Flighted/Tui/', states: {
+    flying:  { dir: 'Flying/',  prefix: 'Tui_Flying_',  pad: 5, first: 0, count: 15 },
+    hopping: { dir: 'Hopping/', prefix: 'Tui_Hopping_', pad: 5, first: 0, count: 10 },
+    eating:  { dir: 'Eating/',  prefix: 'Tui_Eating_',  pad: 5, first: 0, count: 8  }
   } }
 };
 
@@ -253,7 +267,8 @@ const EntitySprites = {
     stoutLegged: { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },
     goose:       { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },   // North Island goose (moa-guild grazer)
     takahe:      { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },   // mōho / NI takahē (moa-guild grazer)
-    kiwi:        { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 }    // NI brown kiwi (moa-guild; forest-floor prober)
+    kiwi:        { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 },   // NI brown kiwi (moa-guild; forest-floor prober)
+    finschDuck:  { looking: [], eating: [], walking: [], walk: [], idle: null, mate: null, faceSign: 1 }    // Finsch's duck (moa-guild; open-country grazing duck)
   },
   eagle: {
     fly: [],
@@ -278,6 +293,7 @@ const EntitySprites = {
   kokako:     { flying: [], hopping: [], eating: [] },
   huiaMale:   { flying: [], hopping: [], eating: [] },
   huiaFemale: { flying: [], hopping: [], eating: [] },
+  tui:        { flying: [], hopping: [], eating: [] },
   loaded: false,
   loadAttempted: false,
 
@@ -499,9 +515,10 @@ const EntitySprites = {
     return null;
   },
 
-  // Kererū / kōkako frame for an animation state (+ phase progress t for takeoff/land).
+  // Kererū / kōkako / tūī frame for an animation state (+ phase progress t for takeoff/land).
   getKereruSprite(animTime, state, t) { return this._flyerFrame(this.kereru, animTime, state, t); },
   getKokakoSprite(animTime, state, t) { return this._flyerFrame(this.kokako, animTime, state, t); },
+  getTuiSprite(animTime, state, t)    { return this._flyerFrame(this.tui, animTime, state, t); },
 
   // Huia frame for the bird's sex (the sexes are drawn differently — male short-
   // billed, female long-billed). Falls back to the other sex's set if one failed
