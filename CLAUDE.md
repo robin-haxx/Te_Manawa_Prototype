@@ -213,9 +213,11 @@ The build runs ahead of the old phase ledger — see `md/TEMANAWA_PLAN_V3.md` §
 status. Done or substantially built: the terrain (SVG skeleton + uplift/incision/emergence morph +
 3/4 cel look + water layer), the glacial-cycle climate to 1 Ma, forest contraction, the four
 eruptions, the **five buttons**, habitat health, and the kererū dispersal loop. The **frontier** is
-four things: the **fauna cast** turning on (the scaffold now founds an 8-species grazer-guild mix — 5 moa +
+four things: the **fauna cast** turning on (the scaffold now founds a 9-species grazer-guild mix — 5 moa +
 the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli` + the North Island
-brown kiwi `Apteryx mantelli`, all moa-guild birds on dedicated multi-state art. The goose/mōho make
+brown kiwi `Apteryx mantelli` + Finsch's duck `Chenonetta finschi`, all moa-guild birds on dedicated
+multi-state art, plus four flighted forest birds — kererū, kōkako, huia and the tūī `Prosthemadera`
+(a strong-flying nectar-feeder that reuses the kōkako's song/territory). The goose/mōho/duck make
 the cold phase busier; the kiwi is the warm-phase forest counterweight, and its quirk — soil-turning —
 gently heals the forest floor where it forages, closing the forest loop with the kererū. The remaining
 moa and the raptor identity are still unresolved), the

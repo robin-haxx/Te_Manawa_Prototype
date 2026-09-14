@@ -559,10 +559,14 @@ class Moa extends Boid {
   }
 
   // Commit to eating one full cel cycle before moving on. Called when a bite lands
-  // (forage) or the bird settles at a feeder (executeState FEEDING). Only (re)starts
-  // a cycle when one isn't already running, so successive bites read as successive
-  // eating cycles rather than an endless freeze — and the bird gets a free frame at
-  // each cycle boundary to move on if it's no longer eating. A threat clears it.
+  // (forage) or the bird settles at a feeder (executeState FEEDING). Only (re)starts a
+  // cycle when one isn't already running: mid-cycle bites don't extend the hold, so the
+  // meal is exactly one clean cycle. At the cycle boundary the bird gets one free frame —
+  // if it's still hungry with food in reach, forage()/FEEDING lands the next bite and
+  // re-commits THAT SAME frame, so successive bites chain into an unbroken run of eating
+  // cycles with no gap; if it's done, it steps off to walk. render() reads this same
+  // _eatHoldUntil deadline as the sole trigger for the EATING pose, so the animation can
+  // never start without a real bite nor stop before its cycle ends. A threat clears it.
   _commitEatCycle() {
     if (this.animTime >= this._eatHoldUntil) {
       const period = (typeof EntitySprites !== 'undefined' && EntitySprites.moaEatCyclePeriod)
@@ -600,15 +604,23 @@ class Moa extends Boid {
       return;
     }
 
-    // Eat-cycle commitment (see _commitEatCycle): once a bite starts, hold planted
-    // through a full eating animation cycle before moving again, so a ground bird never
-    // walks off mid-chew. Never while FLEEING — a threat always breaks off the meal.
+    // Eat-cycle commitment (see _commitEatCycle): once a bite lands the bird COMMITS to
+    // the meal — it stops where it stands, plays a full eating animation cycle, and does
+    // nothing else (no seek, no mate-chase, no wander) until the cycle completes. The bite
+    // that opened the commitment already consumed the food (forage / applyPlaceableEffects),
+    // so "consume, then finish the animation" is guaranteed. This early return is what makes
+    // it uninterruptible: only a threat (FLEEING) or barren ground (above) breaks it off.
     if (this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil) {
+      // Hard brake to a standstill (the feet plant). maxSpeed is kept just above the walk
+      // gate rather than zeroed so avoidUnwalkable (applied after this returns) can still
+      // ease the bird off water if it somehow settled on an edge mid-meal — never below it,
+      // or that safety nudge would be frozen out.
       this.maxSpeed = this.baseSpeed * 0.5;
-      this.vel.x *= 0.6;                 // plant the feet for the meal
-      this.vel.y *= 0.6;
-      // Keep it in an eating-context state so the renderer shows the eating cel cycle
-      // (FEEDING and FORAGING both map to the 'eating' pose in render()).
+      this.vel.x *= 0.4;
+      this.vel.y *= 0.4;
+      // Label the committed frame as an eating state so the debug overlay and any state
+      // reader stay coherent (the EATING pose itself is driven by _eatHoldUntil in render,
+      // not by this label). Never override FEEDING — it carries the feedingAt reference.
       if (this.currentState !== MOA_STATE.FEEDING) this.currentState = MOA_STATE.FORAGING;
       return;
     }
@@ -1332,19 +1344,21 @@ class Moa extends Boid {
     // Same gate update() uses to decide whether to translate, so "moving" and "walking pose" are
     // exactly equivalent — a static pose (looking/eating) never plays over a sliding body.
     const _moving = this.vel.magSq() > this._walkGateSq;
-    // Animation state selects which cel cycle plays: WALKING while moving, EATING
-    // while grazing/feeding in place, LOOKING (idle) otherwise. Mating is a calm
-    // stand, so it reads as LOOKING — the final art has no dedicated mate pose.
-    // A committed eat cycle (see _commitEatCycle) OWNS the pose until it completes, so
-    // the EATING cel cycle always plays to its end regardless of a stray velocity nudge
-    // — this is what stops the ~1-frame flip to WALKING mid-chew. Outside a commitment,
-    // the pose follows motion: WALKING while moving, EATING while grazing in place,
-    // LOOKING (idle) otherwise. Mating reads as LOOKING (no dedicated mate pose).
+    // Animation state selects which cel cycle plays. A committed eat cycle (see
+    // _commitEatCycle) is the SOLE trigger for the EATING pose: once a bite lands the
+    // bird holds planted and the EATING cel cycle plays all the way to its end, and NO
+    // other condition can show it. Outside a commitment the pose follows motion only —
+    // WALKING while moving, LOOKING (idle stand) otherwise. This is deliberate: the old
+    // fallback here also lit EATING whenever the bird merely stood still in a FORAGING/
+    // FEEDING state, so a hungry bird decelerating onto a plant (or nudged below the walk
+    // gate for a frame while travelling) flashed a stray eating frame that never played to
+    // a full cycle — the "flickering in and out of eating" report. A real bite always
+    // commits (forage / FEEDING), so gating purely on the commit loses no genuine meal; it
+    // only removes the phantom sub-cycle flashes. Mating reads as LOOKING (no mate pose).
     const _inEatCycle = this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil;
     let _animState;
     if (_inEatCycle) _animState = 'eating';
     else if (_moving) _animState = 'walking';
-    else if (this.isFeeding || this.currentState === MOA_STATE.FEEDING || this.currentState === MOA_STATE.FORAGING) _animState = 'eating';
     else _animState = 'looking';
     let sprite = _tint
       ? EntitySprites.getMoaSpriteTinted(this.animTime, _moving, _tint, this.currentState === MOA_STATE.MATING)

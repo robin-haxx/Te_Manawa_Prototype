@@ -275,6 +275,19 @@ function preload(){
     loadImage(encodeURI(ENV + 'Storm/Lightning 3/Storm3_Lightning_00000.png'), () => {}, () => console.warn('[strips] storm_bolt 3'))
   ]);
 
+  // Timeline UI art (sprites/UI/): the deep-time bar/track, the playhead, and one marker per
+  // eruption event (4 markers → the 4 eruptions, in chronological order). Handed to the HUD,
+  // which stretches the bar across the axis, centres the playhead on the current year, and
+  // stamps a marker at each eruption — falling back to the drawn line/dot/tick if any is
+  // missing. Real failure callbacks — never a silent () => {} (CLAUDE.md §conventions).
+  if (typeof InstallHUD !== 'undefined') {
+    const UID = 'sprites/UI/';
+    InstallHUD._tlBar      = loadImage(UID + 'Timeline_Bar.png',      () => {}, () => console.warn('Could not load Timeline_Bar.png'));
+    InstallHUD._tlPlayhead = loadImage(UID + 'Timeline_Playhead.png', () => {}, () => console.warn('Could not load Timeline_Playhead.png'));
+    InstallHUD._tlMarkers  = [1, 2, 3, 4].map(n =>
+      loadImage(`${UID}Timeline_Marker_${n}.png`, () => {}, () => console.warn(`Could not load Timeline_Marker_${n}.png`)));
+  }
+
   preloadAudio();
 }
 

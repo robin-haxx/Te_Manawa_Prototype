@@ -244,18 +244,21 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     //     the `browseFloor` stub) and yields food in proportion — then it regrows in
     //     place. Moa crop the bush; they do not clear-fell it (herbivory ≠ removal).
     //   · UNSUITABLE HABITAT is what makes trees disappear. A canopy tree the glacial
-    //     pushes outside the forest band DIES BACK (`forestDieback`): it shrinks away
-    //     to open ground rather than standing as a wilted sprite, so the forest visibly
-    //     RETREATS in the cold. It survives in place as rootstock and regrows (fast,
-    //     `forestRecoverRate`) when the band climbs back over it — the forest sprouts
-    //     back in the interglacial, reversible with the climate and needing no
-    //     re-dispersal (kiosk-safe; unattended cycles never ratchet the forest away).
+    //     pushes outside the forest band DIES BACK (`forestDieback`): by default it FALLS
+    //     OVER and fades away (`forestDiebackFall`, over `forestDiebackFallMs`) rather than
+    //     shrinking in place, so the forest visibly RETREATS in the cold as trees topple.
+    //     It survives in place as rootstock and regrows (fast, `forestRecoverRate`) — standing
+    //     back up — when the band climbs back over it, so the interglacial forest sprouts
+    //     back, reversible with the climate and needing no re-dispersal (kiosk-safe;
+    //     unattended cycles never ratchet the forest away).
     // Health stays decoupled from live-cover (MISTAKES.md), so none of this desaturates
     // the scene as animals graze — only ash/regime/recruitment move the readout.
     browseBite:        0.30,   // most of a plant's growth a single bite removes (a little smaller each time)
     browseFloor:       0.30,   // browsing can never crop a plant below this stub — it always survives to regrow
-    forestDieback:     true,   // suppressed canopy trees shrink away (disappear), not just wilt in place
-    forestDiebackRate: 0.045,  // growth lost per plant-update while a tree sits outside the forest band
+    forestDieback:     true,   // suppressed canopy trees disappear (not just wilt in place) as the forest retreats
+    forestDiebackFall: true,   // …by FALLING OVER and fading away (set false for the legacy shrink-in-place)
+    forestDiebackFallMs: 800,  // how long a tree's fall-and-fade plays (real ms; render-clock, pace-independent)
+    forestDiebackRate: 0.045,  // legacy shrink: growth lost per plant-update while a tree sits outside the band (used only when forestDiebackFall:false)
     forestRecoverRate: 0.020,  // regrowth per plant-update for canopy trees (recovery + sapling establishment)
 
     // NO HYBRIDISING. The whole ground-bird guild (all 5 moa + the goose + the mōho / NI

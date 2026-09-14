@@ -253,6 +253,16 @@ class Plant {
     this.parentPlaceable = null;
     this.favouredSpecies = null;   // set by a placeable that plants a species-specific resource
     this.suppressed = false;       // true when a forest tree is outside the contracted forest band
+
+    // Glacial-onset death animation (see update() die-back + _renderSprite). A canopy tree the
+    // contracting forest band has pushed onto unsuitable ground FALLS OVER and fades away rather
+    // than shrinking in place. _toppling arms it, _toppleStart anchors the fall to the REAL clock
+    // (so it plays smoothly in render() regardless of the strided update batch), _toppleDir is the
+    // random side it topples toward. It still ends as invisible rootstock (growth 0) and regrows
+    // upright when suitable habitat returns, so the ecology is unchanged — only the visual differs.
+    this._toppling = false;
+    this._toppleStart = 0;
+    this._toppleDir = 1;
     
     // Pre-calculate visual variation
     this.visualOffset = random(-1, 1);
@@ -312,14 +322,39 @@ class Plant {
         // culled) and regrows where it stood when the band climbs back over it in the
         // interglacial, so the retreat is reversible with the climate and never needs
         // re-dispersal (kiosk-safe). This is the "unsuitable habitat removes cover"
-        // lesson — distinct from browsing, which only prunes. Knob: forestDiebackRate.
+        // lesson — distinct from browsing, which only prunes.
         if (LEVEL_MECHANICS.forestDieback) {
-          this.growth -= (LEVEL_MECHANICS.forestDiebackRate ?? 0.045);
-          if (this.growth < 0) this.growth = 0;
+          if (LEVEL_MECHANICS.forestDiebackFall !== false) {
+            // FALL OVER AND FADE (the default). The tree keeps its full size while it topples —
+            // the animation is drawn in _renderSprite off the REAL clock (millis), so it plays
+            // smoothly whatever the deep-time pace or plant-batch stride. update() only ARMS it
+            // and, once the fall has fully played out, drops it to rootstock (growth 0). The end
+            // state is identical to the old shrink; only the transition is a fall, not a shrink.
+            const fallMs = LEVEL_MECHANICS.forestDiebackFallMs ?? 800;
+            const now = (typeof millis === 'function') ? millis() : 0;
+            if (!this._toppling) {
+              if (this.growth > 0.05) {
+                this._toppling = true;
+                this._toppleStart = now;
+                this._toppleDir = random() < 0.5 ? -1 : 1;
+              } else {
+                this.growth = 0;                          // already a stub — just become rootstock
+              }
+            } else if (now - this._toppleStart >= fallMs) {
+              this.growth = 0;                            // the fall has finished — hold as invisible rootstock
+            }
+          } else {
+            // Legacy shrink-in-place (set forestDiebackFall:false to restore). Knob: forestDiebackRate.
+            this.growth -= (LEVEL_MECHANICS.forestDiebackRate ?? 0.045);
+            if (this.growth < 0) this.growth = 0;
+          }
         }
         return;
       }
       this.suppressed = false;
+      // Suitable habitat has returned over this tree — cancel any fall so it stands back up
+      // and regrows upright in place (handleGrowth climbs it from the rootstock growth).
+      if (this._toppling) { this._toppling = false; this._toppleStart = 0; }
     }
 
     const newModifier = seasonManager.getPlantModifier(this.biomeKey);
@@ -547,6 +582,18 @@ class Plant {
     return mod;
   }
 
+  // Glacial-onset fall progress, 0..1, or -1 when the tree isn't toppling. Driven by the
+  // REAL clock (millis, set when update() armed the fall) so the animation is smooth every
+  // frame regardless of the strided plant-update batch. _renderSprite reads it to rotate the
+  // tree over onto its side and fade it out. Clamped 0..1.
+  _toppleProgress() {
+    if (!this._toppling) return -1;
+    const dur = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.forestDiebackFallMs) || 800;
+    const now = (typeof millis === 'function') ? millis() : 0;
+    const p = (now - this._toppleStart) / dur;
+    return p < 0 ? 0 : (p > 1 ? 1 : p);
+  }
+
   // ============================================
   // MAIN RENDER METHOD
   // ============================================
@@ -621,11 +668,18 @@ class Plant {
     const anchorBase = meta ? meta.anchor === 'base' : false;
     const setScale = meta ? meta.scale : 1.0;
 
-    // Shadow - draw directly without transform
+    // Glacial-onset fall (see update() die-back). -1 = standing normally; 0..1 = toppling.
+    const tprog = this._toppleProgress();
+
+    // Shadow - draw directly without transform. It stays flat on the ground and fades out
+    // with the falling tree (a felled trunk casts less and less shadow as it goes over).
     if (CONFIG.drawShadows) {
-      noStroke();
-      fill(0, 0, 0, dormant ? 10 : 20);
-      ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+      const shA = (dormant ? 10 : 20) * (tprog >= 0 ? (1 - tprog) : 1);
+      if (shA > 0.5) {
+        noStroke();
+        fill(0, 0, 0, shA);
+        ellipse(px + 1, py + 1, displaySize * 1.2, displaySize * 0.6);
+      }
     }
 
     // Footprint width. Where a dedicated growth sequence exists the artwork
@@ -653,6 +707,23 @@ class Plant {
 
     // 'base' art stands on the ground point; centred art straddles it.
     const offsetY = anchorBase ? -drawH : -drawH * 0.5;
+
+    // TOPPLING — the tree falls over and fades away (glacial-onset habitat death). It pivots
+    // about the ground point (px,py) like a felled trunk, swinging from upright to nearly flat,
+    // and fades out near the end. Fade via drawingContext.globalAlpha (NOT per-frame tint — that
+    // rebakes the tint cache each frame and stutters; see memory per-frame-tint-stutter); push()
+    // saved the alpha and pop() restores it. Drawn instead of the normal sway/direct path.
+    if (tprog >= 0) {
+      const ease = tprog * tprog * Math.sqrt(tprog);          // ~tprog^2.5 — slow start, accelerating fall
+      const angle = this._toppleDir * 1.45 * ease;            // upright → ~83° over onto its side
+      push();
+      translate(px, py);
+      rotate(angle);
+      drawingContext.globalAlpha = Math.max(0, 1 - tprog * tprog * tprog);   // opaque through the fall, fades at the end
+      image(sprite, -halfW, offsetY, drawW, drawH);
+      pop();
+      return;
+    }
 
     // Only use push/pop if we need rotation (sway). The storm boost lifts _swayMod
     // above the threshold even for low-modifier plants, so the whole canopy whips.

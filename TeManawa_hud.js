@@ -39,9 +39,9 @@ const TM_TIME = {
   // Ash-cloud takeover: one 1080p frame sequence (sprites/Environmental/VolcanicAsh/
   // VolcanicAsh_Cloud_*) played once at cloudFps. The 42 frames ARE the effect — they
   // rise from clear, blanket the screen, then dissipate — so the window length is just
-  // the sequence length: 42 / 6 fps = 7000 ms. See renderAshCloud.
-  cloudFps:      6,       // ash-cloud playback rate (frames/sec) — the artwork is drawn for 6
-  cloudMillis: 7000,      // = ASH_CLOUD_FRAMES (42) / cloudFps · 1000; keep the two in step
+  // the sequence length: 42 / 8 fps = 5250 ms. See renderAshCloud.
+  cloudFps:      8,       // ash-cloud playback rate (frames/sec) — bumped 6→8 for a smoother cloud
+  cloudMillis: 5250,      // = ASH_CLOUD_FRAMES (42) / cloudFps · 1000; keep the two in step
   // read-through to DeepTime so older references keep working
   get yearsStart() { return DeepTime.yearsStart; },
   get yearsEnd()   { return DeepTime.yearsEnd; },
@@ -754,15 +754,56 @@ const InstallHUD = {
     image(e.buf, dx - 2, dy - 2);
   },
 
-  // The shared timeline body — the deep-time axis, the monotonic uplift wedge, the two
+  // ---- timeline sprite art (sprites/UI/, loaded in preload; assigned to these fields there).
+  // Each draw helper returns true when it drew the sprite, so the timeline bodies fall back to
+  // their original drawn line / tick / dot whenever a sprite is missing (kiosk-safe; also keeps
+  // the boot harness — where loadImage is stubbed — on a valid path). Sizes are in px.
+  TL_BAR_H: 14,          // stretched bar/track thickness
+  TL_PLAYHEAD_H: 26,     // playhead token height (66×66 art, centred on the axis)
+  TL_MARKER_H: 30,       // event-marker pin height (38×54 art; its tip rests on the bar)
+  _tlOK(img) { return !!(img && img.width > 0 && img.height > 0); },
+
+  // The bar/track sprite stretched across [x0, x0+w], centred on the axis at `ay`. → true if drawn.
+  _tlBarSprite(x0, w, ay) {
+    if (!this._tlOK(this._tlBar)) return false;
+    const h = this.TL_BAR_H;
+    noTint(); imageMode(CORNER);
+    image(this._tlBar, x0, ay - h / 2, w, h);
+    return true;
+  },
+  // The playhead token centred on the axis at (px, ay). → true if drawn.
+  _tlPlayheadSprite(px, ay) {
+    const ph = this._tlPlayhead;
+    if (!this._tlOK(ph)) return false;
+    const h = this.TL_PLAYHEAD_H, wd = h * (ph.width / ph.height);
+    noTint(); imageMode(CENTER);
+    image(ph, px, ay, wd, h);
+    imageMode(CORNER);
+    return true;
+  },
+  // The event-marker pin for eruption `idx` (0-based), its downward tip resting on the bar at
+  // (mx, ay) so the pin body floats above the axis. → true if drawn.
+  _tlMarkerSprite(idx, mx, ay) {
+    const arr = this._tlMarkers, mk = arr && arr[idx % arr.length];
+    if (!this._tlOK(mk)) return false;
+    const h = this.TL_MARKER_H, wd = h * (mk.width / mk.height);
+    noTint(); imageMode(CENTER);
+    image(mk, mx, ay - h / 2, wd, h);   // centre half a pin-height up → its bottom tip sits on the axis
+    imageMode(CORNER);
+    return true;
+  },
+
+  // The shared timeline body — the deep-time axis, the monotonic uplift wedge, the four
   // eruption markers and the playhead — drawn relative to an axis line at `ay`. Both the
   // debug (top) and visitor (bottom) timelines call this, so the two can never drift apart;
   // each caller owns its own strip background, year and fast-forward badge. Assumes an
   // active push().
   _timelineBody(g, x0, w, ay) {
     const yr = DeepTime.yearsBP;
-    // ---- axis ----------------------------------------------
-    stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    // ---- axis (bar sprite, or the drawn line as fallback) --
+    if (!this._tlBarSprite(x0, w, ay)) {
+      stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    }
     // ---- uplift: monotonic, no reading required ------------
     const upY = ay + 7, upH = 6;
     noStroke(); fill(74, 66, 52, 160); rect(x0, upY, w, upH, 3);
@@ -773,24 +814,27 @@ const InstallHUD = {
     vertex(upNow, upY + upH);
     vertex(upNow, upY + upH - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the two eruptions ---------------------------------
+    // ---- the eruptions (marker pins, or drawn ticks) -------
     // The run opens and closes on the same kind of event. Glacial markers are
     // climate instrumentation and live in the debug overlay now — and LGM at
     // 30 ka sat ~13 px from Oruanui at 25.5 ka, so they overlapped permanently.
+    let ei = 0;
     for (const m of DEEP_TIME_MARKERS) {
       if (m.kind !== 'eruption') continue;
       const mx = DeepTime.yearToX(m.yearsBP, x0, w);
-      stroke(224, 138, 92, 210); strokeWeight(2);
-      line(mx, ay - 5, mx, ay + 5);
-      // Anchor the end labels inward so they don't clip off the strip.
+      const drewPin = this._tlMarkerSprite(ei, mx, ay);
+      if (!drewPin) { stroke(224, 138, 92, 210); strokeWeight(2); line(mx, ay - 5, mx, ay + 5); }
+      // Anchor the end labels inward so they don't clip off the strip; lift them above the pin.
       const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
+      const labelY = drewPin ? ay - this.TL_MARKER_H - 4 : ay - 8;
       this._blitText(m.label, OpenDyslexic, 'dys', 11,
-                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, ay - 8, [224, 138, 92, 225]);
+                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, labelY, [224, 138, 92, 225]);
+      ei++;
     }
-    // ---- playhead ------------------------------------------
+    // ---- playhead (token sprite, or the drawn dot) ---------
     const px = DeepTime.yearToX(yr, x0, w);
     stroke(255, 210, 120, 130); strokeWeight(1); line(px, ay - 14, px, upY + upH + 2);
-    noStroke(); fill(255, 210, 120); circle(px, ay, 9);
+    if (!this._tlPlayheadSprite(px, ay)) { noStroke(); fill(255, 210, 120); circle(px, ay, 9); }
   },
 
   // DEBUG timeline — the original top strip: dark bar, the small year, the shared body and
@@ -837,8 +881,10 @@ const InstallHUD = {
   // a black outline so it stays legible over any climate colour. Assumes an active push().
   _visitorTimelineBody(g, x0, w, ay) {
     const yr = DeepTime.yearsBP;
-    // ---- the single white axis line -------------------------
-    stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    // ---- the bar/track (sprite, or the single white line as fallback) ----
+    if (!this._tlBarSprite(x0, w, ay)) {
+      stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    }
     // ---- uplift: a faint white wedge on the line (no backing bar) ----
     const upNow = DeepTime.yearToX(yr, x0, w);
     const upH = 6;
@@ -848,20 +894,25 @@ const InstallHUD = {
     vertex(upNow, ay);
     vertex(upNow, ay - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the two eruptions, in white ------------------------
+    // ---- the eruptions (marker pins, or white ticks) --------
+    let ei = 0;
     for (const m of DEEP_TIME_MARKERS) {
       if (m.kind !== 'eruption') continue;
       const mx = DeepTime.yearToX(m.yearsBP, x0, w);
-      stroke(255); strokeWeight(2);
-      line(mx, ay - 5, mx, ay + 5);
+      const drewPin = this._tlMarkerSprite(ei, mx, ay);
+      if (!drewPin) { stroke(255); strokeWeight(2); line(mx, ay - 5, mx, ay + 5); }
       const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
+      const labelY = drewPin ? ay - this.TL_MARKER_H - 4 : ay - 8;
       this._blitText(m.label, OpenDyslexic, 'dys', 11,
-                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, ay - 8, [255, 255, 255, 235]);
+                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, labelY, [255, 255, 255, 235]);
+      ei++;
     }
-    // ---- playhead: white dot, black outline -----------------
+    // ---- playhead (token sprite, or the white dot fallback) ----
     const px = DeepTime.yearToX(yr, x0, w);
-    stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
-    stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
+    if (!this._tlPlayheadSprite(px, ay)) {
+      stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
+      stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
+    }
   },
 
   // VISITOR year — the one always-on readout, large and lowered to float over the northern
@@ -1135,7 +1186,7 @@ const InstallHUD = {
   // papercraft-flicker plume + 20 gathering puffs — all that per-element animation is gone.)
   // ==========================================================
 
-  ASH_CLOUD_FRAMES: 42,   // VolcanicAsh_Cloud_00000..00041 — keep TM_TIME.cloudMillis = this / cloudFps · 1000
+  ASH_CLOUD_FRAMES: 42,   // VolcanicAsh_Cloud_00000..00041 — keep TM_TIME.cloudMillis = this / cloudFps · 1000 (42/8 = 5250 ms)
 
   // Guard against oversized art: downsample so the LONGEST side is <= maxDim. The shipped
   // frames are 1920×1080, so at the 1920 cap used below this is a no-op — native 1080p is kept —
@@ -1188,7 +1239,7 @@ const InstallHUD = {
   // Draw the ash cover: an OPAQUE ashy-white backdrop with the cloud frame sequence over it.
   // The window (g._ashCloudUntil) is armed to now + cloudMillis by the button (fireEruption /
   // fireEruptionReseed), an auto/timeline eruption and the attract reset, so `now → _ashCloudUntil`
-  // maps to frame 0 → last at exactly cloudFps (cloudMillis is 42/6 s).
+  // maps to frame 0 → last at exactly cloudFps (cloudMillis is 42/8 s).
   //
   // BACKDROP: the white FLASH only reaches ~80%, so the terrain morph / sim-state SWITCH that the
   // eruption is meant to hide used to read through the thin early cloud frames and the flash. So a
@@ -1222,7 +1273,7 @@ const InstallHUD = {
     else if (elapsed < BACK_CLEAR_MS) back = 1 - (elapsed - BACK_HOLD_MS) / (BACK_CLEAR_MS - BACK_HOLD_MS);
     else                              back = 0;
 
-    let idx = Math.floor(elapsed * TM_TIME.cloudFps / 1000);       // advance at cloudFps (6 fps)
+    let idx = Math.floor(elapsed * TM_TIME.cloudFps / 1000);       // advance at cloudFps (8 fps)
     if (idx < 0) idx = 0; else if (idx >= N) idx = N - 1;          // hold the last frame if the window outruns the art
     const fr = A.frames[idx];
 

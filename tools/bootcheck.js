@@ -395,13 +395,26 @@ try{
   chk(!!(M && M.forestContraction && M.forestDieback), 'forest die-back is enabled in the level');
   const ht=new Plant_(300,300,'tawa',terrain,bk);            // tawa ∈ FOREST_TREES, NOT a cold refuge
   chk(ht._forestTree===true, 'a tawa is flagged a canopy tree (subject to die-back)');
+  const fallMs=(M && M.forestDiebackFallMs)||800;
   ht.elevation=0.95; ht.growth=1.0; ht.alive=true;
-  for(let i=0;i<400;i++) ht.update(season);
+  // FALL OVER, don't shrink: one update on unsuitable ground ARMS the fall — the tree keeps its
+  // full size and topples over the real clock, only dropping to rootstock once the fall finishes.
+  _t+=16; ht.update(season);
   chk(ht.suppressed===true, 'a canopy tree above the forest band is on unsuitable habitat (suppressed)');
-  chk(ht.growth<=0.05, 'unsuitable habitat dies the tree back to nothing (it disappears)');
+  chk(ht._toppling===true, 'a died-back tree FALLS OVER (topple armed) rather than shrinking in place');
+  chk(ht._toppleDir===1 || ht._toppleDir===-1, 'the fall has a random left/right direction');
+  chk(ht.growth>0.5, 'the tree holds its full size WHILE it topples (it falls, then fades — no shrink)');
+  _t += Math.floor(fallMs/2);                                // real time passes to mid-fall (no update → no finalize)
+  const mid=ht._toppleProgress();
+  chk(mid>0.3 && mid<0.8, `mid-fall the tree is partway over on the real clock (progress ${mid.toFixed(2)})`);
+  _t += fallMs;                                              // let the fall play fully out
+  for(let i=0;i<400;i++){ _t+=16; ht.update(season); }
+  chk(ht.growth<=0.05, 'once the fall finishes the tree drops to nothing (invisible rootstock)');
   chk(ht.alive===true, 'a died-back tree survives in place as rootstock — never yanked from the world');
+  chk(ht._toppleProgress()===1, 'a fully-fallen tree reads complete (progress 1 — faded out)');
   ht.elevation=0.30;                                         // the band climbs back over it
   for(let i=0;i<400;i++) ht.update(season);
+  chk(ht._toppling===false, 'the tree stands back up when habitat returns (topple cleared)');
   chk(ht.suppressed===false && ht.growth>0.5, 'the forest regrows in place when suitable habitat returns');
 
   // BEECH is the GLACIAL REFUGIUM tree — still a canopy die-back tree, but EXEMPT from the forest-
