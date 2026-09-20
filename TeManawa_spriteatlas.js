@@ -39,6 +39,20 @@ const SpriteAtlas = {
   MAX_PAGE: 4096,   // page dimension cap — Chrome guarantees >= 4096; kiosk-safe
   GUTTER: 2,        // transparent px between frames so bilinear scaling can't bleed a neighbour
 
+  // Store each frame on the atlas at this fraction of its native size. 455 of the
+  // sprites are authored at a uniform 500×500 regardless of how large they ever draw,
+  // and the cast is minified ~2× at the median even at 4K — so the native-1:1 atlas held
+  // 4–9× more texels than are ever sampled, packing to 7 pages of ~4018² = ~407 MB of
+  // live GL texture, far over the ≤2048²/5-page/~80 MB budget in BUILD_V3 §5.2. On an
+  // integrated GPU (shared system RAM) that texture pressure is a real cost. Packing at
+  // 0.5× cuts it to ~100 MB / ~2 pages — fewer page switches also tighten the GL batch —
+  // and is visually indistinguishable for the median/p90 sprite. Override at startup with
+  // ?atlas=full (1×), ?atlas=half, or ?atlas=<0..1>; or set SpriteAtlas.packScale before
+  // build(). NOTE: the pack scale never ADMITS a sprite that was too big at native size —
+  // _packable() still tests the ORIGINAL dimensions, so the full-screen ash cover etc.
+  // stay out of the atlas regardless.
+  packScale: 0.5,
+
   enabled: false,
   pages: [],        // p5.Graphics atlas pages, GPU-resident for the life of the page
   frameCount: 0,    // unique source frames packed (for the debug overlay / harness)
@@ -47,6 +61,20 @@ const SpriteAtlas = {
 
   // An AtlasFrame? (what the global-image wrapper and drawTo() branch on.)
   isFrame(o) { return !!(o && o.__atlas); },
+
+  // The pack scale actually in force — packScale, clamped, with a startup ?atlas= override.
+  _effectiveScale() {
+    let f = this.packScale;
+    try {
+      if (typeof window !== 'undefined' && window.location && typeof URLSearchParams === 'function') {
+        const q = new URLSearchParams(window.location.search).get('atlas');
+        if (q === 'full' || q === '1') f = 1;
+        else if (q === 'half') f = 0.5;
+        else if (q != null) { const n = parseFloat(q); if (n > 0 && n <= 1) f = n; }
+      }
+    } catch (_) { /* no URL (harness) — use packScale */ }
+    return Math.max(0.1, Math.min(1, f || 1));
+  },
 
   // A loaded source image we can pack: a real object with real dims, not already a
   // frame, and small enough to sit on a page. A failed load (width 0), a boolean
@@ -82,33 +110,42 @@ const SpriteAtlas = {
 
     if (!uniq.length) { this._installShim(); return; }   // nothing to pack, but the wrapper is harmless
 
-    // 2. Shelf bin-pack the unique images into pages. Sort tallest-first so shelves
-    //    stay tight. Simple and good enough — packing efficiency only affects how
-    //    many pages we end up with, not correctness.
+    // The on-page footprint of a source is its native size × the pack scale (fix #4).
+    // width/height stay native on the frame, so every downstream aspect / draw-size
+    // calculation is unchanged; only the STORED texels shrink.
+    const f = this._effectiveScale();
+    const pw = (img) => Math.max(1, Math.round(img.width * f));
+    const ph = (img) => Math.max(1, Math.round(img.height * f));
+
+    // 2. Shelf bin-pack the unique images into pages, using their SCALED footprint.
+    //    Sort tallest-first so shelves stay tight. Simple and good enough — packing
+    //    efficiency only affects how many pages we end up with, not correctness.
     const order = uniq.slice().sort((a, b) => b.height - a.height);
     const G = this.GUTTER, MAX = this.MAX_PAGE;
-    const placements = [];     // { img, page, x, y }
+    const placements = [];     // { img, page, x, y, w, h }  (w/h = scaled on-page size)
     let pageIdx = 0, x = G, y = G, shelfH = 0;
     const newPage = () => { pageIdx++; x = G; y = G; shelfH = 0; };
     for (const img of order) {
-      const w = img.width, h = img.height;
+      const w = pw(img), h = ph(img);
       if (x + w + G > MAX) { x = G; y += shelfH + G; shelfH = 0; }   // wrap to next shelf
       if (y + h + G > MAX) { newPage(); }                            // shelf overflows page
-      placements.push({ img, page: pageIdx, x, y });
+      placements.push({ img, page: pageIdx, x, y, w, h });
       x += w + G;
       if (h > shelfH) shelfH = h;
     }
     const nPages = pageIdx + 1;
 
     // 3. Create each page at just the size it needs (never larger than MAX) and blit
-    //    every source into it at native 1:1 (no scaling, so the copy is pixel-exact).
-    //    pixelDensity(1) matches the project convention — the page backing must be
-    //    logical-sized or the sub-rect coordinates would be off on a hi-dpi buffer.
+    //    every source into it SCALED (1:f). A downscaling blit is what shrinks the
+    //    stored texels; the bilinear filter keeps it clean, and the median sprite is
+    //    already minified past this scale on screen. pixelDensity(1) matches the
+    //    project convention — the page backing must be logical-sized or the sub-rect
+    //    coordinates would be off on a hi-dpi buffer.
     const pageDims = new Array(nPages).fill(0).map(() => ({ w: 0, h: 0 }));
     for (const p of placements) {
       const d = pageDims[p.page];
-      if (p.x + p.img.width + G > d.w) d.w = Math.min(MAX, p.x + p.img.width + G);
-      if (p.y + p.img.height + G > d.h) d.h = Math.min(MAX, p.y + p.img.height + G);
+      if (p.x + p.w + G > d.w) d.w = Math.min(MAX, p.x + p.w + G);
+      if (p.y + p.h + G > d.h) d.h = Math.min(MAX, p.y + p.h + G);
     }
     this.pages = [];
     for (let i = 0; i < nPages; i++) {
@@ -120,17 +157,18 @@ const SpriteAtlas = {
     }
     for (const p of placements) {
       const pg = this.pages[p.page];
-      if (pg && pg.image) pg.image(p.img, p.x, p.y);   // graphics-method draw of a REAL image — 1:1, crisp
+      if (pg && pg.image) pg.image(p.img, p.x, p.y, p.w, p.h);   // scaled 1:f blit of a REAL image
     }
 
     // 4. Build image -> frame, then write the frame into every recorded slot. The
-    //    frame's width/height mirror the source so downstream aspect maths are
-    //    unchanged; sx/sy/sw/sh are the sub-rectangle on the page.
+    //    frame's width/height mirror the SOURCE so downstream aspect maths + draw sizes
+    //    are unchanged; sx/sy/sw/sh are the (scaled) sub-rectangle on the page that the
+    //    render code samples FROM.
     const frameFor = new Map();
     for (const p of placements) {
       frameFor.set(p.img, {
         __atlas: true, __page: this.pages[p.page],
-        sx: p.x, sy: p.y, sw: p.img.width, sh: p.img.height,
+        sx: p.x, sy: p.y, sw: p.w, sh: p.h,
         width: p.img.width, height: p.img.height
       });
     }
@@ -141,9 +179,10 @@ const SpriteAtlas = {
 
     this.frameCount = uniq.length;
     this.pageCount = nPages;
+    this.scale = f;
     this._installShim();
     this.enabled = true;
-    console.log(`[atlas] packed ${uniq.length} frames into ${nPages} page(s), ` +
+    console.log(`[atlas] packed ${uniq.length} frames into ${nPages} page(s) at ${f}× scale, ` +
                 `${slots.length} references rebound`);
   },
 

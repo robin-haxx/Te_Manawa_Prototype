@@ -179,8 +179,9 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   species: {
     // The goose registers under the `moa` base type (own Goose class) so it lives in
     // the moa list and shares the grazer engine — hence it belongs in this list too.
-    // The kiwi (own Kiwi class) is the forest-floor member of the same guild.
-    moa: ['upland_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'heavy_footed_moa', 'giant_goose', 'north_island_takahe', 'north_island_brown_kiwi'],
+    // The kiwi (own Kiwi class) is the forest-floor member of the same guild; Finsch's
+    // duck (own FinschDuck class) is the open-country grazing duck of the same guild.
+    moa: ['upland_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'heavy_footed_moa', 'giant_goose', 'north_island_takahe', 'north_island_brown_kiwi', 'finschs_duck'],
     eagle: ['eyles_harrier']
   },
   startingSpecies: 'upland_moa',
@@ -197,12 +198,14 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     heavy_footed_moa: 2,   // lowland flats specialist (open-country)
     giant_goose:      5,   // North Island goose — open grassland/coast (open-country)
     north_island_takahe: 3, // mōho — territorial rail of grassland/scrub/forest margin (open-country)
-    north_island_brown_kiwi: 3 // kiwi — forest-floor prober (NOT open-country; the warm-phase mirror)
+    north_island_brown_kiwi: 3, // kiwi — forest-floor prober (NOT open-country; the warm-phase mirror)
+    finschs_duck:     5    // Finsch's duck — abundant open-country grazing duck (open-country)
   },
 
-  // kōkako + huia are flighted forest birds (their own otherEntities lists, like the
-  // kererū). Huia spawn as bonded pairs, so an even count = whole pairs.
-  initialEntityCounts: { moa: 15, eagle: 3, kereru: 1, kokako: 1, huia: 2 },
+  // kōkako + huia + tūī are flighted forest birds (their own otherEntities lists, like the
+  // kererū). Huia spawn as bonded pairs, so an even count = whole pairs. The tūī is the
+  // strong-flying nectar-feeder of the group.
+  initialEntityCounts: { moa: 15, eagle: 3, kereru: 1, kokako: 1, huia: 2, tui: 2 },
 
   // Timings only — the economy is gone; startingMauri and the placeable toolbar
   // no longer exist. (`seasonDuration` is vestigial: the cold cycle is driven by
@@ -241,18 +244,21 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     //     the `browseFloor` stub) and yields food in proportion — then it regrows in
     //     place. Moa crop the bush; they do not clear-fell it (herbivory ≠ removal).
     //   · UNSUITABLE HABITAT is what makes trees disappear. A canopy tree the glacial
-    //     pushes outside the forest band DIES BACK (`forestDieback`): it shrinks away
-    //     to open ground rather than standing as a wilted sprite, so the forest visibly
-    //     RETREATS in the cold. It survives in place as rootstock and regrows (fast,
-    //     `forestRecoverRate`) when the band climbs back over it — the forest sprouts
-    //     back in the interglacial, reversible with the climate and needing no
-    //     re-dispersal (kiosk-safe; unattended cycles never ratchet the forest away).
+    //     pushes outside the forest band DIES BACK (`forestDieback`): by default it FALLS
+    //     OVER and fades away (`forestDiebackFall`, over `forestDiebackFallMs`) rather than
+    //     shrinking in place, so the forest visibly RETREATS in the cold as trees topple.
+    //     It survives in place as rootstock and regrows (fast, `forestRecoverRate`) — standing
+    //     back up — when the band climbs back over it, so the interglacial forest sprouts
+    //     back, reversible with the climate and needing no re-dispersal (kiosk-safe;
+    //     unattended cycles never ratchet the forest away).
     // Health stays decoupled from live-cover (MISTAKES.md), so none of this desaturates
     // the scene as animals graze — only ash/regime/recruitment move the readout.
     browseBite:        0.30,   // most of a plant's growth a single bite removes (a little smaller each time)
     browseFloor:       0.30,   // browsing can never crop a plant below this stub — it always survives to regrow
-    forestDieback:     true,   // suppressed canopy trees shrink away (disappear), not just wilt in place
-    forestDiebackRate: 0.045,  // growth lost per plant-update while a tree sits outside the forest band
+    forestDieback:     true,   // suppressed canopy trees disappear (not just wilt in place) as the forest retreats
+    forestDiebackFall: true,   // …by FALLING OVER and fading away (set false for the legacy shrink-in-place)
+    forestDiebackFallMs: 800,  // how long a tree's fall-and-fade plays (real ms; render-clock, pace-independent)
+    forestDiebackRate: 0.045,  // legacy shrink: growth lost per plant-update while a tree sits outside the band (used only when forestDiebackFall:false)
     forestRecoverRate: 0.020,  // regrowth per plant-update for canopy trees (recovery + sapling establishment)
 
     // NO HYBRIDISING. The whole ground-bird guild (all 5 moa + the goose + the mōho / NI
@@ -366,8 +372,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     flyerFleeMult:       1.0,    // flee speed = baseSpeed×this (i.e. cruise, no speed-up) — well below the harrier's 0.6 hunt speed so a flee is calm and a chase resolves
 
     // target = comfortable population (harrier crops above it, breeding tapers to it);
-    // floor = protected minimum (never hunted/starved below it). Targets sum to ~38
-    // grazers + ~22 flyers, well under the shared 60-moa cap and the flyer caps.
+    // floor = protected minimum (never hunted/starved below it). Targets sum to ~50
+    // grazers + ~30 flyers, under the shared 60-moa cap and the per-species flyer caps.
     speciesTargets: {
       upland_moa:          { target: 6, floor: 2 },
       little_bush_moa:     { target: 6, floor: 2 },
@@ -377,9 +383,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
       giant_goose:         { target: 8, floor: 3 },
       north_island_takahe: { target: 5, floor: 2 },
       north_island_brown_kiwi: { target: 5, floor: 2 },
+      finschs_duck:        { target: 7, floor: 3 },   // abundant open-country grazer (second only to the goose)
       kereru:              { target: 10, floor: 3 },
       kokako:              { target: 6, floor: 2 },
-      huia:                { target: 6, floor: 2 }
+      huia:                { target: 6, floor: 2 },
+      tui:                 { target: 8, floor: 2 }
     },
 
     autoRefound:          true,

@@ -36,8 +36,12 @@ const TM_TIME = {
   // volcanic event on the clock shows the same rumble + cloud. On the button it also hides
   // the soft-regen hitch; the auto path has no regen, so there it is pure spectacle.
   erShakeMaxPx:  5,       // peak screen-shake amplitude (1080-space px); ~×1.5 at the crest
-  cloudMillis: 1900,      // ash-cloud takeover length: the cover starts full, hangs, then fades
-  cloudHangFrac: 0.22,    // share spent HANGING at full cover before the fade begins
+  // Ash-cloud takeover: one 1080p frame sequence (sprites/Environmental/VolcanicAsh/
+  // VolcanicAsh_Cloud_*) played once at cloudFps. The 42 frames ARE the effect — they
+  // rise from clear, blanket the screen, then dissipate — so the window length is just
+  // the sequence length: 42 / 8 fps = 5250 ms. See renderAshCloud.
+  cloudFps:      8,       // ash-cloud playback rate (frames/sec) — bumped 6→8 for a smoother cloud
+  cloudMillis: 5250,      // = ASH_CLOUD_FRAMES (42) / cloudFps · 1000; keep the two in step
   // read-through to DeepTime so older references keep working
   get yearsStart() { return DeepTime.yearsStart; },
   get yearsEnd()   { return DeepTime.yearsEnd; },
@@ -120,7 +124,8 @@ const TM_WIND = {
   bobSpeed:   0.05,    // bob phase advance per frame
   startSpread:0.30,    // gusts start staggered across this fraction just off the left edge
   minGapMs:   600,     // a new burst of the SAME kind can't start sooner than this (debounce presses)
-  animSpeed:  0.12     // gust cel cadence (frame = floor(anim·this)); the art is an 11-frame loop
+  animSpeed:  0.12,    // gust cel cadence (frame = floor(anim·this)); the art is an 11-frame FORWARD loop (0→10→0)
+  animSpeedJitter: 0.4 // ± share of animSpeed, PER GUST — so gusts cycle their 11 frames at different rates
 };
 window.TM_WIND = TM_WIND;
 
@@ -247,37 +252,47 @@ const InstallHUD = {
   // cleared state. Ash flash + Game.applyEruptionAt does the seek/morph/clear.
   // No-op at/older than the first event (prevEruption null). Swallowed inside the cooldown
   // so the button cannot be spammed into a flash strobe.
+  //
+  // applyEruptionAt runs a SYNCHRONOUS terrain morph (blocks for seconds), so the flash AND the
+  // ash-cloud cover are armed AFTER it returns, off a fresh millis(): otherwise the blocking bake
+  // eats the wall-clock windows and the cover never plays (it would start mid-sequence, or be
+  // wholly skipped). The screen is frozen on the last pre-fire frame across the bake, then the
+  // flash rises/falls and the cover plays out over the recovered land.
   fireEruption(g) {
     const now = millis();
     if (now < (g._tmErCooldownUntil || 0)) return false;
     const y = (typeof DeepTime !== 'undefined') ? DeepTime.prevEruption(DeepTime.yearsBP) : null;
     if (y == null) return false;                   // nothing older to revert to
-    g._tmAshUntil = now + TM_TIME.ashMillis;
-    g._tmAshMode  = 'tap';                         // flash rises and falls
-    g._ashCloudUntil = now + TM_TIME.cloudMillis;  // the sprite cover: quick roll-in, hang, fade
-    g._ashCloudMode  = 'tap';
     g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
     if (typeof g.applyEruptionAt === 'function') g.applyEruptionAt(y, DeepTime.eruptionByYear(y));
     else if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption', { reseed: false });
+    const after = millis();                        // AFTER the synchronous morph — windows start now
+    g._tmAshUntil = after + TM_TIME.ashMillis;
+    g._tmAshMode  = 'tap';                          // flash rises and falls
+    g._ashCloudUntil = after + TM_TIME.cloudMillis; // the 42-frame cover plays out over the fresh land
+    g._ashCloudMode  = 'tap';
     return true;
   },
 
   // A long press: SKIP forward to the next (younger) eruption and fire its clearing (plan
-  // §3.2); wraps to Kidnappers past Whakamaru — Oruanui is terminal (§3.5). The charge ramp
-  // in renderAshFlash has driven the flash to full by the time this fires, so the morph hitch
-  // lands under a bright frame and the flash falls from that peak. Fired from update() at the
-  // threshold.
+  // §3.2); wraps to Kidnappers past Whakamaru — Oruanui is terminal (§3.5). The charge ramp in
+  // renderAshFlash drove the flash to full while held, so the SYNCHRONOUS morph/reseed hitch
+  // lands under a bright frozen frame; the flash + ash-cloud cover are then armed AFTER the bake
+  // returns (fresh millis()) so their windows are not consumed by the freeze — the flash falls
+  // from the charged peak and the full 42-frame cover plays over the reseeded land. Fired from
+  // update() at the threshold.
   fireEruptionReseed(g) {
     const now = millis();
     g._tmErFired = true;                           // release must not also revert
-    g._tmAshUntil = now + TM_TIME.ashMillis;
-    g._tmAshMode  = 'hold';                         // flash falls from the charged peak
-    g._ashCloudUntil = now + TM_TIME.cloudMillis;   // cloud already rolled DOWN over the hold; now hang + fade
-    g._ashCloudMode  = 'hold';
     g._tmErCooldownUntil = now + TM_TIME.erCooldownMs;
     const y = (typeof DeepTime !== 'undefined') ? DeepTime.nextEruption(DeepTime.yearsBP) : null;
     if (y != null && typeof g.applyEruptionAt === 'function') g.applyEruptionAt(y, DeepTime.eruptionByYear(y));
     else if (typeof Kiosk !== 'undefined') Kiosk.resetToAttract(g, 'eruption-reseed', { reseed: true });
+    const after = millis();                        // AFTER the synchronous morph/reseed
+    g._tmAshUntil = after + TM_TIME.ashMillis;
+    g._tmAshMode  = 'hold';                         // flash falls from the charged peak
+    g._ashCloudUntil = after + TM_TIME.cloudMillis;
+    g._ashCloudMode  = 'hold';
   },
 
   // Is a FOREST/TUSSOCK boost climate-appropriate right now? FOREST (warm) suits the
@@ -345,10 +360,10 @@ const InstallHUD = {
 
     // AUTO/timeline eruption ramp — INDEPENDENT of the button state machine. Game.
     // _checkAutoEruptions arms _tmAutoErAt as the clock crosses an event; its own timer drives
-    // the SAME charge visuals (flash + rumble + ash-cloud roll — renderAshFlash /
-    // eruptionShakeOffset / ashCoverState all read it), then it fires the event IN PLACE (no
-    // seek/reseed) with the flash falling from the charged peak. No _tmErDownAt, so it never
-    // touches erDown/erUp/hold behaviour.
+    // the SAME charge visuals (flash + rumble — renderAshFlash / eruptionShakeOffset both read
+    // it), then it fires the event IN PLACE (no seek/reseed) with the flash falling from the
+    // charged peak and the ash-cloud window opening (renderAshCloud). No _tmErDownAt, so it
+    // never touches erDown/erUp/hold behaviour.
     if (g._tmAutoErAt && millis() - g._tmAutoErAt >= TM_TIME.erLongPressMs) {
       const nowA = millis(), er = g._tmAutoErupt;
       g._tmAshUntil = nowA + TM_TIME.ashMillis;      g._tmAshMode    = 'hold';
@@ -375,6 +390,11 @@ const InstallHUD = {
     // on the real frame clock.
     this._updateClimateWind(g);
     this.updateWind(g, dt);
+
+    // Eruption ash cover: warm the 42 cloud frames in one-at-a-time after setup so the
+    // boot path never decodes them all at once (_ashWarmupTick). renderAshCloud just plays
+    // the loaded sequence while a cover window is open — no per-element state to prime here.
+    this._ashWarmupTick();
 
     return g.timeScale;
   },
@@ -528,23 +548,12 @@ const InstallHUD = {
       const _dc = drawingContext;
       const strips = typeof SpriteStrips !== 'undefined' && SpriteStrips.has;
       const haveWeather = typeof placeableSprites !== 'undefined' && placeableSprites.loaded;
-      for (let i = 0; i < cells.length; i++) {
-        const c = cells[i];
-        const cy = zy + (c.y + Math.sin(c.bobPhase) * 2) * z;
-        const cx = zx + c.x * z;
-        _dc.globalAlpha = c.alpha * env;
-        if (strips && SpriteStrips.has(c.sprite)) {
-          // Animated thunderhead. Sized by height so the (possibly non-square) art
-          // keeps its proportions; the cel churns slowly (photosensitivity-safe).
-          const h = 64 * c.scale * z, w = h * SpriteStrips.aspect(c.sprite, 0);
-          SpriteStrips.draw(c.sprite, Math.floor(c.animTime * TM_TIME.stormCloudAnim), cx, cy, w, h);
-        } else if (haveWeather) {
-          // Fallback: the old static cloud1/cloud2 glyph (stable per cell, not per frame).
-          const sp = placeableSprites[(i & 1) ? 'cloud2' : 'cloud1'] || placeableSprites.cloud1;
-          if (sp) { const size = 64 * c.scale * z; image(sp, cx, cy, size, size); }
-        }
-      }
-      _dc.globalAlpha = 1;
+
+      // ---- Lightning FIRST, so the strike flashes UNDER the thunderheads ----
+      // The bolt is positioned at a random cloud cell (updateStormCells), so drawing it
+      // before the cloud loop makes the flash read as coming from within the cloud rather
+      // than sitting on top of the scene. Real art is the `storm_bolt` strip (three
+      // variants, one per cloud shape); placeable lightning/bolt is a missing-art fallback.
       const b = g._tmBolt;
       const boltStrip = strips && SpriteStrips.has('storm_bolt');
       const lightning = haveWeather ? (placeableSprites.lightning || placeableSprites.bolt) : null;
@@ -568,6 +577,26 @@ const InstallHUD = {
         }
         pop();
       }
+      _dc.globalAlpha = 1;
+
+      // ---- Thunderheads OVER the lightning ----
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i];
+        const cy = zy + (c.y + Math.sin(c.bobPhase) * 2) * z;
+        const cx = zx + c.x * z;
+        _dc.globalAlpha = c.alpha * env;
+        if (strips && SpriteStrips.has(c.sprite)) {
+          // Animated thunderhead. Sized by height so the (possibly non-square) art
+          // keeps its proportions; the cel churns slowly (photosensitivity-safe).
+          const h = 64 * c.scale * z, w = h * SpriteStrips.aspect(c.sprite, 0);
+          SpriteStrips.draw(c.sprite, Math.floor(c.animTime * TM_TIME.stormCloudAnim), cx, cy, w, h);
+        } else if (haveWeather) {
+          // Fallback: the old static cloud1/cloud2 glyph (stable per cell, not per frame).
+          const sp = placeableSprites[(i & 1) ? 'cloud2' : 'cloud1'] || placeableSprites.cloud1;
+          if (sp) { const size = 64 * c.scale * z; image(sp, cx, cy, size, size); }
+        }
+      }
+      _dc.globalAlpha = 1;
       noTint();
     }
     pop();
@@ -592,7 +621,8 @@ const InstallHUD = {
         sp: E.speed * (1 + (Math.random() * 2 - 1) * E.speedJitter),
         size: 1 + (Math.random() * 2 - 1) * E.sizeJitter,
         phase: Math.random() * Math.PI * 2,
-        anim: Math.random() * 100                                 // cel clock offset so gusts don't beat in lockstep
+        anim: Math.random() * 100,                               // cel clock offset so gusts don't beat in lockstep
+        animSpeed: E.animSpeed * (1 + (Math.random() * 2 - 1) * E.animSpeedJitter)  // per-gust cadence (the "some variation")
       });
     }
     g._tmWind = { kind, t0: now, parts };
@@ -658,7 +688,9 @@ const InstallHUD = {
       const dw = h * asp;
       const x = p.fx * W, y = (p.fy + Math.sin(p.phase) * E.bobAmp) * H;
       _dc.globalAlpha = a;
-      if (hasStrip) SpriteStrips.draw(strip, Math.floor(p.anim * E.animSpeed), x, y, dw, h);
+      // Forward 11-frame loop (SpriteStrips.draw wraps the index mod count → 0→10→0), each
+      // gust at its own cadence (p.animSpeed) so they don't cycle in lockstep.
+      if (hasStrip) SpriteStrips.draw(strip, Math.floor(p.anim * (p.animSpeed || E.animSpeed)), x, y, dw, h);
       else image(fallback, x, y, dw, h);
     }
     _dc.globalAlpha = oldA;
@@ -722,15 +754,56 @@ const InstallHUD = {
     image(e.buf, dx - 2, dy - 2);
   },
 
-  // The shared timeline body — the deep-time axis, the monotonic uplift wedge, the two
+  // ---- timeline sprite art (sprites/UI/, loaded in preload; assigned to these fields there).
+  // Each draw helper returns true when it drew the sprite, so the timeline bodies fall back to
+  // their original drawn line / tick / dot whenever a sprite is missing (kiosk-safe; also keeps
+  // the boot harness — where loadImage is stubbed — on a valid path). Sizes are in px.
+  TL_BAR_H: 14,          // stretched bar/track thickness
+  TL_PLAYHEAD_H: 26,     // playhead token height (66×66 art, centred on the axis)
+  TL_MARKER_H: 30,       // event-marker pin height (38×54 art; its tip rests on the bar)
+  _tlOK(img) { return !!(img && img.width > 0 && img.height > 0); },
+
+  // The bar/track sprite stretched across [x0, x0+w], centred on the axis at `ay`. → true if drawn.
+  _tlBarSprite(x0, w, ay) {
+    if (!this._tlOK(this._tlBar)) return false;
+    const h = this.TL_BAR_H;
+    noTint(); imageMode(CORNER);
+    image(this._tlBar, x0, ay - h / 2, w, h);
+    return true;
+  },
+  // The playhead token centred on the axis at (px, ay). → true if drawn.
+  _tlPlayheadSprite(px, ay) {
+    const ph = this._tlPlayhead;
+    if (!this._tlOK(ph)) return false;
+    const h = this.TL_PLAYHEAD_H, wd = h * (ph.width / ph.height);
+    noTint(); imageMode(CENTER);
+    image(ph, px, ay, wd, h);
+    imageMode(CORNER);
+    return true;
+  },
+  // The event-marker pin for eruption `idx` (0-based), its downward tip resting on the bar at
+  // (mx, ay) so the pin body floats above the axis. → true if drawn.
+  _tlMarkerSprite(idx, mx, ay) {
+    const arr = this._tlMarkers, mk = arr && arr[idx % arr.length];
+    if (!this._tlOK(mk)) return false;
+    const h = this.TL_MARKER_H, wd = h * (mk.width / mk.height);
+    noTint(); imageMode(CENTER);
+    image(mk, mx, ay - h / 2, wd, h);   // centre half a pin-height up → its bottom tip sits on the axis
+    imageMode(CORNER);
+    return true;
+  },
+
+  // The shared timeline body — the deep-time axis, the monotonic uplift wedge, the four
   // eruption markers and the playhead — drawn relative to an axis line at `ay`. Both the
   // debug (top) and visitor (bottom) timelines call this, so the two can never drift apart;
   // each caller owns its own strip background, year and fast-forward badge. Assumes an
   // active push().
   _timelineBody(g, x0, w, ay) {
     const yr = DeepTime.yearsBP;
-    // ---- axis ----------------------------------------------
-    stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    // ---- axis (bar sprite, or the drawn line as fallback) --
+    if (!this._tlBarSprite(x0, w, ay)) {
+      stroke(96, 116, 106); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    }
     // ---- uplift: monotonic, no reading required ------------
     const upY = ay + 7, upH = 6;
     noStroke(); fill(74, 66, 52, 160); rect(x0, upY, w, upH, 3);
@@ -741,24 +814,27 @@ const InstallHUD = {
     vertex(upNow, upY + upH);
     vertex(upNow, upY + upH - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the two eruptions ---------------------------------
+    // ---- the eruptions (marker pins, or drawn ticks) -------
     // The run opens and closes on the same kind of event. Glacial markers are
     // climate instrumentation and live in the debug overlay now — and LGM at
     // 30 ka sat ~13 px from Oruanui at 25.5 ka, so they overlapped permanently.
+    let ei = 0;
     for (const m of DEEP_TIME_MARKERS) {
       if (m.kind !== 'eruption') continue;
       const mx = DeepTime.yearToX(m.yearsBP, x0, w);
-      stroke(224, 138, 92, 210); strokeWeight(2);
-      line(mx, ay - 5, mx, ay + 5);
-      // Anchor the end labels inward so they don't clip off the strip.
+      const drewPin = this._tlMarkerSprite(ei, mx, ay);
+      if (!drewPin) { stroke(224, 138, 92, 210); strokeWeight(2); line(mx, ay - 5, mx, ay + 5); }
+      // Anchor the end labels inward so they don't clip off the strip; lift them above the pin.
       const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
+      const labelY = drewPin ? ay - this.TL_MARKER_H - 4 : ay - 8;
       this._blitText(m.label, OpenDyslexic, 'dys', 11,
-                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, ay - 8, [224, 138, 92, 225]);
+                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, labelY, [224, 138, 92, 225]);
+      ei++;
     }
-    // ---- playhead ------------------------------------------
+    // ---- playhead (token sprite, or the drawn dot) ---------
     const px = DeepTime.yearToX(yr, x0, w);
     stroke(255, 210, 120, 130); strokeWeight(1); line(px, ay - 14, px, upY + upH + 2);
-    noStroke(); fill(255, 210, 120); circle(px, ay, 9);
+    if (!this._tlPlayheadSprite(px, ay)) { noStroke(); fill(255, 210, 120); circle(px, ay, 9); }
   },
 
   // DEBUG timeline — the original top strip: dark bar, the small year, the shared body and
@@ -805,8 +881,10 @@ const InstallHUD = {
   // a black outline so it stays legible over any climate colour. Assumes an active push().
   _visitorTimelineBody(g, x0, w, ay) {
     const yr = DeepTime.yearsBP;
-    // ---- the single white axis line -------------------------
-    stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    // ---- the bar/track (sprite, or the single white line as fallback) ----
+    if (!this._tlBarSprite(x0, w, ay)) {
+      stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
+    }
     // ---- uplift: a faint white wedge on the line (no backing bar) ----
     const upNow = DeepTime.yearToX(yr, x0, w);
     const upH = 6;
@@ -816,20 +894,25 @@ const InstallHUD = {
     vertex(upNow, ay);
     vertex(upNow, ay - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the two eruptions, in white ------------------------
+    // ---- the eruptions (marker pins, or white ticks) --------
+    let ei = 0;
     for (const m of DEEP_TIME_MARKERS) {
       if (m.kind !== 'eruption') continue;
       const mx = DeepTime.yearToX(m.yearsBP, x0, w);
-      stroke(255); strokeWeight(2);
-      line(mx, ay - 5, mx, ay + 5);
+      const drewPin = this._tlMarkerSprite(ei, mx, ay);
+      if (!drewPin) { stroke(255); strokeWeight(2); line(mx, ay - 5, mx, ay + 5); }
       const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
+      const labelY = drewPin ? ay - this.TL_MARKER_H - 4 : ay - 8;
       this._blitText(m.label, OpenDyslexic, 'dys', 11,
-                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, ay - 8, [255, 255, 255, 235]);
+                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, labelY, [255, 255, 255, 235]);
+      ei++;
     }
-    // ---- playhead: white dot, black outline -----------------
+    // ---- playhead (token sprite, or the white dot fallback) ----
     const px = DeepTime.yearToX(yr, x0, w);
-    stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
-    stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
+    if (!this._tlPlayheadSprite(px, ay)) {
+      stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
+      stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
+    }
   },
 
   // VISITOR year — the one always-on readout, large and lowered to float over the northern
@@ -1091,63 +1174,125 @@ const InstallHUD = {
              y: Math.cos(now * 0.055) * amp + Math.sin(now * 0.087) * amp * 0.5 };
   },
 
-  // The cover's descent (0 = off the top, 1 = fully down) and opacity (0..1), or null
-  // when there is no cover to draw. HOLD: the cloud rolls DOWN across the 3 s charge
-  // (descend = charge progress), so it is already covering when the reseed hitch lands
-  // at c=1 — the stutter is hidden. It then hangs and fades over cloudMillis. TAP: no
-  // charge, so the whole roll-in + hang + fade plays inside cloudMillis.
-  ashCoverState(g, now) {
-    let descend = -1, alpha = 0;
-    // PRE-FIRE (long press only): the cloud rolls DOWN from the top across the charge — the
-    // deliberate anticipation, and the ONLY scroll-from-top that remains. Its speed is
-    // erLongPressMs, so slowing the hold (above) slows this roll to match.
-    if (g._tmErDownAt && !g._tmErFired) {
-      const c = Math.max(0, Math.min(1, (now - g._tmErDownAt) / TM_TIME.erLongPressMs));
-      descend = c; alpha = Math.min(1, c * 1.4);
-    }
-    if (g._tmAutoErAt) {                                    // auto/timeline eruption — ash cloud rolls down over the ramp
-      const c = Math.max(0, Math.min(1, (now - g._tmAutoErAt) / TM_TIME.erLongPressMs));
-      if (c > descend) { descend = c; alpha = Math.max(alpha, Math.min(1, c * 1.4)); }
-    }
-    if (g._tmAttractErAt) {                                 // attract-loop reset — ash cloud rolls down over the ramp
-      const c = Math.max(0, Math.min(1, (now - g._tmAttractErAt) / TM_TIME.erLongPressMs));
-      if (c > descend) { descend = c; alpha = Math.max(alpha, Math.min(1, c * 1.4)); }
-    }
-    // POST-FIRE (tap, auto/timeline, and the tail of a hold): the ash STARTS fully covering
-    // the screen, hangs, then fades to reveal the recovered land — NO roll-in. So a live
-    // eruption reads as "ash blankets the view, then clears", not a curtain scrolling down.
-    if (g._ashCloudUntil && now < g._ashCloudUntil) {
-      const p = Math.max(0, Math.min(1, 1 - (g._ashCloudUntil - now) / TM_TIME.cloudMillis));
-      const hang = TM_TIME.cloudHangFrac;
-      descend = 1;
-      alpha = Math.max(alpha, p < hang ? 1 : 1 - (p - hang) / (1 - hang));
-    }
-    if (descend < 0 || alpha <= 0) return null;
-    return { descend, alpha: Math.max(0, Math.min(1, alpha)) };
+  // ==========================================================
+  // ERUPTION ASH COVER — one 1080p frame sequence, played once at cloudFps
+  // ----------------------------------------------------------
+  // The cover is a single hand-drawn animation: VolcanicAsh_Cloud_00000..00041 (42 frames,
+  // 1920×1080). The frames carry the WHOLE beat themselves — they rise from clear, blanket the
+  // screen, then dissipate — so there is nothing to composite or animate here beyond stepping
+  // the frame at cloudFps. They warm in ONE AT A TIME after setup (_ashWarmupTick) so the boot
+  // path never decodes all 42 in one go; every draw guards on the frame existing, so the cover
+  // degrades to just the white ash flash until the art has warmed in. (Was: edges + a
+  // papercraft-flicker plume + 20 gathering puffs — all that per-element animation is gone.)
+  // ==========================================================
+
+  ASH_CLOUD_FRAMES: 42,   // VolcanicAsh_Cloud_00000..00041 — keep TM_TIME.cloudMillis = this / cloudFps · 1000 (42/8 = 5250 ms)
+
+  // Guard against oversized art: downsample so the LONGEST side is <= maxDim. The shipped
+  // frames are 1920×1080, so at the 1920 cap used below this is a no-op — native 1080p is kept —
+  // and it only bites if larger art is ever dropped in. Returns the source unchanged when it is
+  // already small enough or createGraphics is unavailable (the headless harness), so it degrades
+  // cleanly. The CALLER drops the raw once it holds the copy.
+  _shrinkImage(src, maxDim) {
+    if (typeof createGraphics !== 'function' || !src || !src.width) return src;
+    const longest = Math.max(src.width, src.height);
+    if (longest <= maxDim) return src;
+    const s = maxDim / longest;
+    const w = Math.max(1, Math.round(src.width * s)), h = Math.max(1, Math.round(src.height * s));
+    const gfx = createGraphics(w, h);
+    if (gfx.pixelDensity) gfx.pixelDensity(1);
+    if (gfx.clear) gfx.clear();
+    gfx.image(src, 0, 0, w, h);                 // graphics-method draw of the raw (not atlas-packed)
+    return gfx;
   },
 
-  // The ash cloud itself: one sprite, screen-wide, scrolling down from above. At full
-  // descent its TOP sits at the screen top and its (taller-than-screen) BOTTOM has run off
-  // the bottom, so the view is totally covered — then it fades to reveal the new land.
-  // No-op until the PNG has actually loaded (guards the not-yet-added asset and the harness).
+  // Lazy, staggered warm-up: one frame loaded per call, so the 42 cloud PNGs never all decode in
+  // a single boot frame. Called every frame from update(); a no-op once done. Frames land in
+  // this._ash.frames[0..41]. NEVER a silent failure callback (a missed load must be logged).
+  _ashWarmupTick() {
+    if (this._ash && this._ash.ready) return;
+    if (!this._ashWarm) {
+      const V = 'sprites/Environmental/VolcanicAsh/', N = this.ASH_CLOUD_FRAMES, q = [];
+      for (let i = 0; i < N; i++) q.push({ idx: i, path: V + 'VolcanicAsh_Cloud_' + String(i).padStart(5, '0') + '.png' });
+      this._ash = { frames: new Array(N).fill(null), ready: false };
+      this._ashWarm = { queue: q, loading: null };
+    }
+    const w = this._ashWarm;
+    if (w.loading) {
+      const L = w.loading, im = L.img;
+      if (im && im.__failed) { w.loading = null; return; }        // skip a missing frame, keep going
+      if (!im || !(im.width > 0)) return;                          // still decoding — wait a frame
+      this._ash.frames[L.idx] = this._shrinkImage(im, 1920);       // native 1080p kept; only over-large art resamples
+      L.img = null;                                                // release the load-callback's ref (lets a resampled raw GC)
+      w.loading = null;
+      return;
+    }
+    if (w.queue.length === 0) { this._ash.ready = true; this._ashWarm = null; return; }
+    const next = w.queue.shift();
+    next.img = (typeof loadImage === 'function')
+      ? loadImage(next.path, () => {}, () => { if (next.img) next.img.__failed = true; console.warn('[ash] could not load ' + next.path); })
+      : null;
+    if (!next.img) { this._ash.ready = true; this._ashWarm = null; return; }   // no loader (harness w/o stub)
+    w.loading = next;
+  },
+
+  // Draw the ash cover: an OPAQUE ashy-white backdrop with the cloud frame sequence over it.
+  // The window (g._ashCloudUntil) is armed to now + cloudMillis by the button (fireEruption /
+  // fireEruptionReseed), an auto/timeline eruption and the attract reset, so `now → _ashCloudUntil`
+  // maps to frame 0 → last at exactly cloudFps (cloudMillis is 42/8 s).
+  //
+  // BACKDROP: the white FLASH only reaches ~80%, so the terrain morph / sim-state SWITCH that the
+  // eruption is meant to hide used to read through the thin early cloud frames and the flash. So a
+  // FULLY OPAQUE ash fill is held under the cloud while it rises and covers, then faded out as the
+  // animation dissipates — the new land is revealed WITH the clearing ash, "mostly through" the
+  // sequence, never before it. Ramped up over BACK_RAMP_MS (a tap has no charge flash behind it)
+  // and faded over >500 ms to stay inside the photosensitivity budget.
+  //
+  // CLOUD: the frames mostly clear themselves, but the last still carries settling cloud, so the
+  // final CLOUD_FADE_MS ramps its alpha to 0 — the cover DISSOLVES rather than popping off.
   renderAshCloud(g, W, H) {
-    const img = (typeof placeableSprites !== 'undefined') ? placeableSprites.ashCloud : null;
-    if (!img || !img.width) return;
-    const st = this.ashCoverState(g, millis());
-    if (!st) return;
-    const iw = W;
-    let ih = W * (img.height / img.width);
-    if (ih < H * 1.05) ih = H * 1.05;                     // guarantee the cover even if the art is short
-    // easeOut the descent so the roll settles; iy runs -ih (above) -> 0 (top at screen top).
-    const d = 1 - (1 - st.descend) * (1 - st.descend);
-    const iy = ih * (d - 1);
+    const until = g._ashCloudUntil;
+    if (!until) return;
+    const now = millis();
+    const remaining = until - now;
+    if (remaining <= 0) return;                                     // no cover / window closed
+    const A = this._ash;
+    if (!A || !A.frames) return;                                    // art not warming yet
+    const N = A.frames.length;
+    const start = until - TM_TIME.cloudMillis;                      // when the cover opened
+    const elapsed = now - start;
+
+    // Opaque ashy-white backdrop UNDER the cloud (see header). Ramp up → hold fully opaque →
+    // fade out, timed off the window so the reveal lands as the animation finishes.
+    const BACK_RAMP_MS  = 500;                                      // seizure-safe rise (esp. a tap, no charge behind it)
+    const BACK_HOLD_MS  = TM_TIME.cloudMillis * 0.5;               // fully opaque for the first ~half, hiding the state switch
+    const BACK_CLEAR_MS = TM_TIME.cloudMillis * 0.82;             // ...cleared by "mostly through", revealing the new land
+    let back;
+    if (elapsed < BACK_RAMP_MS)       back = elapsed / BACK_RAMP_MS;
+    else if (elapsed < BACK_HOLD_MS)  back = 1;
+    else if (elapsed < BACK_CLEAR_MS) back = 1 - (elapsed - BACK_HOLD_MS) / (BACK_CLEAR_MS - BACK_HOLD_MS);
+    else                              back = 0;
+
+    let idx = Math.floor(elapsed * TM_TIME.cloudFps / 1000);       // advance at cloudFps (8 fps)
+    if (idx < 0) idx = 0; else if (idx >= N) idx = N - 1;          // hold the last frame if the window outruns the art
+    const fr = A.frames[idx];
+
+    const CLOUD_FADE_MS = 1000;                                     // dissolve the cloud tail so the cover never cuts off hard
+    const cloudA = remaining < CLOUD_FADE_MS ? remaining / CLOUD_FADE_MS : 1;
+
     push();
-    imageMode(CORNER);
     noTint();
-    const _dc = drawingContext;
-    const oldA = _dc.globalAlpha;
-    _dc.globalAlpha = st.alpha;
-    image(img, -8, iy, iw + 16, ih);                     // slight side overscan so the shake never bares an edge
+    const _dc = drawingContext, oldA = _dc.globalAlpha;
+    if (back > 0) {                                                 // opaque ash fill first, UNDER the cloud
+      _dc.globalAlpha = back;
+      noStroke(); rectMode(CORNER); fill(205, 202, 196);
+      rect(-W * 0.03, -H * 0.03, W * 1.06, H * 1.06);              // overscan so the shake bares no edge
+    }
+    if (fr && fr.width) {                                           // the cloud frame on top
+      _dc.globalAlpha = cloudA;
+      imageMode(CENTER);
+      image(fr, W / 2, H / 2, W * 1.06, H * 1.06);
+    }
     _dc.globalAlpha = oldA;
     pop();
   }

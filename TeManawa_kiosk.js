@@ -124,12 +124,12 @@ const Kiosk = {
   },
 
   // Arm the attract-loop reset as a volcanic buildup (idle path only). The eruption-charge
-  // visuals (renderAshFlash / eruptionShakeOffset / ashCoverState in TeManawa_hud.js) read
-  // _tmAttractErAt exactly like the timeline eruption's _tmAutoErAt, ramping the rumble +
-  // ash-cloud roll-down over erLongPressMs; InstallHUD.update() then calls resetToAttract at
-  // the crest (under the cover) and plays the reveal. Refused while a charge or ash window is
-  // already live, so it never stacks on a real eruption. millis() is a p5 global, available in
-  // this setInterval tick.
+  // visuals (renderAshFlash / eruptionShakeOffset in TeManawa_hud.js) read _tmAttractErAt
+  // exactly like the timeline eruption's _tmAutoErAt, ramping the rumble + flash over
+  // erLongPressMs; InstallHUD.update() then calls resetToAttract at the crest (under the flash)
+  // and arms the ash-cloud window (renderAshCloud plays the reveal). Refused while a charge or
+  // ash window is already live, so it never stacks on a real eruption. millis() is a p5 global,
+  // available in this setInterval tick.
   beginAttractEruption(g) {
     if (!g) return false;
     const now = (typeof millis === 'function') ? millis() : 0;

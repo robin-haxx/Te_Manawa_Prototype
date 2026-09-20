@@ -395,13 +395,26 @@ try{
   chk(!!(M && M.forestContraction && M.forestDieback), 'forest die-back is enabled in the level');
   const ht=new Plant_(300,300,'tawa',terrain,bk);            // tawa ∈ FOREST_TREES, NOT a cold refuge
   chk(ht._forestTree===true, 'a tawa is flagged a canopy tree (subject to die-back)');
+  const fallMs=(M && M.forestDiebackFallMs)||800;
   ht.elevation=0.95; ht.growth=1.0; ht.alive=true;
-  for(let i=0;i<400;i++) ht.update(season);
+  // FALL OVER, don't shrink: one update on unsuitable ground ARMS the fall — the tree keeps its
+  // full size and topples over the real clock, only dropping to rootstock once the fall finishes.
+  _t+=16; ht.update(season);
   chk(ht.suppressed===true, 'a canopy tree above the forest band is on unsuitable habitat (suppressed)');
-  chk(ht.growth<=0.05, 'unsuitable habitat dies the tree back to nothing (it disappears)');
+  chk(ht._toppling===true, 'a died-back tree FALLS OVER (topple armed) rather than shrinking in place');
+  chk(ht._toppleDir===1 || ht._toppleDir===-1, 'the fall has a random left/right direction');
+  chk(ht.growth>0.5, 'the tree holds its full size WHILE it topples (it falls, then fades — no shrink)');
+  _t += Math.floor(fallMs/2);                                // real time passes to mid-fall (no update → no finalize)
+  const mid=ht._toppleProgress();
+  chk(mid>0.3 && mid<0.8, `mid-fall the tree is partway over on the real clock (progress ${mid.toFixed(2)})`);
+  _t += fallMs;                                              // let the fall play fully out
+  for(let i=0;i<400;i++){ _t+=16; ht.update(season); }
+  chk(ht.growth<=0.05, 'once the fall finishes the tree drops to nothing (invisible rootstock)');
   chk(ht.alive===true, 'a died-back tree survives in place as rootstock — never yanked from the world');
+  chk(ht._toppleProgress()===1, 'a fully-fallen tree reads complete (progress 1 — faded out)');
   ht.elevation=0.30;                                         // the band climbs back over it
   for(let i=0;i<400;i++) ht.update(season);
+  chk(ht._toppling===false, 'the tree stands back up when habitat returns (topple cleared)');
   chk(ht.suppressed===false && ht.growth>0.5, 'the forest regrows in place when suitable habitat returns');
 
   // BEECH is the GLACIAL REFUGIUM tree — still a canopy die-back tree, but EXEMPT from the forest-
@@ -588,8 +601,42 @@ try{
   chk(huiAfter.filter(x=>x.alive).length===huiBefore+1, 'a huia egg hatches a juvenile into the flock');
   chk(huiAfter[huiAfter.length-1] instanceof Huia, 'the huia hatchling breeds true (a Huia)');
 
+  // ---- tūī: the singing nectar-feeder (extends Kokako; a STRONG flier) --------------
+  const Tui=vm.runInContext('Tui',ctx), TUI=vm.runInContext('TUI_SPECIES',ctx);
+  const FVS=vm.runInContext('FLYER_VARIANT_SETS',ctx), ESf=vm.runInContext('EntitySprites',ctx);
+  chk(!!Tui && !!TUI, 'Tui class + TUI_SPECIES are defined');
+  const tui = sim.otherEntities.tui || [];
+  chk(tui.filter(x=>x.alive).length>0, `tūī spawn from initialEntityCounts (${tui.length})`);
+  const tu = tui.find(x=>x.alive);
+  chk(tu instanceof Tui, 'a spawned tūī is a Tui instance');
+  chk(tu instanceof Kokako, 'the tūī extends Kokako (reuses the song/territory machinery)');
+  chk(tu && tu.isFlyer===true, 'tūī are flyers (rendered above the ground plane)');
+  // dispersal sits BETWEEN the weak-gaped kōkako/huia (0.4) and the kererū (1.0).
+  chk(TUI.disperseChance>KOK.disperseChance && TUI.disperseChance<1,
+      `tūī disperse more than the kōkako but less than the kererū (${TUI.disperseChance})`);
+  // a STRONG flier, unlike the weak kōkako/huia: faster and higher-cruising.
+  chk(TUI.baseSpeed>KOK.baseSpeed, `tūī fly faster than the kōkako (${TUI.baseSpeed} > ${KOK.baseSpeed})`);
+  chk(TUI.cruiseAlt>KOK.cruiseAlt, `tūī cruise higher than the kōkako (${TUI.cruiseAlt} > ${KOK.cruiseAlt})`);
+  // it sings + holds a (loose) territory — the kōkako anchor machinery.
+  chk(tu && typeof tu._anchorPoint==='function' && tu._anchorPoint()!==null,
+      'a tūī holds a territory anchor it sings from (inherited from the kōkako)');
+  // sprite wiring: its own multi-state flyer set, and the 240-frame Hopping export is
+  // referenced as only its 10 UNIQUE frames (00010==00000, …) so the atlas stays lean.
+  chk(FVS && FVS.tui && FVS.tui.states && FVS.tui.states.flying && FVS.tui.states.eating,
+      'tūī is wired to its dedicated multi-state flyer sprite set');
+  chk(FVS && FVS.tui && FVS.tui.states.hopping.count<=15,
+      `tūī hopping references the deduped loop, not the 240-frame export (${FVS && FVS.tui && FVS.tui.states.hopping.count})`);
+  chk(ESf && ESf.tui && typeof ESf.getTuiSprite==='function', 'the tūī sprite getter is wired (getTuiSprite)');
+  // breed true through the shared flyer egg path.
+  const tuiBefore=(sim.otherEntities.tui||[]).filter(x=>x.alive).length;
+  const te=sim.addEgg(tu?tu.pos.x:100, tu?tu.pos.y:100); te.offspringType='tui'; te.parentSpecies='tui'; te.hatched=true;
+  sim.updateEggs(1);
+  const tuiAfter=sim.otherEntities.tui||[];
+  chk(tuiAfter.filter(x=>x.alive).length===tuiBefore+1, 'a tūī egg hatches a juvenile into the flock');
+  chk(tuiAfter[tuiAfter.length-1] instanceof Tui, 'the tūī hatchling breeds true (a Tui, not a kererū)');
+
   console.log(fail? `flighted forest birds: ${fail} FAILURES`
-    : 'flighted forest birds: kōkako sing + hold territory, huia pair-bond, both disperse <½ the kererū and breed true');
+    : 'flighted forest birds: kōkako sing + hold territory, huia pair-bond, tūī sing + fly strong; all disperse <the kererū and breed true');
 }catch(e){ console.log('KOKAKO/HUIA FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- North Island goose + the open-country tussock lift ------------------------
@@ -705,6 +752,28 @@ try{
     chk(nAfter===nBefore, 'a kiwi does NOT turn open ground (soil-turning is forest-only)');
   }
 
+  // Finsch's duck — the open-country grazing duck of the guild (own FinschDuck class, a
+  // gentler loose-flock version of the goose; a common, mild-cold-leaning lowland grazer).
+  const FinschDuck=vm.runInContext('FinschDuck',ctx), FDS=vm.runInContext('FINSCH_DUCK_SPECIES',ctx);
+  chk(!!FinschDuck && !!FDS, 'FinschDuck class + FINSCH_DUCK_SPECIES are defined');
+  const ds = REG.getSpecies('finschs_duck');
+  chk(!!ds, 'finschs_duck is registered');
+  chk(ds && ds.baseType==='moa' && ds.class===FinschDuck, 'Finsch\'s duck is a moa-guild grazer with the FinschDuck class');
+  chk(ds && ds.config.scientificName==='Chenonetta finschi', 'Finsch\'s duck is C. finschi (the terrestrial grazing duck)');
+  chk(ds && ds.config.openCountry===true, 'Finsch\'s duck is flagged open-country (shares the tussock-in-glacial lift)');
+  chk(ds && ds.config.spriteSet==='finschDuck' && MVS && MVS.finschDuck && MVS.finschDuck.states,
+      'Finsch\'s duck is wired to its dedicated multi-state sprite set');
+  // a MILD cold lean (busier in the cold, less extreme than the goose).
+  const _dsm=ds && ds.config.seasonalModifiers;
+  chk(_dsm && _dsm.interglacial.hungerRate > _dsm.fullGlacial.hungerRate,
+      'Finsch\'s duck leans cold (open glacial country suits it — like the goose, milder)');
+  const duck = sim.moas.find(m=>m.alive && m.speciesKey==='finschs_duck');
+  chk(!!duck, 'Finsch\'s duck spawns into the moa list');
+  chk(duck && FinschDuck && duck instanceof FinschDuck, 'a spawned duck is a FinschDuck instance');
+  // loose flock: a same-species cohesion, gentler than the goose's tight gaggle (0.25 urgency).
+  chk(duck && typeof duck.applySeparation==='function' && duck._flockUrgency>0 && duck._flockUrgency<0.25,
+      'a duck flocks loosely (gentler cohesion than the goose\'s gaggle)');
+
   // the flush flag: only TUSSOCK grown in a glacial arms it.
   const FAR=1e15;
   const flush=(warmUntil,coldUntil,yr)=>{ DT.seekTo(yr); season.update(1);
@@ -723,7 +792,7 @@ try{
 
   G._tmGrowWarmUntil=0; G._tmGrowColdUntil=0; G._tussockFlush=false; G._regimeFit=1; DT.reset();
   console.log(fail? `grazers: ${fail} FAILURES`
-    : 'grazers: goose + mōho + kiwi are moa-guild birds (dedicated multi-state art); open-country lift on TUSSOCK-in-glacial; mōho territorial; kiwi turns the forest floor');
+    : 'grazers: goose + mōho + kiwi + Finsch\'s duck are moa-guild birds (dedicated multi-state art); open-country lift on TUSSOCK-in-glacial; mōho territorial; kiwi turns the forest floor; duck flocks loosely');
 }catch(e){ console.log('GRAZERS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- climate-affinity tag + baked authoring tint ------------------------------
@@ -939,9 +1008,11 @@ try{
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
   const fired=()=>G._firedEruptions;
 
-  // opening: the 1 Ma event auto-fires on the first frame of a fresh cycle
+  // opening: the 1 Ma event does NOT auto-fire on a fresh cycle — the run opens on the calm
+  // ~1 Ma scene (the sim self-runs, so a forced opening takeover is unnecessary). Kidnappers is
+  // still reachable via a manual hold-wrap. See Game reset: _autoPrevYear seeded AT yearsBP.
   DT.reset(); G.resetEcosystem(); G.update(1);
-  chk(fired().has(1000000),'the 1 Ma opening eruption auto-fires on cycle start');
+  chk(!fired().has(1000000),'the 1 Ma opening eruption does NOT auto-fire on cycle start (calm open)');
 
   // crossing 900 ka fires Kaukatea exactly once
   DT.seekTo(900050); for(let i=0;i<30 && DT.yearsBP>899980;i++) G.update(1);
@@ -960,7 +1031,7 @@ try{
 
   DT.reset(); G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   console.log(fail? `auto-eruptions: ${fail} FAILURES`
-    : 'auto-eruptions: fire once on checkpoint crossing; attract returns to the last eruption; jumps do not re-fire');
+    : 'auto-eruptions: no forced opening; fire once on checkpoint crossing; attract returns to the last eruption; jumps do not re-fire');
 }catch(e){ console.log('AUTOERUPT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 try{
@@ -1549,8 +1620,154 @@ const g=vm.runInContext('game',ctx);
   chk(SA.isFrame({ __atlas: true }) && !SA.isFrame({ width: 9, height: 9 }),
       'isFrame() distinguishes AtlasFrames from raw images');
 
+  // Half-res packing (fix #4): frames are STORED at packScale× native, so the on-page
+  // sub-rect (sw/sh) is smaller than the mirrored source size (width/height stays native
+  // so downstream draw sizes are unchanged). Guards the VRAM/page-count fix from silently
+  // reverting to a 1:1 pack (which blew the ≤80 MB BUILD_V3 §5.2 budget on an iGPU).
+  chk(SA.scale > 0 && SA.scale <= 1, 'the atlas records the pack scale in force');
+  if (SA.scale < 1) chk(eF && eF.sw < eF.width && eF.sh < eF.height,
+      'a <1x pack scale stores frames smaller than native (sw/sh < width/height)');
+
   console.log(fail ? `sprite atlas: ${fail} FAILURES`
-    : `sprite atlas: ${SA.frameCount} frames in ${SA.pages.length} page(s), refs rebound + image() wrapped`);
+    : `sprite atlas: ${SA.frameCount} frames in ${SA.pages.length} page(s) at ${SA.scale}x, refs rebound + image() wrapped`);
+}
+
+// ---- glbatch: refuse a SOFTWARE WebGL renderer (kiosk GPU guard) -----------
+// The batch only wins on a real GPU. On Chrome's software rasterizer (SwiftShader)
+// getContext SUCCEEDS but every quad is CPU-shaded — slower than the 2D path, and with
+// no context-lost event the _fallbackTo2D safety net never fires. init() must read the
+// unmasked renderer string and stay on 2D. Real GL isn't available in the harness, so
+// drive the pure helper directly and then init() with a fabricated software context.
+{
+  const GB = vm.runInContext('GLBatch', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  // A gl-like stub whose reported renderer is `name` (both the debug-ext and the plain
+  // RENDERER path resolve to it).
+  const glWith = (name) => ({
+    getExtension: (n) => n === 'WEBGL_debug_renderer_info' ? { UNMASKED_RENDERER_WEBGL: 0x9246 } : null,
+    getParameter: () => name, RENDERER: 0x1F01
+  });
+
+  // Helper is pure: a GPU string passes; the CPU rasterizers are all caught; an
+  // unreadable string is NOT rejected (never blind-fail a browser that hides its name).
+  chk(GB._isSoftwareRenderer(glWith('ANGLE (NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0)')) === false,
+      'a hardware GPU renderer must NOT be flagged software');
+  for (const soft of ['ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0)))',
+                      'llvmpipe (LLVM 12.0.0, 256 bits)', 'Microsoft Basic Render Driver']) {
+    chk(GB._isSoftwareRenderer(glWith(soft)) === true, 'must flag software renderer: ' + soft);
+  }
+  chk(GB._isSoftwareRenderer(glWith('')) === false, 'an unreadable renderer string must NOT be rejected');
+
+  // Full init() path: createElement hands back a canvas whose context reports SwiftShader.
+  const origCreate = ctx.document.createElement;
+  const save = { enabled: GB.enabled, domStack: GB.domStack, requested: GB.requested };
+  GB.enabled = false; GB.domStack = false; GB.requested = true;
+  ctx.document.createElement = (t) => t === 'canvas'
+    ? { style: {}, width: 0, height: 0, addEventListener() {},
+        getContext: () => glWith('ANGLE (Google, SwiftShader Device (Subzero) (0x0000C0DE))') }
+    : origCreate(t);
+  const ok = GB.init(256, 256);
+  chk(ok === false, 'init() must return false on a software renderer');
+  chk(GB.enabled === false, 'GL must stay disabled after refusing a software renderer');
+  ctx.document.createElement = origCreate;
+  GB.enabled = save.enabled; GB.domStack = save.domStack; GB.requested = save.requested;
+
+  // Coordinate decoupling (fix #1: HUD off the 4K canvas). The clip-mapping space
+  // (coordW/coordH = the MAIN canvas backing) must be tracked separately from this
+  // layer's raster size (W/H = the GL backing): in GL mode the main canvas is the 1080
+  // HUD layer while the GL layer stays 4K. If _emit divided by W/H instead of coordW/H
+  // the whole cast would render half-size in a corner — so guard _syncCoord directly.
+  {
+    const sv = { W: GB.W, H: GB.H, coordW: GB.coordW, coordH: GB.coordH, el: GB._mainEl };
+    GB.W = 3840; GB.H = 2160; GB._mainEl = { width: 1920, height: 1080 };
+    GB._syncCoord();
+    chk(GB.coordW === 1920 && GB.coordH === 1080, '_syncCoord reads the coord space from the MAIN backing');
+    chk(GB.W === 3840 && GB.H === 2160, 'the GL raster size (W/H) is untouched by _syncCoord');
+    GB._mainEl = null; GB._syncCoord();
+    chk(GB.coordW === GB.W && GB.coordH === GB.H, 'coord falls back to W/H with no main element (harness/lone-init)');
+    GB.W = sv.W; GB.H = sv.H; GB.coordW = sv.coordW; GB.coordH = sv.coordH; GB._mainEl = sv.el;
+  }
+
+  console.log(fail ? `glbatch guard: ${fail} FAILURES`
+    : 'glbatch guard: software WebGL refused; coord space decoupled from GL raster size');
+}
+
+// ---- HUD layer: main canvas drops to 1080 in GL mode, supersampled in 2D (fix #1) -----
+// The single biggest resting-frame win: in DOM-stack GL mode the sprite cast is on the GL
+// layer, so the main p5 canvas carries only the HUD and drops to logical 1080 — Chrome then
+// composites a 1080 surface each frame, not a 4K one. In the 2D path the main canvas still
+// carries the sprites, so it must stay at the sprite supersample. mainCanvasSS() is the one
+// switch that decides this; assert both arms.
+{
+  const GB = vm.runInContext('GLBatch', ctx);
+  const mcss = vm.runInContext('mainCanvasSS', ctx);
+  const sss = vm.runInContext('spriteSS', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+  const svd = GB.domStack;
+  GB.domStack = true;  chk(mcss() === 1, 'GL mode: the main canvas drops to logical (mainCanvasSS === 1)');
+  GB.domStack = false; chk(mcss() === sss(), '2D path: the main canvas keeps the sprite supersample');
+  GB.domStack = svd;
+  console.log(fail ? `hud layer: ${fail} FAILURES`
+    : 'hud layer: main canvas 1080 in GL mode, supersampled in the 2D path');
+}
+
+// ---- ash cover: one 1080p frame sequence, warmed in lazily + played at cloudFps ----------
+// The eruption cover is now a single hand-drawn animation (VolcanicAsh_Cloud_00000..00041,
+// 42 frames at 1920x1080). They warm in ONE AT A TIME after setup so the boot path never
+// decodes all 42 in one frame; renderAshCloud steps them at TM_TIME.cloudFps across the
+// cloudMillis window. Guard the (now safety-only) downsampler, the warm-up state machine, and
+// the frame-index math. (renderAshCloud is also exercised by the eruption-button draw frames
+// above; a throw there would show as console.error.)
+{
+  const HUD = vm.runInContext('InstallHUD', ctx);
+  const TM = vm.runInContext('TM_TIME', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  // cloudMillis must stay = ASH_CLOUD_FRAMES / cloudFps · 1000 so `now → _ashCloudUntil` maps to
+  // frame 0 → last at exactly cloudFps.
+  chk(TM.cloudMillis === Math.round(HUD.ASH_CLOUD_FRAMES / TM.cloudFps * 1000),
+      `cloudMillis (${TM.cloudMillis}) = ${HUD.ASH_CLOUD_FRAMES} frames / ${TM.cloudFps} fps`);
+
+  // _shrinkImage is now a safety guard: over-large art resamples to <= maxDim; native 1080p (and
+  // anything already within the cap) is used directly, untouched.
+  const big = HUD._shrinkImage({ width: 4525, height: 3777 }, 1920);
+  chk(big && Math.max(big.width, big.height) <= 1920, 'an over-large cover frame resamples to <= maxDim on its long side');
+  const native = { width: 1920, height: 1080 };
+  chk(HUD._shrinkImage(native, 1920) === native, 'a native 1080p frame is used directly (no resample)');
+
+  // Warm-up state machine: it must start exactly ONE load (not all 42 raws at once), then reach
+  // ready with every frame present.
+  HUD._ash = null; HUD._ashWarm = null;
+  HUD._ashWarmupTick();
+  chk(HUD._ashWarm && HUD._ashWarm.loading && HUD._ashWarm.queue.length === HUD.ASH_CLOUD_FRAMES - 1,
+      `the warm-up starts exactly one load with ${HUD.ASH_CLOUD_FRAMES - 1} still queued (bounded memory)`);
+  let guard = 0;
+  while (!(HUD._ash && HUD._ash.ready) && guard++ < 400) HUD._ashWarmupTick();
+  chk(HUD._ash && HUD._ash.ready, 'the ash warm-up reaches ready');
+  chk(HUD._ash && HUD._ash.frames.filter(f => f).length === HUD.ASH_CLOUD_FRAMES,
+      `all ${HUD.ASH_CLOUD_FRAMES} cloud frames warmed in`);
+
+  // Frame-index math: the cover steps from frame 0 at the fire to the last frame at the window
+  // end. Drive renderAshCloud through the window and capture which frame it blits (image() arg).
+  const gg = { _ashCloudUntil: 0 };
+  let drawn = -1; const oldImage = ctx.image;
+  ctx.image = (im) => { if (HUD._ash && HUD._ash.frames.indexOf(im) >= 0) drawn = HUD._ash.frames.indexOf(im); };
+  const at = (fracThroughWindow) => {
+    // millis() in the harness is _t; place the window so `now` sits fracThroughWindow into it.
+    gg._ashCloudUntil = ctx.millis() + Math.round(TM.cloudMillis * (1 - fracThroughWindow));
+    drawn = -1; HUD.renderAshCloud(gg, 1920, 1080); return drawn;
+  };
+  chk(at(0.0) === 0, 'at the fire the cover shows frame 0');
+  chk(at(0.99) === HUD.ASH_CLOUD_FRAMES - 1, 'at the window end the cover shows the last frame');
+  const mid = at(0.5);
+  chk(mid > 0 && mid < HUD.ASH_CLOUD_FRAMES - 1, `mid-window shows a middle frame (${mid})`);
+  gg._ashCloudUntil = ctx.millis() - 1; drawn = -1; HUD.renderAshCloud(gg, 1920, 1080);
+  chk(drawn === -1, 'a closed window draws no cover');
+  ctx.image = oldImage;
+
+  console.log(fail ? `ash cover: ${fail} FAILURES`
+    : 'ash cover: one 1080p sequence warms in lazily (42 frames, one load at a time), steps 0→last at cloudFps across the window');
 }
 
 // ---- bake memory guard: bakeScale auto-caps so a buffer never OOMs ------

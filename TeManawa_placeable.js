@@ -8,7 +8,8 @@ let placeableSprites = {
   lightning: null,     // Storm_Lightning illustration; drawn via globalAlpha (no per-frame tint) — see the stutter note in loadPlaceableSprites
   windWarm: null,      // interglacial "wind gust" — blows on the FOREST boost / warming (InstallHUD wind system)
   windCold: null,      // glacial "chill" — blows on the TUSSOCK boost / cooling
-  ashCloud: null,      // eruption takeover cover — see InstallHUD.renderAshCloud
+  // (the eruption ash cover is not a placeable sprite — it is the VolcanicAsh_Cloud_* frame
+  //  sequence lazily loaded and drawn by InstallHUD, see renderAshCloud)
   loaded: false
 };
 
@@ -46,12 +47,9 @@ function loadPlaceableSprites() {
     encodeURI('sprites/Environmental/Wind_Glacial/Blowing 1/Chill1_Blowing_00000.png'),
     () => {},
     () => console.warn('Could not load glacial wind fallback frame'));
-  // Eruption ash-cloud cover. NEVER a silent failure callback (CLAUDE.md): if the PNG
-  // is missing, renderAshCloud no-ops on the un-sized image and the shake + flash still play.
-  placeableSprites.ashCloud = loadImage(
-    'sprites/Environmental/VolcanicAshCloud_Sprite_00001.png',
-    () => {},
-    () => console.warn('Could not load sprites/Environmental/VolcanicAshCloud_Sprite_00001.png'));
+  // The eruption ash cover is the VolcanicAsh_Cloud_* frame sequence (1080p, played at 6 fps),
+  // which InstallHUD loads lazily one-at-a-time and draws — see InstallHUD._ashWarmupTick /
+  // renderAshCloud. Nothing to preload here.
   placeableSprites.loaded = true;
 }
 

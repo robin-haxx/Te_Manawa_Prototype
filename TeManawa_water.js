@@ -51,7 +51,7 @@ class WaterLayer {
     this.cfg = {
       riverStep:        46,     // spacing of current decals along a river polyline
       riverJitter:      0.35,   // lateral scatter, as a fraction of riverStep
-      currentSize:      24,
+      currentSize:      36,     // river-current decal size (50% larger than the first pass, per request)
       currentAlpha:     0.8,    // extra global multiplier on top of the strip's own alpha
       currentAnimSpeed: 0.09,
       glintChance:      0.15,   // chance a current decal also drops a sparkle
@@ -198,17 +198,18 @@ class WaterLayer {
     }
   }
 
-  // Drawn inside Game.render()'s camera transform, right after terrain.render()
-  // and under the seasonal frost/ash washes and all entities. Same space and the
-  // same Projection every entity uses, so decals sit on the lifted ground.
-  // `g` optionally targets a p5 graphics buffer (DOM-stack GL mode draws water into
-  // the terrain layer); null/undefined draws on the global main canvas as before.
+  // Drawn inside Game.render()'s camera transform, right after terrain.render() and under the
+  // seasonal frost/ash washes. Same space and the same Projection every entity uses, so decals
+  // sit on the lifted ground. This draws the STILL water — river current + glint + sea shimmer
+  // decals; the eels and fish are drawn separately by renderSwimmers() on the supersampled
+  // sprite layer (see Game.render). `g` optionally targets a p5 graphics buffer (DOM-stack GL
+  // mode draws these decals into the 1080 terrain layer); null/undefined draws on the global
+  // main canvas.
   render(g) {
     if (!this._on() || !this.terrain || typeof Projection === 'undefined') return;
     const R = g || (typeof window !== 'undefined' ? window : null);
     if (!R) return;
     const K = Projection.K;
-    const t = this.terrain;
     const dc = R.drawingContext, ga0 = dc.globalAlpha;
 
     R.push();
@@ -227,12 +228,29 @@ class WaterLayer {
       R.pop();
     }
 
-    // Tuna/eels (longer, slower) then the fish school (smaller, quicker). Both ride
-    // the river like entities and face the way they are actually travelling.
-    this._drawSwimmers(R, g, dc, this.eels, 'eel_swim',  this.cfg.eelAnimSpeed,  1.6, 0.8, K);
-    this._drawSwimmers(R, g, dc, this.fish, 'fish_swim', this.cfg.fishAnimSpeed, 1.5, 0.9, K);
-
     dc.globalAlpha = ga0;     // p5 push/pop does not restore the raw context alpha
+    R.pop();
+  }
+
+  // The river swimmers — tuna/eels (longer, slower) then the fish school (smaller, quicker) —
+  // drawn on the SUPERSAMPLED sprite layer, NOT the 1080 ground buffer the current/shimmer
+  // decals live in. Game.render() calls this inside the entity pass (after GLBatch.begin, before
+  // simulation.render), so in GL mode the batch captures them at backing resolution and in the
+  // 2D path they land straight on the high-res canvas — so a swimming tuna resolves as crisply
+  // as the animals above it. Same camera transform + Projection as the decals; both ride the
+  // river bed and face the way they are travelling. Drawn on the global main canvas (no `g`).
+  renderSwimmers() {
+    if (!this._on() || !this.terrain || typeof Projection === 'undefined') return;
+    const R = (typeof window !== 'undefined') ? window : null;
+    if (!R) return;
+    const K = Projection.K;
+    const dc = R.drawingContext, ga0 = dc.globalAlpha;
+
+    R.push();
+    R.imageMode(CENTER);
+    this._drawSwimmers(R, null, dc, this.eels, 'eel_swim',  this.cfg.eelAnimSpeed,  1.6, 0.8, K);
+    this._drawSwimmers(R, null, dc, this.fish, 'fish_swim', this.cfg.fishAnimSpeed, 1.5, 0.9, K);
+    dc.globalAlpha = ga0;
     R.pop();
   }
 
@@ -308,11 +326,17 @@ class WaterLayer {
         // variety; fall back to the single strip when the '2' variant is absent
         // (the placeholder path, or missing art).
         const curStrip = (((r + si) & 1) && this._hasStrip('water_current2')) ? 'water_current2' : 'water_current';
-        slots.push({ id: 'r' + r + '_' + si, needs: 2, x, y, angle: ang,
+        // Currents render axis-aligned (angle 0). The authored Flowing strips already read
+        // as upright flow, so rotating them to the winding channel skewed the art; the
+        // lateral scatter above still uses `ang`, only the decal's own render rotation is
+        // dropped. Glints and sea shimmer were already angle 0; swimmers still face travel.
+        slots.push({ id: 'r' + r + '_' + si, needs: 2, x, y, angle: 0,
                      strip: curStrip, size: cfg.currentSize, alpha: cfg.currentAlpha, animSpeed: cfg.currentAnimSpeed });
         if (Math.abs(jit(si * 3 + 7, r * 17 + 1)) < cfg.glintChance) {       // ~glintChance of steps also sparkle
+          // Glint stays its original absolute size (was currentSize 24 × 0.6); the 0.4 factor
+          // holds 36 × 0.4 = 14.4 so only the CURRENTS grew, not the sparkles.
           slots.push({ id: 'r' + r + '_' + si + 'g', needs: 2, x, y, angle: 0,
-                       strip: 'water_glint', size: cfg.currentSize * 0.6, alpha: cfg.glintAlpha, animSpeed: cfg.currentAnimSpeed * 1.7 });
+                       strip: 'water_glint', size: cfg.currentSize * 0.4, alpha: cfg.glintAlpha, animSpeed: cfg.currentAnimSpeed * 1.7 });
         }
       }
     }

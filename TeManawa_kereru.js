@@ -53,7 +53,7 @@ const KERERU_SPECIES = {
   // hunt speed so a chase resolves rather than the bird outrunning it forever).
   baseSpeed:        0.32,
   maxForce:         0.055,
-  size:             6,
+  size:             7,
   perceptionRadius: 60,
   cruiseAlt:        24,     // flight height above the 3/4 ground, px (shadow sells the height)
   perchAlt:         8,      // sits low on the canopy when perched
