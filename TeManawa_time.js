@@ -1,32 +1,32 @@
 // ============================================================
-// TE MANAWA — DEEP TIME
+// TE MANAWA: DEEP TIME
 // ------------------------------------------------------------
 // Owns the run's clock: yearsBP, the time multiplier, the Deep-time
 // button's ramp, and what happens when the window runs out.
 //
-// yearsBP is AUTHORITATIVE. Geology and climate are keyed to it, not to
+// yearsBP is authoritative. Geology and climate are keyed to it, not to
 // wall-clock or frame count, so events land in the right place at any
-// speed — which is the entire point of having a fast-forward button.
+// speed, which is the point of the fast-forward button.
 //
 // TEMANAWA_PLAN_V3.md §13.
 // ============================================================
 
 const DeepTime = {
   // ---- the window ------------------------------------------
-  // These bound the RUN (and the timeline UI), not the geology: the ranges/river state is
+  // These bound the run (and the timeline UI), not the geology: the ranges/river state is
   // keyed to absolute dates in TerrainGenerator.GEO_EPOCHS, so you can shrink or shift this
   // window to zoom into any era for debugging and the terrain still reads true for the date.
-  yearsStart: 1000000,  // opens at ~1 Ma — the ranges' earliest stages; they rise across the run (1.1 Ma is the eventual target)
+  yearsStart: 1000000,  // opens at ~1 Ma, the ranges' earliest stages; they rise across the run
   yearsEnd:    25500,   // closes on Oruanui, heading into the LGM
 
   // ---- eruptions -------------------------------------------
-  // The four TVZ events inside the window, oldest → youngest. This is the single
+  // The four TVZ events inside the window, oldest to youngest. This is the single
   // source of truth: DEEP_TIME_MARKERS (below) and the Eruption button both read it.
-  //   tier      — clearing severity for the disturb/regen mechanic.
-  //   skip      — a forward-SKIP target (long press). Oruanui is `false`: its fallout
-  //               sits too close to the present to show, so a forward skip past
-  //               Whakamaru WRAPS to Kidnappers rather than landing on it.
-  //   terminal  — the run's closing ash beat; reached by the clock, never by a skip.
+  //   tier      clearing severity for the disturb/regen mechanic.
+  //   skip      a forward-skip target (long press). Oruanui is `false`: its fallout
+  //             sits too close to the present to show, so a forward skip past
+  //             Whakamaru wraps to Kidnappers rather than landing on it.
+  //   terminal  the run's closing ash beat; reached by the clock, never by a skip.
   // Ages: Kidnappers/Potaka ~1.0 Ma (Mangakino), Kaukatea ~0.9 Ma, Whakamaru/Rangitawa
   // 349 ka, Kawakawa/Oruanui ~25.5 ka. See md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md.
   ERUPTIONS: [
@@ -78,23 +78,23 @@ const DeepTime = {
     return this.yearsBP;
   },
 
-  // The years a forward skip may land on — every eruption except the terminal one.
+  // The years a forward skip may land on: every eruption except the terminal one.
   skipTargets() {
     return this.ERUPTIONS.filter(e => e.skip !== false).map(e => e.yearsBP);
   },
 
-  // LONG PRESS — the next eruption forward in playback (younger, smaller yearsBP).
+  // LONG PRESS: the next eruption forward in playback (younger, smaller yearsBP).
   // Wraps to the oldest target when there is nothing younger (i.e. once past
-  // Whakamaru), so a forward skip loops 1 Ma → 0.9 Ma → 349 ka → (wrap) 1 Ma and
+  // Whakamaru), so a forward skip loops 1 Ma -> 0.9 Ma -> 349 ka -> (wrap) 1 Ma and
   // never lands on the terminal Oruanui.
   nextEruption(yearsBP) {
     const t = this.skipTargets();
     let best = null;
     for (const e of t) if (e < yearsBP && (best === null || e > best)) best = e;
-    return best !== null ? best : Math.max.apply(null, t);   // wrap → oldest
+    return best !== null ? best : Math.max.apply(null, t);   // wrap to oldest
   },
 
-  // SINGLE PRESS — the last eruption backward in playback (older, larger yearsBP):
+  // SINGLE PRESS: the last eruption backward in playback (older, larger yearsBP):
   // the most recent one already passed. null when nothing is older (at/older than
   // Kidnappers), which the caller treats as a no-op.
   prevEruption(yearsBP) {
@@ -104,7 +104,7 @@ const DeepTime = {
     return best;
   },
 
-  // The full eruption record for a year (or null) — lets the button read an event's
+  // The full eruption record for a year (or null); lets the button read an event's
   // tier after prev/nextEruption has chosen the year.
   eruptionByYear(yearsBP) {
     for (const e of this.ERUPTIONS) if (e.yearsBP === yearsBP) return e;
@@ -146,7 +146,7 @@ const DeepTime = {
   },
 
   // ==========================================================
-  // UPDATE — called once per frame from Game.update()
+  // UPDATE: called once per frame from Game.update().
   // Returns the multiplier the rest of the sim should run at.
   // ==========================================================
   update(dt) {
@@ -163,7 +163,7 @@ const DeepTime = {
     return this.timeScale;
   },
 
-  // The run reaching Oruanui is not a fail state and not a pause — it is the
+  // The run reaching Oruanui is not a fail state and not a pause; it is the
   // attract loop's cue. Without this the kiosk sits frozen at 25.5 ka until
   // somebody touches it, which on an unattended screen means most of the day.
   // Game.update() checks this and hands off to Kiosk.resetToAttract().
@@ -176,7 +176,7 @@ const DeepTime = {
     return (this.yearsStart - this.yearsBP) / (this.yearsStart - this.yearsEnd);
   },
 
-  // Real seconds for the whole window at the baseline rate — the number that
+  // Real seconds for the whole window at the baseline rate: the number that
   // decides how long an unattended cycle takes. At 500 yr/s that is ~10.6 min.
   windowSeconds() {
     return (this.yearsStart - this.yearsEnd) / this.yrPerSec;

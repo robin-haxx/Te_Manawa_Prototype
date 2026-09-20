@@ -34,16 +34,16 @@ const SPRITE_PLANTS = new Set(['tussock', 'flax', 'fern', 'Totara', 'beech', 'pa
 // tree (open wetland margin) are deliberately NOT here.
 const FOREST_TREES = new Set(['beech', 'Totara', 'fern', 'kahikatea', 'tawa']);
 
-// Cold-refuge canopy — black beech (Fuscospora), the GLACIAL REFUGIUM tree. It dominates LGM
+// Cold-refuge canopy: black beech (Fuscospora), the GLACIAL REFUGIUM tree. It dominates LGM
 // tree pollen and holds in sheltered pockets while the warm podocarp-broadleaf forest retreats
-// (TEMANAWA_ECOLOGY.md §3.3; memory beech-glacial-refuge). It stays a FOREST_TREE — canopy
-// die-back still applies where it genuinely can't live — but the glacial forest-CONTRACTION does
+// (TEMANAWA_ECOLOGY.md §3.3; memory beech-glacial-refuge). It stays a FOREST_TREE (canopy
+// die-back still applies where it genuinely can't live) but the glacial forest-CONTRACTION does
 // NOT suppress it, so as the band shrinks it HOLDS where the warm trees fall back: "the forest
 // that survives the ice is the beech." This realises the intent already stated in
 // TeManawa_plant_defs.js ("a glacial produces … beech holding mature, fern wilting").
 const COLD_REFUGE = new Set(['beech']);
 
-// Sprite reference - initialized from mauri_sketch.js
+// Sprite reference, initialized from TeManawa_sketch.js
 let PLANT_SPRITES = null;
 
 function initPlantSprites(sprites) {
@@ -238,7 +238,7 @@ class Plant {
     // also grants the faster recovery-regrowth rate so a cut-back forest bounces back.
     this._forestTree = FOREST_TREES.has(type);
     this._coldRefuge = COLD_REFUGE.has(type);   // beech holds through the glacial (exempt from band contraction)
-    this._kahikatea = (type === 'kahikatea');   // the swamp-forest disturbance coloniser — ages out without renewal
+    this._kahikatea = (type === 'kahikatea');   // the swamp-forest disturbance coloniser: ages out without renewal
     this._kahiAge = 0;                           // sim-time since this stand last saw fresh river disturbance
     this._senescent = false;                     // an aged-out kahikatea: inert, does not regrow, culled next morph
     this.dormant = false;
@@ -259,7 +259,7 @@ class Plant {
     // than shrinking in place. _toppling arms it, _toppleStart anchors the fall to the REAL clock
     // (so it plays smoothly in render() regardless of the strided update batch), _toppleDir is the
     // random side it topples toward. It still ends as invisible rootstock (growth 0) and regrows
-    // upright when suitable habitat returns, so the ecology is unchanged — only the visual differs.
+    // upright when suitable habitat returns, so the ecology is unchanged; only the visual differs.
     this._toppling = false;
     this._toppleStart = 0;
     this._toppleDir = 1;
@@ -279,8 +279,8 @@ class Plant {
   update(seasonManager, dt = 1, warp = 0, kahiBoost = 1) {
     if (this._senescent) return;                 // an aged-out kahikatea is inert until the next morph cull removes it
     // FOREST-boost lifecycle accelerator, kahikatea only (set by Simulation.updatePlantsBatched from
-    // the held FOREST button). >1 speeds up whatever this kahikatea is DOING — growing, aging toward
-    // senescence, or senescing/shrinking — instead of the button force-growing it (the button skips
+    // the held FOREST button). >1 speeds up whatever this kahikatea is DOING (growing, aging toward
+    // senescence, or senescing/shrinking) instead of the button force-growing it (the button skips
     // kahikatea in _growPulse). 1 for every other plant and when no boost is held.
     const accel = (this._kahikatea && kahiBoost > 1) ? kahiBoost : 1;
     if (this.isSpawned && this.parentPlaceable) {
@@ -296,14 +296,14 @@ class Plant {
     
     // Forest contraction: canopy trees outside the (seasonally shrinking) forest
     // band stand on habitat the climate no longer supports. O(1) per plant against a
-    // per-frame lerped band — no biome reclassification, so no stutter.
+    // per-frame lerped band, no biome reclassification, so no stutter.
     //
     // KAHIKATEA IS EXEMPT. It is a wetland/riparian tree whose distribution is governed by
     // RIVER DISTURBANCE (the wetland biome + disturbanceRecruit senescence/recruitment), NOT by
     // the montane elevation band. Its wetland reaches down to the river mouth (elevation well
     // below band.min, ~0.14 even in the interglacial), so applying band contraction to it as
     // well made TWO systems fight over the same tree: the disturbance model recruits and warps a
-    // kahikatea up while band contraction suppresses and dies it BACK — the reported "a wetland
+    // kahikatea up while band contraction suppresses and dies it BACK: the reported "a wetland
     // kahikatea sprouts up while a force simultaneously shrinks it". One habitat model per tree:
     // kahikatea answers to the river, so it is left out of the band here (like beech's COLD_REFUGE
     // exemption). It stays a _forestTree for the fast recovery-growth rate; only the band
@@ -316,16 +316,16 @@ class Plant {
         this.dormant = false;
         this.nutrition = 0;
         // HABITAT DEATH, not mere wilting. A canopy tree the glacial has pushed out
-        // of the forest band dies BACK — it loses size until it disappears — so the
+        // of the forest band dies BACK (it loses size until it disappears) so the
         // forest visibly RETREATS to open ground rather than standing as a field of
         // wilted sprites. It persists in place as unseen rootstock (still alive, not
         // culled) and regrows where it stood when the band climbs back over it in the
         // interglacial, so the retreat is reversible with the climate and never needs
         // re-dispersal (kiosk-safe). This is the "unsuitable habitat removes cover"
-        // lesson — distinct from browsing, which only prunes.
+        // lesson: distinct from browsing, which only prunes.
         if (LEVEL_MECHANICS.forestDieback) {
           if (LEVEL_MECHANICS.forestDiebackFall !== false) {
-            // FALL OVER AND FADE (the default). The tree keeps its full size while it topples —
+            // FALL OVER AND FADE (the default). The tree keeps its full size while it topples:
             // the animation is drawn in _renderSprite off the REAL clock (millis), so it plays
             // smoothly whatever the deep-time pace or plant-batch stride. update() only ARMS it
             // and, once the fall has fully played out, drops it to rootstock (growth 0). The end
@@ -338,10 +338,10 @@ class Plant {
                 this._toppleStart = now;
                 this._toppleDir = random() < 0.5 ? -1 : 1;
               } else {
-                this.growth = 0;                          // already a stub — just become rootstock
+                this.growth = 0;                          // already a stub, just become rootstock
               }
             } else if (now - this._toppleStart >= fallMs) {
-              this.growth = 0;                            // the fall has finished — hold as invisible rootstock
+              this.growth = 0;                            // the fall has finished, hold as invisible rootstock
             }
           } else {
             // Legacy shrink-in-place (set forestDiebackFall:false to restore). Knob: forestDiebackRate.
@@ -352,7 +352,7 @@ class Plant {
         return;
       }
       this.suppressed = false;
-      // Suitable habitat has returned over this tree — cancel any fall so it stands back up
+      // Suitable habitat has returned over this tree; cancel any fall so it stands back up
       // and regrows upright in place (handleGrowth climbs it from the rootstock growth).
       if (this._toppling) { this._toppling = false; this._toppleStart = 0; }
     }
@@ -378,9 +378,9 @@ class Plant {
       return;
     }
 
-    // Kahikatea AGES OUT without fresh river disturbance (wetland doc §4.1) — it is a coloniser of raw
+    // Kahikatea AGES OUT without fresh river disturbance (wetland doc §4.1): it is a coloniser of raw
     // alluvium, not a climax tree. A warp (a storm flood or an eruption's sediment pulse laying new wet
-    // ground) rejuvenates the site and resets the clock; otherwise the stand senesces — it wilts back
+    // ground) rejuvenates the site and resets the clock; otherwise the stand senesces: it wilts back
     // and, past the wilt, dies WITHOUT regrowing (culled next morph). This couples the swamp forest to
     // the moving river: disturb the river and kahikatea colonises; leave it static and the stand fades.
     if (this._kahikatea) {
@@ -390,7 +390,7 @@ class Plant {
         const KM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
         this._kahiAge += dt * accel;                               // FOREST boost ages the stand faster toward senescence
         if (this._kahiAge > ((KM && KM.kahiMaxAge) || 900)) {
-          this.growth -= ((KM && KM.kahiSenesceRate) || 0.02) * accel;   // senescing — boost wilts it back FASTER, not slower
+          this.growth -= ((KM && KM.kahiSenesceRate) || 0.02) * accel;   // senescing: boost wilts it back FASTER, not slower
           if (this.growth <= 0.05) { this.alive = false; this._senescent = true; this.nutrition = 0; }
           else this.nutrition = this.maxNutrition * this.growth * 0.5;
           return;                                                   // skip normal growth while senescing
@@ -404,7 +404,7 @@ class Plant {
   checkDormancy(seasonManager) {
     if (this.dormant || !this.alive) return;
 
-    // The interglacial (warmest phase) has no dormancy — plants stay in leaf.
+    // The interglacial (warmest phase) has no dormancy; plants stay in leaf.
     if (seasonManager.currentKey === 'interglacial') return;
 
     if (seasonManager.shouldPlantBeDormant(this.elevation, this.biomeKey)) {
@@ -493,7 +493,7 @@ class Plant {
   // foliage: the plant gets visibly smaller (growth drops by a bite, down to a stub
   // it cannot be cropped past) and yields food in proportion to the biomass removed,
   // then it regrows in place via handleGrowth. A plant is NEVER pulled from the world
-  // by a bite — only unsuitable HABITAT removes cover (see update(): forest die-back).
+  // by a bite; only unsuitable HABITAT removes cover (see update(): forest die-back).
   // Two visibly different fates teach the two ideas: herbivory crops the bush, the
   // climate and ground decide where the forest can live. Knobs: browseBite/browseFloor.
   consume() {
@@ -505,7 +505,7 @@ class Plant {
 
     // Available biomass for this bite: what sits above the un-croppable stub.
     const bite = Math.min(biteMax, this.growth - floor);
-    if (bite <= 0) return 0;                        // already cropped to the stub — nothing to take
+    if (bite <= 0) return 0;                        // already cropped to the stub, nothing to take
 
     const typeMod = this.plantTypeModifier || 1.0;
     const gained = this.maxNutrition * bite * typeMod;    // food gained = the foliage removed
@@ -543,7 +543,7 @@ class Plant {
 
     // effectiveModifier combines the biome modifier (same for all plants in a
     // zone) with the per-species type modifier, so a glacial podocarp forest
-    // can show fern wilting, beech holding mature, and tussock thriving — all
+    // can show fern wilting, beech holding mature, and tussock thriving, all
     // in adjacent cells.
     const eff = this.effectiveModifier;
 
@@ -574,7 +574,7 @@ class Plant {
   
   // Sway amplitude modifier. Normally the seasonal modifier; while a storm blows it
   // is boosted (game._stormSway ramps 0→1 over the storm) so the canopy whips in the
-  // wind — the visible half of the storm, paired with the gradual damage.
+  // wind: the visible half of the storm, paired with the gradual damage.
   _swayMod() {
     let mod = this.seasonalModifier;
     const ss = (typeof game !== 'undefined' && game && game._stormSway) ? game._stormSway : 0;
@@ -634,7 +634,7 @@ class Plant {
     if (spriteState === 'growing') {
       // Variant-grown plants (tussock/coprosma/dracophyllum) grow in their OWN
       // assigned variant, so a growing clump matches the mature one it becomes and the
-      // spread stays visible during regrowth — not every sapling stuck on variant 0.
+      // spread stays visible during regrowth, not every sapling stuck on variant 0.
       // Falls back to the growth-frame sequence for real Growing_ art (tōtara/flax).
       if (sprites.meta && sprites.meta.growFromVariant && sprites.variants && sprites.variants.length) {
         sprite = sprites.variants[this._spriteVariant % sprites.variants.length];
@@ -657,7 +657,7 @@ class Plant {
 
     // Climate-affinity authoring tint (warm=amber, cold=blue; see ClimateAffinity /
     // TintBaker in TeManawa_entity_sprites.js). Off on the wall; when on, swap the chosen
-    // frame for a BAKED tinted copy — no per-frame tint(). Affinity is fixed by plant type,
+    // frame for a BAKED tinted copy, no per-frame tint(). Affinity is fixed by plant type,
     // so classify once and cache on the instance (null = neutral → never tinted).
     if (typeof CONFIG !== 'undefined' && CONFIG.showClimateAffinity && typeof ClimateAffinity !== 'undefined') {
       if (this._climateTint === undefined) this._climateTint = ClimateAffinity.tintFor(ClimateAffinity.ofPlantType(this.type));
@@ -684,11 +684,11 @@ class Plant {
 
     // Footprint width. Where a dedicated growth sequence exists the artwork
     // already carries the size progression, so compounding it with `growth`
-    // shrinks saplings to a few pixels — ease over a narrower range instead.
+    // shrinks saplings to a few pixels, so ease over a narrower range instead.
     let spriteSize;
     if (spriteState === 'growing' && meta && meta.fixedGrowthSize) {
       // Fixed-footprint growth (nīkau): the Grow frames' ARTWORK carries the size
-      // progression, so hold the footprint at adult width the whole way — no scale-up.
+      // progression, so hold the footprint at adult width the whole way, no scale-up.
       spriteSize = this.size * (dormant ? 0.5 : 1);
     } else if (spriteState === 'growing') {
       spriteSize = this.size * (0.55 + 0.45 * this.growth) * (dormant ? 0.5 : 1);
@@ -708,13 +708,13 @@ class Plant {
     // 'base' art stands on the ground point; centred art straddles it.
     const offsetY = anchorBase ? -drawH : -drawH * 0.5;
 
-    // TOPPLING — the tree falls over and fades away (glacial-onset habitat death). It pivots
+    // TOPPLING: the tree falls over and fades away (glacial-onset habitat death). It pivots
     // about the ground point (px,py) like a felled trunk, swinging from upright to nearly flat,
-    // and fades out near the end. Fade via drawingContext.globalAlpha (NOT per-frame tint — that
+    // and fades out near the end. Fade via drawingContext.globalAlpha (NOT per-frame tint, which
     // rebakes the tint cache each frame and stutters; see memory per-frame-tint-stutter); push()
     // saved the alpha and pop() restores it. Drawn instead of the normal sway/direct path.
     if (tprog >= 0) {
-      const ease = tprog * tprog * Math.sqrt(tprog);          // ~tprog^2.5 — slow start, accelerating fall
+      const ease = tprog * tprog * Math.sqrt(tprog);          // ~tprog^2.5, slow start, accelerating fall
       const angle = this._toppleDir * 1.45 * ease;            // upright → ~83° over onto its side
       push();
       translate(px, py);
@@ -753,7 +753,7 @@ class Plant {
   _renderKawakawa(px, py, displaySize, dormant) {
     let buffer = dormant ? PlantStatics.kawakawaBufferDormant : PlantStatics.kawakawaBuffer;
 
-    // Climate-affinity authoring tint — same baked path as the sprite plants above.
+    // Climate-affinity authoring tint: same baked path as the sprite plants above.
     if (typeof CONFIG !== 'undefined' && CONFIG.showClimateAffinity && typeof ClimateAffinity !== 'undefined') {
       if (this._climateTint === undefined) this._climateTint = ClimateAffinity.tintFor(ClimateAffinity.ofPlantType(this.type));
       if (this._climateTint) buffer = TintBaker.get(buffer, this._climateTint);

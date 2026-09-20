@@ -1,9 +1,9 @@
 // ============================================================
-// KŌKAKO — the singing forest wattlebird
+// KŌKAKO: the singing forest wattlebird
 // ------------------------------------------------------------
 // Callaeas wilsoni (North Island kōkako). A poor flier of tall native forest: it
 // bounds and hops through the canopy and only ever makes short, laboured glides
-// between trees — the same short-flight frugivore loop as the kererū, so it IS a
+// between trees: the same short-flight frugivore loop as the kererū, so it IS a
 // kererū mechanically (its own base type + list, extends Kereru). It disperses
 // forest seed like the kererū but far less: a smaller gape passes fewer large
 // fruit, so _disperseChance is well under half (KOKAKO_SPECIES).
@@ -13,11 +13,11 @@
 //     anchor pulls its foraging and hops back onto that patch (Kereru._anchorPoint
 //     / _driftHome), so it stays put in the right forest rather than ranging.
 //   · SONG. When it is secure on a perch (well fed, no storm) it settles in for a
-//     SINGING state — it spends LONGER on the tree than a kererū would. A song
+//     SINGING state: it spends LONGER on the tree than a kererū would. A song
 //     provokes the neighbours: the NEAREST kōkako within earshot answers (a duet),
 //     while any others crowded inside the territory radius are pushed off to find a
 //     new territory of their own (_displaceFrom). Over time the flock spaces itself
-//     out across the forest — emergent territoriality from one rule.
+//     out across the forest: emergent territoriality from one rule.
 //
 // No audio asset ships for the song, so the cue is diegetic-visual only: a soft,
 // slow pair of song ticks rising from the bird while it sings (_renderExtra),
@@ -29,7 +29,7 @@
 // ============================================================
 
 const KOKAKO_STATE = {
-  SINGING: 'singing'    // perched and holding a song — sits longer than a plain perch
+  SINGING: 'singing'    // perched and holding a song: sits longer than a plain perch
 };
 
 class Kokako extends Kereru {
@@ -52,7 +52,7 @@ class Kokako extends Kereru {
     this._territoryRadius = sp.territoryRadius ?? 140;        // rivals closer than this are pushed off
     this._secureHunger   = (sp.secureHungerFrac ?? 0.6);      // "secure" = hunger below this fraction of max
     this._relocating     = false;                             // travelling to a freshly-claimed territory
-    this._territory = createVector(x, y);                     // reusable — never allocate per frame
+    this._territory = createVector(x, y);                     // reusable, never allocate per frame
   }
 
   // The song sits on the tree, so it reads as a perch for altitude + pose.
@@ -66,7 +66,7 @@ class Kokako extends Kereru {
     super._runState(sim, dt);
   }
 
-  // Its patch of forest — the flying loop drifts and hops around this.
+  // Its patch of forest: the flying loop drifts and hops around this.
   _anchorPoint() { return this._territory; }
 
   // While relocating to a new territory, ignore trees and just travel there; on
@@ -86,7 +86,7 @@ class Kokako extends Kereru {
     super._flying(sim, dt);
   }
 
-  // PERCHED — count down the song clocks, and break into a song when secure and
+  // PERCHED: count down the song clocks, and break into a song when secure and
   // either answering a neighbour or due for a spontaneous one. Otherwise the
   // ordinary kererū perch (rest / breed).
   _perched(sim, dt) {
@@ -102,7 +102,7 @@ class Kokako extends Kereru {
   }
 
   // Begin a song: hold the perch, anchor the territory here, and provoke the
-  // neighbours — nearest answers, the crowded rest move off.
+  // neighbours: nearest answers, the crowded rest move off.
   _enterSinging(sim) {
     this.state = KOKAKO_STATE.SINGING;
     this._singTimer = this._singFrames;
@@ -199,7 +199,7 @@ class Kokako extends Kereru {
     ellipse(dir * s * 0.5, s * 0.02, s * 0.22, s * 0.22);             // blue wattle
   }
 
-  // Song cue — a small music note lifting from the singing bird. USER-FACING (like the
+  // Song cue: a small music note lifting from the singing bird. USER-FACING (like the
   // mating heart): a charming, legible cue for the singing/territory behaviour, drawn
   // whether or not the debug entity-UI layer is on. Gentle bob on the real anim clock,
   // non-flashing (CLAUDE.md).
@@ -222,7 +222,7 @@ class Kokako extends Kereru {
 }
 
 // ------------------------------------------------------------
-// SPECIES DATA — North Island kōkako. Registered as its own base type + species
+// SPECIES DATA: North Island kōkako. Registered as its own base type + species
 // in initializeRegistry (sketch.js), carrying `class: Kokako`.
 // ------------------------------------------------------------
 const KOKAKO_SPECIES = {
@@ -230,10 +230,10 @@ const KOKAKO_SPECIES = {
   scientificName: 'Callaeas wilsoni',
   label:          'kōkako',   // lower-case, for the notification strip
   class:          (typeof Kokako !== 'undefined') ? Kokako : undefined,
-  description:    'A blue-wattled forest songbird — a weak flier that holds and sings a forest territory.',
+  description:    'A blue-wattled forest songbird, a weak flier that holds and sings a forest territory.',
   rarity:         'uncommon',
 
-  // Movement / render — a poorer flier than the kererū: slower, shorter hops, and
+  // Movement / render, a poorer flier than the kererū: slower, shorter hops, and
   // it barely clears the canopy (low cruise altitude).
   baseSpeed:        0.24,
   maxForce:         0.05,
@@ -247,7 +247,7 @@ const KOKAKO_SPECIES = {
   feedRadius:       90,
   homeLeash:        120,     // strays this far from its territory before heading back
 
-  // Frugivore crop / dispersal — dispersal well under half the kererū's.
+  // Frugivore crop / dispersal: well under half the kererū's.
   cropCapacity:     1,
   feedSec:          5,
   disperseEverySec: 22,
@@ -260,7 +260,7 @@ const KOKAKO_SPECIES = {
   feedRelief:       70,
   starveSec:        18,
 
-  // Reproduction — breeds true (a kōkako lays a kōkako egg).
+  // Reproduction: breeds true (a kōkako lays a kōkako egg).
   maturitySec:      22,
   eggCooldownSec:   42,
   mateRadius:       170,
@@ -274,7 +274,7 @@ const KOKAKO_SPECIES = {
   songEverySec:     16,      // spontaneous song cadence when secure
   singHearRadius:   220,     // the nearest kōkako within this answers
   territoryRadius:  140,     // rivals closer than this are pushed to new ground
-  secureHungerFrac: 0.6      // "secure enough to sing" — hunger below 60% of max
+  secureHungerFrac: 0.6      // "secure enough to sing": hunger below 60% of max
 };
 
 if (typeof window !== 'undefined') {

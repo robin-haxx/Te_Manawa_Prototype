@@ -239,7 +239,19 @@ conditional eighth species (+5 assets) if the coast earns a distinct band.
 
 ---
 
-## 6. The five buttons
+## 6. The controls
+
+> **Being overhauled — see `TEMANAWA_SECOND_SCREEN.md`.** The single-screen five-button model
+> below is the *built* baseline and still runs the diorama from keys `1`–`5`. It is being
+> replaced by a **two-screen** install: a 1080p **touchscreen** beside the 4K diorama drives a
+> three-station model (habitat switch → per-species encyclopedia/boost-select → activate),
+> talking to the sim over `BroadcastChannel`. The two load-bearing changes: **geology is
+> paused** until a timelapse is spent, and the boost is **per-species** and always runs to the
+> **next glacial/interglacial** on a 500→5000 yr/s ramp. Storm and eruption survive as-is. That
+> document is authoritative for the interaction model; this section is retained as the baseline
+> it grows out of.
+
+### 6.1 The five buttons (baseline)
 
 *(Built per `TEMANAWA_INTERACTION_HEALTH_PLAN.md`. Kiosk input widens to `1`–`5`.)*
 
@@ -440,10 +452,11 @@ others. Honest current state:
 | **6 — Disturbance** | `disturb()` + `warp`, wire buttons | **Mostly built** — eruption clear/regrow (`ashCover`) + the **`warp` clock** (`disturb`/`warpAt`, real-time-paced recovery) + storm windthrow aftermath + the **wetland bloom** all built (§9). Remaining: `wet`/`open`/`bare` per-cell fields, kahikatea river-recruitment |
 | **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **7 grazers** (5 moa + North Island goose + mōho/NI takahē) **+ 3 flyers** (kererū, kōkako, huia) with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier); **per-species cold adaptation now live** (`seasonalModifiers` re-keyed by glacial phase). Remaining: harrier flight behaviour, the *Dinornis* dimorphism pair |
 | **+ Interaction** | five buttons, health, kererū | ✅ **Built** (steps 1–4); tuning (step 5) open — *new track, not in the v2.1 ledger* |
+| **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | **In build** — spec + touchscreen page + `BroadcastChannel` bus receiver **built** (`TEMANAWA_SECOND_SCREEN.md`, `secondscreen/`, `TeManawa_bus.js`: storm/eruption/deep live, boost/habitat stubbed); the sim overhaul (paused clock, 500→5000 ramp, regime-boundary finder, `seedSpecies`) is the open frontier (§7 of that doc) |
 | **8 — Kiosk** | hardening, audio, lockdown | **Not started** — audio still preloads 6.5 MB; `mapGrid` still 512 |
 
 The true frontier is narrow and specific: **the fauna cast turning on, the flora art, the disturbance
-clocks, and the back half of the interaction loop.**
+clocks, the back half of the interaction loop, and the second-screen sim overhaul.**
 
 ---
 
@@ -475,9 +488,15 @@ into the **land and the cast**, where a visitor reads them in forty seconds with
    the browse/die-back feel (§4) — how far a bite crops (`browseBite`/`browseFloor`) and how fast the
    glacial forest retreats and regrows (`forestDiebackRate`/`forestRecoverRate`), watched over a full
    unattended climate cycle so the forest reads as *cycling*, not declining.
-7. **Kiosk hardening + audio** (Phase 8): preload only the ambient bed and lazy-load the rest (the biggest
+7. **The second-screen sim overhaul** (`TEMANAWA_SECOND_SCREEN.md` §7): the spec, the touchscreen page and
+   the bus receiver are built; the sim half is the frontier — **pause the geology** (`DeepTime` holds
+   `yearsBP` until a timelapse), add the **500→5000 yr/s ramp to the next glacial/interglacial**
+   (a regime-boundary finder in `climate.js`), a **per-species `seedSpecies`** boost, the eruption-aware
+   ending, and the telemetry emit. The load-bearing tuning pass — the paused clock ripples into climate,
+   the morph, the eruptions and the short-dwell pedagogy.
+8. **Kiosk hardening + audio** (Phase 8): preload only the ambient bed and lazy-load the rest (the biggest
    cold-boot fix outstanding), drop `mapGrid` 512 → 256, photosensitivity and touch-target sign-off.
-8. **Interpretation + mana whenua co-design** (§16): the mute layer — nine moa and twelve plants carry
+9. **Interpretation + mana whenua co-design** (§16): the mute layer — nine moa and twelve plants carry
    `displayName`/`scientificName`/`description` with Māori names, plus phase and migration narration, all
    authored and none rendering — waits on a curatorial decision about whether and how the piece names things.
 
@@ -511,9 +530,12 @@ and derived. Still open, gating the work they touch:
 4. **Coastal moa** — build the conditional eighth species (+5 assets)?
 5. **`mapGrid` 512 → 256** — the precondition has landed; do the drop and retune plant/spawn density.
 6. **Saturation scope** (§7) — ground-only (shipped) vs whole-scene, from a real 4K profile.
-7. **Hardware** — final resolution, portrait vs the current landscape 3/4 framing, touchscreen vs physical
-   arcade buttons; sets the input path and `pixelDensity`.
-8. **A sibling landform screen** — if one carries the geology, this screen can lean further ecological.
+7. ~~**Hardware / input path**~~ — **resolved** to a **two-screen** install: a 4K diorama plus a 1080p
+   **touchscreen** control surface driving the sim over `BroadcastChannel` (`TEMANAWA_SECOND_SCREEN.md`).
+   The physical controls (habitat switch, plant-select, storm, boost, eruption) hang off the touchscreen.
+8. ~~**A sibling landform screen**~~ — **resolved**: the second screen is the encyclopedia/control surface,
+   not a landform view; the geology stays on the 4K diorama but is now **paused until a timelapse**
+   (`TEMANAWA_SECOND_SCREEN.md` §0).
 9. **Acknowledge the absences** — a single quiet end-card carrying the strongest material in the research
    (97% of the wetland gone, under 5% of the plains vegetation)?
 10. **Mana whenua co-design** — naming, narration, story framing, and any use of the Te Ahu a Tūranga bone

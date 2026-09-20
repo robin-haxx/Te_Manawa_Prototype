@@ -1,5 +1,5 @@
 // ============================================================
-// TE MANAWA — KIOSK LAYER
+// TE MANAWA: KIOSK LAYER
 // ------------------------------------------------------------
 // Everything that makes this survive being an unattended museum
 // installation with no operator: the soft reset, the idle/attract
@@ -11,7 +11,7 @@
 //
 // resetToAttract() rebuilds the world from memory. It is the same code
 // path used by the idle timeout, the end of the timeline, the Eruption
-// button and the onerror handler — so it gets exercised constantly and
+// button and the onerror handler, so it gets exercised constantly and
 // is the one thing in the build that cannot be allowed to rot.
 //
 // A hard reload (location.reload) re-decodes every asset and is the
@@ -36,13 +36,13 @@ const Kiosk = {
   _fadeUntil:    0,
   _watchdogTimer: null,
   _installed:    false,
-  // Set by attach() from setup() — NOT window.game, which is permanently
+  // Set by attach() from setup(): NOT window.game, which is permanently
   // undefined here (a classic-script `let` is a lexical global, not a window
   // property), so every recovery path would silently no-op. See MISTAKES.md.
   game:          null,
 
   // ==========================================================
-  // INSTALL — called once from setup()
+  // INSTALL: called once from setup()
   // ==========================================================
   attach(g) {
     this.game = g;
@@ -97,19 +97,19 @@ const Kiosk = {
           const ctx = getAudioContext();
           if (ctx && ctx.state !== 'running') ctx.resume();
         }
-      } catch (err) { /* audio is optional — never let this throw */ }
+      } catch (err) { /* audio is optional, never let this throw */ }
     };
     ['pointerdown', 'keydown', 'touchstart'].forEach(
       ev => document.addEventListener(ev, resume, { once: false })
     );
 
-    console.log('[Kiosk] installed — idle ' + this.idleSeconds + 's, watchdog ' +
+    console.log('[Kiosk] installed: idle ' + this.idleSeconds + 's, watchdog ' +
                 this.watchdogSeconds + 's, nightly reload ' +
                 (this.nightlyReloadHour === null ? 'off' : this.nightlyReloadHour + ':00'));
   },
 
   // ==========================================================
-  // HEARTBEAT — called every frame from draw()
+  // HEARTBEAT: called every frame from draw()
   // ==========================================================
   beat() {
     this.lastHeartbeat = Date.now();
@@ -141,14 +141,14 @@ const Kiosk = {
   },
 
   // ==========================================================
-  // WATCHDOG TICK — called from setInterval, never from draw()
+  // WATCHDOG TICK: called from setInterval, never from draw()
   // ==========================================================
   tick() {
     const now = Date.now();
 
     // 0. Hidden tab -> the browser throttles/pauses requestAnimationFrame, so the
     //    heartbeat stops WITHOUT anything being wrong. That is a dev-environment
-    //    state (tab switch, DevTools, screenshots) — the kiosk panel is never
+    //    state (tab switch, DevTools, screenshots); the kiosk panel is never
     //    hidden. Treat it as time-not-passing rather than a stall, otherwise
     //    authoring sessions live in a reload loop.
     if (typeof document !== 'undefined' && document.hidden) {
@@ -169,7 +169,7 @@ const Kiosk = {
     //    silently, arm the same charge the timeline/button eruptions use (rumble + ash-cloud
     //    roll-down); InstallHUD.update() performs the actual reset at the crest, hidden under the
     //    ash cover, then plays the reveal. The reset itself stays synchronous (resetToAttract is
-    //    untouched) — only this idle TRIGGER pre-rolls. If a charge/ash window is already live the
+    //    untouched); only this idle TRIGGER pre-rolls. If a charge/ash window is already live the
     //    arm is refused and we retry on the next tick (lastInputAt only advances once it takes).
     if (now - this.lastInputAt > this.idleSeconds * 1000) {
       const g = this.game;
@@ -178,7 +178,7 @@ const Kiosk = {
       }
     }
 
-    // 3. Nightly refresh — blunt, and it defeats every slow leak we didn't find.
+    // 3. Nightly refresh: blunt, and it defeats every slow leak we didn't find.
     if (this.nightlyReloadHour !== null) {
       const d = new Date();
       if (d.getHours() === this.nightlyReloadHour && d.getMinutes() === 0 &&
@@ -189,12 +189,12 @@ const Kiosk = {
   },
 
   // ==========================================================
-  // SOFT RESET — the important one
+  // SOFT RESET: the important one
   // ----------------------------------------------------------
   // Target: 10-25 ms, hidden behind a crossfade. It must not call
   // loadImage, loadSound, fetch, or anything else that touches the
   // network or re-decodes an asset. If this ever needs to, the design
-  // has gone wrong — see TEMANAWA_BUILD_V3.md §5.1.
+  // has gone wrong; see TEMANAWA_BUILD_V3.md §5.1.
   // ==========================================================
   // reseedEvery: every Nth reset also regenerates the terrain, so the landscape
   // isn't identical all day. That one is expensive (see Game.init), which is
@@ -202,8 +202,8 @@ const Kiosk = {
   reseedEvery: 12,
 
   // opts.reseed (optional) forces the terrain rebuild on or off for this call.
-  // Left undefined, the every-Nth counter below decides — the attract/idle/error
-  // path, so the land still varies across an unattended day. The Eruption button
+  // Left undefined, the every-Nth counter below decides (the attract/idle/error
+  // path), so the land still varies across an unattended day. The Eruption button
   // overrides it: a tap passes reseed:false (cheap, terrain kept) and a long
   // press passes reseed:true (the deliberate reseed). See TeManawa_hud.js.
   resetToAttract(g, reason = 'manual', opts = null) {
@@ -222,7 +222,7 @@ const Kiosk = {
       if (g.notifications) g.notifications.length = 0;
       if (g.ui && g.ui.messages) g.ui.messages.length = 0;
 
-      // Rebuild from memory — no loadImage, no loadSound, no network.
+      // Rebuild from memory: no loadImage, no loadSound, no network.
       let reseed = (this.resetCount + 1) % this.reseedEvery === 0;
       if (opts && typeof opts.reseed === 'boolean') reseed = opts.reseed;
 
@@ -230,11 +230,11 @@ const Kiosk = {
       // end-of-window reset seeks back to the previous eruption checkpoint and replays it
       // (Game.applyEruptionAt), so the ambient loop cycles on the eruptions instead of
       // restarting the whole 1 Ma every time. Exceptions:
-      //   · a periodic reseed (every reseedEvery) is a deliberate FULL restart at 1 Ma — it
+      //   · a periodic reseed (every reseedEvery) is a deliberate FULL restart at 1 Ma: it
       //     also varies the land, and lets the whole cycle (emergence onward) replay;
       //   · before the first eruption (no prior), a plain rebuild at the current start.
       // NOTE: applyEruptionAt morphs the terrain to the eruption year, so this reset is
-      // heavier than the bare resetEcosystem() swap — but it is crossfaded and infrequent
+      // heavier than the bare resetEcosystem() swap, but it is crossfaded and infrequent
       // (idle / once per cycle), well short of the watchdog. See TEMANAWA_BUILD_V3.md §5.1.
       const beforeYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null;
       const lastEr = (typeof DeepTime !== 'undefined' && beforeYear != null) ? DeepTime.prevEruption(beforeYear) : null;
@@ -257,7 +257,7 @@ const Kiosk = {
 
     const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
     this.lastResetMs_duration = ms;
-    console.log(`[Kiosk] soft reset (${reason}) in ${ms.toFixed(1)}ms — #${this.resetCount}`);
+    console.log(`[Kiosk] soft reset (${reason}) in ${ms.toFixed(1)}ms, #${this.resetCount}`);
     return ms;
   },
 
@@ -287,7 +287,7 @@ const Kiosk = {
   },
 
   // ==========================================================
-  // ERROR RING BUFFER — survives the reload, so there's a post-mortem
+  // ERROR RING BUFFER: survives the reload, so there's a post-mortem
   // ==========================================================
   logError(kind, message) {
     const entry = { t: new Date().toISOString(), kind, message: String(message).slice(0, 400) };
@@ -298,7 +298,7 @@ const Kiosk = {
       log.push(entry);
       while (log.length > this.errorLogMax) log.shift();
       localStorage.setItem(this.errorLogKey, JSON.stringify(log));
-    } catch (e) { /* storage unavailable — the console entry above still stands */ }
+    } catch (e) { /* storage unavailable; the console entry above still stands */ }
   },
 
   getErrorLog() {

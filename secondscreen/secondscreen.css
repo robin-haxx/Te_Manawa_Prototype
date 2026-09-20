@@ -1,0 +1,205 @@
+/* ============================================================
+   TE MANAWA — SECOND SCREEN: STYLE
+   ------------------------------------------------------------
+   Authored on a fixed 1920×1080 stage (app.js scales it to the panel).
+   Matches the mockups: cream serif display titles, orange italic taxonomy,
+   dark translucent cards, per-habitat background tints.
+   ============================================================ */
+
+/* The distinctive display face. If NF Nadira Pro is not the mockup title face,
+   swap the src here — nothing else changes. Body stays a system sans (offline,
+   deterministic on the Windows kiosk). */
+@font-face {
+  font-family: 'Nadira';
+  src: url('../typefaces/NF-Nadira-Pro-Regular.otf') format('opentype'),
+       url('../typefaces/NF-Nadira-Pro-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+:root {
+  --cream:  #f2ead5;
+  --orange: #d98a3a;
+  --body:   #e9e7dd;
+  --card-bg: rgba(8, 16, 10, 0.60);
+  --card-br: rgba(240, 235, 210, 0.10);
+  --display: 'Nadira', Georgia, 'Times New Roman', serif;
+  --sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #0a0f0b;
+  cursor: none;                          /* kiosk: no pointer on the wall */
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;                    /* no pinch-zoom / scroll */
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--sans);
+}
+
+/* ---- the fixed stage ------------------------------------ */
+#stage {
+  position: absolute; left: 50%; top: 50%;
+  width: 1920px; height: 1080px;
+  transform-origin: center center;
+  overflow: hidden;
+}
+
+.hidden { display: none !important; }
+
+/* ---- background layers (tint fallback under the artist image) ---- */
+#bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+}
+/* Per-habitat tint + soft vignette, shown until/behind the 1080p artist image. */
+.theme-forest  { background-color: #24422a; }
+.theme-wetland { background-color: #1b423a; }
+.theme-lowland { background-color: #33471f; }
+.theme-alpine  { background-color: #183a4b; }
+.theme-select  { background-color: #24402a; }
+#bg::after {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(0,0,0,0.35) 100%);
+}
+
+/* ---- habitat title -------------------------------------- */
+#habitatTitle {
+  position: absolute; left: 120px; top: 70px;
+  font-family: var(--display); font-style: italic;
+  font-size: 92px; line-height: 1; color: var(--cream);
+  letter-spacing: 2px;
+  text-shadow: 0 3px 14px rgba(0,0,0,0.45);
+}
+
+/* ---- plant cluster (positioned "stickers") -------------- */
+#plantCluster { position: absolute; inset: 0; }
+.sticker {
+  position: absolute; transform: translate(-50%, -50%);
+  background: none; border: none; padding: 0; cursor: none;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45));
+  transition: transform 140ms ease;
+}
+.sticker img { height: 100%; width: auto; display: block; pointer-events: none; }
+/* Un-highlighted stickers read slightly recessed (grey sticker outline in the
+   mockups); the highlighted one lifts and gets a cream ring. */
+.sticker::before {
+  content: ''; position: absolute; inset: -10px;
+  border-radius: 18px; background: rgba(120, 130, 115, 0.16);
+  filter: blur(6px); opacity: 0.9; z-index: -1;
+}
+.sticker.selected {
+  transform: translate(-50%, -50%) scale(1.04);
+  filter: drop-shadow(0 0 0 #f6f1e2) drop-shadow(0 10px 16px rgba(0,0,0,0.5));
+}
+.sticker.selected::before {
+  inset: -16px; background: rgba(246, 241, 226, 0.9);
+  filter: blur(2px);
+}
+
+/* ---- the species card ----------------------------------- */
+#card {
+  position: absolute; left: 1155px; top: 120px;
+  width: 690px; height: 840px;
+  background: var(--card-bg); border: 1px solid var(--card-br);
+  border-radius: 26px; padding: 54px;
+  backdrop-filter: blur(2px);
+  transition: box-shadow 300ms ease, border-color 300ms ease;
+}
+#card.matched    { border-color: rgba(120, 200, 120, 0.55); box-shadow: 0 0 40px rgba(90,180,90,0.25); }
+#card.mismatched { border-color: rgba(150, 150, 150, 0.45); box-shadow: 0 0 40px rgba(120,120,120,0.18); }
+
+/* prompt state ("Select a Plant") */
+#cardPrompt {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 0 60px;
+}
+.hand {
+  width: 150px; height: 150px; margin-bottom: 40px;
+  stroke: var(--cream); stroke-width: 7; fill: none;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+#cardPrompt .prompt-title {
+  font-family: var(--display); font-style: italic; font-size: 68px; color: var(--cream);
+}
+#cardPrompt .prompt-sub {
+  margin-top: 18px; font-style: italic; font-size: 30px; color: var(--orange); line-height: 1.35;
+}
+
+/* species state */
+#cardSpecies { position: absolute; inset: 54px; }
+/* The plant sprite and the birds it supports read as the foreground imagery — ABOVE
+   the text (z-order), with the text column narrowed so they barely overlap. */
+#cardPlant {
+  position: absolute; right: 0; bottom: 0; z-index: 2;
+  height: 66%; width: auto; object-fit: contain; object-position: bottom right;
+  filter: drop-shadow(0 8px 14px rgba(0,0,0,0.5));
+}
+#cardFauna {
+  position: absolute; left: 0; top: 0; z-index: 3;
+  display: flex; gap: 14px; align-items: flex-start;
+}
+#cardFauna .faunaImg {
+  height: 110px; width: auto;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+}
+.card-text { position: absolute; left: 0; bottom: 0; width: 52%; z-index: 1; }
+#cardName { font-family: var(--display); font-style: italic; font-size: 62px; color: var(--cream); }
+#cardSci  { font-style: italic; font-size: 30px; color: var(--orange); margin-top: 2px; }
+#cardDesc { margin-top: 22px; font-size: 24px; line-height: 1.5; color: var(--body); }
+
+/* ---- "Select a Habitat" centre attract screen ---------- */
+#selectScreen {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+#selectCard {
+  width: 1180px; max-width: 78%;
+  background: var(--card-bg); border: 1px solid var(--card-br); border-radius: 26px;
+  padding: 80px 90px; text-align: center;
+}
+#selectCard .hand { margin: 0 auto 30px; }
+#selectCard h1 { font-family: var(--display); font-style: italic; font-size: 96px; color: var(--cream); }
+#selectCard .prompt-sub { margin-top: 16px; font-style: italic; font-size: 34px; color: var(--orange); }
+#selectCard p { margin-top: 34px; font-size: 26px; line-height: 1.55; color: var(--body); max-width: 760px; margin-left: auto; margin-right: auto; }
+.select-tree { position: absolute; bottom: 40px; height: 620px; opacity: 0.96; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.4)); }
+.select-tree.left  { left: 90px; }
+.select-tree.right { right: 90px; }
+
+/* ---- the readout strip (KYA · stage · goal · timelapse) - */
+/* The readout is "extra stuff" — hidden on the kiosk, shown only in debug mode. */
+#readout {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  display: none; align-items: center; gap: 26px;
+  padding: 14px 34px; border-radius: 40px;
+  background: rgba(6, 12, 8, 0.55); border: 1px solid var(--card-br);
+  color: var(--body); font-size: 26px; white-space: nowrap;
+}
+body.debug #readout { display: flex; }
+#clockLabel { font-variant-numeric: tabular-nums; min-width: 200px; }
+.pill {
+  padding: 6px 20px; border-radius: 20px; font-size: 24px; font-weight: 600;
+  background: rgba(255,255,255,0.10); color: var(--body);
+}
+.pill.warm { background: rgba(217, 138, 58, 0.30); color: #ffd9a6; }
+.pill.cool { background: rgba(120, 160, 200, 0.22); color: #cfe3f5; }
+.pill.cold { background: rgba(120, 175, 220, 0.30); color: #d6ecff; }
+#goalLabel { color: var(--orange); font-style: italic; }
+#timelapse { display: flex; align-items: center; gap: 16px; opacity: 0.5; transition: opacity 200ms; }
+#timelapse.active { opacity: 1; }
+#timelapseTrack { width: 260px; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.14); overflow: hidden; }
+#timelapseFill  { height: 100%; width: 0%; background: var(--orange); transition: width 120ms linear; }
+#timelapseMsg   { min-width: 120px; font-size: 22px; color: var(--cream); }
+
+/* ---- on-screen test controls (debug mode only) ---------- */
+#testbar { position: absolute; right: 20px; top: 20px; display: none; flex-direction: column; gap: 8px; z-index: 50; }
+body.debug #testbar { display: flex; }
+body.debug { cursor: auto; }
+body.debug #stage, body.debug .sticker { cursor: pointer; }
+#testbar button {
+  font-family: var(--sans); font-size: 18px; padding: 8px 14px; border-radius: 8px;
+  border: 1px solid var(--card-br); background: rgba(6,12,8,0.85); color: var(--cream); cursor: pointer;
+}

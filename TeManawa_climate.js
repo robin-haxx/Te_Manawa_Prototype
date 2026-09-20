@@ -1,76 +1,76 @@
 // ============================================================
-// TE MANAWA — PARAMETRIC CLIMATE
+// TE MANAWA: PARAMETRIC CLIMATE
 // ------------------------------------------------------------
 // One pure function of yearsBP. No state, no dependencies, no p5.
 //
 //     Climate.at(yearsBP) -> { glacialIndex, seaLevel, snowLine,
 //                              tempBias, stage, stageName, mis }
 //
-// glacialIndex is a low-frequency oscillator over yearsBP; everything else
-// (sea level, snow line, temperature) is a coefficient on it. The sim reads
+// glacialIndex is a low-frequency oscillator over yearsBP; sea level, snow
+// line and temperature are each a coefficient on it. The sim reads
 // glacialIndex directly; the timeline and debug overlay read the rest.
 //
-// The curve is a TABLE, not a sine: anchor points from the LR04 benthic stack,
-// smoothstepped between and auditable one line at a time. Ages are rounded — the
-// SHAPE and ORDER are what's true. A parametric wave was tried and got MIS 5e and
-// the LGM wrong; see MISTAKES.md and TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §2.
+// The curve is a table, not a sine: anchor points from the LR04 benthic
+// stack, smoothstepped between and auditable one line at a time. Ages are
+// rounded to the MIS; the shape and order are what matter. A parametric wave
+// got MIS 5e and the LGM wrong; see MISTAKES.md and
+// TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §2.
 // ============================================================
 
 const Climate = {
   // ---- anchors: [yearsBP, glacialIndex]  (0 = interglacial, 1 = full glacial)
   // Ordered oldest -> youngest, matching the direction the run plays.
   ANCHORS: [
-    // ---- deep window: 1 Ma → 350 ka -------------------------------------------
-    // The Mid-Pleistocene Transition sits in this span: cycles before ~0.86 Ma
-    // (≈MIS 22, the "900-ka event") are ~41 kyr and lower-amplitude; after it they
-    // grow into the strong ~100 kyr sawtooth the younger table carries. So glacials
-    // deepen and interglacials warm toward the present — a real change of character,
-    // worth seeing on the wall. Ages rounded to the MIS; shape and order are true.
-    [1000000, 0.30],  // MIS 25 — interglacial (pre-MPT, damped)
-    [ 950000, 0.60],  // MIS 24 — glacial (41-kyr world, modest)
-    [ 920000, 0.34],  // MIS 23 — interglacial
-    [ 880000, 0.72],  // MIS 22 — glacial; the ~900-ka intensification (MPT)
-    [ 835000, 0.22],  // MIS 21 — interglacial (amplitude growing)
-    [ 800000, 0.82],  // MIS 20 — glacial
-    [ 787000, 0.15],  // MIS 19 — interglacial (Matuyama–Brunhes; a Holocene analog)
-    [ 740000, 0.88],  // MIS 18 — glacial
-    [ 690000, 0.20],  // MIS 17 — interglacial
-    [ 650000, 0.95],  // MIS 16 — glacial (strong)
-    [ 590000, 0.15],  // MIS 15 — interglacial
-    [ 540000, 0.78],  // MIS 14 — glacial (weak–moderate)
-    [ 500000, 0.25],  // MIS 13 — interglacial (moderate)
-    [ 450000, 1.00],  // MIS 12 — glacial (one of the largest of the Quaternary)
-    [ 410000, 0.08],  // MIS 11 — interglacial (exceptionally warm and long)
-    [ 375000, 0.55],  // MIS 11 → 10 cooling
-    // ---- younger window: 350 ka → 18 ka (original table, unchanged) -----------
-    [350000, 0.85],   // MIS 10 — glacial. Whakamaru erupts ~349 ka
-    [335000, 0.15],   // MIS 9e — interglacial peak
+    // ---- deep window: 1 Ma to 350 ka -------------------------------------------
+    // The Mid-Pleistocene Transition sits here: cycles before ~0.86 Ma (~MIS 22,
+    // the "900-ka event") are ~41 kyr and lower-amplitude; after it they grow into
+    // the strong ~100 kyr sawtooth the younger table carries. Glacials deepen and
+    // interglacials warm toward the present. Ages rounded to the MIS.
+    [1000000, 0.30],  // MIS 25: interglacial (pre-MPT, damped)
+    [ 950000, 0.60],  // MIS 24: glacial (41-kyr world, modest)
+    [ 920000, 0.34],  // MIS 23: interglacial
+    [ 880000, 0.72],  // MIS 22: glacial; the ~900-ka intensification (MPT)
+    [ 835000, 0.22],  // MIS 21: interglacial (amplitude growing)
+    [ 800000, 0.82],  // MIS 20: glacial
+    [ 787000, 0.15],  // MIS 19: interglacial (Matuyama-Brunhes; a Holocene analog)
+    [ 740000, 0.88],  // MIS 18: glacial
+    [ 690000, 0.20],  // MIS 17: interglacial
+    [ 650000, 0.95],  // MIS 16: glacial (strong)
+    [ 590000, 0.15],  // MIS 15: interglacial
+    [ 540000, 0.78],  // MIS 14: glacial (weak to moderate)
+    [ 500000, 0.25],  // MIS 13: interglacial (moderate)
+    [ 450000, 1.00],  // MIS 12: glacial (one of the largest of the Quaternary)
+    [ 410000, 0.08],  // MIS 11: interglacial (exceptionally warm and long)
+    [ 375000, 0.55],  // MIS 11 to 10 cooling
+    // ---- younger window: 350 ka to 18 ka --------------------------------------
+    [350000, 0.85],   // MIS 10: glacial. Whakamaru erupts ~349 ka
+    [335000, 0.15],   // MIS 9e: interglacial peak
     [320000, 0.45],
     [300000, 0.70],
-    [270000, 0.90],   // MIS 8 — glacial maximum
-    [245000, 0.25],   // MIS 7e — interglacial
-    [230000, 0.50],   // MIS 7d — stadial
+    [270000, 0.90],   // MIS 8: glacial maximum
+    [245000, 0.25],   // MIS 7e: interglacial
+    [230000, 0.50],   // MIS 7d: stadial
     [215000, 0.30],   // MIS 7c
     [195000, 0.35],   // MIS 7a
     [180000, 0.70],
     [160000, 0.85],
-    [140000, 1.00],   // MIS 6 — Penultimate Glacial Maximum
-    [128000, 0.10],   // Termination II — abrupt
-    [122000, 0.05],   // MIS 5e — LAST INTERGLACIAL, sea level ~+6 m
+    [140000, 1.00],   // MIS 6: Penultimate Glacial Maximum
+    [128000, 0.10],   // Termination II, abrupt
+    [122000, 0.05],   // MIS 5e: last interglacial, sea level ~+6 m
     [110000, 0.35],   // MIS 5d
     [100000, 0.25],   // MIS 5c
     [ 87000, 0.40],   // MIS 5b
     [ 80000, 0.30],   // MIS 5a
     [ 65000, 0.60],   // MIS 4
-    [ 50000, 0.55],   // MIS 3 — long, cool, unstable
+    [ 50000, 0.55],   // MIS 3: long, cool, unstable
     [ 40000, 0.60],
     [ 30000, 0.80],
-    [ 21000, 1.00],   // MIS 2 — LAST GLACIAL MAXIMUM
+    [ 21000, 1.00],   // MIS 2: Last Glacial Maximum
     [ 18000, 0.95]
   ],
 
-  // Named intervals, for the timeline and the debug overlay. Extended back to 1 Ma
-  // alongside the anchors above; boundaries rounded to the nearest few kyr.
+  // Named intervals for the timeline and the debug overlay, spanning 1 Ma to the
+  // present. Boundaries rounded to the nearest few kyr.
   MIS: [
     [1000000, 960000, 'MIS 25'], [960000, 936000, 'MIS 24'],
     [ 936000, 900000, 'MIS 23'], [900000, 866000, 'MIS 22'],
@@ -132,8 +132,8 @@ const Climate = {
     };
   },
 
-  // Four readable bands. Used by the timeline shading and the debug overlay;
-  // the sim itself reads glacialIndex directly and never these.
+  // Four readable bands, used by the timeline shading and the debug overlay.
+  // The sim reads glacialIndex directly, never these.
   stageOf(g) {
     if (g < 0.25) return 0;   // interglacial
     if (g < 0.50) return 1;   // cooling
@@ -153,11 +153,11 @@ const Climate = {
   },
 
   // ==========================================================
-  // ANALYSIS — for the timeline and for tuning
+  // ANALYSIS: for the timeline and for tuning
   // ==========================================================
   // Samples the curve across the run so the timeline can draw the wave and
-  // shade the cold bands. Cheap, but call it once and keep the result: the
-  // curve is fixed for the life of the page.
+  // shade the cold bands. Call it once and keep the result: the curve is
+  // fixed for the life of the page.
   sample(yearsStart, yearsEnd, n = 240) {
     const out = new Array(n);
     for (let i = 0; i < n; i++) {

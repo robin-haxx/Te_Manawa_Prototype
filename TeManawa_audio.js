@@ -1,5 +1,5 @@
 // ============================================
-// AUDIO MANAGER FOR MAURI
+// AUDIO MANAGER
 // ============================================
 
 class AudioManager {
@@ -21,7 +21,7 @@ class AudioManager {
     
     // State
     this.loaded = false;
-    this.enabled = false;   // muted by default — the install starts silent; flip to re-enable all audio
+    this.enabled = false;   // muted by default; the install starts silent, flip to re-enable all audio
     this.musicEnabled = true;
     this.sfxEnabled = true;
     

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Te Manawa — Console</title>
+<link rel="stylesheet" href="secondscreen.css">
+</head>
+<body>
+
+<!-- The fixed 1920×1080 stage. app.js scales it to the panel. -->
+<div id="stage">
+
+  <div id="bg" class="theme-select"></div>
+
+  <!-- ============ CENTRE: "Select a Habitat" attract ============ -->
+  <div id="selectScreen">
+    <div id="selectCard">
+      <!-- drawn hand glyph (no emoji — project rule); placeholder, swap for final art -->
+      <svg class="hand" viewBox="0 0 100 100" aria-hidden="true">
+        <path d="M40 12 V2 M26 16 L31 23 M54 16 L49 23" />
+        <path d="M40 54 V30 a6 6 0 0 1 12 0 v16
+                 M52 40 a6 6 0 0 1 12 0 v8
+                 M64 44 a6 6 0 0 1 12 0 v22
+                 c0 17 -9 29 -25 29 h-4 c-9 0 -14 -4 -20 -13
+                 l-11 -15 a6 6 0 0 1 10 -8 l7 7 V46" />
+      </svg>
+      <h1>Select a Habitat</h1>
+      <div class="prompt-sub">Learn more about the Manawatū's prehistoric ecosystem!</div>
+      <p>Use the switch on the left to choose a habitat, then explore the plants and the
+         animals that lived among them.</p>
+    </div>
+  </div>
+
+  <!-- ============ HABITAT screen (forest/wetland/lowland/alpine) ============ -->
+  <div id="habitatScreen" class="hidden">
+    <h1 id="habitatTitle">Forest Habitat</h1>
+    <div id="plantCluster"></div>
+
+    <div id="card">
+      <!-- prompt state -->
+      <div id="cardPrompt">
+        <svg class="hand" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M40 12 V2 M26 16 L31 23 M54 16 L49 23" />
+          <path d="M40 54 V30 a6 6 0 0 1 12 0 v16
+                   M52 40 a6 6 0 0 1 12 0 v8
+                   M64 44 a6 6 0 0 1 12 0 v22
+                   c0 17 -9 29 -25 29 h-4 c-9 0 -14 -4 -20 -13
+                   l-11 -15 a6 6 0 0 1 10 -8 l7 7 V46" />
+        </svg>
+        <div class="prompt-title">Select a Plant</div>
+        <div class="prompt-sub">Learn more about the Manawatū's prehistoric ecosystem!</div>
+      </div>
+      <!-- species state -->
+      <div id="cardSpecies" class="hidden">
+        <div id="cardFauna"></div>
+        <img id="cardPlant" alt="">
+        <div class="card-text">
+          <h2 id="cardName"></h2>
+          <div id="cardSci"></div>
+          <p id="cardDesc"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ readout: KYA · stage · goal · timelapse ============ -->
+  <div id="readout">
+    <span id="clockLabel">waiting for the diorama…</span>
+    <span id="stagePill" class="pill">—</span>
+    <span id="goalLabel"></span>
+    <span id="timelapse">
+      <span id="timelapseTrack"><span id="timelapseFill"></span></span>
+      <span id="timelapseMsg"></span>
+    </span>
+  </div>
+
+  <!-- ============ optional on-screen test controls (?controls=1) ============ -->
+  <div id="testbar">
+    <button data-action="habitatUp">▲ habitat</button>
+    <button data-action="habitatDown">▼ habitat</button>
+    <button data-action="plantPrev">◀ plant</button>
+    <button data-action="plantNext">plant ▶</button>
+    <button data-action="storm">STORM</button>
+    <button data-action="boost">BOOST</button>
+    <button data-action="eruption">ERUPTION</button>
+  </div>
+
+</div>
+
+<!-- load order: data + bus + input before the app -->
+<script src="encyclopedia.js"></script>
+<script src="bus.js"></script>
+<script src="input.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

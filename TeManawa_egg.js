@@ -96,7 +96,7 @@ class Egg {
   getOffspringSpecies() {
     // If parent species is set, usually inherit it
     if (this.parentSpecies) {
-      // Small chance of mutation to a related species — unless the level turns
+      // Small chance of mutation to a related species, unless the level turns
       // speciation off (LEVEL_MECHANICS.noSpeciation), in which case offspring
       // always inherit the parent's species (fixed cast, no off-level moa).
       const _noSpeciation = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS && LEVEL_MECHANICS.noSpeciation);
@@ -171,10 +171,10 @@ class Egg {
       ellipse(x + 1, y + 1, size * 1.4, size * 0.9);
     }
 
-    // Shell: the drawn egg is now Egg_Sprite.png. Sized to the old body's height (size*1.7) so
-    // the footprint — and the crack lines below — line up, and drawn at the sprite's own aspect
-    // so it never distorts. Falls back to the procedural shell + highlight + speckles if the art
-    // has not loaded (or failed to), so the egg is never invisible.
+    // Shell: drawn from Egg_Sprite.png, sized to the body height (size*1.7) so the footprint
+    // (and the crack lines below) line up, and drawn at the sprite's own aspect so it never
+    // distorts. Falls back to the procedural shell + highlight + speckles if the art has not
+    // loaded (or failed to), so the egg is never invisible.
     if (eggSprite && eggSprite.width) {
       const h = size * 1.7, w = h * (eggSprite.width / eggSprite.height);
       push();
@@ -200,8 +200,8 @@ class Egg {
       }
     }
 
-    // Cracks when close to hatching — the coded crack-line animation, drawn on top of the shell
-    // (unchanged; see _renderCracks).
+    // Cracks when close to hatching: the coded crack-line animation, drawn on top of the shell
+    // (see _renderCracks).
     if (progress > 0.85) {
       this._renderCracks(x, y, progress);
     }

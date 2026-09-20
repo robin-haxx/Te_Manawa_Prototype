@@ -1,12 +1,12 @@
 // ============================================================
-// TE MANAWA — local static server
+// TE MANAWA: local static server
 // ------------------------------------------------------------
 //   node tools/serve.js        then open http://127.0.0.1:8080
 //
 // Opening index.html directly as file:// does not work: Chrome's CORS
 // policy blocks p5's loadImage/loadFont/loadSound from a file origin,
 // so the sprites, fonts and audio all fail silently and you get a black
-// screen. This is also the server the kiosk deployment should run —
+// screen. This is also the server the kiosk deployment should run;
 // see TEMANAWA_BUILD_V3.md §3.
 //
 // No dependencies, no network access, no caching (so a reload always
@@ -30,6 +30,8 @@ const TYPES = {
   '.svg':  'image/svg+xml',
   '.mp3':  'audio/mpeg',
   '.wav':  'audio/wav',
+  '.webm': 'video/webm',                 // second-screen highlight loops (alpha VP9)
+  '.mp4':  'video/mp4',
   '.ttf':  'font/ttf',
   '.otf':  'font/otf',
   '.woff': 'font/woff',
@@ -39,6 +41,7 @@ const TYPES = {
 http.createServer((req, res) => {
   let rel = decodeURIComponent(req.url.split('?')[0]);
   if (rel === '/') rel = '/index.html';
+  else if (rel.endsWith('/')) rel += 'index.html';   // a directory URL (e.g. /secondscreen/) → its index.html
 
   const file = path.join(ROOT, rel);
   // Never serve outside the project directory.

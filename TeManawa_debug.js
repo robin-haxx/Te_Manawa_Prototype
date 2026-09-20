@@ -1,5 +1,5 @@
 // ============================================================
-// TE MANAWA — DEBUG OVERLAY  (press D)
+// TE MANAWA: DEBUG OVERLAY  (press D)
 // ------------------------------------------------------------
 // A read-only instrument panel for the ecosystem. Nothing in here mutates the
 // sim; it exists so the deep-time and ecology work can be tuned against real
@@ -29,15 +29,15 @@ const Debug = {
   // ==========================================================
   // WHAT DEBUG MODE OWNS ON SCREEN
   // ----------------------------------------------------------
-  // Three things are debug-only, not visitor-facing — each is instrumentation,
+  // Three things are debug-only, not visitor-facing; each is instrumentation,
   // not interpretation:
   //   · the climate wave      a temperature graph nobody reads at arm's length
   //                           in forty seconds; the climate is meant to be read
   //                           off the land and the cast, and a chart undercuts that
-  //   · notification messages "A moa has hatched!" — an ambient diorama does not
+  //   · notification messages "A moa has hatched!": an ambient diorama does not
   //                           narrate itself
   //   · the entity UI layer   hunger/breeding bars, hearts, pregnancy dots,
-  //                           low-population rings, state glyphs — the strongest
+  //                           low-population rings, state glyphs: the strongest
   //                           "this is a video game" signal on screen
   // applyVisibility() drives the engine flags the renderers already check.
   // ==========================================================
@@ -61,7 +61,7 @@ const Debug = {
   _renderAvg: 0,
   _sampleAlpha: 0.1,
 
-  // cached aggregates — recomputed on an interval, not per frame, so the
+  // cached aggregates: recomputed on an interval, not per frame, so the
   // overlay itself never becomes the thing that costs a frame
   _cache: null,
   _cacheAt: 0,
@@ -235,7 +235,7 @@ const Debug = {
       biomeArea,
       viewZoom: CONFIG.viewZoom,
       // Footprint mode, and the share of the canvas the world actually covers.
-      // 'square' on a 9:16 panel reads ~56% — that number is the whole argument
+      // 'square' on a 9:16 panel reads ~56%: that number is the whole argument
       // for 'fit'.
       fit: (t && t.fitMode) || CONFIG.terrainFit || 'square',
       noiseScale: t ? t.noiseScale : CONFIG.noiseScale,
@@ -342,7 +342,7 @@ const Debug = {
     for (const p of wave.pts) vertex(DeepTime.yearToX(p.yearsBP, x0, w), yOf(p.g));
     endShape();
 
-    // glacial markers — climate instrumentation, so they live here now
+    // glacial markers: climate instrumentation, so they live here now
     textFont('monospace'); textSize(9); textAlign(CENTER, TOP);
     for (const m of DEEP_TIME_MARKERS) {
       if (m.kind === 'eruption') continue;
@@ -384,7 +384,7 @@ const Debug = {
       ty += 14;
     };
     fill(255, 210, 120); textSize(11);
-    text('DEBUG — compact   [D] more', x + 10, ty); ty += 18;
+    text('DEBUG: compact   [D] more', x + 10, ty); ty += 18;
     line('yearsBP', Math.round(s.time.yearsBP).toLocaleString());
     line('climate', `${s.climate.stage}  ${s.climate.glacialIndex.toFixed(2)}`,
          this._climateColour(s.climate.glacialIndex));
@@ -539,7 +539,7 @@ const Debug = {
   },
 
   // warm -> cold. Lightness carries it as well as hue, so it survives
-  // colourblindness — same rule the timeline uses.
+  // colourblindness, the same rule the timeline uses.
   _climateColour(gi) {
     if (gi < 0.25) return [170, 215, 160];
     if (gi < 0.50) return [215, 215, 165];

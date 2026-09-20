@@ -229,10 +229,15 @@ five sprite atlases (no frame map exists yet).
 
 ### H. Open decisions that gate work
 Timeline **arrow-vs-wave** (a first pass is built; deciding it unblocks the UI art); the
-**coastal moa** conditional eighth species (+5 assets); **hardware** — final portrait
-resolution, touchscreen vs physical arcade buttons; whether a **sibling landform screen**
-carries the geology (which would let this screen lean further ecological); and the
-**eruption-checkpoint reset cost** (~1.2 s) against the old "reset is nearly free" invariant.
+**coastal moa** conditional eighth species (+5 assets); and the **eruption-checkpoint reset
+cost** (~1.2 s) against the old "reset is nearly free" invariant.
+
+**Resolved — the hardware/input path is a two-screen install.** A 1080p **touchscreen** sits
+beside the 4K diorama and carries the encyclopedia + controls (habitat switch → per-species
+boost-select → activate); it is *not* a landform screen — the geology stays on the diorama but
+is now **paused until the visitor spends a timelapse**. This lets the touchscreen lean fully
+ecological (name the plants, show the fauna each supports) while the diorama stays the quiet
+living picture. See `TEMANAWA_SECOND_SCREEN.md`.
 
 ---
 

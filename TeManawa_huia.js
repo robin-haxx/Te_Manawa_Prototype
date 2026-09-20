@@ -1,20 +1,20 @@
 // ============================================================
-// HUIA — the pair-bonded forest wattlebird
+// HUIA: the pair-bonded forest wattlebird
 // ------------------------------------------------------------
 // Heteralocha acutirostris. A poor flier of tall forest that bounds through the
-// canopy and glides only short distances — the kererū's short-flight frugivore
+// canopy and glides only short distances: the kererū's short-flight frugivore
 // loop again, so it IS a kererū mechanically (its own base type + list, extends
 // Kereru). It moves forest seed like the kererū but far less (a smaller gape;
-// _disperseChance well under half — HUIA_SPECIES).
+// _disperseChance well under half, HUIA_SPECIES).
 //
 // The huia's signature is the PAIR. Male and female foraged together for life and
-// were famously dimorphic — the male a short stout bill, the female a long
+// were famously dimorphic: the male a short stout bill, the female a long
 // decurved one (the two worked the same rotten wood between them). So the huia
 // founds as MALE+FEMALE pairs (Simulation._spawnHuiaPairs) that keep to the same
 // tree:
 //   · each bird anchors to its mate (Kereru._anchorPoint → mate position), so the
 //     flying loop drifts and hops around the partner rather than ranging off;
-//   · the male forages WITH the female — he adopts whatever tree she is working
+//   · the male forages WITH the female: he adopts whatever tree she is working
 //     (_findFruitTree), so the pair stays on one tree instead of splitting.
 // A hatchling with no mate bonds to the nearest free opposite-sex huia (_ensureMate).
 //
@@ -48,7 +48,7 @@ class Huia extends Kereru {
   }
 
   // Bond a mateless bird (a hatchling) to the nearest free opposite-sex huia.
-  // Throttled — this only matters for the occasional new bird, not every frame.
+  // Throttled: this only matters for the occasional new bird, not every frame.
   _ensureMate(sim) {
     if (this._mate && this._mate.alive) return;
     if (this._mateSearchTimer > 0) { this._mateSearchTimer--; return; }
@@ -76,7 +76,7 @@ class Huia extends Kereru {
   }
 
   // Glyph fallback: glossy black body, white tail tip, orange wattle. The bill is
-  // the sex tell — short and stout on the male, long and decurved on the female.
+  // the sex tell: short and stout on the male, long and decurved on the female.
   _renderGlyph(s, perched) {
     const dir = (this._flip >= 0) ? 1 : -1;
     const wing = perched ? 1.4 : 1.7;
@@ -98,7 +98,7 @@ class Huia extends Kereru {
 }
 
 // ------------------------------------------------------------
-// SPECIES DATA — huia. Registered as its own base type + species in
+// SPECIES DATA: huia. Registered as its own base type + species in
 // initializeRegistry (sketch.js), carrying `class: Huia`. Founded as pairs.
 // ------------------------------------------------------------
 const HUIA_SPECIES = {
@@ -109,7 +109,7 @@ const HUIA_SPECIES = {
   description:    'A black, orange-wattled wattlebird that forages for life as a male–female pair.',
   rarity:         'uncommon',
 
-  // Movement / render — a weak flier like the kōkako: slow, short hops, low cruise.
+  // Movement / render, a weak flier like the kōkako: slow, short hops, low cruise.
   baseSpeed:        0.24,
   maxForce:         0.05,
   size:             8,
@@ -120,9 +120,9 @@ const HUIA_SPECIES = {
   // Short flight legs, kept close to the partner.
   hopRadius:        36,
   feedRadius:       90,
-  homeLeash:        105,     // how far it strays from its mate before drifting back — loose enough the pair reads as two birds, not one
+  homeLeash:        105,     // how far it strays from its mate before drifting back: loose enough the pair reads as two birds, not one
 
-  // Frugivore crop / dispersal — dispersal well under half the kererū's.
+  // Frugivore crop / dispersal: well under half the kererū's.
   cropCapacity:     1,
   feedSec:          5,
   disperseEverySec: 22,
@@ -135,7 +135,7 @@ const HUIA_SPECIES = {
   feedRelief:       70,
   starveSec:        18,
 
-  // Reproduction — breeds true; the partner is always at hand (mateRadius small).
+  // Reproduction: breeds true; the partner is always at hand (mateRadius small).
   maturitySec:      22,
   eggCooldownSec:   44,
   mateRadius:       120,

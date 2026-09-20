@@ -139,5 +139,10 @@
 
     <!-- Main game (owns setup()/draw()) — must load last -->
     <script src="TeManawa_sketch.js"></script>
+
+    <!-- Second-screen bus: AFTER sketch.js — it reaches for game/InstallHUD/DeepTime.
+         Guarded so the diorama runs identically with no console present. See
+         md/TEMANAWA_SECOND_SCREEN.md and secondscreen/. -->
+    <script src="TeManawa_bus.js"></script>
   </body>
 </html>

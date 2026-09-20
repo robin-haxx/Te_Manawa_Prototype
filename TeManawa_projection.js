@@ -2,30 +2,30 @@
 // PLAN-OBLIQUE PROJECTION  ("top-down 3/4")
 // ============================================
 // The simulation stays TOP-DOWN. Positions, walkability, spawning and the
-// spatial hash all live on the flat world grid — nothing here moves them. This
+// spatial hash all live on the flat world grid; nothing here moves them. This
 // module owns only the *paint*: the one mapping from a world point (plus the
 // terrain elevation under it) to where it lands on screen, so the terrain bake
 // and every entity agree on a single 3/4 projection.
 //
-// Plan-oblique, NOT isometric: no x-shear, no rotation. One formula —
+// Plan-oblique, not isometric: no x-shear, no rotation. One formula:
 //
 //     screenX = worldX
-//     screenY = worldY · K  −  elev · LIFT
+//     screenY = worldY * K  -  elev * LIFT
 //
 //   K     Pitch squash. 1.0 = straight top-down; lower tips the camera forward.
-//         Terra Nil sits ~0.5–0.6; Te Manawa wants a higher (closer to top-down)
-//         angle — author 0.72–0.85, default 0.8.
+//         Te Manawa wants a high (near top-down) angle: author 0.72-0.85,
+//         default 0.8.
 //   LIFT  Relief height in WORLD PIXELS at elevation 1.0. Authored as a fraction
 //         of mapHeight (liftFrac) so it is resolution-independent; ~0.12–0.15
 //         stands the ranges up without the far terrain occluding the playfield.
 //
-// Pure and p5-free — like TeManawa_climate.js — so tools/bootcheck.js can assert
+// Pure and p5-free (like TeManawa_climate.js) so tools/bootcheck.js can assert
 // on it without booting the sketch. K and liftFrac are authored in the level def
-// and held HERE, never written back to CONFIG: same discipline as
+// and held here, never written back to CONFIG: same discipline as
 // TerrainGenerator.noiseScale, where a per-run value must not mutate authored
 // config (it would compound across regenerations).
 //
-// STATUS: the full 3/4 pipeline is built (md/TEMANAWA_34VIEW_PLAN.md §8) — projY(y, elev)
+// The full 3/4 pipeline is built (md/TEMANAWA_34VIEW_PLAN.md §8): projY(y, elev)
 // drives the relief bake, the unsquashed entity billboards and the painter y-sort.
 
 const Projection = {
@@ -40,7 +40,7 @@ const Projection = {
   // headless boot never divides by an undefined dimension.
   K: 0.8,
   liftFrac: 0.14,
-  LIFT: 0.14 * 512,     // world px at elevation 1.0 — recomputed in configure()
+  LIFT: 0.14 * 512,     // world px at elevation 1.0, recomputed in configure()
   mapWidth: 512,
   mapHeight: 512,
 
@@ -49,13 +49,13 @@ const Projection = {
   // the bake then agree.
   relief: false,
 
-  // Fraction of the relief HEADROOM (LIFT) to hide above the top of the frame in the cover
+  // Fraction of the relief headroom (LIFT) to hide above the top of the frame in the cover
   // fit. The top map rows are eased to plains (geoEdgeMargin), so that headroom is empty
-  // sky/haze — cropping it makes the terrain fill to the top instead of leaving a streaky
-  // band. ~0.78 ≈ the eased plains far-edge line (1 − ~0.22). 0 = show the full buffer.
+  // sky/haze; cropping it makes the terrain fill to the top instead of leaving a streaky
+  // band. ~0.78 is the eased plains far-edge line (1 - ~0.22). 0 = show the full buffer.
   reliefCropFrac: 0.78,
 
-  // FRONT (bottom) apron allowance, as a fraction of LIFT, hidden below the frame — the
+  // FRONT (bottom) apron allowance, as a fraction of LIFT, hidden below the frame: the
   // near counterpart to reliefCropFrac. The front row's side-face/apron fills from the
   // plains line down to the buffer edge; that, plus the eased near rows, reads as a flat
   // strip just above the HUD bottom bar unless pushed off-frame. Tune alongside geoEdgeMargin.
@@ -95,7 +95,7 @@ const Projection = {
   // The +LIFT offset keeps paint y ≥ 0: the highest possible peak (elev 1) sits
   // at worldY·K, and flat ground (elev 0) sits LIFT below it. Higher ground is
   // therefore drawn higher on screen. While relief is off it is the flat squash
-  // plane (worldY·K, elevation ignored) — undistorted sprites on squashed ground.
+  // plane (worldY*K, elevation ignored): undistorted sprites on squashed ground.
   groundY(worldY, elev) {
     return this.relief
       ? worldY * this.K - (elev || 0) * this.LIFT + this.LIFT
@@ -109,10 +109,10 @@ const Projection = {
   projectedWorldHeight() { return this.mapHeight * this.K + this.LIFT; },
 
   // World-unit height of the empty relief headroom to hide above the top of the frame
-  // (0 when relief is off — a flat bake has no headroom). The cover fit subtracts this.
+  // (0 when relief is off; a flat bake has no headroom). The cover fit subtracts this.
   reliefCrop() { return this.relief ? this.LIFT * this.reliefCropFrac : 0; },
 
-  // World-unit height of the FRONT band to hide below the bottom of the frame — the near
+  // World-unit height of the FRONT band to hide below the bottom of the frame: the near
   // counterpart to reliefCrop(). Two parts: the near rows eased to plains over `edgeMargin`
   // (their squashed height, edgeMargin·mapHeight·K) and the front apron below the plains
   // line (LIFT·reliefCropBottomFrac). Pushing both off-frame stops the flattening ramp from
@@ -141,8 +141,8 @@ const Projection = {
     return { x, y };
   },
 
-  // Restore module defaults. Not needed on the visitor path — configure() is
-  // idempotent and re-run on every terrain build — but handy for tests.
+  // Restore module defaults. Not needed on the visitor path (configure() is
+  // idempotent and re-run on every terrain build) but handy for tests.
   reset() {
     this.K = 0.8;
     this.liftFrac = 0.14;

@@ -1,10 +1,10 @@
 // ============================================
-// SPRITE ATLAS — runtime texture consolidation
+// SPRITE ATLAS: runtime texture consolidation
 // ============================================
 // Every sprite PNG is loaded individually in preload() (fauna via EntitySprites,
 // flora via plantSprites, weather via placeableSprites). At draw time that is
 // ~150 distinct GPU textures, so the Canvas2D rasteriser binds/flushes a new
-// texture for almost every image() call — up to ~1500 a frame. This module packs
+// texture for almost every image() call, up to ~1500 a frame. This module packs
 // all of those loaded frames into a handful of large GPU pages ONCE, at setup(),
 // so the whole cast draws from one (or a few) shared textures. It is the packed
 // multi-animation atlas the strip loader's header (TeManawa_atlas.js) anticipated.
@@ -13,8 +13,8 @@
 //   • It is NOT a frame-rate fix. On Canvas2D the per-frame cost is dominated by
 //     DESTINATION pixels (fill rate × the supersample backing), which an atlas
 //     does not touch. What it cuts is texture BINDS, the texture COUNT (GPUs cap
-//     it), VRAM fragmentation, and — because the loose source images become
-//     unreferenced and free their textures — the transient double-allocation that
+//     it), VRAM fragmentation, and, because the loose source images become
+//     unreferenced and free their textures, the transient double-allocation that
 //     makes a reload stutter. See the perf review notes.
 //
 // How it stays invisible to the render code:
@@ -27,7 +27,7 @@
 //     Real p5.Images (kawakawa buffer, water strips, HUD buffers) fall straight
 //     through the wrapper untouched.
 //   • The two places that draw a sprite into an OFFSCREEN buffer via the graphics
-//     METHOD g.image() — the tint bake and the plant gallery — are not covered by
+//     METHOD g.image() (the tint bake and the plant gallery) are not covered by
 //     the global wrap, so they call SpriteAtlas.drawTo() with a typeof guard.
 //
 // Failure is a no-op: an image that failed to load (width 0) or is larger than a
@@ -36,19 +36,19 @@
 // the wrapper is a pure pass-through.
 
 const SpriteAtlas = {
-  MAX_PAGE: 4096,   // page dimension cap — Chrome guarantees >= 4096; kiosk-safe
+  MAX_PAGE: 4096,   // page dimension cap; Chrome guarantees >= 4096; kiosk-safe
   GUTTER: 2,        // transparent px between frames so bilinear scaling can't bleed a neighbour
 
   // Store each frame on the atlas at this fraction of its native size. 455 of the
   // sprites are authored at a uniform 500×500 regardless of how large they ever draw,
-  // and the cast is minified ~2× at the median even at 4K — so the native-1:1 atlas held
+  // and the cast is minified ~2× at the median even at 4K, so the native-1:1 atlas held
   // 4–9× more texels than are ever sampled, packing to 7 pages of ~4018² = ~407 MB of
   // live GL texture, far over the ≤2048²/5-page/~80 MB budget in BUILD_V3 §5.2. On an
   // integrated GPU (shared system RAM) that texture pressure is a real cost. Packing at
-  // 0.5× cuts it to ~100 MB / ~2 pages — fewer page switches also tighten the GL batch —
+  // 0.5× cuts it to ~100 MB / ~2 pages (fewer page switches also tighten the GL batch)
   // and is visually indistinguishable for the median/p90 sprite. Override at startup with
   // ?atlas=full (1×), ?atlas=half, or ?atlas=<0..1>; or set SpriteAtlas.packScale before
-  // build(). NOTE: the pack scale never ADMITS a sprite that was too big at native size —
+  // build(). NOTE: the pack scale never ADMITS a sprite that was too big at native size;
   // _packable() still tests the ORIGINAL dimensions, so the full-screen ash cover etc.
   // stay out of the atlas regardless.
   packScale: 0.5,
@@ -62,7 +62,7 @@ const SpriteAtlas = {
   // An AtlasFrame? (what the global-image wrapper and drawTo() branch on.)
   isFrame(o) { return !!(o && o.__atlas); },
 
-  // The pack scale actually in force — packScale, clamped, with a startup ?atlas= override.
+  // The pack scale actually in force: packScale, clamped, with a startup ?atlas= override.
   _effectiveScale() {
     let f = this.packScale;
     try {
@@ -72,7 +72,7 @@ const SpriteAtlas = {
         else if (q === 'half') f = 0.5;
         else if (q != null) { const n = parseFloat(q); if (n > 0 && n <= 1) f = n; }
       }
-    } catch (_) { /* no URL (harness) — use packScale */ }
+    } catch (_) { /* no URL (harness); use packScale */ }
     return Math.max(0.1, Math.min(1, f || 1));
   },
 
@@ -93,7 +93,7 @@ const SpriteAtlas = {
 
     // 1. Walk the known sprite containers, recording every SLOT that holds a
     //    packable image and the SET of unique images (dedup by identity, so an
-    //    aliased frame — eagle.dive === eagle.fly[n], plant idle === growing[0] —
+    //    aliased frame (eagle.dive === eagle.fly[n], plant idle === growing[0])
     //    is packed once and every slot that names it lands on the same page rect).
     const slots = [];          // { holder, key }  (works for object props and array indices)
     const uniq = [];
@@ -118,7 +118,7 @@ const SpriteAtlas = {
     const ph = (img) => Math.max(1, Math.round(img.height * f));
 
     // 2. Shelf bin-pack the unique images into pages, using their SCALED footprint.
-    //    Sort tallest-first so shelves stay tight. Simple and good enough — packing
+    //    Sort tallest-first so shelves stay tight. Simple and good enough: packing
     //    efficiency only affects how many pages we end up with, not correctness.
     const order = uniq.slice().sort((a, b) => b.height - a.height);
     const G = this.GUTTER, MAX = this.MAX_PAGE;
@@ -139,7 +139,7 @@ const SpriteAtlas = {
     //    every source into it SCALED (1:f). A downscaling blit is what shrinks the
     //    stored texels; the bilinear filter keeps it clean, and the median sprite is
     //    already minified past this scale on screen. pixelDensity(1) matches the
-    //    project convention — the page backing must be logical-sized or the sub-rect
+    //    project convention: the page backing must be logical-sized or the sub-rect
     //    coordinates would be off on a hi-dpi buffer.
     const pageDims = new Array(nPages).fill(0).map(() => ({ w: 0, h: 0 }));
     for (const p of placements) {
@@ -191,7 +191,7 @@ const SpriteAtlas = {
   // hold loaded sprites, so nothing unexpected (a p5.Image internal, a cycle) is
   // ever recursed into. `consider(holder, key)` records holder[key] if packable.
   _collectRoots(consider) {
-    // Fauna — EntitySprites (see TeManawa_entity_sprites.js).
+    // Fauna: EntitySprites (see TeManawa_entity_sprites.js).
     if (typeof EntitySprites !== 'undefined' && EntitySprites) {
       const E = EntitySprites;
       const eachIn = (obj) => {
@@ -211,7 +211,7 @@ const SpriteAtlas = {
       eachIn(E.huiaFemale);
     }
 
-    // Flora — plantSprites[key] = { <state>:img, growing:[], variants:[], meta }.
+    // Flora: plantSprites[key] = { <state>:img, growing:[], variants:[], meta }.
     // meta is a plain object with no image fields, so consider() skips it; the
     // state props and the two arrays are what carry frames.
     const PS = (typeof PLANT_SPRITES !== 'undefined' && PLANT_SPRITES)
@@ -230,7 +230,7 @@ const SpriteAtlas = {
       }
     }
 
-    // Weather — placeableSprites (clouds, bolt, ash). 'loaded' is a boolean and is
+    // Weather: placeableSprites (clouds, bolt, ash). 'loaded' is a boolean and is
     // skipped by _packable.
     if (typeof placeableSprites !== 'undefined' && placeableSprites) {
       for (const k in placeableSprites) consider(placeableSprites, k);

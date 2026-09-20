@@ -1,9 +1,9 @@
 // ============================================
-// GL BATCH — DOM-stacked WebGL entity layer  (DEFAULT; opt OUT with ?render=2d)
+// GL BATCH: DOM-stacked WebGL entity layer  (DEFAULT; opt OUT with ?render=2d)
 // ============================================
 // The world is drawn on p5's 2D canvas. At 4K (spriteSupersample 2) the frame is
 // fill-rate bound and every sprite is a separate Canvas2D drawImage with real
-// per-call overhead — the ~20fps cap the perf review found. This module draws the
+// per-call overhead: the ~20fps cap the perf review found. This module draws the
 // ENTITY SPRITES (and their shadow/halo ellipses) as batched textured quads on a
 // WebGL canvas that is STACKED in the DOM between two 2D canvases, so the browser's
 // compositor blends the three layers on the GPU with no per-frame readback:
@@ -15,19 +15,19 @@
 // An earlier build composited the GL canvas into the 2D frame with drawImage; that
 // worked and was pixel-correct but the GL→2D blit forced a context sync each frame
 // that gave the batch win back (measured ≈break-even). DOM-stacking removes the
-// drawImage entirely — the compositor does the blend — which is what captures the
+// drawImage entirely (the compositor does the blend) which is what captures the
 // batch's speed. See md / the perf memory.
 //
 // DEFAULT and reversible: ?render=2d (or =canvas / =off) opts out, and the engine falls
 // back to the unchanged single-canvas 2D atlas path automatically whenever GL cannot be a
-// win — no WebGL context, a SOFTWARE (SwiftShader) rasterizer, or the context later lost
+// win: no WebGL context, a SOFTWARE (SwiftShader) rasterizer, or the context later lost
 // (see applyURLFlag / init's renderer guard / _fallbackTo2D). GL on a CPU rasterizer would
 // be SLOWER than the 2D path with no context-lost event to recover, so it is refused up front.
 //
 // How entity code stays untouched:
 //   • The atlas already wrapped global image() (TeManawa_spriteatlas.js); in GL mode
-//     that wrapper calls tryCapture() first — reading the live 2D transform, image
-//     mode, tint and alpha — so a sprite draw becomes a quad with no code change.
+//     that wrapper calls tryCapture() first, reading the live 2D transform, image
+//     mode, tint and alpha, so a sprite draw becomes a quad with no code change.
 //   • ellipse()/circle() are wrapped here so the per-entity shadow and species-halo
 //     draws in render() are captured to the GL layer too (a baked soft-disc texture,
 //     tinted by the live fill), keeping them correctly UNDER the sprites.
@@ -43,12 +43,12 @@ const GLBatch = {
   _mounted: false,
   gl: null,
   canvas: null,          // the GL (middle) canvas
-  W: 0, H: 0,            // this GL canvas's backing (raster) resolution — spriteSS× logical
+  W: 0, H: 0,            // this GL canvas's backing (raster) resolution, spriteSS× logical
 
   // The coordinate space the captured image()/ellipse() calls live in: the MAIN p5
   // canvas backing (its device pixels), which the CTM maps into. In DOM-stack GL mode
   // the main canvas drops to logical 1080 (HUD only) while this GL layer stays
-  // spriteSS× (4K) for crisp sprites — so the two differ. Clip mapping + the edge
+  // spriteSS× (4K) for crisp sprites, so the two differ. Clip mapping + the edge
   // fade use coordW/coordH (the CTM's space); the GL VIEWPORT uses W/H (the raster
   // space). Kept equal to W/H until mount()/resize() sync them, so any lone-init path
   // behaves exactly as before this split.
@@ -77,8 +77,8 @@ const GLBatch = {
 
   // ---- URL flag + init --------------------------------------------------------
   // GL is the DEFAULT renderer. Opt OUT with ?render=2d (or =canvas / =off); any
-  // other value (including ?render=gl) leaves it on. If the context can't be created —
-  // or only a software rasterizer is available — init() returns false and the engine
+  // other value (including ?render=gl) leaves it on. If the context can't be created,
+  // or only a software rasterizer is available, init() returns false and the engine
   // falls back to the 2D path automatically.
   applyURLFlag() {
     if (typeof window === 'undefined' || !window.location) { this.requested = true; return; }
@@ -107,8 +107,8 @@ const GLBatch = {
     } catch (_) { return ''; }
   },
 
-  // True when the context is a CPU rasterizer — Chrome/ANGLE SwiftShader, Mesa llvmpipe /
-  // softpipe, the Windows "Basic Render Driver" — rather than a real GPU. On these the
+  // True when the context is a CPU rasterizer (Chrome/ANGLE SwiftShader, Mesa llvmpipe /
+  // softpipe, the Windows "Basic Render Driver") rather than a real GPU. On these the
   // batch is slower than the 2D path, so init() refuses it. An unknown/empty string ⇒
   // false: never reject on a renderer we couldn't read.
   _isSoftwareRenderer(gl) {
@@ -128,17 +128,17 @@ const GLBatch = {
       cnv.width = width; cnv.height = height;
       const opts = { premultipliedAlpha: false, antialias: false, alpha: true, depth: false };
       // Prefer a HARDWARE context. failIfMajorPerformanceCaveat makes Chrome refuse a
-      // software rasterizer (SwiftShader) outright — that would shade the whole batch on
+      // software rasterizer (SwiftShader) outright: that would shade the whole batch on
       // the CPU, slower than the 2D path, and with no context-lost event to trip
       // _fallbackTo2D it would never recover. If the strict request yields nothing we
-      // still take a lax one, purely to read its renderer string below — so a driver that
+      // still take a lax one, purely to read its renderer string below, so a driver that
       // ignores the hint is caught too, and the log says "software" rather than "none".
       const mk = (o) => cnv.getContext('webgl', o) || cnv.getContext('experimental-webgl', o);
       let gl = mk(Object.assign({}, opts, { failIfMajorPerformanceCaveat: true })) || mk(opts);
       if (!gl) { console.warn('[glbatch] no WebGL context; staying on 2D'); return false; }
       if (this._isSoftwareRenderer(gl)) {
         console.warn('[glbatch] software WebGL renderer (' + this._rendererName(gl) +
-                     '); staying on 2D — a CPU rasterizer is slower than the canvas path');
+                     '); staying on 2D, a CPU rasterizer is slower than the canvas path');
         return false;
       }
 
@@ -150,7 +150,7 @@ const GLBatch = {
       this._verts = new Float32Array(this._cap * this.FLOATS_PER_VERT);
       this._vbo = gl.createBuffer();
       // Pre-size the buffer store ONCE, then bufferSubData into it each flush (below).
-      // The old per-flush bufferData reallocated the whole store every time — cheap now,
+      // The old per-flush bufferData reallocated the whole store every time (cheap now)
       // but it scales with the flush count, which climbs as the fauna cast turns on.
       gl.bindBuffer(gl.ARRAY_BUFFER, this._vbo);
       gl.bufferData(gl.ARRAY_BUFFER, this._verts.byteLength, gl.DYNAMIC_DRAW);
@@ -202,7 +202,7 @@ const GLBatch = {
     this.layout();
   },
 
-  // Read the MAIN canvas backing into coordW/coordH — the pixel space the captured
+  // Read the MAIN canvas backing into coordW/coordH: the pixel space the captured
   // draw calls' CTM lives in. In GL mode that is the logical 1080 (HUD-only) canvas,
   // NOT this GL layer's 4K backing, so they must be tracked separately. Falls back to
   // W/H when the main element has no numeric size (the headless harness stub).
@@ -249,7 +249,7 @@ const GLBatch = {
       this.W = width; this.H = height;
       this.gl.viewport(0, 0, width, height);
     }
-    this._syncCoord();   // the main canvas was resized just before this — re-read its backing
+    this._syncCoord();   // the main canvas was resized just before this, re-read its backing
     this.layout();
   },
 
@@ -270,7 +270,7 @@ const GLBatch = {
     this._prog = p; this._uSampler = gl.getUniformLocation(p, 'uTex');
   },
 
-  // A white filled disc with a 1px-soft edge — the stand-in for a p5 ellipse().
+  // A white filled disc with a 1px-soft edge: the stand-in for a p5 ellipse().
   // Tinted per-quad by the captured fill, it reproduces the soft shadow / halo look.
   _buildDiscTexture() {
     const S = 128, c = document.createElement('canvas'); c.width = c.height = S;
@@ -329,7 +329,7 @@ const GLBatch = {
   },
 
   // Renderer state, read live each capture (push/pop restore _imageMode/_tint
-  // internally, so a wrapper would go stale — read from the renderer instead).
+  // internally, so a wrapper would go stale; read from the renderer instead).
   _renderer: null,
   _R() { return this._renderer || (this._renderer =
     (typeof window !== 'undefined' && window._renderer) ? window._renderer : null); },
@@ -428,7 +428,7 @@ const GLBatch = {
     const gl = this.gl;
     if (!this._n || !this._curTex) { this._n = 0; return; }
     gl.bindBuffer(gl.ARRAY_BUFFER, this._vbo);
-    // bufferSubData into the pre-sized store (see init) — no per-flush reallocation.
+    // bufferSubData into the pre-sized store (see init): no per-flush reallocation.
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this._verts.subarray(0, this._n * this.FLOATS_PER_VERT));
     const F = 4, stride = this.FLOATS_PER_VERT * F;
     gl.enableVertexAttribArray(this._aPos); gl.vertexAttribPointer(this._aPos, 2, gl.FLOAT, false, stride, 0);
@@ -442,7 +442,7 @@ const GLBatch = {
   },
 
   // End the capture span. In DOM-stack mode the GL canvas IS a layer, so there is
-  // no drawImage — just flush the batch to it. Named composite() for the call site
+  // no drawImage, just flush the batch to it. Named composite() for the call site
   // in Simulation.render() shared with the old blit build. ctx2d is ignored here.
   composite(/* ctx2d */) {
     if (!this.enabled || !this._open) return;

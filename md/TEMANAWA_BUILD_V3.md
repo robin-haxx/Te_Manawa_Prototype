@@ -159,6 +159,27 @@ and each has a design doc.
 Everything here is keyed to `yearsBP` or the glacial index, reads at a glance, and is
 debug-gated where it would otherwise narrate.
 
+### 2.6 The second screen and the bus *(interaction overhaul — `TEMANAWA_SECOND_SCREEN.md`)*
+
+The single-screen five-button wall is being replaced by a **two-screen** install: the 4K
+diorama plus a 1080p **touchscreen** (`secondscreen/`, its own static DOM page, no build),
+same-origin under `tools/serve.js`, talking over **`BroadcastChannel('temanawa')`**. This is
+the project's *first* event bus — the diorama's own controls stay flag-plus-per-frame-read; the
+bus is only the cross-window channel.
+
+| Piece | Where | What it does |
+|---|---|---|
+| **Touchscreen page** | `secondscreen/{index.html,app.js,input.js,encyclopedia.js,bus.js}` | Habitat switch → per-species encyclopedia/boost-select → activate; renders from a data file; sends *intents*, shows *telemetry* |
+| **Bus receiver** | `TeManawa_bus.js` (new, loaded after `sketch.js`) | Opens the channel, dispatches intents to `InstallHUD.press` / new entry points, emits `clock`/`goal`/`timelapse` telemetry. Guarded so the diorama runs identically with no screen present |
+| **Server** | `tools/serve.js` | Now serves `.webm`/`.mp4` (highlight loops) alongside the existing types |
+
+**Two load-bearing sim changes it drives** (the open frontier, `SECOND_SCREEN.md` §7):
+the **geology pauses** (`DeepTime` holds `yearsBP` until a timelapse), and the boost is
+**per-species** (`Simulation.seedSpecies`) and runs a **500→5000 yr/s ramp to the next
+glacial/interglacial** (a regime-boundary finder in `climate.js`). Both ripple into the climate,
+the terrain morph, the eruptions and the short-dwell budget (§5.4), so they want deliberate
+tuning — the ramp stays inside the photosensitivity slew (§3, `PLAN_V3` §7).
+
 ---
 
 ## 3. Kiosk self-run

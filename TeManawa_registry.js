@@ -14,7 +14,7 @@ class EntityRegistry {
     this.speciesByType = new Map();  // base type -> [speciesKey, …]
   }
 
-  // ---- animal types: base 'moa'/'eagle' — the class + shared config ----------
+  // ---- animal types: base 'moa'/'eagle', the class + shared config -----------
   registerAnimalType(typeKey, config, behaviorClass) {
     this.animalTypes.set(typeKey, {
       key: typeKey,

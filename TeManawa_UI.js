@@ -1,8 +1,8 @@
 // ============================================================
-// TE MANAWA — UI HOST
+// TE MANAWA: UI HOST
 // ------------------------------------------------------------
 // Thin host: delegates the on-screen HUD to InstallHUD (deep-time timeline +
-// the five buttons) and owns only the debug message strip. Keep it thin — if
+// the five buttons) and owns only the debug message strip. Keep it thin: if
 // something here grows past a screen it probably belongs in InstallHUD or Debug.
 // ============================================================
 
@@ -53,8 +53,8 @@ class GameUI {
 
     const debug = (typeof Debug !== 'undefined' && Debug.enabled);
 
-    InstallHUD.renderWorldLayer(g, W, H);   // storm cells — under the strips
-    InstallHUD.renderWind(g, W, H);         // W→E climate/boost gusts — an atmospheric wash over the scene
+    InstallHUD.renderWorldLayer(g, W, H);   // storm cells, under the strips
+    InstallHUD.renderWind(g, W, H);         // W-E climate/boost gusts, an atmospheric wash over the scene
 
     // The ambient LED colour band frames the scene at all times, drawn UNDER the HUD so the
     // timeline (axis / markers / playhead) and the year read cleanly OVER the band rather
@@ -75,8 +75,8 @@ class GameUI {
     }
 
     if (debug) this.renderMessages(W, H);
-    InstallHUD.renderAshFlash(g, W, H);     // white wash — over everything
-    InstallHUD.renderAshCloud(g, W, H);     // ...and the rolling ash cover rides on top of it
+    InstallHUD.renderAshFlash(g, W, H);     // white wash over everything
+    InstallHUD.renderAshCloud(g, W, H);     // rolling ash cover rides on top of it
 
     if (debug) Debug.render(g, W, H);
   }

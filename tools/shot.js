@@ -1,5 +1,5 @@
 // ============================================================
-// TE MANAWA — headless screenshot capture
+// TE MANAWA: headless screenshot capture
 // ------------------------------------------------------------
 // Renders the kiosk offscreen and saves a PNG of chosen eras, so terrain
 // tweaks can be eyeballed without babysitting a browser.
@@ -15,7 +15,7 @@
 //
 // It jumps time by calling terrain.morphTo() directly (the same synchronous
 // bake the harness uses) and freezes DeepTime so the frame is stable. No
-// dependency on the kiosk's 1–4 input lock.
+// dependency on the kiosk's 1-5 input lock.
 // ============================================================
 const http = require('http');
 const fs = require('fs');

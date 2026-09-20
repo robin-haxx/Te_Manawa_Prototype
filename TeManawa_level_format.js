@@ -96,12 +96,12 @@ const LEVEL_REGISTRY = {
 // ============================================
 // Mirrors TerrainGenerator.getBiomeFromElevation: bands are scanned ascending by
 // minElevation and the FIRST band containing the elevation wins. Overlapping
-// bands do not blend — a lower band shadows a higher one, and a fully shadowed
+// bands do not blend: a lower band shadows a higher one, and a fully shadowed
 // band never draws, invisibly (each band reads fine alone). This is one of two
 // ways a biome-colour edit can silently do nothing; see MISTAKES.md.
 //
 // Runs at level load and reports the EFFECTIVE range each biome gets alongside
-// the declared one. Warnings only — a deliberate overlap is a legitimate choice.
+// the declared one. Warnings only: a deliberate overlap is a legitimate choice.
 function validateBiomeBands(biomes) {
   const list = Object.values(biomes || {})
     .filter(b => b && typeof b.minElevation === 'number')
@@ -140,7 +140,7 @@ function validateBiomeBands(biomes) {
       const shadow = list.find(o => o !== b &&
         o.minElevation <= b.minElevation && o.maxElevation >= b.maxElevation);
       issues.push(`'${b.key}' (${declared}) NEVER renders` +
-        (shadow ? ` — fully shadowed by '${shadow.key}' (${shadow.minElevation}-${shadow.maxElevation})` : '') +
+        (shadow ? `, fully shadowed by '${shadow.key}' (${shadow.minElevation}-${shadow.maxElevation})` : '') +
         `. Editing its colours will do nothing.`);
       continue;
     }
@@ -152,13 +152,13 @@ function validateBiomeBands(biomes) {
         o.minElevation < b.minElevation && o.maxElevation > b.minElevation);
       issues.push(`'${b.key}' declares ${declared} but only renders ` +
         `${rec.lo.toFixed(3)}-${b.maxElevation}` +
-        (shadow ? ` — '${shadow.key}' overlaps its lower edge (ends ${shadow.maxElevation})` : ''));
+        (shadow ? `; '${shadow.key}' overlaps its lower edge (ends ${shadow.maxElevation})` : ''));
     }
 
     const share = rec.n / STEPS;
     if (share < 0.02) {
       issues.push(`'${b.key}' holds ${(share * 100).toFixed(1)}% of the elevation ` +
-        `range — its colours will be hard to find on screen.`);
+        `range, its colours will be hard to find on screen.`);
     }
   }
 
@@ -168,7 +168,7 @@ function validateBiomeBands(biomes) {
   }
 
   if (issues.length > 0) {
-    console.warn('[Biomes] band issues — see TeManawa_level_format.js ' +
+    console.warn('[Biomes] band issues, see TeManawa_level_format.js ' +
                  'validateBiomeBands:\n  · ' + issues.join('\n  · '));
   }
   return issues;

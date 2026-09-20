@@ -1,11 +1,11 @@
 // ============================================
-// WATER LAYER — animated river flow, eels, sea shimmer
+// WATER LAYER: animated river flow, eels, sea shimmer
 // ============================================
 // A per-frame overlay of small looping sprite decals stamped onto the water. It
 // exists because the terrain is BAKED: TerrainGenerator.render() is a pure blit
 // of four pre-baked season buffers (md/TEMANAWA_BUILD_V3.md §5), so nothing in
 // the bake can animate. Animated water therefore has to be an overlay drawn each
-// frame over the baked ground — and the cheapest, most on-brand way is the
+// frame over the baked ground, and the cheapest, most on-brand way is the
 // engine's own pooled-sprite animation model, not a full-surface shader (the
 // renderer is 2D, and a large animated luminance plane would fight the ≤3
 // luminance-transitions/sec photosensitivity budget). The decals are small,
@@ -14,15 +14,15 @@
 // WHERE the water is, and WHICH WAY it flows, is already in the terrain data:
 //   terrain.waterTypeAt(x,y)  0 land · 1 sea (flat) · 2 river (rides terrain)
 //   terrain.getRivers()       the authored river polylines, normalised 0..1
-// A decal sits on the water surface via the SAME projection every entity uses —
-// Projection.groundY(y, elev) — so it lines up with the baked ground for free.
+// A decal sits on the water surface via the SAME projection every entity uses
+// (Projection.groundY(y, elev)) so it lines up with the baked ground for free.
 // Sea is drawn flat (elev 0, matching the bake's liftE=0 for sea); river decals
 // and eels ride the terrain elevation like the moa do.
 //
-// Lifecycle: build() does a FULL (re)stamp on a hard scene change — init, look re-bake,
+// Lifecycle: build() does a FULL (re)stamp on a hard scene change: init, look re-bake,
 // eruption. Each deep-time morph re-bake instead calls reconcile() (Game._onMorphComplete),
 // which only ADDS/REMOVES decals as the coastline moves and leaves every surviving decal in
-// place — so the sea shimmer follows the receding/advancing shore without twitching. Both work
+// place, so the sea shimmer follows the receding/advancing shore without twitching. Both work
 // off fixed, deterministic candidate slots (positions are geometry, never random). NEITHER runs
 // on the cheap keep-terrain soft reset, so that path stays in its ~20 ms tier (§5.1). reconcile()
 // is throttled to at most one call per CONFIG.morphMinMs and trails a full season bake, so it is
@@ -36,15 +36,15 @@ class WaterLayer {
     this.eels = [];          // tuna/eels travelling the main-river polylines (deep-time feature)
     this.fish = [];          // a school of smaller fish on every river (always present)
     this._capped = false;    // true if a placement hit the maxDecals cap (logged, never silent)
-    this._probe = { _x: 0, _y: 0, _angle: 0 };   // scratch for path sampling — no per-call alloc
+    this._probe = { _x: 0, _y: 0, _angle: 0 };   // scratch for path sampling, no per-call alloc
 
     // Deterministic candidate SLOTS: every possible decal position (sea-grid points + river-step
-    // points), computed from GEOMETRY alone — never random() — so a given slot always maps to the
+    // points), computed from GEOMETRY alone (never random()) so a given slot always maps to the
     // same world point. reconcile() toggles a decal on/off per slot as the coastline moves without
     // ever shifting a surviving decal. Cached per footprint (see _slotsKey).
     this._slots = null;
     this._slotsKey = '';
-    this._flowRev = false;    // last-seen main-stem flow direction (flips seaward at ~0.6 Ma) — drives eel re-orient
+    this._flowRev = false;    // last-seen main-stem flow direction (flips seaward at ~0.6 Ma); drives eel re-orient
 
     // Tuning; held on the INSTANCE, never written back to CONFIG (same rule as
     // TerrainGenerator.noiseScale / Projection.K). All world-pixel units.
@@ -59,14 +59,14 @@ class WaterLayer {
       seaSpacing:       100,    // grid spacing of sea-shimmer samples
       seaSize:          46,
       seaAlpha:         0.7,
-      seaAnimSpeed:     0.05,   // slower than the river — the sea is calmer
+      seaAnimSpeed:     0.05,   // slower than the river; the sea is calmer
       eelCount:         1,
       eelsFromYear:     500000,  // eels are a deep-time feature: absent until the clock reaches 500 ka (yearsBP <= this)
       eelSize:          24,
       eelAlpha:         0.9,
       eelSpeed:         0.4,    // world px per update tick (real time, not sim time)
       eelAnimSpeed:     0.06,
-      // Fish — a small school travelling every river polyline (main + tributaries),
+      // Fish: a small school travelling every river polyline (main + tributaries),
       // always present (no deep-time gate). A calm school: gentler than the tuna/eels
       // so the swim cycle actually reads (at the old 0.7 px/tick they streaked past
       // too fast to see the tail wag). 50% larger than the first pass.
@@ -87,15 +87,15 @@ class WaterLayer {
 
   // Deep-time year in effect for eel presence. build()/reconcile() pass it explicitly (the year
   // the terrain was just baked to); when omitted, fall back to the live clock. eels appear only
-  // once the clock has reached eelsFromYear (yearsBP <= 500 ka) — see _buildEels/reconcile.
+  // once the clock has reached eelsFromYear (yearsBP <= 500 ka); see _buildEels/reconcile.
   _resolveYear(year) {
     if (typeof year === 'number' && isFinite(year)) return year;
     if (typeof DeepTime !== 'undefined' && typeof DeepTime.yearsBP === 'number') return DeepTime.yearsBP;
-    return -Infinity;   // no clock available — do not suppress eels
+    return -Infinity;   // no clock available; do not suppress eels
   }
   _eelsAllowed(year) { return this._resolveYear(year) <= (this.cfg.eelsFromYear ?? 500000); }
 
-  // FULL (re)build — a hard scene change (init, look re-bake, eruption). Stamps a decal on
+  // FULL (re)build: a hard scene change (init, look re-bake, eruption). Stamps a decal on
   // every slot that is water NOW, and re-seeds the eels. Decals get a fresh animation phase,
   // which is fine here: the whole scene is being replaced. For the gentle deep-time coastline
   // retreat use reconcile() instead, so surviving decals do not jump.
@@ -116,11 +116,11 @@ class WaterLayer {
     this._buildEels(terrain, year);   // gated: no eels before 500 ka
     this._buildFish(terrain);         // always present (every river)
     this._flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
-    if (this._capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals} — some water left un-stamped`);
+    if (this._capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals}, some water left un-stamped`);
   }
 
   // INCREMENTAL update for a deep-time morph: the coastline has moved, so a slot that is no
-  // longer water loses its decal and a slot that has BECOME water gains one — but every decal
+  // longer water loses its decal and a slot that has BECOME water gains one, but every decal
   // that is still over water stays exactly where it is, keeping its position AND its animation
   // phase (no random re-scatter, which is what made the sea shimmer twitch every re-bake). Only
   // river/eel decals ride the terrain, so their elevation is refreshed to the new bed; sea is
@@ -141,7 +141,7 @@ class WaterLayer {
       this._buildEels(terrain, year);   // appear on crossing 500 ka, or re-seed swimming the flipped flow
     }
     // Fish are always present and never stranded (they bounce off any dried stretch),
-    // so a morph leaves the running school alone — only re-seed if it flipped flow or
+    // so a morph leaves the running school alone; only re-seed if it flipped flow or
     // somehow emptied (e.g. a footprint change dropped every path).
     if (this.fish.length === 0 || rev !== this._flowRev) this._buildFish(terrain);
     this._flowRev = rev;
@@ -159,14 +159,14 @@ class WaterLayer {
       const keep = have.get(s.id);
       if (keep) {
         if (s.needs === 2) keep.elev = terrain.getElevationAt(s.x, s.y);   // ride the (slowly deepening) bed; sea stays flat
-        next.push(keep);                                                   // survivor: same x/y, same animTime — no jump
+        next.push(keep);                                                   // survivor: same x/y, same animTime, no jump
       } else {
         next.push(this._mkDecal(s));                                       // newly-watered slot: place a fresh decal
       }
     }
     this.decals = next;
     this._capped = capped;
-    if (capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals} — some water left un-stamped`);
+    if (capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals}, some water left un-stamped`);
   }
 
   update(dt) {
@@ -178,7 +178,7 @@ class WaterLayer {
   }
 
   // Advance a list of swimmers (tuna/eels, fish) along their polylines at `sp` world
-  // px per tick. Shared by both — identical motion: bounce off both ends (the far end
+  // px per tick. Shared by both, identical motion: bounce off both ends (the far end
   // may now be dry, so no wrap) and off any stretch that has dried to LAND. Writes
   // e._x/_y/_angle via _samplePath; allocation-free.
   _stepSwimmers(E, sp, dt) {
@@ -200,7 +200,7 @@ class WaterLayer {
 
   // Drawn inside Game.render()'s camera transform, right after terrain.render() and under the
   // seasonal frost/ash washes. Same space and the same Projection every entity uses, so decals
-  // sit on the lifted ground. This draws the STILL water — river current + glint + sea shimmer
+  // sit on the lifted ground. This draws the STILL water: river current + glint + sea shimmer
   // decals; the eels and fish are drawn separately by renderSwimmers() on the supersampled
   // sprite layer (see Game.render). `g` optionally targets a p5 graphics buffer (DOM-stack GL
   // mode draws these decals into the 1080 terrain layer); null/undefined draws on the global
@@ -232,11 +232,11 @@ class WaterLayer {
     R.pop();
   }
 
-  // The river swimmers — tuna/eels (longer, slower) then the fish school (smaller, quicker) —
+  // The river swimmers, tuna/eels (longer, slower) then the fish school (smaller, quicker),
   // drawn on the SUPERSAMPLED sprite layer, NOT the 1080 ground buffer the current/shimmer
   // decals live in. Game.render() calls this inside the entity pass (after GLBatch.begin, before
   // simulation.render), so in GL mode the batch captures them at backing resolution and in the
-  // 2D path they land straight on the high-res canvas — so a swimming tuna resolves as crisply
+  // 2D path they land straight on the high-res canvas, so a swimming tuna resolves as crisply
   // as the animals above it. Same camera transform + Projection as the decals; both ride the
   // river bed and face the way they are travelling. Drawn on the global main canvas (no `g`).
   renderSwimmers() {
@@ -278,7 +278,7 @@ class WaterLayer {
 
   // ---- helpers -----------------------------------------------------------
   // A live decal for a slot. Position/size/look come from the (stable) slot; only the animation
-  // phase is randomised, and only at creation — a survivor keeps the object it was born with.
+  // phase is randomised, and only at creation; a survivor keeps the object it was born with.
   _mkDecal(s) {
     const elev = (s.needs === 2 && this.terrain) ? this.terrain.getElevationAt(s.x, s.y) : 0;   // river rides the bed; sea is flat
     return { slot: s.id, strip: s.strip, x: s.x, y: s.y, elev, angle: s.angle,
@@ -298,9 +298,9 @@ class WaterLayer {
 
   // Build (and cache) the deterministic candidate slots: river-step points first (so they win
   // the maxDecals budget, as before), then the sea grid. Positions use a hash-based jitter of the
-  // integer grid/step index — NOT random() — so they are identical every call. Each slot records
+  // integer grid/step index (NOT random()) so they are identical every call. Each slot records
   // the water type it NEEDS (2 = open river, 1 = flat sea); a decal exists there iff waterTypeAt
-  // matches. Geometry only — independent of the current coastline, which reconcile()/build() test.
+  // matches. Geometry only; independent of the current coastline, which reconcile()/build() test.
   _computeSlots(terrain) {
     const mapW = terrain.mapWidth, mapH = terrain.mapHeight, cfg = this.cfg;
     const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
@@ -360,10 +360,10 @@ class WaterLayer {
   }
 
   // (Re)seed the eels on the MAIN river(s). Separated from build() so reconcile() can leave the
-  // running eels alone — the main river is always present, so an eel is never stranded on land.
+  // running eels alone: the main river is always present, so an eel is never stranded on land.
   _buildEels(terrain, year) {
     this.eels.length = 0;
-    if (!this._eelsAllowed(year)) return;   // eels are a post-500 ka feature — none before then
+    if (!this._eelsAllowed(year)) return;   // eels are a post-500 ka feature; none before then
     const mapW = terrain.mapWidth, mapH = terrain.mapHeight, cfg = this.cfg;
     const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
     const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());   // eels swim with the flipped flow
@@ -397,7 +397,7 @@ class WaterLayer {
 
   // (Re)seed the fish school across EVERY river polyline (main + tributaries),
   // spread over the available paths. Unlike the tuna/eels there is no deep-time gate
-  // — fish are always in the water — and no flow orientation matters (they mill both
+  // (fish are always in the water) and no flow orientation matters (they mill both
   // ways along the channel, bouncing off dried stretches like the eels). Seeded onto
   // a wet stretch so a fish never starts on a dry bank.
   _buildFish(terrain) {
@@ -433,7 +433,7 @@ class WaterLayer {
   }
 
   // Normalised polyline (pts in 0..1) -> world path with cumulative arc lengths. `reversed` walks the
-  // polyline backwards (NE-source → SW-mouth for the main), which flips every downstream tangent — so
+  // polyline backwards (NE-source → SW-mouth for the main), which flips every downstream tangent, so
   // the current decals and eels read as flowing SEAWARD once the main's flow has flipped (~0.6 Ma).
   _buildPath(pts, mapW, mapH, isMain, reversed) {
     const P = [], cum = [0], n = pts.length;

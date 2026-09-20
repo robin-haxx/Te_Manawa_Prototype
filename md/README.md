@@ -1,13 +1,15 @@
 # Te Manawa — document index
 
-25 documents. This says which ones are live, which are superseded, and which are
+26 documents. This says which ones are live, which are superseded, and which are
 research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
 
 **Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka).
 The land morph, the glacial-cycle climate, five buttons, habitat health and the kererū dispersal
-loop are all running; the frontier is the fauna cast, the flora art and the disturbance clocks.
+loop are all running; the frontier is the fauna cast, the flora art, the disturbance clocks, and
+the **second-screen overhaul** (a 1080p touchscreen; the spec + page + bus are built, the sim
+half — paused geology, per-species boost — is the open frontier: `TEMANAWA_SECOND_SCREEN.md`).
 
 **New here?** Read `TEMANAWA_PLAN_V3.md` (the spine — current design, honest phase status, and the
 road ahead), or `TEMANAWA_PEDAGOGY.md` for the visitor's-eye view of *what the wall teaches today*.
@@ -20,6 +22,7 @@ Then use the precedence order below for the build detail.
 | # | Document | Lines | Role |
 |--:|---|--:|---|
 | 1 | **`TEMANAWA_PLAN_V3.md`** | 472 | **The design spine.** Current design — five buttons, habitat health, the deep-time glacial ecology, the geography morph, the implemented fauna cast — plus an honest phase status and the road ahead. Anything that disagrees with this loses |
+| 1b | **`TEMANAWA_SECOND_SCREEN.md`** | — | **The interaction overhaul.** The 1080p touchscreen, the three-station model (habitat switch → per-species boost-select → activate), the paused-geology time model, the `BroadcastChannel` bus vocabulary, and the sim work it needs. Authoritative for the *interaction model* — where it disagrees with §6 of the spine on interaction, it wins |
 | 2 | **`TEMANAWA_BUILD_V3.md`** | 567 | Architecture, kiosk self-run, the **sprite manifest** (~160 core + ~19 stamps), performance and load budgets. The technical companion — it makes no design decisions, it costs the plan's |
 | 3 | **`TEMANAWA_TERRAIN_PLAN.md`** | 296 | Terrain background. Its keyframe pipeline was cut, then partly **revived by `TEMANAWA_GEOGRAPHY.md`** as the SVG skeleton. §1, §6 and §7 are still live |
 | 4 | **`TEMANAWA_REORG.md`** | — | Structural proposal: the asset pipeline, splitting `sketch.js`, economy residue, and the adaptive terrain mode as built. Ordered so each step is harness-verifiable |

@@ -1,11 +1,11 @@
 // TeManawa_seasons.js
 //
-// GLACIAL CYCLE — not seasons.
+// GLACIAL CYCLE, not seasons.
 // =============================================================================
 // There are no seasons in Te Manawa, only the glacial cycle, keyed to deep time.
 // The class and its method/field names are kept as SeasonManager/winterness/etc.
-// so the ~8 files that call in keep working — but everything it models is a point
-// on the interglacial → full-glacial gradient, and its driver is
+// so the ~8 files that call in keep working, but everything it models is a point
+// on the interglacial-to-full-glacial gradient, and its driver is
 // Climate.glacialIndexAt(DeepTime.yearsBP), not a timer. Scrub the deep-time
 // clock and the cold state follows; nothing here cycles on its own.
 //
@@ -23,7 +23,7 @@
 // These are the anchors the deep-time glacial index blends between. Modifiers
 // use REAL biome keys (sea/coastal/grassland/podocarp/montane/subalpine/…) and
 // REAL plant types (tussock/flax/fern/Totara/beech); anything missing falls back
-// to 1.0. No `icon` field — visitor-facing UI is drawn glyphs only, no emoji.
+// to 1.0. No `icon` field: visitor-facing UI is drawn glyphs only, no emoji.
 const GLACIAL_PHASES = {
   interglacial: {
     name: "Interglacial",
@@ -86,7 +86,7 @@ const GLACIAL_PHASES = {
 };
 
 // ============================================
-// MIGRATION COPY — keyed by glacial phase (co-design placeholder text)
+// MIGRATION COPY: keyed by glacial phase (co-design placeholder text)
 // ============================================
 const MIGRATION_PATTERNS = {
   upland_moa: {
@@ -142,12 +142,12 @@ class SeasonManager {
 
   get current()    { return GLACIAL_PHASES[this.seasonOrder[this.currentSeasonIndex]]; }
   get currentKey() { return this.seasonOrder[this.currentSeasonIndex]; }
-  // Next COLDER phase, clamped (full glacial has no colder neighbour — no wrap).
+  // Next COLDER phase, clamped (full glacial has no colder neighbour, so no wrap).
   get next()       { return GLACIAL_PHASES[this.seasonOrder[Math.min(this.currentSeasonIndex + 1, this.seasonOrder.length - 1)]]; }
   get nextKey()    { return this.seasonOrder[Math.min(this.currentSeasonIndex + 1, this.seasonOrder.length - 1)]; }
   get progress()   { return this.glacialIndex || 0; }   // repurposed: how deep into the cold
 
-  // 0..1 "winterness" — KEPT NAME, now == the glacial index (0 interglacial, 1 full
+  // 0..1 winterness (kept name), now == the glacial index (0 interglacial, 1 full
   // glacial). Every cold response (frost haze, moa habitat stress, breeding, forest
   // competition) reads this, so re-sourcing it here rebinds the whole sim to deep
   // time at one point.
@@ -163,7 +163,7 @@ class SeasonManager {
 
   // Driven by the deep-time glacial index, NOT dt. Maps g∈[0,1] onto the four
   // phases (p = g·3): the floor is the current phase, the next colder phase is the
-  // blend target, and the fraction is transitionProgress — so the snow line, the
+  // blend target, and the fraction is transitionProgress, so the snow line, the
   // baked-buffer crossfade and every modifier glide continuously across the cycle.
   // Returns true when the discrete phase index changes (a phase boundary crossed),
   // which Game/Simulation use to fire onSeasonChange().
@@ -201,7 +201,7 @@ class SeasonManager {
     return cur;
   }
 
-  // Forest productive band — contracts as the glacial deepens (treeline drops,
+  // Forest productive band: contracts as the glacial deepens (treeline drops,
   // forest falls back to refugia). Lerped smoothly per frame like the snow line, so
   // no biome reclassification is needed (avoids stutter). Cached per frame. Returns
   // null unless the level opts in via LEVEL_MECHANICS.forestContraction +

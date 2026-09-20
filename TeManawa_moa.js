@@ -14,7 +14,7 @@ const MOA_STATE = {
 
 // Fallback species-highlight halo colour. Hoisted to module scope so the render
 // path doesn't allocate a fresh [r,g,b] every frame for highlighted species that
-// have no configured highlightColor. Read-only — never mutated.
+// have no configured highlightColor. Read-only, never mutated.
 const MOA_HL_DEFAULT = [255, 235, 120];
 
 // Native facing of the moa art is per sprite set, not global: the mirror sign
@@ -89,7 +89,7 @@ class Moa extends Boid {
     // (≈0.032 px/frame) update() holds its position, so an idle/peck (looking/eating) pose stays
     // planted instead of sliding. The renderer reads the SAME gate for walk-vs-static, so the two
     // are exactly in step. Kept below every foraging state's maxSpeed so it never strands a slow,
-    // hungry (floor-protected) bird from reaching food — it just makes it WALK there, then peck in
+    // hungry (floor-protected) bird from reaching food; it just makes it WALK there, then peck in
     // place. See Boid.update / render().
     this._freezeWhenNotWalking = true;
     this._walkGateSq = 0.001;
@@ -273,15 +273,15 @@ class Moa extends Boid {
   // Returns 1 while the total moa population is at/below the soft cap, then
   // falls linearly to breedingSuppressFloor as it climbs toward the carrying
   // cap. Used as a per-tick probability that a ready moa starts courtship, so
-  // the unprompted spring boom flattens into a measured climb, and — because it
-  // keys off live population — breeding rebounds automatically after a crash.
+  // the unprompted spring boom flattens into a measured climb, and, because it
+  // keys off live population, breeding rebounds automatically after a crash.
   _computeBreedDensityFactor(simulation) {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
 
     // Per-species carrying target (opt-in): breed freely while this species is
     // below its comfortable level, then taper to a trickle as it reaches target.
     // Keyed off the LIVE species count, so a fast breeder can't fill the shared
-    // moa cap and starve the slow species (mōho, goose) out of room — and a
+    // moa cap and starve the slow species (mōho, goose) out of room, and a
     // crashed species rebounds on its own. Multiplies with the global soft cap.
     let speciesFactor = 1;
     if (M && M.speciesCarryingTargets && simulation._speciesTarget) {
@@ -352,7 +352,7 @@ class Moa extends Boid {
 
     // Open-country tussock subsidy. Lowland grassland/scrub/coast grazers (the goose
     // and the plains/coastal moa, flagged `openCountry`) feed on the flush of new
-    // tussock the visitor grows in a GLACIAL — the matched cold regime. A mild hunger
+    // tussock the visitor grows in a GLACIAL, the matched cold regime. A mild hunger
     // relief keeps them in breeding condition, and _resetAfterMating shortens their egg
     // cooldown while it holds: a small population lift, so the cold phase is busier, not
     // emptier (md/TEMANAWA_ECOLOGY_FAUNA.md). Reads the shared per-frame flag
@@ -422,7 +422,7 @@ class Moa extends Boid {
     // gate so the last few can climb back instead of hovering at the floor (grazers
     // are food-limited without the visitor planting, so they seldom dip under the
     // normal gate). At/above the fraction it's the normal gate, so healthy or
-    // over-target populations are unaffected — this only ever helps recovery.
+    // over-target populations are unaffected; this only ever helps recovery.
     this._mateHungerGate = this.hungerThreshold;
     this._effMatingHunger = this.matingHungerThreshold;
     if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.speciesCarryingTargets && simulation._speciesTarget) {
@@ -440,9 +440,9 @@ class Moa extends Boid {
 
     // While committed to an eating cycle (planted mid-meal, not fleeing), the herd
     // separation nudge below would push a grazing bird back over the walk-gate for a
-    // frame or two — which flipped the EATING pose to WALKING for ~1 frame (the "snaps
+    // frame or two, which flipped the EATING pose to WALKING for ~1 frame (the "snaps
     // out of eating mid-cycle" flicker) and slid the planted feet. Hold it: skip the
-    // separation so the committed cycle plays clean. avoidUnwalkable / edges still run —
+    // separation so the committed cycle plays clean. avoidUnwalkable / edges still run,
     // a bird must never be parked into water even mid-meal.
     const _eatHold = this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil;
 
@@ -494,7 +494,7 @@ class Moa extends Boid {
     }
 
     // Barren coast/riverbed: nothing grows here, so escaping to plant-bearing ground
-    // OUTRANKS foraging — otherwise a hungry grazer forages up and down the empty shore
+    // OUTRANKS foraging; otherwise a hungry grazer forages up and down the empty shore
     // (the "coastal species try to eat on the riverbed" report) instead of leaving it.
     // Only a threat (above) is more urgent. shouldMigrate agrees, so executeMigration
     // then picks a plant-bearing target (findMigrationTarget).
@@ -529,7 +529,7 @@ class Moa extends Boid {
     
     // Actively eating at a placeable: stay on the food. (This used to rank
     // below MIGRATING, so a seasonal elevation shift pulled moa off feeders
-    // mid-meal — a classic "starved out of nowhere".)
+    // mid-meal, a classic "starved out of nowhere".)
     if (this.isFeeding) return MOA_STATE.FEEDING;
 
     // Hunger deadband: start foraging above the threshold but keep foraging
@@ -542,7 +542,7 @@ class Moa extends Boid {
 
     // Food outranks migration when urgent or actually available: a starving
     // moa always eats first; a merely-hungry one eats first unless local food
-    // is scarce (in which case migrating IS the path to food — and it still
+    // is scarce (in which case migrating IS the path to food, and it still
     // forages opportunistically while travelling).
     if (_hungry && (this.hunger > this.criticalHunger || this.localFoodScore >= 0.3)) {
       return MOA_STATE.FORAGING;
@@ -561,7 +561,7 @@ class Moa extends Boid {
   // Commit to eating one full cel cycle before moving on. Called when a bite lands
   // (forage) or the bird settles at a feeder (executeState FEEDING). Only (re)starts a
   // cycle when one isn't already running: mid-cycle bites don't extend the hold, so the
-  // meal is exactly one clean cycle. At the cycle boundary the bird gets one free frame —
+  // meal is exactly one clean cycle. At the cycle boundary the bird gets one free frame,
   // if it's still hungry with food in reach, forage()/FEEDING lands the next bite and
   // re-commits THAT SAME frame, so successive bites chain into an unbroken run of eating
   // cycles with no gap; if it's done, it steps off to walk. render() reads this same
@@ -580,7 +580,7 @@ class Moa extends Boid {
     const starving = this.hunger > this.criticalHunger;
     const speedMod = starving ? 0.6 : 1;
 
-    // Barren coast/riverbed escape — highest priority after a threat (handled in the FLEEING
+    // Barren coast/riverbed escape: highest priority after a threat (handled in the FLEEING
     // case). Nothing grows here, so leaving OUTRANKS the eat-hold and all foraging: seek an
     // inland, plant-bearing target at FULL urgency, decoupled from the seasonal migration
     // strength (executeMigration scales its seek by that, ~0 off-season, stranding a well-fed
@@ -597,7 +597,7 @@ class Moa extends Boid {
         if (dx * dx + dy * dy < 400) this.migrationTarget = null;    // arrived → re-evaluate next frame
         else this.applyForce(this.seek(this.migrationTarget, 1.5, 20));
       } else {
-        // No inland target within reach (isolated coast fragment) — head for the map interior.
+        // No inland target within reach (isolated coast fragment); head for the map interior.
         this._homeForce.set(this.terrain.mapWidth * 0.5, this.terrain.mapHeight * 0.5);
         this.applyForce(this.seek(this._homeForce, 1.2));
       }
@@ -605,7 +605,7 @@ class Moa extends Boid {
     }
 
     // Eat-cycle commitment (see _commitEatCycle): once a bite lands the bird COMMITS to
-    // the meal — it stops where it stands, plays a full eating animation cycle, and does
+    // the meal: it stops where it stands, plays a full eating animation cycle, and does
     // nothing else (no seek, no mate-chase, no wander) until the cycle completes. The bite
     // that opened the commitment already consumed the food (forage / applyPlaceableEffects),
     // so "consume, then finish the animation" is guaranteed. This early return is what makes
@@ -613,14 +613,14 @@ class Moa extends Boid {
     if (this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil) {
       // Hard brake to a standstill (the feet plant). maxSpeed is kept just above the walk
       // gate rather than zeroed so avoidUnwalkable (applied after this returns) can still
-      // ease the bird off water if it somehow settled on an edge mid-meal — never below it,
+      // ease the bird off water if it somehow settled on an edge mid-meal, never below it,
       // or that safety nudge would be frozen out.
       this.maxSpeed = this.baseSpeed * 0.5;
       this.vel.x *= 0.4;
       this.vel.y *= 0.4;
       // Label the committed frame as an eating state so the debug overlay and any state
       // reader stay coherent (the EATING pose itself is driven by _eatHoldUntil in render,
-      // not by this label). Never override FEEDING — it carries the feedingAt reference.
+      // not by this label). Never override FEEDING: it carries the feedingAt reference.
       if (this.currentState !== MOA_STATE.FEEDING) this.currentState = MOA_STATE.FORAGING;
       return;
     }
@@ -676,7 +676,7 @@ class Moa extends Boid {
             // nudge here kept the bird drifting UNDER its stationary EATING pose, which
             // read as sliding (the "ground birds slide while eating" report). Braking the
             // residual velocity settles it to eat, and it still walks between stands via
-            // the outer-band steer above and FORAGING re-targeting — so a herd still spreads.
+            // the outer-band steer above and FORAGING re-targeting, so a herd still spreads.
             this.vel.x *= 0.8;
             this.vel.y *= 0.8;
             this._commitEatCycle();   // hold a full eating cycle before drifting on
@@ -721,7 +721,7 @@ class Moa extends Boid {
   // MATING
   // ============================================
 
-  // Mating search radius — doubled while standing near a plant favoured by
+  // Mating search radius, doubled while standing near a plant favoured by
   // this species (a well-fed spot is a good place to pair up from).
   effectiveMatingRadius() {
     return this._nearFavouredPlant ? this.matingSearchRadius * 2 : this.matingSearchRadius;
@@ -761,7 +761,7 @@ class Moa extends Boid {
     }
 
     if (best) return best;              // prefer own kind whenever one is available
-    if (this._noSpeciation) return null; // level forbids hybridising — pause instead
+    if (this._noSpeciation) return null; // level forbids hybridising; pause instead
     return bestCross;                   // otherwise cross-species is a last resort
   }
 
@@ -855,7 +855,7 @@ class Moa extends Boid {
     }
     _cd *= (moa.reproCooldownMult || 1);   // non-focal competitors breed a little faster
     // Open-country grazers breed a little faster during a matched TUSSOCK-in-glacial
-    // flush (flag set each tick in behave) — the population lift that fills the cold plains.
+    // flush (flag set each tick in behave): the population lift that fills the cold plains.
     if (moa._openCountryBoost && typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.openCountryBoostCooldownMult)
       _cd *= LEVEL_MECHANICS.openCountryBoostCooldownMult;
     moa.mateCooldown = _cd;
@@ -892,7 +892,7 @@ class Moa extends Boid {
     // clutch instead of laying (a short retry cooldown, not a full cycle), so a
     // fast breeder like the goose settles NEAR its target instead of booming to
     // the shared cap and crowding the slow species out. The birth-step brake that
-    // actually bites — the per-tick courtship gate only delays a ready pair a few
+    // actually bites; the per-tick courtship gate only delays a ready pair a few
     // ticks. Mirrors the flyer taper in Kereru._tryReproduce.
     if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.speciesCarryingTargets && simulation._speciesTarget) {
       const target = simulation._speciesTarget(this.speciesKey);
@@ -1064,7 +1064,7 @@ class Moa extends Boid {
       } else {
         // ACROSS phase: once inside the patch, stop pulling the moa to the
         // centre. Preserve its heading so it grazes straight across and out the
-        // far side — a *line* of favoured plants then behaves like a corridor
+        // far side: a *line* of favoured plants then behaves like a corridor
         // that conveys the herd along, letting the player steer where moa go
         // rather than trapping each one sliding to a centre point.
         const vMagSq = this.vel.x * this.vel.x + this.vel.y * this.vel.y;
@@ -1073,7 +1073,7 @@ class Moa extends Boid {
           this._tempForce.set(this.vel.x * s, this.vel.y * s);
           this.applyForce(this._tempForce);
         } else {
-          // Stalled dead inside a patch — nudge it back into motion through the
+          // Stalled dead inside a patch, nudge it back into motion through the
           // stand instead of letting it park on the centre.
           this.applyForce(this.seek(best.pos, 0.5));
         }
@@ -1127,7 +1127,7 @@ class Moa extends Boid {
           if (this.targetPlant.favouredSpecies !== this.speciesKey) {
             gain *= (typeof LEVEL_MECHANICS !== 'undefined' ? (LEVEL_MECHANICS.unfavouredBrowsePenalty ?? 0.25) : 0.25);
           }
-          // else: browsing its own favoured plant — full gain.
+          // else: browsing its own favoured plant, full gain.
         } else if (!this.isFocal && typeof LEVEL_MECHANICS !== 'undefined') {
           gain *= (LEVEL_MECHANICS.nonFocalGeneralistBonus ?? 1); // wild plant + generalist
         }
@@ -1175,7 +1175,7 @@ class Moa extends Boid {
       }
 
       // Deprioritise food on the FAR side of water: the straight path crosses the river/sea,
-      // so a moa can't graze it without a detour — chasing it just noses into the shore and
+      // so a moa can't graze it without a detour; chasing it just noses into the shore and
       // rubber-bands (the "sand band around the river, not finding food" report). A soft
       // penalty, not a hard skip, so a moa in a genuine one-sided food desert can still fall
       // back to it rather than starve. Cheap: one water-type sample at the path midpoint.
@@ -1194,7 +1194,7 @@ class Moa extends Boid {
   // MIGRATION
   // ============================================
 
-  // True when standing on the WALKABLE but plant-less coast/riverbed — the low sandy strip
+  // True when standing on the WALKABLE but plant-less coast/riverbed: the low sandy strip
   // below the lowest plant-bearing biome (grassland starts at grazerBarrenMaxElev, 0.15).
   // Nothing grazes there, so a grazer that wanders or spawns onto it should move off to
   // plant-bearing land instead of "feeding" on bare sand (the "coastal species try to eat on
@@ -1342,17 +1342,17 @@ class Moa extends Boid {
     // Skip it for species with their own dedicated sprite set (e.g. bush moa).
     const _tint = variant ? null : this.speciesConfig.tint;
     // Same gate update() uses to decide whether to translate, so "moving" and "walking pose" are
-    // exactly equivalent — a static pose (looking/eating) never plays over a sliding body.
+    // exactly equivalent: a static pose (looking/eating) never plays over a sliding body.
     const _moving = this.vel.magSq() > this._walkGateSq;
     // Animation state selects which cel cycle plays. A committed eat cycle (see
     // _commitEatCycle) is the SOLE trigger for the EATING pose: once a bite lands the
     // bird holds planted and the EATING cel cycle plays all the way to its end, and NO
-    // other condition can show it. Outside a commitment the pose follows motion only —
+    // other condition can show it. Outside a commitment the pose follows motion only,
     // WALKING while moving, LOOKING (idle stand) otherwise. This is deliberate: the old
     // fallback here also lit EATING whenever the bird merely stood still in a FORAGING/
     // FEEDING state, so a hungry bird decelerating onto a plant (or nudged below the walk
     // gate for a frame while travelling) flashed a stray eating frame that never played to
-    // a full cycle — the "flickering in and out of eating" report. A real bite always
+    // a full cycle, the "flickering in and out of eating" report. A real bite always
     // commits (forage / FEEDING), so gating purely on the commit loses no genuine meal; it
     // only removes the phantom sub-cycle flashes. Mating reads as LOOKING (no mate pose).
     const _inEatCycle = this.currentState !== MOA_STATE.FLEEING && this.animTime < this._eatHoldUntil;
@@ -1366,7 +1366,7 @@ class Moa extends Boid {
     if (!sprite) return;
 
     // Climate-affinity authoring tint (warm=amber, cold=blue; see ClimateAffinity /
-    // TintBaker). Off on the wall; when on, swap the frame for a BAKED tinted copy — no
+    // TintBaker). Off on the wall; when on, swap the frame for a BAKED tinted copy, no
     // per-frame tint() (the render below already noTint()s, so the baked frame draws clean).
     // The species' affinity never changes, so classify once and cache it on the instance.
     if (typeof CONFIG !== 'undefined' && CONFIG.showClimateAffinity && typeof ClimateAffinity !== 'undefined') {
@@ -1378,7 +1378,7 @@ class Moa extends Boid {
     // Sit on the 3/4 ground: the anchor y is projected (Projection.groundY, which
     // now lifts with terrain elevation), so the sprite rides the relief while
     // staying undistorted. x is unchanged. FOOT-ANCHORED (the image is drawn with its
-    // base on this point below) — the moa's ground-contact is now pos.y, the SAME
+    // base on this point below): the moa's ground-contact is now pos.y, the SAME
     // convention base-anchored trees use, so the painter's y-sort (Simulation.render)
     // orders a moa against a tree by where they actually stand. Centre-anchoring hung
     // the lower body a half-sprite SOUTH of pos.y, so a moa clearly in front of a tree
@@ -1448,13 +1448,13 @@ class Moa extends Boid {
   renderIndicators() {
     const px = this.pos.x, py = this.pos.y, s = this.size;
 
-    // Mating heart — the ONE breeding cue kept for visitors (user-facing), so it draws
+    // Mating heart: the ONE breeding cue kept for visitors (user-facing), so it draws
     // whether or not the debug entity-UI layer is on. Drawn first, in the top indicator
     // pass, so it floats above trees.
     this._renderMatingHeart(px, py, s);
 
     // Everything below is debug-only instrumentation (CONFIG.showEntityUI): pregnancy dots,
-    // low-population rings, hunger/age bars and state glyphs — the "this is a video game"
+    // low-population rings, hunger/age bars and state glyphs: the "this is a video game"
     // layer that has no place in an ambient diorama.
     if (!CONFIG.showEntityUI) return;
 
@@ -1509,7 +1509,7 @@ class Moa extends Boid {
     }
   }
 
-  // The mating heart — user-facing (see renderIndicators): a small soft-pink heart that
+  // The mating heart, user-facing (see renderIndicators): a small soft-pink heart that
   // rises and fades over a breeding pair. The one breeding cue kept in the ambient diorama;
   // gentle and non-flashing (photosensitivity). Anchored in world space, like the rest of
   // the indicator pass, so it stays above trees.

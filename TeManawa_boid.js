@@ -26,8 +26,8 @@ class Boid {
 
     // Opt-in: keep this boid inside the VISIBLE screen bounds, not just the map. Flyers set
     // this true (Kereru / Eagle constructors) because the cover-fit view runs the map wider
-    // than the canvas, so the map's left/right edges (within CONFIG.viewInsetX) sit off-screen
-    // — a bird at a valid map-x there is simply not visible. Ground animals leave it false;
+    // than the canvas, so the map's left/right edges (within CONFIG.viewInsetX) sit off-screen;
+    // a bird at a valid map-x there is simply not visible. Ground animals leave it false;
     // they stay on inland walkable land and never reach the horizontal overflow.
     this._clampToView = false;
     this.animTime = 0;                 // sprite animation clock; rides the REAL
@@ -37,7 +37,7 @@ class Boid {
     this._speedCap = null; // smoothed effective max speed (ramps toward maxSpeed)
 
     // Walk-gate (ground birds): a moa only TRANSLATES while it is moving fast enough to show the
-    // walk animation. Below _walkGateSq (speed²) update() holds its position — the feet stay
+    // walk animation. Below _walkGateSq (speed²) update() holds its position: the feet stay
     // planted under an idle/peck pose instead of the body sliding out from under it. The moa
     // renderer picks walk-vs-static off the SAME gate, so "moving" and "walking pose" are exactly
     // equivalent. Flyers leave _freezeWhenNotWalking false (they glide continuously, no walk cel).
@@ -48,7 +48,7 @@ class Boid {
     // The direction the SPRITE points, eased toward the direction of travel so
     // rotation glides instead of snapping to a division, ramps up from rest,
     // and shrugs off a heading that flickers for a frame or two (state chatter)
-    // rather than whipping around. Scalars only — never allocates, so it is
+    // rather than whipping around. Scalars only, never allocates, so it is
     // safe in update() and across a soft reset (CLAUDE.md).
     this._facing = undefined;   // radians, 0 = +x; undefined until the first update
     this._turnRate = 0;         // current angular velocity, radians per frame-unit
@@ -56,7 +56,7 @@ class Boid {
     this._turnMax = 0.15;       // hard cap on turn per frame-unit (~8.6°/frame)
     this._turnEase = 0.12;      // how fast the turn rate ramps in/out (the "ramp-up")
 
-    // Lateral flip — the moa renderer uses this INSTEAD of rotation, to read as a
+    // Lateral flip: the moa renderer uses this INSTEAD of rotation, to read as a
     // walking animal that turns around rather than a top-down sprite that spins.
     // _faceDir is the committed horizontal facing (+1 right, -1 left); _flip eases
     // toward it and animates the turn (passing through 0 = edge-on). Eagles keep
@@ -70,7 +70,7 @@ class Boid {
     // flip the sprite back and forth (reported "continual sprite flip"). Averaging over a few
     // frames rejects that while still following a genuine turn within a fraction of a second.
     this._flipVx = this.vel.x;
-    this._flipVxEase = 0.06;    // low-pass rate (τ ≈ 16 frames) — long enough to reject flip-flap
+    this._flipVxEase = 0.06;    // low-pass rate (τ ≈ 16 frames); long enough to reject flip-flap
 
     // Reusable vectors
     this._steeringVec = createVector();
@@ -154,7 +154,7 @@ class Boid {
     return this.seekPoint(target.x, target.y, urgency, arriveRadius);
   }
   
-  // Delta-time compatible wander — steers RELATIVE to the current heading
+  // Delta-time compatible wander: steers RELATIVE to the current heading
   // (noise drifts the heading up to ~±100°) and is clamped to maxForce, so it
   // produces gentle meandering curves instead of overpowering every steered
   // force with a random absolute direction (which read as spinning in place).
@@ -187,7 +187,7 @@ class Boid {
     const px = this.pos.x, py = this.pos.y;
     const angles = this._avoidAngles;
 
-    // Case 1 — already standing OFF walkable ground. A look-ahead nudge can only
+    // Case 1: already standing OFF walkable ground. A look-ahead nudge can only
     // keep a moving animal from wading IN; it never rescues one that is already
     // on the water. That happens two ways: the coastline advances under a moa
     // during a deep-time morph, or a fast state (fleeing) carries it across the
@@ -207,21 +207,21 @@ class Boid {
           }
         }
       }
-      if (!found) {   // no land within reach — head for the map interior
+      if (!found) {   // no land within reach; head for the map interior
         bestAngle = Math.atan2(this.terrain.mapHeight * 0.5 - py, this.terrain.mapWidth * 0.5 - px);
       }
       result.set(Math.cos(bestAngle) * this.maxForce * 4, Math.sin(bestAngle) * this.maxForce * 4);
       return result;
     }
 
-    // Case 2 — on land but approaching unwalkable water: turn along the shore and slow
+    // Case 2: on land but approaching unwalkable water: turn along the shore and slow
     // as it nears, instead of ramming the edge and being kicked straight back inland (the
     // ground-bird "rubber-band at the coast/water threshold" report). The old version was
-    // binary — nothing until water was 12 px ahead, then a full-strength swerve — so the
+    // binary (nothing until water was 12 px ahead, then a full-strength swerve), so the
     // moa reached the brink carrying momentum, got flung back, its own drive re-aimed it at
     // the shore, and it bounced. Three changes kill the oscillation: look further ahead the
     // faster it moves (it banks earlier), RAMP the steering with proximity (gentle at range,
-    // firm only at the brink — no last-moment kick), and BRAKE the momentum carrying it into
+    // firm only at the brink, no last-moment kick), and BRAKE the momentum carrying it into
     // the water so it eases up to the edge rather than overshooting across it.
     const velX = this.vel.x, velY = this.vel.y;
     const velMagSq = velX * velX + velY * velY;
@@ -240,11 +240,11 @@ class Boid {
       const d = maxLook * s * 0.2;
       if (!this.terrain.isWalkable(px + dirX * d, py + dirY * d)) { dHit = d; break; }
     }
-    if (dHit < 0) return result;                 // clear water-free path ahead — no steering
+    if (dHit < 0) return result;                 // clear water-free path ahead, no steering
 
     const prox = 1 - dHit / maxLook;             // 0 far → ~1 right at the brink
 
-    // Best walkable heading that preserves course the most — turn ALONG the shore, not away
+    // Best walkable heading that preserves course the most: turn ALONG the shore, not away
     // from it, so the bird follows the coast instead of reversing into the map.
     let bestDot = -2, bestAngle = 0;
     const currentHeading = Math.atan2(velY, velX);
@@ -261,7 +261,7 @@ class Boid {
     // heading keeps a little of the forward (into-water) direction, so it alone would let the
     // bird nose onto the shore; the outward push below is sized to cancel that and net
     // tangential-to-outward near the brink. If boxed in (no walkable heading within reach) fall
-    // back to a straight reversal — also ramped.
+    // back to a straight reversal, also ramped.
     let sx, sy;
     if (bestDot > -2) {
       const steerMag = this.maxForce * (0.5 + 1.2 * prox);
@@ -274,7 +274,7 @@ class Boid {
     // Push OUTWARD, away from the water ahead (i.e. against the heading), ramped by proximity.
     // This is both the brake on the into-water momentum AND the guarantee that the net force
     // near the brink points away from the shore rather than along the least-turn diagonal into
-    // it — so the bird eases up to the edge and turns along it instead of wading across.
+    // it, so the bird eases up to the edge and turns along it instead of wading across.
     const outward = this.maxForce * (0.2 + 2.4 * prox);
     sx -= dirX * outward; sy -= dirY * outward;
 
@@ -287,9 +287,9 @@ class Boid {
     // Screen-aware edge steer: keep the SPRITE inside the visible frame, not just the
     // map. The cover-fit view runs the map wider/taller than the canvas (viewInsetX
     // L/R, and on a portrait wall a vertical crop too), and the 3/4 relief LIFT raises
-    // high ground / a flyer's altitude off the TOP — so a turn-back keyed to the map
+    // high ground / a flyer's altitude off the TOP, so a turn-back keyed to the map
     // rectangle lets the whole cast wander off-frame (moa off the sides, the harrier off
-    // the top over the ranges). This works in projected screen space, so it accounts for
+    // the top over the ranges). It works in projected screen space, so it accounts for
     // both. Flyers get a wider margin so they never reach the GL edge-fade band. Falls
     // back to the old map-edge turn when the camera isn't set up (headless boot).
     const mPx = this._clampToView ? 110 : 60;
@@ -299,7 +299,7 @@ class Boid {
 
     // Deep backstop at the actual MAP edge (also the sole path when the screen-aware
     // steer is inactive, e.g. the headless harness). Harmless when the screen steer
-    // already turned the bird — both push inward.
+    // already turned the bird; both push inward.
     const margin = 25;
     const turnForce = 0.3 * this.personality.turniness;
     const w = this.terrain.mapWidth;
@@ -358,13 +358,13 @@ class Boid {
   
   update(dt = 1) {
     // Two clocks WITHIN motion+anim (both fed the REAL frame dt by the sim):
-    //   • mdt — the MOTION clock, scaled by CONFIG.faunaTimeScale, so the cast TRAVELS at a
+    //   • mdt: the MOTION clock, scaled by CONFIG.faunaTimeScale, so the cast TRAVELS at a
     //     calm diorama pace (position + velocity integration + the speed-cap ramp).
-    //   • dt  — the ANIMATION clock, left at the real frame rate, so the walk/wingbeat cel
+    //   • dt:  the ANIMATION clock, left at the real frame rate, so the walk/wingbeat cel
     //     cycles still play through EVERY frame at their authored cadence.
     // They are kept separate on purpose: scaling both together slowed the animation too, so
-    // the cel cycles played "on twos" (choppy). The cadence was never speed-linked here — it
-    // is a fixed floor(animTime*speed) — so running it at full rate just restores the original
+    // the cel cycles played "on twos" (choppy). The cadence was never speed-linked here; it
+    // is a fixed floor(animTime*speed), so running it at full rate just restores the original
     // look while the body moves slower. (Deep-time life events ride the warped clock in
     // behave(); water, storm-warp decay and habitat health ride real dt elsewhere.)
     const mdt = (typeof CONFIG !== 'undefined' && CONFIG.faunaTimeScale) ? dt * CONFIG.faunaTimeScale : dt;
@@ -428,7 +428,7 @@ class Boid {
       }
     }
 
-    // Animation clock — the real frame dt scaled by CONFIG.faunaAnimScale (NOT the paced motion
+    // Animation clock: the real frame dt scaled by CONFIG.faunaAnimScale (NOT the paced motion
     // clock mdt, and never the deep-time-warped clock). At 0.5 each walk/eat/wingbeat cel cycle
     // takes 2x longer, matching the slowed body so the legs aren't racing a slow shuffle. The cel
     // index is floor(animTime*rate), so slowing animTime still steps through EVERY frame in order
@@ -441,11 +441,11 @@ class Boid {
 
   // Ease the sprite's facing toward the direction of travel. Three problems,
   // one mechanism:
-  //   • snapping — the renderer used to set the angle straight from velocity
+  //   • snapping: the renderer used to set the angle straight from velocity
   //     every frame. A rate-limited turn glides between headings instead.
-  //   • no ramp-up — the turn RATE itself is eased toward its target, so a turn
+  //   • no ramp-up: the turn RATE itself is eased toward its target, so a turn
   //     accelerates in from rest rather than starting at full speed.
-  //   • rubber-banding — when state chatter flips the velocity for a frame or
+  //   • rubber-banding: when state chatter flips the velocity for a frame or
   //     two, the eased rate cannot reverse instantly, so a brief flicker barely
   //     moves the sprite instead of whipping it around.
   //
@@ -477,12 +477,12 @@ class Boid {
     const m = this._turnMax;
     const desired = d > m ? m : (d < -m ? -m : d);
 
-    // Ease the actual rate toward the desired rate — the ramp-up, and the
+    // Ease the actual rate toward the desired rate: the ramp-up, and the
     // inertia that averages out flicker.
     const k = this._turnEase * dt;
     this._turnRate += (desired - this._turnRate) * (k > 1 ? 1 : k);
 
-    // Integrate, but never rotate past the target in a single step — guards a
+    // Integrate, but never rotate past the target in a single step: guards a
     // large deep-time dt against overshooting into a wobble.
     let step = this._turnRate * dt;
     if (moving && ((d >= 0 && step > d) || (d <= 0 && step < d))) step = d;

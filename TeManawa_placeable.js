@@ -4,18 +4,18 @@
 let placeableSprites = {
   cloud1: null,
   cloud2: null,
-  bolt: null,          // legacy 64px lightning glyph — kept as the fallback for `lightning`
-  lightning: null,     // Storm_Lightning illustration; drawn via globalAlpha (no per-frame tint) — see the stutter note in loadPlaceableSprites
-  windWarm: null,      // interglacial "wind gust" — blows on the FOREST boost / warming (InstallHUD wind system)
-  windCold: null,      // glacial "chill" — blows on the TUSSOCK boost / cooling
-  // (the eruption ash cover is not a placeable sprite — it is the VolcanicAsh_Cloud_* frame
+  bolt: null,          // legacy 64px lightning glyph: kept as the fallback for `lightning`
+  lightning: null,     // Storm_Lightning illustration; drawn via globalAlpha (no per-frame tint); see the stutter note in loadPlaceableSprites
+  windWarm: null,      // interglacial "wind gust": blows on the FOREST boost / warming (InstallHUD wind system)
+  windCold: null,      // glacial "chill": blows on the TUSSOCK boost / cooling
+  // (the eruption ash cover is not a placeable sprite; it is the VolcanicAsh_Cloud_* frame
   //  sequence lazily loaded and drawn by InstallHUD, see renderAshCloud)
   loaded: false
 };
 
 // Static layout for the 3-4 overlapping ferns drawn on a `shelter` placeable.
 // Hoisted to module scope so renderTypeSpecific() doesn't rebuild an array of
-// four object literals every frame per shelter. Read-only — never mutated.
+// four object literals every frame per shelter. Read-only, never mutated.
 const SHELTER_FERNS = [
   { x: -14, y: -13, rot: -0.3, s: 32 },
   { x:  15, y: -11, rot:  0.4, s: 30 },
@@ -28,14 +28,14 @@ function loadPlaceableSprites() {
   placeableSprites.cloud2 = loadImage('sprites/cloud2.png');
   placeableSprites.bolt = loadImage('sprites/bolt.png');
   // Lightning: the old 64px `bolt` was drawn with a per-frame tint() whose alpha
-  // changed every frame, so p5 rebaked its tinted-image cache each frame — the stutter
+  // changed every frame, so p5 rebaked its tinted-image cache each frame, the stutter
   // on every strike. This full-colour illustration replaces it and is drawn via
   // globalAlpha instead (no tint), so no per-frame rebake. bolt stays as the fallback.
   placeableSprites.lightning = loadImage(
     'sprites/Environmental/Storm_Lightning.png',
     () => {},
     () => console.warn('Could not load sprites/Environmental/Storm_Lightning.png'));
-  // Wind gusts — STATIC fallback frames only. The live wind is the animated
+  // Wind gusts: STATIC fallback frames only. The live wind is the animated
   // wind_warm / wind_cold strips (SpriteStrips, InstallHUD.renderWind); these single
   // frames (frame 0 of each cel cycle) are drawn only if those strips are absent.
   // Warm = interglacial (FOREST), cold = glacial (TUSSOCK).
@@ -48,7 +48,7 @@ function loadPlaceableSprites() {
     () => {},
     () => console.warn('Could not load glacial wind fallback frame'));
   // The eruption ash cover is the VolcanicAsh_Cloud_* frame sequence (1080p, played at 6 fps),
-  // which InstallHUD loads lazily one-at-a-time and draws — see InstallHUD._ashWarmupTick /
+  // which InstallHUD loads lazily one-at-a-time and draws; see InstallHUD._ashWarmupTick /
   // renderAshCloud. Nothing to preload here.
   placeableSprites.loaded = true;
 }
@@ -201,7 +201,7 @@ class PlaceableObject {
       translate(this.boltX, this.boltY);
       rotate(this.boltRotation);
 
-      // Fade the strike via globalAlpha, NOT a per-frame tint() — tinting an image with a
+      // Fade the strike via globalAlpha, NOT a per-frame tint(): tinting an image with a
       // value that changes every frame makes p5 rebake its tint cache each frame (the strike
       // stutter). Bright at the strike, easing over the bolt's short life.
       noTint();
@@ -210,7 +210,7 @@ class PlaceableObject {
       image(lightning, 0, 0, bw, bh);
       _dc.globalAlpha = 1;
 
-      // Screen flash on first frame (a plain fill, not an image tint — no rebake)
+      // Screen flash on first frame (a plain fill, not an image tint, no rebake)
       if (this.boltDuration > 6) {
         noStroke();
         fill(255, 255, 200, 60);
@@ -307,7 +307,7 @@ class PlaceableObject {
     if (this.def.favouredSpecies && moa.speciesKey !== this.def.favouredSpecies) {
       sel = (typeof LEVEL_MECHANICS !== 'undefined' ? (LEVEL_MECHANICS.unfavouredBrowsePenalty ?? 0.25) : 0.25);
     }
-    if (sel <= 0) return 0;   // fully exclusive — no food, and not counted as feeding
+    if (sel <= 0) return 0;   // fully exclusive: no food, and not counted as feeding
 
     this.feedingMoaCount++;
 
@@ -531,7 +531,7 @@ class PlaceableObject {
           imageMode(CENTER);
           
           // 3-4 overlapping ferns at slight offsets and rotations (SHELTER_FERNS,
-          // hoisted to module scope — no per-frame array/object allocation here).
+          // hoisted to module scope, no per-frame array/object allocation here).
           for (const f of SHELTER_FERNS) {
             push();
             translate(f.x, f.y);

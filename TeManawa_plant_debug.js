@@ -1,5 +1,5 @@
 // ============================================================
-// TE MANAWA — PLANT SPRITE GALLERY  (hold D for 3 s)
+// TE MANAWA: PLANT SPRITE GALLERY  (hold D for 3 s)
 // ------------------------------------------------------------
 // A stripped-back debug view, separate from the Debug overlay. It takes
 // over the whole screen and lays out every LOADED plant sprite at the
@@ -13,7 +13,7 @@
 //
 // It reads `plantSprites` (built in preload) for the art and PLANT_TYPES
 // for each plant's footprint size, and multiplies by the LIVE
-// CONFIG.viewZoom — the same world→screen scale the sim draws with — so a
+// CONFIG.viewZoom (the same world→screen scale the sim draws with) so a
 // sprite here is the size it would actually be on the wall. It never
 // touches the sim.
 //
@@ -31,11 +31,11 @@
 // This gallery draws only the sprites the code actually LOADS (via
 // PLANT_SPRITE_SETS in TeManawa_sketch.js). Every plant set now points at a
 // sprites/<Species>/ folder, so nothing loads from the sprites/ root any more.
-// The files below sit in sprites/ but are referenced nowhere in the JS — the
+// The files below sit in sprites/ but are referenced nowhere in the JS: the
 // old root state-frames superseded by folder art, plus a few unwired folder
 // frames. Per CLAUDE.md, retired art moves to sprites/_retired/ (not deleted);
 // these are candidates for that move. Confirm against a fresh grep before
-// touching any — art wiring changes often.
+// touching any; art wiring changes often.
 //
 //   Superseded root state-frames (folder art replaced them):
 //     Beech_{Mature,Thriving,Wilting,Dormant}.png     -> Beech/
@@ -45,11 +45,11 @@
 //     Tussock_{Mature,Thriving,Wilting,Dormant}.png   -> Tussock/
 //   Unwired folder frames:
 //     Totara/Totara_Mature.png, Totara/Totara_Dormant.png
-//       (Totara is sizeOnly — it never loads state frames, only Growing_/Size_)
+//       (Totara is sizeOnly: it never loads state frames, only Growing_/Size_)
 //     Epiphytes/Epiphytes.png  (comment in sketch.js: hand-composited into
 //       tree art, never wired as a plant type)
 //   Already parked in sprites/_retired/ (also unused): Lancewood*, Patotara*
-//       — the lancewood/patotara plant TYPES still exist but render procedurally
+//       the lancewood/patotara plant TYPES still exist but render procedurally
 //       (not in PLANT_SPRITE_SETS), so their old art stays retired.
 // ============================================================
 const PlantGallery = {
@@ -58,7 +58,7 @@ const PlantGallery = {
   HOLD_MS: 3000,     // how long D must be held to toggle
   KEY_D: 68,         // keyCode for 'd'/'D' (keyIsDown polling)
 
-  // Flat background — a mid neutral that reads against both light and dark art.
+  // Flat background: a mid neutral that reads against both light and dark art.
   BG: [74, 82, 78],
 
   // Layout constants shared by the on-screen render and the full-page PNG export,
@@ -69,7 +69,7 @@ const PlantGallery = {
   _downAt: null,        // millis() when D first went down, or null
   _holdConsumed: false, // true once this hold has toggled (ignore until release)
 
-  // scroll state — the gallery keeps true on-screen scale, so at large viewZoom
+  // scroll state: the gallery keeps true on-screen scale, so at large viewZoom
   // the content runs taller than the screen; scrollY pans it. Clamped to the
   // content height each render (see _maxScroll, set there).
   scrollY: 0,
@@ -81,7 +81,7 @@ const PlantGallery = {
   // keydown: swallow D so the tap-vs-hold decision resolves on keyup / tick,
   // instead of the overlay cycling immediately (and repeating on autorepeat).
   onKeyDown(k) {
-    // While the gallery is up, the arrow / page keys pan it — swallow them so
+    // While the gallery is up, the arrow / page keys pan it; swallow them so
     // they never reach the sim. Home/End jump to the ends.
     if (this.active) {
       if (k === 'ArrowDown')  { this.scroll( this._pageStep(0.15)); return true; }
@@ -112,7 +112,7 @@ const PlantGallery = {
   },
 
   // keyup: a short tap never crossed the hold threshold, so it was meant as a
-  // normal Debug-overlay action — replay it. A completed hold already toggled.
+  // normal Debug-overlay action, so replay it. A completed hold already toggled.
   onKeyUp(k) {
     if (k !== 'd' && k !== 'D') return false;
     const wasTap = !this._holdConsumed &&
@@ -144,7 +144,7 @@ const PlantGallery = {
   // Every distinct sprite a plant type can render, de-duplicated. Single-asset
   // stand-ins alias one image across all four seasonal states, so identity
   // de-dup collapses them to a single 'mature' frame. sizeOnly plants (tōtara/
-  // Totara) never load state frames — they show their growth sequence and size
+  // Totara) never load state frames: they show their growth sequence and size
   // variants instead. `sizeFactor` reproduces the sim's per-state footprint
   // scaling (growth frames render smaller); states and variants are drawn at
   // the full mature footprint, matching _renderSprite in TeManawa_plant.js.
@@ -153,7 +153,7 @@ const PlantGallery = {
     const frames = [];
     const seen = new Set();
     const add = (img, label, sizeFactor) => {
-      if (!img || !img.width) return;   // never loaded / failed — skip
+      if (!img || !img.width) return;   // never loaded / failed, skip
       if (seen.has(img)) return;        // single-asset alias already shown
       seen.add(img);
       frames.push({ img, label, sizeFactor: sizeFactor || 1 });
@@ -209,7 +209,7 @@ const PlantGallery = {
   // Flow the plant groups into wrapping rows for a page `W` wide, measuring text
   // on the render target `g` (the main canvas for the screen, an offscreen buffer
   // for the PNG export) so both lay out identically. Each row is stamped with the
-  // baselineY its frames stand on, so painting is pure — no geometry there.
+  // baselineY its frames stand on, so painting is pure, no geometry there.
   // Returns { groups, rows, contentH } where contentH is the rows' total height
   // below `LAYOUT.top`.
   // ==========================================================
@@ -248,7 +248,7 @@ const PlantGallery = {
   },
 
   // ==========================================================
-  // PAINT  (target-agnostic — `g` is the main canvas OR an offscreen buffer)
+  // PAINT  (target-agnostic; `g` is the main canvas OR an offscreen buffer)
   // ==========================================================
   // Backdrop + header. Fills the whole target so a saved PNG is self-contained.
   _paintBackdrop(g, zoom, W, H) {
@@ -265,7 +265,7 @@ const PlantGallery = {
     g.text('On-screen scale · viewZoom ×' + zoom.toFixed(2) + ' · All art by Rafaela Martins Gaspar', 40, 58);
   },
 
-  // Rows at absolute coordinates (baselineY set by _measure). No scroll or clip —
+  // Rows at absolute coordinates (baselineY set by _measure). No scroll or clip;
   // the caller handles those for the screen; the export draws every row in full.
   _paintRows(g, rows) {
     const L = this.LAYOUT;
@@ -283,7 +283,7 @@ const PlantGallery = {
         // frames, baseline-aligned, centred within the group's reserved width
         let fx = grp.x + (grp.w - grp.contentW) / 2;
         for (const f of grp.frames) {
-          // f.img may be an AtlasFrame (packed sprites) — the global image() wrap
+          // f.img may be an AtlasFrame (packed sprites); the global image() wrap
           // does not see graphics-method draws, so route through drawTo().
           if (typeof SpriteAtlas !== 'undefined' && SpriteAtlas.isFrame(f.img)) {
             SpriteAtlas.drawTo(g, f.img, fx, baselineY - f.drawH, f.drawW, f.drawH);
@@ -312,7 +312,7 @@ const PlantGallery = {
   _saveBtn(W) { return { x: W - 168, y: 22, w: 128, h: 34 }; },
 
   // ==========================================================
-  // RENDER  (screen space — no viewZoom transform is active here)
+  // RENDER  (screen space; no viewZoom transform is active here)
   // ==========================================================
   render(W, H) {
     const zoom = (typeof CONFIG !== 'undefined' && CONFIG.viewZoom) ? CONFIG.viewZoom : 1;
@@ -388,11 +388,11 @@ const PlantGallery = {
   // ==========================================================
   // EXPORT
   // ----------------------------------------------------------
-  // Save the WHOLE page — every row at true on-screen scale, not just the visible
-  // viewport — as one PNG. Layout is measured in the gallery's 1920×1080 LOGICAL
+  // Save the WHOLE page (every row at true on-screen scale, not just the visible
+  // viewport) as one PNG. Layout is measured in the gallery's 1920×1080 LOGICAL
   // space, but the buffer is allocated (and scaled) by the live sprite supersample
-  // so the export lands at the wall's real backing resolution — 4K at the default
-  // ×2, matching what's on screen — rather than 1080p. Frees the buffer after
+  // so the export lands at the wall's real backing resolution (4K at the default
+  // ×2, matching what's on screen) rather than 1080p. Frees the buffer after
   // (the createGraphics leak rule, CLAUDE.md / BUILD_V3 §2.3). One-shot on a
   // click / the S key; never on the visitor path.
   // ==========================================================
@@ -408,7 +408,7 @@ const PlantGallery = {
 
     // Measure on the main canvas (same monospace metrics as the buffer will use).
     const { rows, contentH } = this._measure(window, zoom, W);
-    if (!rows.length) { console.warn('[PlantGallery] nothing to save — no sprites loaded'); return; }
+    if (!rows.length) { console.warn('[PlantGallery] nothing to save, no sprites loaded'); return; }
     const H = Math.ceil(L.top + contentH + 24);
 
     let pg = null;

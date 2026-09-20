@@ -1,5 +1,5 @@
 // ============================================================
-// KERERŪ — the large-seed disperser
+// KERERŪ: the large-seed disperser
 // ------------------------------------------------------------
 // Hemiphaga novaeseelandiae. The only bird large enough to swallow and pass big
 // podocarp/tawa fruit, so the FOREST only recruits where kererū go
@@ -7,30 +7,30 @@
 // The cast reference is md/TEMANAWA_FAUNA_IMPL.md.
 //
 // A flyer, like the eagle, but a different animal to watch: it makes SHORT flights
-// between trees and PERCHES a great deal — to feed, to digest when full, and to lay.
+// between trees and PERCHES a great deal: to feed, to digest when full, and to lay.
 // The behaviour is a frugivore loop, not the eagle's hunt loop:
 //
 //   FLYING (hungry) → find a fruiting forest tree, short hop to it
-//        → FEEDING (perched) → fill its crop with fruit (the tree is NOT consumed —
+//        → FEEDING (perched) → fill its crop with fruit (the tree is NOT consumed,
 //          a kererū eats fruit, it doesn't browse the plant)
 //        → PERCHED (digest a beat, maybe lay an egg)
 //        → FLYING (full) → short hops away from the source, DROPPING a seed on each
-//          (Simulation.disperseSeed plants a forest seedling — cap-guarded, the only
+//          (Simulation.disperseSeed plants a forest seedling, cap-guarded, the only
 //          runtime path that grows the plant population) → perch between hops
 //        → when the crop is empty it is hungry again → back to FLYING (hungry).
 //
-// So dispersal is *earned by eating*, and it happens AWAY from the parent tree —
+// So dispersal is *earned by eating*, and it happens AWAY from the parent tree,
 // the ecological point. Reproduction is emergent and sexual, mirroring the eagle:
 // a mature, well-fed female with a mate nearby lays a kererū egg (offspringType
-// 'kereru'; Simulation._hatchFlyerEgg — shared with the kōkako + huia, which
-// subclass this file). Numbers ebb with the forest — abundant in
+// 'kereru'; Simulation._hatchFlyerEgg, shared with the kōkako + huia, which
+// subclass this file). Numbers ebb with the forest: abundant in
 // the interglacial when fruiting trees are everywhere, thinning in the glacial when
 // the forest contracts and the birds cannot feed (a population floor prevents a
 // stuck, un-recruitable forest). A storm grounds them, so dispersal pauses; overuse
 // of STORM keeps them grounded and the scene desaturates via the recruitment term
 // of habitat health (Game._recruitment). See md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §3.
 //
-// Placeholder art (a drawn glyph — green-grey back, pale breast, wings folded when
+// Placeholder art (a drawn glyph: green-grey back, pale breast, wings folded when
 // perched); the 5-frame flight sprite + perched frame (BUILD_V3 §4 / SPRITE_BRIEF)
 // drop in later via EntitySprites.
 // ============================================================

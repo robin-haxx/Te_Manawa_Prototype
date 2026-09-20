@@ -1,5 +1,5 @@
 // ============================================================================
-// TE MANAWA — dev console tools
+// TE MANAWA: dev console tools
 // ============================================================================
 // A console-first workflow for developing the piece live, with NO page reload.
 // Two editable globals plus an umbrella:
@@ -7,13 +7,13 @@
 //   LOOK  paint / illustration (colour, cel shading, ink, haze …). Data lives in
 //         TeManawa_terrain.js; the helpers below are added here.
 //   GEN   landform generation (the noise: octaves, ridges, coastline …).
-//   DEV   umbrella — DEV.help() prints the cheatsheet.
+//   DEV   umbrella: DEV.help() prints the cheatsheet.
 //
 // The loop is always: edit a value in the console → press a key (or call apply)
 // → it re-bakes in place, same land, same ecosystem, no reload. Full reference:
 // md/TEMANAWA_DEVTOOLS.md.
 //
-// Authoring only. The kiosk wall is locked to keys 1–4 and never reaches B/G/N.
+// Authoring only. The kiosk wall is locked to keys 1-5 and never reaches B/G/N.
 
 // ---- LOOK: extend the paint knobs ------------------------------------------
 // (LOOK's *data* is defined in TeManawa_terrain.js so the bake can read it; this
@@ -63,7 +63,7 @@ const GEN = {
   lakeNoiseScale: 0.008,
   viewAreaGain: 1,      // zoom the generated world OUT to show more area (1 = off; 1.25 ≈ +25% area). Re-bakes the land on G; plant COUNT only re-scales on a reset.
 
-  // CONFIG-backed params (noiseScale is handled on its own — it is per-instance).
+  // CONFIG-backed params (noiseScale is handled on its own; it is per-instance).
   _keys: ['octaves', 'persistence', 'lacunarity', 'ridgeInfluence', 'elevationPower',
           'useLakes', 'lakeThreshold', 'lakeNoiseScale', 'viewAreaGain'],
 
@@ -115,18 +115,18 @@ const GEN = {
 
 // ---- GEO: the geography skeleton's shaping of the land (the RANGES) ---------
 // GEN authors the procedural noise; GEO authors how the SVG skeleton
-// (geo/manawatu.geo.js) reshapes it into the ranges — crest relief, the NE–SW
+// (geo/manawatu.geo.js) reshapes it into the ranges: crest relief, the NE-SW
 // spine, the N/S edge ease, and each range's authored height / spread / footprint.
 // Edit → GEO.apply() (or press G) regenerates the same land with the change.
 //   GEO.show()  overlays the range footprints + spine axes on the map (key R), so you
 //               can see exactly what each range affects while you tune it.
 //   GEO.uplift(v)  previews the ranges at any maturity 0..1 without moving the clock.
 const GEO = {
-  relief: 0.50,        // → LOOK.rangeRelief — valley depth vs crest (0 = flat plateau)
-  spine: 0.45,         // → LOOK.rangeSpine  — crest concentration on the range's long axis
-  gain: 2.2,           // → LOOK.rangeGain   — how hard uplift MULTIPLIES the existing ground (taller, more base-driven peaks)
-  ceil: 0.45,          // → LOOK.rangeCeil   — where the soft height ceiling starts (fraction of crest rH)
-  edgeMargin: 0.10,    // → terrain._geoEdgeMargin — ease the N/S edges down to plains
+  relief: 0.50,        // → LOOK.rangeRelief: valley depth vs crest (0 = flat plateau)
+  spine: 0.45,         // → LOOK.rangeSpine: crest concentration on the range's long axis
+  gain: 2.2,           // → LOOK.rangeGain: how hard uplift MULTIPLIES the existing ground (taller, more base-driven peaks)
+  ceil: 0.45,          // → LOOK.rangeCeil: where the soft height ceiling starts (fraction of crest rH)
+  edgeMargin: 0.10,    // → terrain._geoEdgeMargin: ease the N/S edges down to plains
 
   _overlay: false,
 
@@ -169,7 +169,7 @@ const GEO = {
     return this.apply();
   },
 
-  // Per-range editing — writes the geo SOURCE (geo.ranges[i]) so _prepGeo picks it up on
+  // Per-range editing: writes the geo SOURCE (geo.ranges[i]) so _prepGeo picks it up on
   // the regenerate. i indexes GEO.list().
   range(i, opts) {
     const t = this._terrain();
@@ -183,7 +183,7 @@ const GEO = {
   height(i, v) { return this.range(i, { height: v }); },
   spread(i, v) { return this.range(i, { spread: v }); },
 
-  // Preview the ranges at any maturity (0..1) WITHOUT moving the clock — isolates uplift,
+  // Preview the ranges at any maturity (0..1) WITHOUT moving the clock: isolates uplift,
   // so the river/emergence stay where the current date puts them. null = date-driven again.
   uplift(v) {
     const t = this._terrain(); if (!t) return this;
@@ -191,8 +191,8 @@ const GEO = {
     return this._bake();
   },
 
-  // The visual overlay (also toggled by the R key). No re-bake — drawn each frame.
-  show()   { this._overlay = true;  console.log('[GEO] range overlay ON — footprints (gold) + spine axes (red). GEO.hide() to clear'); return this; },
+  // The visual overlay (also toggled by the R key). No re-bake, drawn each frame.
+  show()   { this._overlay = true;  console.log('[GEO] range overlay ON: footprints (gold) + spine axes (red). GEO.hide() to clear'); return this; },
   hide()   { this._overlay = false; return this; },
   toggle() { this._overlay = !this._overlay; return this; },
 
@@ -205,7 +205,7 @@ const GEO = {
       const ang = (Math.atan2(-r.perpX, r.perpY) * 180 / Math.PI).toFixed(0);
       console.log(`  #${i}   h=${r.height.toFixed(2)}   spread=${r.spread.toFixed(2)}   c=(${r.cx.toFixed(2)}, ${r.cy.toFixed(2)})   spine=${ang}°   (${r.poly.length} pts)`);
     });
-    if (t._geoRivers && t._geoRivers.length) console.log(`  + ${t._geoRivers.length} river(s) — shaping knobs live in LOOK (riverIncise, riverWaterT, riverBankT, …)`);
+    if (t._geoRivers && t._geoRivers.length) console.log(`  + ${t._geoRivers.length} river(s); shaping knobs live in LOOK (riverIncise, riverWaterT, riverBankT, …)`);
     return this;
   },
 
@@ -271,19 +271,19 @@ const GEO = {
 const DEV = {
   help() {
     console.log(
-`Te Manawa dev console — md/TEMANAWA_DEVTOOLS.md
-  PAINT — LOOK.*        edit a value, then press  B  (or LOOK.bake())
+`Te Manawa dev console: md/TEMANAWA_DEVTOOLS.md
+  PAINT: LOOK.*         edit a value, then press  B  (or LOOK.bake())
     LOOK.dump()         print current settings
     LOOK.solo('shade')  isolate one move (every other illustration toggle off)
     LOOK.all(false)     all moves off   ·   LOOK.all(true) all on
     LOOK.set({shadeSteps:4, bakeScale:3})    batch edit + bake
     LOOK.reset()        back to the authored defaults
-  LAND — GEN.*          edit a value, then press  G  (or GEN.apply())
+  LAND: GEN.*           edit a value, then press  G  (or GEN.apply())
     GEN.sync()          load the values the game is running with
     GEN.dump()          print current settings
     GEN.reseed()        new random landform      (key: N)
     GEN.reset()         back to the level's authored terrain
-  RANGES — GEO.*        the SVG skeleton's shaping of the land, then press  G
+  RANGES: GEO.*         the SVG skeleton's shaping of the land, then press  G
     GEO.show()          overlay the range footprints + spine axes  (key: R)
     GEO.list()          print each range (height, spread, spine axis)
     GEO.set({spine:0.6}) crest on the NE–SW axis · {relief:0.4} valley depth
@@ -292,7 +292,7 @@ const DEV = {
     GEO.uplift(1)       preview mature ranges now · GEO.uplift(null) date-driven
     GEO.reset()         back to the authored range shaping
   KEYS   B re-bake paint · G apply land · N new seed · R range overlay · D debug · SHIFT+F footprint
-  Everything re-bakes in place — no page reload, same ecosystem.`);
+  Everything re-bakes in place: no page reload, same ecosystem.`);
     return DEV;
   },
   dump()  { if (typeof LOOK !== 'undefined' && LOOK.dump) LOOK.dump(); GEN.dump(); if (typeof GEO !== 'undefined') GEO.dump(); return DEV; },

@@ -1,24 +1,23 @@
 // ============================================
-// SPRITE STRIPS — the animated-texture loader
+// SPRITE STRIPS: the animated-texture loader
 // ============================================
 // One horizontal strip PNG per animation: N frames laid left-to-right. ONE
-// loadImage per animation (not N separate files — see md/TEMANAWA_BUILD_V3.md
+// loadImage per animation (not N separate files; see md/TEMANAWA_BUILD_V3.md
 // §2.4, the 158-request cold-boot problem the loose-file convention creates),
 // then each frame is blitted with the 9-arg image(img, dx,dy,dw,dh, sx,0,sw,sh)
-// sub-rectangle form. That 9-arg form appears nowhere else in the engine yet;
-// this is the atlas module the build plan deferred (§2.1), landing with the
-// water layer as its first client. Plants/fauna can migrate onto it later, or it
-// can grow into a packed multi-animation atlas + JSON frame map.
+// sub-rectangle form. This is the atlas module the build plan deferred (§2.1),
+// landing with the water layer as its first client. Plants/fauna can migrate
+// onto it later, or it can grow into a packed multi-animation atlas + JSON map.
 //
 // The decoded image stays GPU-resident for the life of the page, so a soft reset
-// never re-decodes it (§5.1) — animated water costs nothing on the reset path.
+// never re-decodes it (§5.1): animated water costs nothing on the reset path.
 //
 // A strip is registered either from a loaded p5.Image (loadStrip, real art in
 // preload) or from a p5.Graphics baked ONCE (makePlaceholder, until the art
 // lands). The water layer calls frame()/draw() and never cares which it got.
 //
 // Pure-ish: p5 image/loadImage/createGraphics at runtime only. No per-frame
-// allocation — frame() returns into a shared scratch object.
+// allocation: frame() returns into a shared scratch object.
 
 const SpriteStrips = {
   _strips: Object.create(null),       // name -> { img, frameW, frameH, count }
@@ -41,8 +40,8 @@ const SpriteStrips = {
   // so loadFrames() below and EntitySprites' loose-frame sets can both feed the
   // same frame()/draw() API the water layer and HUD already call. frame() reads
   // each image's own dimensions at draw time, so a frame that has not decoded yet
-  // (width 0) simply no-ops until it lands (never a silent adult-for-juvenile miss
-  // — the per-frame load carries a real failure callback).
+  // (width 0) simply no-ops until it lands (never a silent adult-for-juvenile miss;
+  // the per-frame load carries a real failure callback).
   registerFrames(name, frames) {
     if (!frames || !frames.length) return null;
     const e = { frames, count: frames.length };
@@ -53,7 +52,7 @@ const SpriteStrips = {
   // Preload path for loose-frame art: loadImage each frame in
   // `<dir><prefix><nnnnn>.png` (first..first+count-1, zero-padded to `pad`) and
   // register the array. Paths are encodeURI()'d so authored folder names with
-  // spaces ("Flowing 1", "Idle 2") resolve — the dev server decodeURIComponent()s
+  // spaces ("Flowing 1", "Idle 2") resolve; the dev server decodeURIComponent()s
   // them back (tools/serve.js). NEVER an empty failure callback (CLAUDE.md).
   loadFrames(name, dir, prefix, count, opts) {
     opts = opts || {};
@@ -69,7 +68,7 @@ const SpriteStrips = {
   },
 
   // Preload path (real art): loadImage the strip PNG, register on success. NEVER
-  // pass an empty failure callback — a silent miss is how moa juveniles rendered
+  // pass an empty failure callback: a silent miss is how moa juveniles rendered
   // as adults for months (§2.4). Call from preload() once the strips exist.
   loadStrip(name, pathStr, count, onFail) {
     const self = this;
@@ -116,8 +115,8 @@ const SpriteStrips = {
   },
 
   // Blit frame i of `name` into the dest rect, honouring the current imageMode
-  // (callers set imageMode(CENTER) and pass the centre). Returns false — a clean
-  // no-op — if the strip is not registered.
+  // (callers set imageMode(CENTER) and pass the centre). Returns false (a clean
+  // no-op) if the strip is not registered.
   draw(name, i, dx, dy, dw, dh, g) {
     const f = this.frame(name, i);
     if (!f) return false;
@@ -132,7 +131,7 @@ const SpriteStrips = {
   // Bakes crude N-frame strips into createGraphics ONCE, so the whole water
   // pipeline (blit + animation + placement + projection) is visible and testable
   // before any real PNG exists. Replace a placeholder by loadStrip()-ing a real
-  // strip of the SAME name in preload() (real art wins — see ensurePlaceholders):
+  // strip of the SAME name in preload() (real art wins, see ensurePlaceholders):
   // the water layer needs no change. Delete this block once the art is in.
   ensurePlaceholders() {
     if (this._placeholdersBuilt) return;
@@ -145,7 +144,7 @@ const SpriteStrips = {
   },
 
   // Draw one placeholder strip (frameW·count × frameW) frame by frame. Local
-  // coordinates per frame are 0..sz. Kept deliberately crude — real art replaces
+  // coordinates per frame are 0..sz. Kept deliberately crude; real art replaces
   // it. Uses only p5.Graphics ops the headless harness stubs (no-ops there).
   _bakeStrip(kind, count, sz) {
     const g = createGraphics(sz * count, sz);
