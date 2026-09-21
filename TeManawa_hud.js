@@ -112,11 +112,14 @@ window.TM_EDGE = TM_EDGE;
 // semi-transparent drift (no flashing) so it stays inside the photosensitivity budget. Positions
 // are stored as fractions of the canvas so a resize is a no-op. Console-tunable.
 const TM_WIND = {
-  count:      10,      // gust sprites per burst ("several scattered")
-  speed:      0.008,   // horizontal travel, fraction of canvas WIDTH per frame (~a few s to cross)
-  speedJitter:0.5,     // ± share of speed, per gust
-  sizeFrac:   0.11,    // gust HEIGHT as a fraction of canvas height (width follows the art aspect)
-  sizeJitter: 0.45,    // ± share of size, per gust
+  count:      8,       // gust sprites per burst ("several scattered"; fewer now they read bigger)
+  speed:      0.0045,  // horizontal travel, fraction of canvas WIDTH per frame. Slow: a gust that
+                       // crosses in ~4 s lets the eye track it and read its animation, where the old
+                       // ~2 s dash was too fast to see — it just flickered ("glitching out").
+  speedJitter:0.4,     // ± share of speed, per gust
+  sizeFrac:   0.17,    // gust HEIGHT as a fraction of canvas height (width follows the art aspect).
+                       // Bumped up: the old 0.11 read as small specks, especially at the jitter floor.
+  sizeJitter: 0.30,    // ± share of size, per gust (trimmed so no gust shrinks back to a speck)
   yTop:       0.10,    // gusts scatter vertically between these fractions of canvas height
   yBottom:    0.82,    // (kept clear of the top year and bottom timeline)
   peakAlpha:  0.55,    // strongest opacity of a gust mid-screen
@@ -124,8 +127,8 @@ const TM_WIND = {
   bobSpeed:   0.05,    // bob phase advance per frame
   startSpread:0.30,    // gusts start staggered across this fraction just off the left edge
   minGapMs:   600,     // a new burst of the SAME kind can't start sooner than this (debounce presses)
-  animSpeed:  0.12,    // gust cel cadence (frame = floor(anim·this)); the art is an 11-frame FORWARD loop (0→10→0)
-  animSpeedJitter: 0.4 // ± share of animSpeed, PER GUST — so gusts cycle their 11 frames at different rates
+  animSpeed:  0.12,    // gust cel cadence (frame = floor(anim·this)); the 11-frame art boomerangs (0→10→0, ping-pong)
+  animSpeedJitter: 0.25 // ± share of animSpeed, PER GUST — some variation, but not so wide a gust cycles too fast to read
 };
 window.TM_WIND = TM_WIND;
 
@@ -680,6 +683,11 @@ const InstallHUD = {
     noTint();
     const _dc = drawingContext;
     const oldA = _dc.globalAlpha;
+    // Boomerang the cel index: play 0→last then back last→0 (ping-pong), so the gust
+    // eases and reverses rather than snapping from the loop's last frame to its first.
+    // Period is 2·(N-1); the triangle wave below folds the running step into 0..N-1.
+    const N = hasStrip ? SpriteStrips.count(strip) : 1;
+    const period = N > 1 ? 2 * (N - 1) : 1;
     for (let i = 0; i < w.parts.length; i++) {
       const p = w.parts[i];
       const a = E.peakAlpha * Math.min(1, (p.fx + 0.1) / 0.2) * Math.min(1, (1.1 - p.fx) / 0.2);
@@ -688,10 +696,11 @@ const InstallHUD = {
       const dw = h * asp;
       const x = p.fx * W, y = (p.fy + Math.sin(p.phase) * E.bobAmp) * H;
       _dc.globalAlpha = a;
-      // Forward 11-frame loop (SpriteStrips.draw wraps the index mod count → 0→10→0), each
-      // gust at its own cadence (p.animSpeed) so they don't cycle in lockstep.
-      if (hasStrip) SpriteStrips.draw(strip, Math.floor(p.anim * (p.animSpeed || E.animSpeed)), x, y, dw, h);
-      else image(fallback, x, y, dw, h);
+      // Each gust runs its own cadence (p.animSpeed) so they don't cycle in lockstep.
+      if (hasStrip) {
+        const m = Math.floor(p.anim * (p.animSpeed || E.animSpeed)) % period;
+        SpriteStrips.draw(strip, m < N ? m : period - m, x, y, dw, h);
+      } else image(fallback, x, y, dw, h);
     }
     _dc.globalAlpha = oldA;
     pop();
@@ -926,6 +935,41 @@ const InstallHUD = {
     push();
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
+    pop();
+  },
+
+  // VISITOR goal — the objective for the interglacial/glacial the run is heading toward, floated
+  // ABOVE the bottom timeline in the SAME format as the year (FreckleFace, dark halo + light fill,
+  // centred). It names where a boost is aiming: "Reach the next Interglacial!" / "…Glacial!". Blank
+  // once there is no crossing left before the window end (nothing more to aim for).
+  VIS_GOAL_SIZE: 50,          // matches VIS_YEAR_SIZE (the year's format)
+  VIS_GOAL_GAP: 104,          // px above the timeline axis — clears the eruption pins + their labels
+  GOAL_OBJECTIVE: {           // per-regime objective text (edit here); falls back to a generated line
+    interglacial: 'Boost a glacial plant!',
+    glacial:      'Boost an interglacial plant!'
+  },
+  // Cache the next-boundary lookup: it scans the climate curve + allocates, so recompute ONLY when
+  // the regime flips or the clock jumps back — never per frame (CLAUDE.md: no allocation in draw()).
+  _goalCache: null,
+  renderVisitorGoal(g, W, H) {
+    if (typeof Climate === 'undefined' || typeof DeepTime === 'undefined' || !Climate.nextRegimeBoundary) return;
+    const y = DeepTime.yearsBP;
+    const cur = Climate.glacialIndexAt(y) >= (Climate.regimeThreshold != null ? Climate.regimeThreshold : 0.5);
+    let c = this._goalCache;
+    if (!c || c.regime !== cur || y > c.at + 1) {          // regime flip (incl. a boundary crossing) or a backward seek
+      const goal = Climate.nextRegimeBoundary(y, DeepTime.yearsEnd);
+      const label = goal ? (this.GOAL_OBJECTIVE[goal.stageName] ||
+        ('Reach the next ' + goal.stageName.charAt(0).toUpperCase() + goal.stageName.slice(1) + '!')) : null;
+      c = this._goalCache = { regime: cur, at: y, label };
+    } else {
+      c.at = y;                                            // track forward motion (mutate, no allocation)
+    }
+    if (!c.label) return;                                  // no crossing left before the window end
+    const ay = (H - this.VIS_STRIP_H) - 128;              // the bottom timeline axis (see renderVisitorTimeline)
+    const cx = W / 2, cy = ay - this.VIS_GOAL_GAP;
+    push();
+    this._blitText(c.label, FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
+    this._blitText(c.label, FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
     pop();
   },
 

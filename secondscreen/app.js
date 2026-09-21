@@ -155,7 +155,7 @@
       stagePill.textContent = cap(c.stageName || '');
       stagePill.className = 'pill ' + stageClass(c.stageName);
       if (state.goal && state.goal.targetStageName) {
-        goalLabel.textContent = 'Goal: reach the next ' + state.goal.targetStageName +
+        goalLabel.textContent = 'Boost a  ' + state.goal.stageName + 'plant!' +
           (state.goal.targetYearsBP != null ? '  (' + fmtYears(state.goal.targetYearsBP) + ')' : '');
       } else {
         goalLabel.textContent = '';

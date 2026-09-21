@@ -85,14 +85,17 @@ class Moa extends Boid {
     // A ground bird pivots deliberately: facing eases slowly (Boid.updateFacing).
     this._turnMax = 0.12;
     this._turnEase = 0.10;
-    // Walk-gate: a ground bird only TRANSLATES while the walk animation plays. Below this speed²
-    // (≈0.032 px/frame) update() holds its position, so an idle/peck (looking/eating) pose stays
-    // planted instead of sliding. The renderer reads the SAME gate for walk-vs-static, so the two
-    // are exactly in step. Kept below every foraging state's maxSpeed so it never strands a slow,
-    // hungry (floor-protected) bird from reaching food; it just makes it WALK there, then peck in
-    // place. See Boid.update / render().
+    // Walk latch: a ground bird only TRANSLATES while the latched WALK pose is on, so an idle/peck
+    // (looking/eating) pose stays planted instead of sliding, and the pose never strobes when speed
+    // dithers near the gate. It enters walking above _walkEnterSq, holds for one full walk cycle,
+    // then drops to idle below _walkExitSq (hysteresis + min-cycle; see the Boid.update latch and
+    // render()). Gates sit below every foraging state's maxSpeed, so a slow hungry (floor-protected)
+    // bird still WALKS to food and pecks in place, never stranded. _walkMinHoldAnim is one walk
+    // cycle in animTime, resolved lazily once the sprites are loaded (_ensureWalkHold).
     this._freezeWhenNotWalking = true;
-    this._walkGateSq = 0.001;
+    this._walkEnterSq = 0.0016;
+    this._walkExitSq  = 0.0004;
+    this._walkHoldReady = false;
     this.flockTendency = s.flockTendency;
     this.flightiness = s.flightiness;
     
@@ -314,6 +317,7 @@ class Moa extends Boid {
 
   behave(simulation, seasonManager, dt = 1) {
     this.updateAge(dt);
+    this._ensureWalkHold();
     // animTime is NOT advanced here: the walk cadence must not fast-forward with
     // the deep-time clock. It advances in Boid.update() on the real frame dt.
     this._updateSeasonCache(seasonManager);
@@ -567,6 +571,18 @@ class Moa extends Boid {
   // cycles with no gap; if it's done, it steps off to walk. render() reads this same
   // _eatHoldUntil deadline as the sole trigger for the EATING pose, so the animation can
   // never start without a real bite nor stop before its cycle ends. A threat clears it.
+  // One full walk cycle in animTime, cached once the sprites are loaded. The Boid.update
+  // walk latch holds a started walk this long so it plays a clean cycle rather than being
+  // cut mid-stride by a velocity that dips across the gate. Resolves through the same
+  // fallback as the renderer, so the hold matches the art that actually plays.
+  _ensureWalkHold() {
+    if (this._walkHoldReady) return;
+    if (typeof EntitySprites !== 'undefined' && EntitySprites.loaded && EntitySprites.moaCyclePeriod) {
+      this._walkMinHoldAnim = EntitySprites.moaCyclePeriod('walking', this.speciesConfig.spriteSet);
+      this._walkHoldReady = true;
+    }
+  }
+
   _commitEatCycle() {
     if (this.animTime >= this._eatHoldUntil) {
       const period = (typeof EntitySprites !== 'undefined' && EntitySprites.moaEatCyclePeriod)
@@ -1341,9 +1357,10 @@ class Moa extends Boid {
     // caches the tinted frames) instead of a tint() composite every frame (#6).
     // Skip it for species with their own dedicated sprite set (e.g. bush moa).
     const _tint = variant ? null : this.speciesConfig.tint;
-    // Same gate update() uses to decide whether to translate, so "moving" and "walking pose" are
-    // exactly equivalent: a static pose (looking/eating) never plays over a sliding body.
-    const _moving = this.vel.magSq() > this._walkGateSq;
+    // The SAME latched flag update() uses to decide whether to translate, so "moving" and "walking
+    // pose" are exactly equivalent: a static pose (looking/eating) never plays over a sliding body,
+    // and neither strobes when speed dithers near the gate (the latch holds a full cycle).
+    const _moving = this._walking;
     // Animation state selects which cel cycle plays. A committed eat cycle (see
     // _commitEatCycle) is the SOLE trigger for the EATING pose: once a bite lands the
     // bird holds planted and the EATING cel cycle plays all the way to its end, and NO
@@ -1391,7 +1408,8 @@ class Moa extends Boid {
     // the player toggle (population panel / fullscreen focus buttons; focus
     // species start toggled on). The low-population warning is a separate red
     // ring drawn in renderIndicators so it sits above trees.
-    if (typeof SPECIES_HIGHLIGHT !== 'undefined' && SPECIES_HIGHLIGHT.has(this.speciesKey)) {
+    if (typeof SPECIES_HIGHLIGHT !== 'undefined' && SPECIES_HIGHLIGHT.has(this.speciesKey) &&
+        !(typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting)) {
       const _hc = this.speciesConfig.highlightColor ||
                   (this._vhl && this._vhl.color) || MOA_HL_DEFAULT;
       const _pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.12);
@@ -1400,8 +1418,8 @@ class Moa extends Boid {
       ellipse(0, 0, this.size * (2.8 + _pulse * 1.4), this.size * (2.8 + _pulse * 1.4));
     }
 
-    // Shadow
-    if (CONFIG.drawShadows) {
+    // Shadow (skipped on a trail ghost — a ghost is sprite-only)
+    if (CONFIG.drawShadows && !(typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting)) {
       noStroke();
       fill(0, 0, 0, 25);
       ellipse(1.5, 1.5, this.size * 1.0, this.size * 0.5);
@@ -1429,6 +1447,8 @@ class Moa extends Boid {
     // Foot-anchored: centre the image a half-height ABOVE the ground point so its base
     // sits on it (see the translate note). The vertical squash-stretch above scales about
     // the feet, so the turn-around bounce now springs from planted feet rather than the belly.
+    if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
+      EntitySprites.boostOutline(this, sprite, _drawW, _drawH, 0, -_drawH * 0.5);   // boost highlight ring, under the bird
     image(sprite, 0, -_drawH * 0.5, _drawW, _drawH);
     pop();
   }

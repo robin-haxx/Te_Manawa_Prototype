@@ -200,8 +200,8 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 |---|---|
 | `1`–`5` | The five visitor buttons (deep time, FOREST growth, TUSSOCK growth, storm, eruption) — FOREST helps in the interglacial, TUSSOCK in the glacial; the wrong one for the climate desaturates the scene |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
-| `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` |
-| `B` / `G` / `N` | Dev tools: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. See `md/TEMANAWA_DEVTOOLS.md` |
+| `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` — **debug overlay on only** (a full synchronous rebuild) |
+| `B` / `G` / `N` | Dev tools **(debug overlay on only)**: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. Each is a ~5 s synchronous terrain bake, so they are gated behind `Debug.enabled` — a stray `B` no longer freezes the sim (and no longer collides with the second screen's `b`=boost). See `md/TEMANAWA_DEVTOOLS.md` |
 | `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
 | `?sprites=1\|2\|3` | Backing-canvas supersample for sprites+HUD (default 2); terrain stays 1080. Startup only |

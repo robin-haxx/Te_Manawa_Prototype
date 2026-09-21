@@ -40,9 +40,7 @@ const TM_FAUNA = {
 // A stand-in body-copy block matching the mockups (which are Lorem). Replace per
 // species with authored museum copy, see §8. Kept as a constant so the four real
 // entries below read cleanly and it's obvious what still needs writing.
-const TM_LOREM = "TODO: authored copy pending (mockups show Lorem ipsum). This is where the " +
-  "plant's story goes: what it is, where in the Manawatū it grew, and how it fared across the " +
-  "glacial cycle.";
+const TM_LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse imperdiet eget ligula eu vulputate.";
 
 // ---- HABITATS --------------------------------------------------------------
 // order is TOP → BOTTOM on the physical switch; 'select' is the centre rest

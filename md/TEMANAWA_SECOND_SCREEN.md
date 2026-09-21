@@ -261,6 +261,18 @@ The associated fauna (§5) ride the plant: a matched plant boost should also lif
 species' recruitment/refound weighting so the visitor sees the animals respond. Exact
 coupling is a §7 tuning task.
 
+**Boost outline (built).** On a boost the chosen plant *and* its linked birds (the §5 map, in
+`TM_BOOST.faunaLinks`; a boost message may also carry `m.fauna`) are ringed with a coloured
+**silhouette outline** for `TM_BOOST.outlineMs` (≈ the timelapse). It is climate-keyed for a
+**successful** boost — **interglacial → green, glacial → blue** (`TM_BOOST.outlineInterglacial` /
+`outlineGlacial`, matching the ambient band + FOREST/TUSSOCK buttons, so blue = glacial everywhere) —
+and **grey** when the species is wrong for the current climate (`outlineWrong`). Ported from Mauri's field-guide outline: in the default WebGL
+renderer it is a ring of pure-colour silhouette quads stamped UNDER each sprite into the *same*
+entity batch (`GLBatch._silhouette` + a `sil` vertex channel), so it adds **no draw call and no
+extra pass** — only a handful of quads for the few boosted entities. `EntitySprites.boostOutline`
+gates it per entity (keyed on `game._boostHi`); `?render=2d` simply shows no ring (no silhouette
+shader on that path).
+
 ### 6.2 The timelapse — ramped, to the next glacial/interglacial
 
 Not a fixed 50 kyr jump. The timelapse **always advances to the start of the next regime**,
@@ -324,10 +336,13 @@ against known terminations (e.g. Termination II ≈ 128 ka, MIS 5e ≈ 122 ka).
   `beginTimelapse(targetYearsBP)` that eases the *rate* from 500 → 5000 yr/s over ~20 s and
   stops at `targetYearsBP` (or the eruption cutoff, §6.3). Keep it photosensitivity-safe
   (ramp ≥ 500 ms, ≤ 3 luminance transitions/s — `TEMANAWA_BUILD_V3.md` §3).
-- The morph is heavy and synchronous (`terrain.morphTo`), so during a timelapse the
-  *cheap* per-frame changes (climate, forest-band contraction) carry the motion and the
-  terrain morphs at the destination — matching how eruption jumps already morph once at the
-  target. Continuous morphing is out of scope.
+- The morph is heavy and synchronous (`terrain.morphTo`). **As built**, a timelapse advances
+  `yearsBP` and the existing throttled morph driver (`Game._morphTick` / `shouldMorphBake`) re-bakes
+  as the year drifts — exactly the path a legacy deep burst already uses for fast-forward, so no new
+  morph machinery was needed and the behaviour is proven. When paused, `yearsBP` holds, so the driver
+  never fires and the land is static (the user's requirement). If the throttled re-bakes read as
+  hitchy under the faster 5000 yr/s crest, the fallback is destination-only morphing (suppress the
+  driver during a timelapse, force one bake at the target) — a tuning follow-up, not wired now.
 
 ### 7.3 Per-species seeding — `TeManawa_simulation.js`
 
@@ -371,18 +386,29 @@ page logic changes when you do.
 
 1. **The 5 plants per habitat** (§4.1) and their on-screen positions are my reading of the
    mockups — confirm the exact roster and swap the placeholders.
-2. **Boost seeding strength** — how many of the chosen species a matched boost seeds, and
-   whether a mismatched boost seeds *nothing* or a token few that then wilt.
+2. ✅ **Boost seeding strength** — RESOLVED: a matched boost seeds `TM_BOOST.matchedSeed` (12) of
+   the chosen species; a mismatched boost seeds **nothing** (`mismatchedSeed: 0`) and the scene
+   desaturates (the existing regime-fit lesson), consistent with today's wrong FOREST/TUSSOCK press.
+   Neutral pioneers (mānuka/flax) count as matched in either climate. All in `TeManawa_bus.js`'s
+   `TM_BOOST`, console-tunable.
 3. **Fauna coupling** — does a plant boost actively spawn/refound its linked fauna, or only
-   improve their odds? (§7.3 follow-on.)
+   improve their odds? (§7.3 follow-on — the boost seeds the *plant* today; the fauna lift is
+   still unwired, a fauna-file tuning task.)
 4. **Switch hardware** — momentary up/down vs absolute 5-position (§1.1); set in `input.js`.
-5. **The readout placement** — the KYA + glacial/interglacial + goal strip is not in the
-   mockups; it is a bottom strip that is part of **debug mode** (off by default; `?debug=1` or
-   the backtick key toggles it, alongside the on-screen test buttons). Decide whether the
-   glacial/interglacial goal readout belongs on the kiosk screen proper (the spec §0/§2 calls for
-   it) or stays debug-only / moves into the background art.
-6. **Ramp numbers** — 500→5000 yr/s over ~20 s is the spec; final feel is a tuning pass
-   against the photosensitivity budget.
+5. ✅ **The readout placement** — RESOLVED (partly): the **goal is now shown on the SIM/diorama
+   screen**, floated **above the bottom timeline** in the same format as the year (FreckleFace, dark
+   halo + light fill, centred) — the objective for the regime the run is heading toward: *"Reach the
+   next Interglacial!"* / *"Reach the next Glacial!"* (`InstallHUD.renderVisitorGoal`, text in
+   `GOAL_OBJECTIVE`). It reads `Climate.nextRegimeBoundary` and flips with the regime. The second
+   screen still gets its own `goal` telemetry. (The KYA/glacial-index debug strip stays debug-only.)
+6. **Ramp numbers** — IMPLEMENTED at 500→5000 yr/s over 20 s (`DeepTime.tlStartRate`/`tlMaxRate`/
+   `tlRampSeconds`); final feel is a tuning pass against the photosensitivity budget.
+7. ✅ **Pause semantics** — RESOLVED (user): only *time progression and the terrain morph* are
+   static when paused; the ambient world (animals, seasons, plant growth/browse) keeps running at
+   1× and speeds up during a timelapse. So `DeepTime.update()` returns a **life scale** (1× paused,
+   `rate/yrPerSec` while a timelapse/deep burst runs) and moves `yearsBP` separately — the two clocks
+   are decoupled. No standalone auto-play flag was added; the diorama holds at its date until a boost,
+   a deep burst (button 1), or an eruption seek moves it.
 
 ---
 
@@ -393,5 +419,10 @@ page logic changes when you do.
    telemetry; static-sprite highlights (WebM loops drop in later).
 3. ✅ The bus receiver (`TeManawa_bus.js`) — storm/eruption/deep live; habitat/plant/boost
    stubbed.
-4. ⏳ The sim overhaul (§7) — the boundary finder, the paused clock + ramp, `seedSpecies`,
-   the telemetry emit, and the tuning pass. **This is "proceed with the build."**
+4. ✅ **The sim overhaul (§7)** — `Climate.nextRegimeBoundary` (§7.1), the paused clock +
+   `DeepTime.beginTimelapse` ramp (§7.2), `Simulation.seedSpecies` (§7.3), the real boost in
+   `TeManawa_bus.js` (regime-fit gate → per-species seed → ramped timelapse → eruption-aware
+   ending, §7.4), and live telemetry off the bus heartbeat (§7.5). Bootcheck extended and green;
+   verified end-to-end in the browser (boost → `boostResult`, timelapse to the computed boundary,
+   12 seeded, `hello` → `clock`/`goal`). What remains is the **tuning pass** — ramp feel, seeding
+   strength, and the fauna coupling (§9.3), all data-tunable now.

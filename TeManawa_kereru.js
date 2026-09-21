@@ -582,8 +582,15 @@ class Kereru extends Boid {
     const fp = Math.max(0, Math.min(1, (this._altitude - perch) / Math.max(1, this._cruiseAlt - perch)));
     const KNEE = 0.6;                                    // fp above this = "at cruise"
     if (perched) {
-      // Still riding high off the perch → the bird is descending: play the landing window.
-      if (fp > 0.35) return { state: 'land', t: Math.min(1, (1 - fp) / 0.65) };
+      // The logical state (FEEDING/PERCHED) flips the INSTANT the bird decides to land, while
+      // its eased altitude is still at cruise (fp≈1). Playing the touch-down window here snapped
+      // the pose downward AT height — the "flying bird jumps to the ground momentarily" bug, and
+      // "many at once" when a flock settles on the same frame. So only enter the landing window
+      // once the altitude is ACTUALLY falling: hold the cruise flap while still high (fp>LAND_TOP),
+      // play land across the real descent (LAND_TOP→LAND_BOT), then the perched cel cycles.
+      const LAND_TOP = 0.5, LAND_BOT = 0.15;   // land only across the final approach, not at height
+      if (fp > LAND_TOP) return { state: 'cruise', t: 0 };
+      if (fp > LAND_BOT) return { state: 'land', t: (LAND_TOP - fp) / (LAND_TOP - LAND_BOT) };
       return { state: (this.state === KERERU_STATE.FEEDING) ? 'eating' : 'hopping', t: 0 };
     }
     // Airborne: rising off the perch → the takeoff window; at cruise → the flap loop.
@@ -638,8 +645,8 @@ class Kereru extends Boid {
     push();
     translate(this.pos.x, gy);
     // Shadow stays on the ground while the body lifts — reads as height at 3/4.
-    // Higher bird → smaller, fainter shadow.
-    if (CONFIG.drawShadows) {
+    // Higher bird → smaller, fainter shadow. Skipped on a trail ghost (sprite-only).
+    if (CONFIG.drawShadows && !(typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting)) {
       const sf = 1 - Math.min(0.5, alt / 60);
       noStroke();
       fill(0, 0, 0, 26 * sf);
@@ -658,6 +665,8 @@ class Kereru extends Boid {
       noTint();
       imageMode(CENTER);
       scale(flip, 1 + (1 - Math.abs(flip)) * 0.15);
+      if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
+        EntitySprites.boostOutline(this, sprite, drawW, drawH);   // boost highlight ring, under the bird
       image(sprite, 0, 0, drawW, drawH);
     } else {
       this._renderGlyph(s, perched);

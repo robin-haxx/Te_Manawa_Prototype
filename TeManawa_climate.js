@@ -165,6 +165,40 @@ const Climate = {
       out[i] = { yearsBP: yr, g: this.glacialIndexAt(yr) };
     }
     return out;
+  },
+
+  // The interglacial/glacial split. The sim's regime-fit machinery (SeasonManager.getWinterness,
+  // InstallHUD._growMatches, the second-screen boost) all cut the glacial index here.
+  regimeThreshold: 0.5,
+
+  // ==========================================================
+  // NEXT REGIME BOUNDARY — the second screen's goal (md/TEMANAWA_SECOND_SCREEN.md §6.2/§7.1)
+  // ----------------------------------------------------------
+  // Given a year, return the next year FORWARD in playback (younger, toward the present) at which
+  // the glacial index crosses out of the current stage into its opposite — i.e. the START OF THE
+  // NEXT interglacial/glacial. This is where a boost's timelapse (TeManawa_time.js) plays TO, and
+  // it is the goal the console shows; a single pure helper both read, so they can never disagree.
+  // Scans in `step`-year strides from yearsBP toward `endYearsBP`, then bisects the crossing to ~1 yr
+  // for a clean date. Returns { yearsBP, glacialIndex, stage, stageName } for the boundary, or null
+  // if the curve never crosses before the window end (the timelapse then runs to the terminal).
+  nextRegimeBoundary(yearsBP, endYearsBP = 0, step = 500) {
+    const thr = this.regimeThreshold;
+    const cold0 = this.glacialIndexAt(yearsBP) >= thr;
+    for (let y = yearsBP - step; y >= endYearsBP; y -= step) {
+      const cold = this.glacialIndexAt(y) >= thr;
+      if (cold !== cold0) {
+        // The crossing sits in (y, y+step): y is already the NEW regime, y+step still the old.
+        let lo = y, hi = y + step;                          // lo = new-regime side, hi = old-regime side
+        for (let k = 0; k < 24 && hi - lo > 1; k++) {
+          const mid = (lo + hi) / 2;
+          if ((this.glacialIndexAt(mid) >= thr) === cold0) hi = mid; else lo = mid;
+        }
+        const by = Math.round(lo);
+        const g = this.glacialIndexAt(by);
+        return { yearsBP: by, glacialIndex: g, stage: this.stageOf(g), stageName: cold ? 'glacial' : 'interglacial' };
+      }
+    }
+    return null;
   }
 };
 

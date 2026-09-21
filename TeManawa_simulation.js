@@ -28,6 +28,75 @@ const PLANT_GHOST = {
 };
 if (typeof window !== 'undefined') window.PLANT_GHOST = PLANT_GHOST;
 
+// FAUNA TIME-LAPSE TRAIL — afterimages during a fast-forward, so a moving animal leaves a
+// short "ghost" trail that reads as accelerated time (a multiple-exposure look). Only alive
+// during a timelapse boost (or the legacy deep burst); at the normal 1x pace nothing is
+// drawn and nothing is sampled, so the wall view is untouched.
+//
+// Mechanism — all real-time-safe, allocation-free after the first frame:
+//   • Each animal keeps a fixed-length ring of recent (x, y) samples, one written every
+//     `sampleEvery` REAL frames (frameCount, not the deep-time-warped clock — so the cadence
+//     is steady at any multiplier, and a fast animal spreads its samples into a visible trail
+//     while a near-stationary one keeps them bunched under itself, drawing nothing).
+//   • render() draws the ring oldest→faintest, newest→strongest, UNDER the live sprite, by
+//     swapping the animal's pos to each sample and re-calling its OWN render() at reduced
+//     globalAlpha (honoured by both the 2D and GL paths, exactly like the death fade). The
+//     `_ghosting` flag makes each render() skip its shadow/halo, so a ghost is SPRITE-ONLY.
+// Console-tunable via window.FaunaTrail.
+const FaunaTrail = {
+  on: true,
+  sampleEvery: 12,     // real frames between afterimages (the "one every 10–15 frames")
+  ghosts:      3,      // afterimages kept behind each animal (ring length)
+  alpha0:      0.42,   // opacity of the freshest ghost; older ones ease toward 0
+  _ghosting:   false,  // true only while replaying a ghost (render() reads it to skip shadow/halo)
+
+  // Trails exist only during a fast-forward. Guarded so a missing/older DeepTime is a no-op.
+  active() {
+    if (!this.on || typeof DeepTime === 'undefined') return false;
+    return !!((typeof DeepTime.isTimelapsing === 'function' && DeepTime.isTimelapsing()) ||
+              (typeof DeepTime.isDeep === 'function' && DeepTime.isDeep()));
+  },
+
+  // Advance one animal's sample ring (once per `sampleEvery` real frames) and draw its
+  // afterimages under the live sprite. Called from Simulation._renderWithFade for every Boid
+  // on the 'render' pass while active(). Allocation-free after the lazy ring init.
+  renderGhosts(e) {
+    const N = this.ghosts;
+    if (N < 1) return;
+    if (!e._trailX || e._trailX.length !== N) {          // lazy, once per animal (or on a resize of N)
+      e._trailX = new Float32Array(N); e._trailY = new Float32Array(N);
+      e._trailX.fill(e.pos.x); e._trailY.fill(e.pos.y);
+      e._trailHead = 0; e._trailLast = frameCount;
+    }
+    // Roll the ring forward on the REAL frame clock. Head points at the next write slot,
+    // which is therefore the OLDEST sample once the ring has wrapped.
+    if (frameCount - e._trailLast >= this.sampleEvery) {
+      e._trailLast = frameCount;
+      e._trailX[e._trailHead] = e.pos.x;
+      e._trailY[e._trailHead] = e.pos.y;
+      e._trailHead = (e._trailHead + 1) % N;
+    }
+    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null;
+    const a0 = dc ? dc.globalAlpha : 1;
+    const lx = e.pos.x, ly = e.pos.y;                    // live position, restored after each ghost
+    this._ghosting = true;
+    for (let k = 0; k < N; k++) {
+      const idx = (e._trailHead + k) % N;                // oldest first, newest last
+      const gx = e._trailX[idx], gy = e._trailY[idx];
+      const ddx = gx - lx, ddy = gy - ly;
+      if (ddx * ddx + ddy * ddy < 9) continue;           // within ~3px of the animal → invisible, skip
+      const age = (k + 1) / N;                            // (0,1]: oldest faintest, newest strongest
+      if (dc) dc.globalAlpha = a0 * this.alpha0 * age;
+      e.pos.x = gx; e.pos.y = gy;
+      e.render();
+      e.pos.x = lx; e.pos.y = ly;                         // restore for the live draw
+    }
+    if (dc) dc.globalAlpha = a0;
+    this._ghosting = false;
+  }
+};
+if (typeof window !== 'undefined') window.FaunaTrail = FaunaTrail;
+
 class Simulation {
   constructor(terrain, config, game, seasonManager) {
     this.terrain = terrain;
@@ -432,7 +501,7 @@ class Simulation {
       if (live >= densMax) continue;
       const type = warm[(random() * warm.length) | 0];
       const p = new Plant(px, py, type, terrain, biome.key);
-      p.growth = 0.06;               // a fresh seedling — grows in over time
+      p.growth = 0.06; p._matured = false;   // a fresh seedling — grows in over time (un-matured so a tree still plays its sapling→adult sequence)
       this.plants.push(p);
       return p;
     }
@@ -477,11 +546,85 @@ class Simulation {
       if (live >= 3) continue;
       const type = set[(random() * set.length) | 0];
       const p = new Plant(px, py, type, terrain, biome.key);
-      p.growth = 0.08;               // a fresh seedling — grows in visibly
+      p.growth = 0.08; p._matured = false;   // a fresh seedling — grows in visibly (un-matured so a tree still plays its sapling→adult sequence)
       this.plants.push(p);
       seeded++;
     }
     return seeded;
+  }
+
+  // PER-SPECIES SEEDING — the second-screen BOOST (md/TEMANAWA_SECOND_SCREEN.md §6.1/§7.3). Where
+  // seedGrowth() seeds a whole warm/cold SET, this seeds the ONE named type the visitor chose, into
+  // any biome whose own palette (biome.plantTypes) already lists it — so a Tōtara boost lands Tōtara
+  // in forest ground, a tussock boost tussock on the tops, and a type lands nowhere its habitat does
+  // not support it. The bus (TeManawa_bus.js) decides HOW MANY: a climate-matched boost seeds
+  // generously, a mismatched boost seeds nothing (and the scene desaturates — the regime-fit lesson).
+  // Same cap + density gate as seedGrowth/disperseSeed. Unlike seedGrowth this does NOT skip a
+  // disturbanceRecruit type (kahikatea): a direct species boost is a deliberate choice, and the fresh
+  // seedling is then governed honestly by Plant.update (it needs a river disturbance to fatten).
+  // Returns how many established. Fired from the boost intent (a burst), off the per-frame path.
+  seedSpecies(plantKey, count = 12) {
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    const terrain = this.terrain;
+    if (!TYPES || !terrain || !TYPES[plantKey] || count <= 0) return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const cap = (M && M.maxLivePlants) || 900;
+    let seeded = 0;
+    for (let tries = 0; tries < count * 12 && seeded < count; tries++) {
+      if (this.plants.length >= cap) break;
+      const px = random(this.worldWidth), py = random(this.worldHeight);
+      const biome = terrain.getBiomeAt(px, py);
+      if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
+      if (biome.plantTypes.indexOf(plantKey) < 0) continue;   // only where this species' own habitat supports it
+      if (!this._plantSiteIsLand(px, py)) continue;           // never seed onto river/sea water
+      // Density gate: don't carpet an already-dense stand (mirrors seedGrowth / disperseSeed).
+      let live = 0;
+      const near = this.getNearbyPlants(px, py, 26);
+      for (let i = 0; i < near.length; i++) { if (near[i].alive && ++live >= 3) break; }
+      if (live >= 3) continue;
+      const p = new Plant(px, py, plantKey, terrain, biome.key);
+      p.growth = 0.08; p._matured = false;   // a fresh seedling — grows in visibly
+      this.plants.push(p);
+      seeded++;
+    }
+    return seeded;
+  }
+
+  // PER-SPECIES FAUNA RECRUITMENT — the boost's fauna coupling (md/TEMANAWA_SECOND_SCREEN.md §6.1/§9.3).
+  // A matched plant boost doesn't only seed the plant: it RECRUITS a few of the birds that plant
+  // supports (the §5 links), founded on-screen through the same paths the founder mix uses, so the
+  // visitor sees the animals answer the plant. It tops up toward each species' comfortable target
+  // (never a runaway): eagles honour the hard apex cap, grazers + forest flyers stop at target+count.
+  // `young_*` outline variants are skipped (they mark juveniles for the highlight, not recruit targets).
+  // Called from the bus (TeManawa_bus.js) on a MATCHED boost. Returns how many were added.
+  boostFauna(keys, count = 2) {
+    if (!Array.isArray(keys) || count <= 0) return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const eagleCap  = (M && M.eagleMaxPopulation) || 12;
+    const moaKeys   = (this.activeSpecies && this.activeSpecies.moa)   || [];
+    const eagleKeys = (this.activeSpecies && this.activeSpecies.eagle) || [];
+    let added = 0;
+    for (const key of keys) {
+      if (!key || key.indexOf('young_') === 0) continue;   // outline-only juvenile variant, not a recruit target
+      const isEagle = eagleKeys.indexOf(key) !== -1;
+      const isMoa   = moaKeys.indexOf(key) !== -1;
+      const ceil = this._speciesTarget(key) + count;       // top up toward the comfortable target (+ this burst)
+      for (let i = 0; i < count; i++) {
+        if (isEagle) {
+          if (this.countAliveEagles() >= eagleCap) break;
+          this.spawnEagle(key);
+        } else if (isMoa) {
+          if (this.getSpeciesCount(key) >= ceil) break;
+          this.spawnMoas(1, key);
+        } else {
+          if (this.getSpeciesCount(key) >= ceil) break;    // a forest flyer in otherEntities (kererū/kōkako/huia/tūī)
+          this._spawnOtherEntities(key, 1);
+        }
+        added++;
+      }
+    }
+    if (added) this._invalidateCache();
+    return added;
   }
 
   // ============================================================
@@ -561,7 +704,7 @@ class Simulation {
       if (!this._plantSiteIsLand(px, py)) continue;
       const type = biome.plantTypes[(random() * biome.plantTypes.length) | 0];
       const p = new Plant(px, py, type, terrain, biome.key);
-      p.growth = 0.06;
+      p.growth = 0.06; p._matured = false;          // fresh seedling — un-matured so a tree still grows in from a sapling
       this.plants.push(p);
       this.disturb(px, py, R, 'bloom', 1);          // warp so the new growth surges in fast
       seeded++;
@@ -599,7 +742,7 @@ class Simulation {
       if (!biome || biome.key !== 'wetland' || !biome.plantTypes) continue;
       if (!this._plantSiteIsLand(px, py)) continue;
       const p = new Plant(px, py, 'kahikatea', terrain, biome.key);
-      p.growth = 0.06; p._kahiAge = 0;
+      p.growth = 0.06; p._kahiAge = 0; p._matured = false;   // fresh kahikatea seedling — grows in from a sapling
       this.plants.push(p);
       this.disturb(px, py, R, 'flood', 1);
       seeded++;
@@ -1772,6 +1915,14 @@ class Simulation {
   // Render one entity, compositing it at its death-fade alpha when it is fading.
   // A live entity (_fade === undefined) draws at full alpha with no context churn.
   _renderWithFade(e, method) {
+    // Time-lapse trail: while a fast-forward runs, a moving animal leaves a short ghost trail
+    // drawn UNDER its live sprite. Only Boids trail, only on the 'render' pass (not the
+    // indicator over-pass), and only while FaunaTrail.active(); otherwise this is skipped and
+    // the draw below is exactly as before.
+    if (method === 'render' && typeof FaunaTrail !== 'undefined' && typeof Boid !== 'undefined' &&
+        e instanceof Boid && FaunaTrail.active()) {
+      FaunaTrail.renderGhosts(e);
+    }
     const f = e._fade;
     if (f === undefined || f >= 1) { e[method](); return; }
     const dc = drawingContext, a = dc.globalAlpha;

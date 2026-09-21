@@ -72,6 +72,7 @@ class GameUI {
       this._tmButtons = [];                 // nothing clickable off-debug
       InstallHUD.renderVisitorTimeline(g, W, H);
       InstallHUD.renderVisitorYear(g, W, H);
+      InstallHUD.renderVisitorGoal(g, W, H);   // the interglacial/glacial objective, above the timeline
     }
 
     if (debug) this.renderMessages(W, H);

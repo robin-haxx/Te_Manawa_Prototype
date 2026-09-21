@@ -452,7 +452,7 @@ others. Honest current state:
 | **6 — Disturbance** | `disturb()` + `warp`, wire buttons | **Mostly built** — eruption clear/regrow (`ashCover`) + the **`warp` clock** (`disturb`/`warpAt`, real-time-paced recovery) + storm windthrow aftermath + the **wetland bloom** all built (§9). Remaining: `wet`/`open`/`bare` per-cell fields, kahikatea river-recruitment |
 | **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **7 grazers** (5 moa + North Island goose + mōho/NI takahē) **+ 3 flyers** (kererū, kōkako, huia) with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier); **per-species cold adaptation now live** (`seasonalModifiers` re-keyed by glacial phase). Remaining: harrier flight behaviour, the *Dinornis* dimorphism pair |
 | **+ Interaction** | five buttons, health, kererū | ✅ **Built** (steps 1–4); tuning (step 5) open — *new track, not in the v2.1 ledger* |
-| **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | **In build** — spec + touchscreen page + `BroadcastChannel` bus receiver **built** (`TEMANAWA_SECOND_SCREEN.md`, `secondscreen/`, `TeManawa_bus.js`: storm/eruption/deep live, boost/habitat stubbed); the sim overhaul (paused clock, 500→5000 ramp, regime-boundary finder, `seedSpecies`) is the open frontier (§7 of that doc) |
+| **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | ✅ **Built** — spec + touchscreen page + `BroadcastChannel` bus (`TEMANAWA_SECOND_SCREEN.md`, `secondscreen/`, `TeManawa_bus.js`), **and the sim overhaul (§7)**: geology **paused by default**, `DeepTime.beginTimelapse` 500→5000 yr/s ramp, `Climate.nextRegimeBoundary`, `Simulation.seedSpecies`, the real regime-fit boost + eruption-aware ending, live telemetry. Bootcheck extended & green; browser-verified end-to-end. Remaining: the **tuning pass** (ramp feel, seeding strength, fauna coupling) |
 | **8 — Kiosk** | hardening, audio, lockdown | **Not started** — audio still preloads 6.5 MB; `mapGrid` still 512 |
 
 The true frontier is narrow and specific: **the fauna cast turning on, the flora art, the disturbance
@@ -488,12 +488,15 @@ into the **land and the cast**, where a visitor reads them in forty seconds with
    the browse/die-back feel (§4) — how far a bite crops (`browseBite`/`browseFloor`) and how fast the
    glacial forest retreats and regrows (`forestDiebackRate`/`forestRecoverRate`), watched over a full
    unattended climate cycle so the forest reads as *cycling*, not declining.
-7. **The second-screen sim overhaul** (`TEMANAWA_SECOND_SCREEN.md` §7): the spec, the touchscreen page and
-   the bus receiver are built; the sim half is the frontier — **pause the geology** (`DeepTime` holds
-   `yearsBP` until a timelapse), add the **500→5000 yr/s ramp to the next glacial/interglacial**
-   (a regime-boundary finder in `climate.js`), a **per-species `seedSpecies`** boost, the eruption-aware
-   ending, and the telemetry emit. The load-bearing tuning pass — the paused clock ripples into climate,
-   the morph, the eruptions and the short-dwell pedagogy.
+7. **The second-screen sim overhaul** (`TEMANAWA_SECOND_SCREEN.md` §7): ✅ **built & verified** — the
+   geology is **paused by default** (`DeepTime` holds `yearsBP`, the terrain with it; the ambient world
+   keeps living at 1×), the boost runs the **500→5000 yr/s ramp to the next glacial/interglacial**
+   (`Climate.nextRegimeBoundary` + `DeepTime.beginTimelapse`), seeds the **chosen species**
+   (`Simulation.seedSpecies`) behind a per-species regime-fit gate, and is **eruption-aware** (stops
+   short, fires the ash beat a moment later). What's left is the **load-bearing tuning pass** — the
+   ramp feel and photosensitivity slew, seeding strength, and the fauna coupling (a plant boost lifting
+   its linked birds, §9.3) — the paused clock's ripples into climate, the morph and the short-dwell
+   pedagogy are now settled in code and green in the harness.
 8. **Kiosk hardening + audio** (Phase 8): preload only the ambient bed and lazy-load the rest (the biggest
    cold-boot fix outstanding), drop `mapGrid` 512 → 256, photosensitivity and touch-target sign-off.
 9. **Interpretation + mana whenua co-design** (§16): the mute layer — nine moa and twelve plants carry

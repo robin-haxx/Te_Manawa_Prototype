@@ -8,8 +8,11 @@
 class EylesHarrier extends Boid {
   constructor(x, y, terrain, config = null, speciesData = null) {
     super(x, y, terrain);
-    
+
     this.config = config;
+    // Species identity (the boost outline + any per-species lookup keys off this). The raptor
+    // constructor never set it before; default to the adult harrier when no speciesData is passed.
+    this.speciesKey = (speciesData && speciesData.key) || 'eyles_harrier';
 
     // A flyer: keep it inside the VISIBLE screen L/R, not just the map. The cover-fit view runs
     // the map wider than the canvas, so a harrier soaring to the map edge would drift off-screen
@@ -1048,7 +1051,7 @@ class EylesHarrier extends Boid {
       translate(this.pos.x, Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y)));
 
       const _alt = this._altitude || 0;
-      if (CONFIG.drawShadows) {
+      if (CONFIG.drawShadows && !(typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting)) {
         const _sf = 1 - Math.min(0.55, _alt / 70);   // higher bird → smaller, fainter shadow
         noStroke();
         fill(0, 0, 0, (isActiveHunt ? 35 : 25) * _sf);
@@ -1077,6 +1080,8 @@ class EylesHarrier extends Boid {
       // Preserve the source aspect ratio (the eagle art is square, 256x256).
       const drawW = this.wingspan * 2.8;
       const drawH = sprite.width > 0 ? drawW * (sprite.height / sprite.width) : this.wingspan * 2.1;
+      if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
+        EntitySprites.boostOutline(this, sprite, drawW, drawH);   // boost highlight ring, under the harrier
       image(sprite, 0, 0, drawW, drawH);
       
       pop();

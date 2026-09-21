@@ -36,13 +36,25 @@ class Boid {
     this._wanderHeading = Math.atan2(this.vel.y, this.vel.x); // last real heading, for relative wander
     this._speedCap = null; // smoothed effective max speed (ramps toward maxSpeed)
 
-    // Walk-gate (ground birds): a moa only TRANSLATES while it is moving fast enough to show the
-    // walk animation. Below _walkGateSq (speed²) update() holds its position: the feet stay
-    // planted under an idle/peck pose instead of the body sliding out from under it. The moa
-    // renderer picks walk-vs-static off the SAME gate, so "moving" and "walking pose" are exactly
-    // equivalent. Flyers leave _freezeWhenNotWalking false (they glide continuously, no walk cel).
+    // Ground birds translate only while walking; flyers glide continuously (they leave
+    // _freezeWhenNotWalking false and skip the walk latch below entirely). _walkGateSq is a
+    // legacy default kept for any defensive reader; the live walk/idle decision is the latch.
     this._freezeWhenNotWalking = false;
     this._walkGateSq = 0.01;
+
+    // Walk-pose latch (ground birds). The raw speed gate dithers frame-to-frame near its
+    // threshold, which strobed the walk/idle pose (and the translate freeze with it) — the
+    // "glitch in and out of walking/idle" report. So latch it: enter walking above a HIGH
+    // gate, only drop back to idle below a LOW one (hysteresis band), and once walking hold
+    // it for a full walk cycle so a started animation plays through instead of being cut off.
+    // Pose and translation both read _walking, so they stay exactly in step (no sliding, no
+    // walking-in-place beyond the finishing stride). Flyers leave _freezeWhenNotWalking false
+    // and skip the whole latch. _walkMinHoldAnim is set by the ground-bird subclass (Moa).
+    this._walking = false;         // latched pose+translate state
+    this._walkEnterSq = 0.0016;    // start walking above this speed² (≈0.04 px/frame)
+    this._walkExitSq  = 0.0004;    // stop walking below this speed²  (≈0.02 px/frame)
+    this._walkStartAnim = 0;       // animTime the current walk episode began
+    this._walkMinHoldAnim = 0;     // min animTime a walk holds before it may return to idle
 
     // ---- Smoothed facing (see updateFacing) --------------------------------
     // The direction the SPRITE points, eased toward the direction of travel so
@@ -391,12 +403,27 @@ class Boid {
       this.vel.y *= invSpd;
     }
 
-    // Apply velocity (motion clock). Ground birds only translate while going fast enough to be in
-    // the WALK animation (_walkGateSq); below that they hold position so an idle/peck pose can't
-    // slide. Velocity is kept (not zeroed), so accumulating drive ramps back over the gate and the
-    // bird steps off again. Flyers (_freezeWhenNotWalking false) always integrate.
+    // Apply velocity (motion clock). Ground birds only translate while the latched WALK pose is
+    // on (see the latch fields): they enter walking above a high speed gate and hold it for a
+    // full cycle before dropping to a planted idle/peck pose, so pose and body stay in step and
+    // neither strobes nor slides. Velocity is kept (not zeroed) so accumulating drive steps the
+    // bird off again. Flyers (_freezeWhenNotWalking false) always integrate.
     const moveSq = this.vel.x * this.vel.x + this.vel.y * this.vel.y;
-    if (!this._freezeWhenNotWalking || moveSq > this._walkGateSq) {
+    if (this._freezeWhenNotWalking) {
+      if (this._walking) {
+        // Stay walking (and translating) until the speed falls below the LOW gate AND the walk
+        // has played for at least one full cycle — so a brief dip mid-stride never cuts it off.
+        if (moveSq < this._walkExitSq && (this.animTime - this._walkStartAnim) >= this._walkMinHoldAnim) {
+          this._walking = false;
+        }
+      } else if (moveSq > this._walkEnterSq) {
+        // Start walking at once on a clear move (keeps fleeing responsive); the high gate keeps
+        // idle jitter from tripping it. animTime is advanced below, so seed the cycle clock now.
+        this._walking = true;
+        this._walkStartAnim = this.animTime;
+      }
+    }
+    if (!this._freezeWhenNotWalking || this._walking) {
       this.pos.x += this.vel.x * mdt;
       this.pos.y += this.vel.y * mdt;
     }

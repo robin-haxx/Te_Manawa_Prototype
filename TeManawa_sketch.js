@@ -2017,26 +2017,22 @@ class Game {
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
     if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
 
-    // SHIFT+F toggles the terrain footprint. An authoring key, not a visitor
-    // one — the kiosk lockdown limits input to 1-5, so it cannot be reached on
-    // the wall. Costs a full rebuild, same as ?terrain=.
-    if (k === 'F') {
-      this.setTerrainFit(CONFIG.terrainFit === 'fit' ? 'square' : 'fit');
-      return;
-    }
+    // Heavy AUTHORING keys (footprint / LOOK / GEN) each cost a full SYNCHRONOUS terrain bake
+    // (~5 s — a visible freeze) and are dev-only (the wall is locked to 1-5). They are gated behind
+    // the debug overlay so a stray press during normal use never freezes the sim — and so 'b' no
+    // longer collides with the second screen's boost key (secondscreen/input.js). Press D to author,
+    // then b / g / n / SHIFT+F. See md/TEMANAWA_DEVTOOLS.md.
+    const authoring = (typeof Debug !== 'undefined') && Debug.enabled;
 
-    // B re-bakes the terrain in place with the current LOOK / Projection values —
-    // the look-development loop, no page reload. Authoring only (the wall is
-    // locked to 1-4). See LOOK in TeManawa_terrain.js.
-    if (k === 'b' || k === 'B') {
-      this.rebakeTerrain();
-      return;
-    }
+    // SHIFT+F toggles the terrain footprint (full rebuild, same cost as ?terrain=).
+    if (k === 'F') { if (authoring) this.setTerrainFit(CONFIG.terrainFit === 'fit' ? 'square' : 'fit'); return; }
 
-    // G applies the current GEN landform params (regenerate + re-bake); N draws a
-    // NEW random landform. Dev tools — see md/TEMANAWA_DEVTOOLS.md.
-    if ((k === 'g' || k === 'G') && typeof GEN !== 'undefined') { GEN.apply(); return; }
-    if ((k === 'n' || k === 'N') && typeof GEN !== 'undefined') { GEN.reseed(); return; }
+    // B re-bakes the terrain in place with the current LOOK / Projection values (look-dev loop).
+    if (k === 'b' || k === 'B') { if (authoring) this.rebakeTerrain(); return; }
+
+    // G applies the current GEN landform params (regenerate + re-bake); N draws a NEW random landform.
+    if ((k === 'g' || k === 'G') && typeof GEN !== 'undefined') { if (authoring) GEN.apply(); return; }
+    if ((k === 'n' || k === 'N') && typeof GEN !== 'undefined') { if (authoring) GEN.reseed(); return; }
 
     // R toggles the range-authoring overlay (footprints + spine axes). Authoring only.
     if ((k === 'r' || k === 'R') && typeof GEO !== 'undefined') { GEO.toggle(); return; }

@@ -52,6 +52,10 @@ Default (dev): `ArrowUp`/`ArrowDown` = habitat switch; `←`/`→` = plant prev/
 - **Backgrounds** — `assets/Background_Base.png` is the shared background shown on every screen.
   For per-habitat art, drop e.g. `assets/bg_alpine.png` and point that habitat's `bg` at it in
   `encyclopedia.js` (it overrides the shared base).
+- **Hand-touch glyph** — the "Select a Habitat" / "Select a Plant" cards show `assets/hand.png`
+  (the `.hand` element). Drop the final art there; it's hidden until the file exists (no broken
+  icon). A different name/format just needs the two `<img class="hand" src=…>` in `index.html`
+  repointed. It replaced the old drawn SVG glyph.
 - **Encyclopedia copy** — the four card species (Tōtara, Mānuka, Tī kōuka, Red beech) are
   real; every other plant's `desc`/`fauna` is a marked `TODO`. See `TEMANAWA_SECOND_SCREEN.md` §8.
 - **Highlight loops** — optional alpha WebM per plant (`TM_PLANT_HIGHLIGHT`); stills are used

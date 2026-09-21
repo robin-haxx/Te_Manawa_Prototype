@@ -119,8 +119,7 @@ html, body {
 }
 .hand {
   width: 150px; height: 150px; margin-bottom: 40px;
-  stroke: var(--cream); stroke-width: 7; fill: none;
-  stroke-linecap: round; stroke-linejoin: round;
+  object-fit: contain;            /* the hand-touch asset (assets/hand.png); was a drawn SVG glyph */
 }
 #cardPrompt .prompt-title {
   font-family: var(--display); font-style: italic; font-size: 68px; color: var(--cream);

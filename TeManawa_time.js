@@ -40,12 +40,25 @@ const DeepTime = {
   yrPerSec:   500,      // baseline sim-years per real second at scale 1
   fps:         60,
 
-  // TIMELAPSE, see TEMANAWA_PLAN_V3.md §3: ~50,000 years in ~10 seconds.
+  // DEEP BURST (legacy button 1), see TEMANAWA_PLAN_V3.md §3: ~50,000 years in ~10 seconds.
   deepMult:    10,
   deepSeconds: 10,
 
   // ACCESSIBILITY: make sure this is suitable for photosensitivity
   rampSeconds: 1.2,
+
+  // ---- the second-screen timelapse (md/TEMANAWA_SECOND_SCREEN.md §0/§6.2/§7.2) ----
+  // Geology is PAUSED BY DEFAULT: update() holds yearsBP (and, since the terrain morph keys off
+  // yearsBP drift, the land too) unless a timelapse or a legacy deep burst is running. The AMBIENT
+  // LIFE clock keeps running the whole time — update() returns a life scale that is 1× when paused
+  // and speeds up under a timelapse, so animals forage and plants grow at a fixed date, then live
+  // through the fast-forward when a boost is spent. A timelapse eases the RATE from tlStartRate →
+  // tlMaxRate over tlRampSeconds and plays yearsBP down to a target year (the next regime boundary,
+  // or an intervening eruption). The ramp is a slow ~20 s ease, well inside the photosensitivity
+  // budget (≥500 ms, ≤3 luminance transitions/s — TEMANAWA_BUILD_V3.md §3).
+  tlStartRate:   500,     // yr/s at the start of a timelapse ramp
+  tlMaxRate:     5000,    // yr/s the ramp eases up to and holds
+  tlRampSeconds: 20,      // real seconds to ease start → max
 
   // ---- state -----------------------------------------------
   yearsBP:     1000000,
@@ -53,6 +66,10 @@ const DeepTime = {
   _deepUntil:  0,
   _deepFrom:   0,
   _ended:      false,
+  _timelapse:  false,     // a boost timelapse is playing yearsBP toward _tlTarget
+  _tlTarget:   0,
+  _tlFrom:     0,         // millis() at begin, for the rate ramp
+  _tlStartYear: 0,        // yearsBP at begin, for the progress readout
 
   // ==========================================================
   reset() {
@@ -61,6 +78,8 @@ const DeepTime = {
     this._deepUntil = 0;
     this._deepFrom  = 0;
     this._ended     = false;
+    this._timelapse = false;
+    this._tlTarget  = 0;
   },
 
   // ---- seek: jump the clock to a date ----------------------
@@ -75,7 +94,51 @@ const DeepTime = {
     this._deepUntil = 0;
     this._deepFrom  = 0;
     this._ended     = false;
+    this._timelapse = false;   // a hard seek (eruption navigation) cancels any running timelapse
+    this._tlTarget  = 0;
     return this.yearsBP;
+  },
+
+  // ---- the timelapse (second-screen boost) -----------------
+  // Begin a ramped fast-forward from the current year to targetYearsBP (younger). The rate eases
+  // tlStartRate → tlMaxRate over tlRampSeconds and update() plays yearsBP down until it lands on the
+  // target (or the window end). Returns false if the target is not strictly younger (nothing to do).
+  // The bus (TeManawa_bus.js) picks the target: the next regime boundary, or an intervening eruption.
+  beginTimelapse(targetYearsBP) {
+    const t = Math.max(this.yearsEnd, Math.min(this.yearsStart, targetYearsBP));
+    if (t >= this.yearsBP) return false;
+    this._timelapse   = true;
+    this._tlTarget    = t;
+    this._tlFrom      = (typeof millis === 'function') ? millis() : 0;
+    this._tlStartYear = this.yearsBP;
+    this._deepUntil   = 0;                 // a boost supersedes any lingering deep burst
+    this._ended       = false;
+    return true;
+  },
+
+  endTimelapse() {
+    this._timelapse = false;
+    this._tlTarget  = 0;
+    this.timeScale  = 1;
+  },
+
+  isTimelapsing() { return !!this._timelapse; },
+
+  // The current timelapse rate (yr/s): smoothstepped from tlStartRate to tlMaxRate over tlRampSeconds.
+  _tlRate() {
+    const ramp = this.tlRampSeconds * 1000;
+    const now  = (typeof millis === 'function') ? millis() : 0;
+    const t = Math.max(0, Math.min(1, ramp > 0 ? (now - this._tlFrom) / ramp : 1));
+    const eased = t * t * (3 - 2 * t);                   // smoothstep
+    return this.tlStartRate + (this.tlMaxRate - this.tlStartRate) * eased;
+  },
+
+  // 0..1 of the active timelapse (share of the year distance covered), for the console progress bar.
+  timelapseProgress() {
+    if (!this._timelapse) return 0;
+    const span = this._tlStartYear - this._tlTarget;
+    if (span <= 0) return 1;
+    return Math.max(0, Math.min(1, (this._tlStartYear - this.yearsBP) / span));
   },
 
   // The years a forward skip may land on: every eruption except the terminal one.
@@ -150,17 +213,38 @@ const DeepTime = {
   // Returns the multiplier the rest of the sim should run at.
   // ==========================================================
   update(dt) {
-    this.timeScale = this.currentScale();
+    // The GEOLOGY clock (yearsBP) and the LIFE clock are decoupled now (md/TEMANAWA_SECOND_SCREEN.md
+    // §0). yearsBP moves only under a timelapse (a boost) or a legacy deep burst (button 1);
+    // otherwise it is PAUSED — the land holds at one date. But the ambient world keeps living, so
+    // this returns a LIFE scale (never 0): 1× when paused, and sped up to match the fast-forward
+    // while a timelapse/deep runs, so the cast lives THROUGH the years the boost plays out.
+    let lifeScale = 1;
 
-    const years = (dt / this.fps) * this.yrPerSec * this.timeScale;
-    this.yearsBP -= years;
+    if (this._timelapse) {
+      const rate = this._tlRate();                        // yr/s, eased 500 → 5000
+      lifeScale = rate / this.yrPerSec;                   // life keeps pace with the fast-forward
+      this.yearsBP -= (dt / this.fps) * rate;
+      if (this.yearsBP <= this._tlTarget) {               // reached the boost's destination
+        this.yearsBP = this._tlTarget;
+        this.endTimelapse();
+        lifeScale = 1;
+      }
+    } else if (this.isDeep()) {                           // legacy deep burst — unchanged: 1 → deepMult, eased
+      lifeScale = this.currentScale();
+      this.yearsBP -= (dt / this.fps) * this.yrPerSec * lifeScale;
+    }
+    // else: PAUSED — geology frozen, ambient life at 1× (lifeScale stays 1).
 
+    // End-of-window floor, applied however the clock got here: the terminal Oruanui beat still
+    // fires when a timelapse plays to the end. Game.update() reads hasEnded() and hands off to attract.
     if (this.yearsBP <= this.yearsEnd) {
       this.yearsBP = this.yearsEnd;
-      this._ended = true;
+      this._ended  = true;
+      if (this._timelapse) this.endTimelapse();
     }
 
-    return this.timeScale;
+    this.timeScale = lifeScale;
+    return lifeScale;
   },
 
   // The run reaching Oruanui is not a fail state and not a pause; it is the

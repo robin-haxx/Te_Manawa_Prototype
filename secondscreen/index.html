@@ -16,19 +16,13 @@
   <!-- ============ CENTRE: "Select a Habitat" attract ============ -->
   <div id="selectScreen">
     <div id="selectCard">
-      <!-- drawn hand glyph (no emoji — project rule); placeholder, swap for final art -->
-      <svg class="hand" viewBox="0 0 100 100" aria-hidden="true">
-        <path d="M40 12 V2 M26 16 L31 23 M54 16 L49 23" />
-        <path d="M40 54 V30 a6 6 0 0 1 12 0 v16
-                 M52 40 a6 6 0 0 1 12 0 v8
-                 M64 44 a6 6 0 0 1 12 0 v22
-                 c0 17 -9 29 -25 29 h-4 c-9 0 -14 -4 -20 -13
-                 l-11 -15 a6 6 0 0 1 10 -8 l7 7 V46" />
-      </svg>
+      <!-- hand-touch asset. Drop the final art at secondscreen/assets/hand.png (or tell me the
+           name/format and I'll repoint src). Hidden until present, so no broken-image icon. -->
+      <img class="hand" src="assets/hand.png" alt="" aria-hidden="true"
+           onerror="this.style.visibility='hidden'">
       <h1>Select a Habitat</h1>
       <div class="prompt-sub">Learn more about the Manawatū's prehistoric ecosystem!</div>
-      <p>Use the switch on the left to choose a habitat, then explore the plants and the
-         animals that lived among them.</p>
+      <p>Move the switch on the left.</p>
     </div>
   </div>
 
@@ -40,14 +34,8 @@
     <div id="card">
       <!-- prompt state -->
       <div id="cardPrompt">
-        <svg class="hand" viewBox="0 0 100 100" aria-hidden="true">
-          <path d="M40 12 V2 M26 16 L31 23 M54 16 L49 23" />
-          <path d="M40 54 V30 a6 6 0 0 1 12 0 v16
-                   M52 40 a6 6 0 0 1 12 0 v8
-                   M64 44 a6 6 0 0 1 12 0 v22
-                   c0 17 -9 29 -25 29 h-4 c-9 0 -14 -4 -20 -13
-                   l-11 -15 a6 6 0 0 1 10 -8 l7 7 V46" />
-        </svg>
+        <img class="hand" src="assets/hand.png" alt="" aria-hidden="true"
+             onerror="this.style.visibility='hidden'">
         <div class="prompt-title">Select a Plant</div>
         <div class="prompt-sub">Learn more about the Manawatū's prehistoric ecosystem!</div>
       </div>

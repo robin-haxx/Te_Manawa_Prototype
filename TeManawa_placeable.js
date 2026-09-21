@@ -243,7 +243,7 @@ class PlaceableObject {
         plant.isSpawned = true;
         plant.parentPlaceable = this;
         plant.favouredSpecies = this.def.favouredSpecies || null;
-        plant.growth = 0.8;
+        plant.growth = 0.8; plant._matured = false;   // planted young — fills in to full, then latches its mature look
         
         this.spawnedPlants.push(plant);
         this.simulation.plants.push(plant);

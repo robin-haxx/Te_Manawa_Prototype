@@ -43,6 +43,23 @@ const FOREST_TREES = new Set(['beech', 'Totara', 'fern', 'kahikatea', 'tawa']);
 // TeManawa_plant_defs.js ("a glacial produces … beech holding mature, fern wilting").
 const COLD_REFUGE = new Set(['beech']);
 
+// WOODY TREES — the tall, established plants that must never visually revert to a sapling.
+// A plant's `growth` (0..1) drives BOTH its sim nutrition AND its rendered size/frame, so
+// anything that drops a grown tree's growth — a browse bite, going dormant (growth ×0.3),
+// waking (growth 0.3), the fast glacial dormancy cycle — snapped its sprite back to the
+// Growing_ (sapling) frame and shrank its footprint to a few pixels: a mature tōtara appeared
+// to UN-GROW into a seedling, worst of all under deep-time fast-forward where dormancy flips
+// on/off every few frames ("trees shrink back down to saplings"). For grass and shrubs that
+// same size dip correctly reads as a grazer cropping the clump, so they are NOT here; only
+// trees, where the revert looks unnatural, latch. We latch the DISPLAYED maturity, decoupled
+// from the raw growth — the same idea as the moa walk-pose / eat-cycle latches (memory
+// temanawa-animation-philosophy): a matured tree keeps its adult silhouette and a floored
+// footprint, while the sim growth still drives its nutrition and its wilting/dormant STATE.
+// The latch clears only on a genuine die-back to rootstock (growth 0), so a toppled forest
+// tree still regrows honestly from a sapling. See _getSpriteState / render / _renderSprite.
+const WOODY_TREES = new Set(['Totara', 'beech', 'kahikatea', 'tawa', 'kowhai', 'manuka', 'cabbagetree', 'nikau']);
+const MATURE_DISPLAY_FLOOR = 0.7;   // a matured tree's footprint never drops below this fraction of full
+
 // Sprite reference, initialized from TeManawa_sketch.js
 let PLANT_SPRITES = null;
 
@@ -245,6 +262,11 @@ class Plant {
     this.dormantTimer = 0;
     this.regrowthTimer = 0;
     this.growth = 1.0;
+    // Woody-tree maturity latch (see WOODY_TREES). Founders are placed at growth 1.0, so
+    // they begin ALREADY matured (the established starting forest); a recruited seedling
+    // (growth set to ~0.06 after construction) starts un-matured and grows up honestly.
+    this._tree = WOODY_TREES.has(type);
+    this._matured = this._tree && this.growth >= 1.0;
     this.seasonalModifier = 1.0;
     this.plantTypeModifier = 1.0;
     this.effectiveModifier = 1.0;   // combined biome + type, drives sprite state
@@ -338,15 +360,15 @@ class Plant {
                 this._toppleStart = now;
                 this._toppleDir = random() < 0.5 ? -1 : 1;
               } else {
-                this.growth = 0;                          // already a stub, just become rootstock
+                this.growth = 0; this._matured = false;   // already a stub, just become rootstock (regrows as a sapling)
               }
             } else if (now - this._toppleStart >= fallMs) {
-              this.growth = 0;                            // the fall has finished, hold as invisible rootstock
+              this.growth = 0; this._matured = false;     // the fall has finished, hold as invisible rootstock (regrows as a sapling)
             }
           } else {
             // Legacy shrink-in-place (set forestDiebackFall:false to restore). Knob: forestDiebackRate.
             this.growth -= (LEVEL_MECHANICS.forestDiebackRate ?? 0.045);
-            if (this.growth < 0) this.growth = 0;
+            if (this.growth <= 0) { this.growth = 0; this._matured = false; }   // shrunk to rootstock: regrows as a sapling
           }
         }
         return;
@@ -468,6 +490,7 @@ class Plant {
       if (this.regrowthTimer >= this.growthTime) {
         this.alive = true;
         this.growth = 0.3;
+        this._matured = false;          // re-sprouting from rootstock: grow up honestly from a sapling
         this.regrowthTimer = 0;
       }
     } else if (this.growth < 1.0) {
@@ -480,7 +503,7 @@ class Plant {
       const baseRate = fastForest ? (LEVEL_MECHANICS.forestRecoverRate ?? 0.02) : 0.002;
       const growthRate = baseRate * this.seasonalModifier;
       this.growth += growthRate * warpBoost * accel;
-      if (this.growth > 1.0) this.growth = 1.0;
+      if (this.growth >= 1.0) { this.growth = 1.0; if (this._tree) this._matured = true; }   // grown up: latch the mature look (WOODY_TREES)
       this.nutrition = this.maxNutrition * this.growth * this.seasonalModifier * typeModifier;
     } else {
       this.nutrition = this.maxNutrition * this.seasonalModifier * typeModifier;
@@ -521,12 +544,18 @@ class Plant {
   // ============================================
   
   _getSpriteState(sprites) {
+    // A matured woody tree never reverts to its sapling (Growing_) frame: once grown it
+    // keeps its adult silhouette even as browsing / dormancy / the fast glacial cycle drop
+    // its sim growth (see WOODY_TREES). Grass and shrubs are not latched, so grazers still
+    // visibly crop them down.
+    const latched = this._tree && this._matured;
+
     // Size-only plants (tōtara) have no seasonal state art: they never switch to a
     // Dormant/Wilting/Thriving/Mature frame. They play their growth sequence while
     // immature, then hold their assigned size variant (via the 'mature' path in
     // _renderSprite). No sprite-switching on dormancy, wilt, thrive or suppression.
     if (sprites && sprites.meta && sprites.meta.sizeOnly) {
-      if (this.growth < 1.0 && sprites.growing && sprites.growing.length) {
+      if (!latched && this.growth < 1.0 && sprites.growing && sprites.growing.length) {
         return 'growing';
       }
       return 'mature';
@@ -552,8 +581,9 @@ class Plant {
     }
 
     // Immature plants play their growth sequence, where one exists. Checked
-    // after the distress states so wilting/dormancy still reads through.
-    if (this.growth < 1.0 && sprites && sprites.growing && sprites.growing.length) {
+    // after the distress states so wilting/dormancy still reads through. A matured
+    // tree is exempt (latched): a growth dip keeps its adult frame, never a sapling.
+    if (!latched && this.growth < 1.0 && sprites && sprites.growing && sprites.growing.length) {
       return 'growing';
     }
 
@@ -607,9 +637,14 @@ class Plant {
     // base-anchored trees up on the lifted ground, undistorted (§5).
     const py = Projection.groundY(this.pos.y, this.elevation);
     const dormant = this.dormant;
-    const dormantMult = dormant ? 0.5 : 1;
-    const displaySize = this.size * this.growth * dormantMult;
-    
+    // Matured trees keep an adult footprint: the sim growth still varies with vigour, but
+    // the DISPLAYED size never collapses toward a sapling (see WOODY_TREES). A dormant tree
+    // wilts (its dormant frame) and shrinks only a little, not down to a seedling.
+    const latched = this._tree && this._matured;
+    const dg = latched ? (MATURE_DISPLAY_FLOOR + (1 - MATURE_DISPLAY_FLOOR) * this.growth) : this.growth;
+    const dormantMult = dormant ? (latched ? 0.85 : 0.5) : 1;
+    const displaySize = this.size * dg * dormantMult;
+
     if (displaySize < 2) return;
     
     // Route to appropriate rendering method
@@ -686,12 +721,17 @@ class Plant {
     // already carries the size progression, so compounding it with `growth`
     // shrinks saplings to a few pixels, so ease over a narrower range instead.
     let spriteSize;
+    const latched = this._tree && this._matured;
     if (spriteState === 'growing' && meta && meta.fixedGrowthSize) {
       // Fixed-footprint growth (nīkau): the Grow frames' ARTWORK carries the size
       // progression, so hold the footprint at adult width the whole way, no scale-up.
       spriteSize = this.size * (dormant ? 0.5 : 1);
     } else if (spriteState === 'growing') {
       spriteSize = this.size * (0.55 + 0.45 * this.growth) * (dormant ? 0.5 : 1);
+    } else if (latched) {
+      // Matured tree: the footprint IS the floored display size (render() already applied
+      // the mature floor); do not compound the sub-0.5 sapling shrink below.
+      spriteSize = displaySize;
     } else if (this.growth < 0.5) {
       spriteSize = displaySize * (0.5 + this.growth);
     } else {
@@ -707,6 +747,12 @@ class Plant {
 
     // 'base' art stands on the ground point; centred art straddles it.
     const offsetY = anchorBase ? -drawH : -drawH * 0.5;
+
+    // Second-screen BOOST highlight: a coloured silhouette ring under the sprite, at its centre in
+    // world space (drawn once here so it is independent of the sway/topple transform below). No-op
+    // unless this plant's species is the boosted one; GL-batched, so no extra draw call.
+    if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
+      EntitySprites.boostOutline(this, sprite, drawW, drawH, px, py + offsetY + drawH * 0.5);
 
     // TOPPLING: the tree falls over and fades away (glacial-onset habitat death). It pivots
     // about the ground point (px,py) like a felled trunk, swinging from upright to nearly flat,

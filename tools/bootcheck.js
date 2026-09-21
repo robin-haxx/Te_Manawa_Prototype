@@ -635,8 +635,30 @@ try{
   chk(tuiAfter.filter(x=>x.alive).length===tuiBefore+1, 'a tūī egg hatches a juvenile into the flock');
   chk(tuiAfter[tuiAfter.length-1] instanceof Tui, 'the tūī hatchling breeds true (a Tui, not a kererū)');
 
+  // ---- landing animation must NOT force the touch-down pose at cruise height ----------
+  // Regression guard for the "flying birds jump to the ground momentarily, many at once" bug.
+  // When a flyer decides to settle, its logical state flips to perched while the EASED altitude
+  // is still at cruise. _flyerAnim must hold the CRUISE flap until the bird has actually
+  // descended — entering the landing window only on the final approach (fp<=0.5), then the
+  // perched cel cycle at the bottom. Playing the touch-down frames at height snapped the pose
+  // downward, and a whole flock landing on the same frame did it together.
+  {
+    const kf = (sim.otherEntities.kokako||[]).find(x=>x.alive) || (sim.otherEntities.kereru||[]).find(x=>x.alive);
+    chk(!!kf,'a live flyer is available for the landing-anim guard');
+    if (kf) {
+      kf.state = KST.FEEDING;                       // decided to settle (a perched state)
+      kf._perchAltCur = kf._perchAlt;               // known perch target
+      const cruise = kf._cruiseAlt, perch = kf._perchAltCur, span = Math.max(1, cruise - perch);
+      const at = (fp) => { kf._altitude = perch + fp*span; return kf._flyerAnim().state; };
+      chk(at(1.0)==='cruise','settling at cruise height keeps the CRUISE flap (no forced land pose at altitude)');
+      chk(at(0.7)==='cruise','still high (fp 0.7) reads as cruise, not land');
+      chk(at(0.35)==='land','on the final approach (fp 0.35) the landing window plays');
+      chk(at(0.05)==='eating','settled at the perch (fp 0.05, feeding) plays the perched EATING cycle');
+    }
+  }
+
   console.log(fail? `flighted forest birds: ${fail} FAILURES`
-    : 'flighted forest birds: kōkako sing + hold territory, huia pair-bond, tūī sing + fly strong; all disperse <the kererū and breed true');
+    : 'flighted forest birds: kōkako sing + hold territory, huia pair-bond, tūī sing + fly strong; all disperse <the kererū and breed true; landing anim holds cruise until descent');
 }catch(e){ console.log('KOKAKO/HUIA FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- North Island goose + the open-country tussock lift ------------------------
@@ -1014,8 +1036,10 @@ try{
   DT.reset(); G.resetEcosystem(); G.update(1);
   chk(!fired().has(1000000),'the 1 Ma opening eruption does NOT auto-fire on cycle start (calm open)');
 
-  // crossing 900 ka fires Kaukatea exactly once
-  DT.seekTo(900050); for(let i=0;i<30 && DT.yearsBP>899980;i++) G.update(1);
+  // crossing 900 ka fires Kaukatea exactly once. The clock is PAUSED by default now, so play it
+  // forward across the checkpoint with a deep burst (millis advances via ctx.__tick).
+  DT.seekTo(900050); DT.pressDeep();
+  for(let i=0;i<40 && DT.yearsBP>899980;i++){ ctx.__tick(); G.update(1); }
   chk(fired().has(900000),'crossing 900 ka auto-fires Kaukatea');
 
   // attract returns to the LAST eruption (900 ka), not the 1 Ma start
@@ -1089,11 +1113,24 @@ const g=vm.runInContext('game',ctx);
   chk(CL.at(950000).glacialIndex>0.45 && CL.at(950000).glacialIndex<0.72,'MIS 24 (950ka) pre-MPT glacial (damped amplitude)');
   chk(Math.abs(CL.at(800000).glacialIndex-CL.at(600000).glacialIndex)>0.3,'1 Ma → 350 ka must vary (no flat 0.85 hold)');
 
-  // clock runs the right direction at the right rate
+  // regime-boundary finder (§7.1): the next interglacial↔glacial crossing forward in play. Pure;
+  // the second-screen goal readout and the boost's timelapse target both read it.
+  const b1=CL.nextRegimeBoundary(135000, DT.yearsEnd);   // mid MIS6 glacial → Termination II interglacial
+  chk(b1 && b1.stageName==='interglacial' && b1.yearsBP<135000 && b1.yearsBP>126000,
+      `nextRegimeBoundary from mid-glacial finds the interglacial (${b1?Math.round(b1.yearsBP):'null'} ${b1?b1.stageName:''})`);
+  const b2=CL.nextRegimeBoundary(122000, DT.yearsEnd);   // MIS5e interglacial → the MIS4 glacial ahead
+  chk(b2 && b2.stageName==='glacial' && b2.yearsBP<90000 && b2.yearsBP>60000,
+      `nextRegimeBoundary from an interglacial finds the next glacial (${b2?Math.round(b2.yearsBP):'null'} ${b2?b2.stageName:''})`);
+  chk(CL.nextRegimeBoundary(27000, DT.yearsEnd)===null,'no regime crossing before the window end returns null');
+
+  // the clock is PAUSED BY DEFAULT now (the second screen drives it, md/TEMANAWA_SECOND_SCREEN.md §0):
+  // idle update() holds yearsBP (and the terrain, which keys off it) but still returns a 1× LIFE scale,
+  // so animals forage and plants grow at a fixed date — geology is frozen, the world is not.
   DT.reset();
-  const y0=DT.yearsBP; for(let i=0;i<60;i++){ ctx.__tick(); DT.update(1); }
-  const perSec=y0-DT.yearsBP;
-  chk(perSec>450&&perSec<550,`baseline should be ~500 yr/sec, got ${perSec.toFixed(0)}`);
+  const y0=DT.yearsBP; let lifeIdle=1;
+  for(let i=0;i<60;i++){ ctx.__tick(); lifeIdle=DT.update(1); }
+  chk(DT.yearsBP===y0,`paused by default: yearsBP holds when idle (drifted ${Math.round(y0-DT.yearsBP)})`);
+  chk(lifeIdle===1,'paused still returns a 1× life scale (ambient world keeps living, never frozen)');
 
   // deep-time ramp: eased, never exceeds deepMult, returns to 1
   DT.reset(); DT.pressDeep();
@@ -1110,16 +1147,140 @@ const g=vm.runInContext('game',ctx);
   const covered=b-DT.yearsBP;
   chk(covered>38000&&covered<52000,`one press should cover ~50 ky, got ${Math.round(covered)}`);
 
-  // end of window hands off rather than stalling
-  DT.reset(); DT.yearsBP=DT.yearsEnd+1; DT.update(1);
+  // the second-screen TIMELAPSE (§6.2/§7.2): a boost plays the clock forward on an eased
+  // 500→5000 yr/s ramp and stops on its target; the life scale rides the ramp, then returns to 1×.
+  DT.reset();
+  chk(!DT.beginTimelapse(DT.yearsBP+10000),'a timelapse target older than now is a no-op');
+  chk(DT.beginTimelapse(DT.yearsBP-8000),'beginTimelapse arms toward a younger target');
+  let guard=0; while(DT.isTimelapsing() && guard++<20000){ ctx.__tick(); DT.update(1); }
+  chk(!DT.isTimelapsing(),'a timelapse ends when it reaches its target');
+  chk(Math.abs(DT.yearsBP-(DT.yearsStart-8000))<1,`timelapse stops exactly on its target (got ${Math.round(DT.yearsBP)})`);
+  chk(DT.update(1)===1,'life scale returns to 1× after a timelapse (paused again)');
+  // the ramp reaches ~tlMaxRate: a LONG timelapse past the ramp, sample the peak life scale
+  DT.reset(); DT.beginTimelapse(DT.yearsStart-400000);
+  let tlPeak=0; for(let i=0;i<Math.ceil(DT.tlRampSeconds*60)+120 && DT.isTimelapsing();i++){ ctx.__tick(); tlPeak=Math.max(tlPeak,DT.update(1)); }
+  const wantPeak=DT.tlMaxRate/DT.yrPerSec;
+  chk(tlPeak>wantPeak*0.9 && tlPeak<=wantPeak+0.01,`ramp peaks near ${DT.tlMaxRate} yr/s (life x${wantPeak.toFixed(1)}), got x${tlPeak.toFixed(1)}`);
+  DT.endTimelapse();
+
+  // end of window hands off rather than stalling (a timelapse — or a deep burst — can reach it)
+  DT.reset(); DT.yearsBP=DT.yearsEnd; DT.update(1);
   chk(DT.hasEnded(),'hasEnded() must fire at the end of the window');
   const before=vm.runInContext('Kiosk',ctx).resetCount;
-  DT.yearsBP=DT.yearsEnd+1; G.update(1);
+  DT.yearsBP=DT.yearsEnd; G.update(1);
   chk(vm.runInContext('Kiosk',ctx).resetCount>before,'end of window must trigger the attract reset');
+  DT.reset();
 
   console.log(fail? `deep time: ${fail} FAILURES` : 'deep time: all checks pass'
     + ` (window ${(DT.windowSeconds()/60).toFixed(1)} min, press covers ${Math.round(covered/1000)} ky)`);
 }
+
+// ---- fauna time-lapse trail (ghost afterimages) ----------------------
+// FaunaTrail leaves short SPRITE-ONLY afterimages behind a moving animal, but ONLY while a
+// fast-forward runs. Contract: inert at 1x (no sampling, no draw); on during a timelapse; the
+// per-animal sample ring is a fixed Float32Array reused every frame (allocation-free — never in
+// draw, CLAUDE.md); ghosts replay the animal's own render() at reduced alpha with _ghosting set,
+// so each render() skips its shadow/halo; and the flag/globalAlpha are always restored.
+try{
+  const FT=vm.runInContext('FaunaTrail',ctx), DT=vm.runInContext('DeepTime',ctx);
+  const G=vm.runInContext('game',ctx), Boid=vm.runInContext('Boid',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  chk(FT && typeof FT.active==='function' && typeof FT.renderGhosts==='function','FaunaTrail exists with active()/renderGhosts()');
+  chk(FT.ghosts>=1 && FT.sampleEvery>=1 && FT.alpha0>0 && FT.alpha0<=1,'trail config is sane (ghosts/sampleEvery/alpha0 in range)');
+
+  DT.reset();
+  chk(FT.active()===false,'trail is INERT at the normal 1x pace (no timelapse, no deep burst)');
+  DT.beginTimelapse(DT.yearsBP-20000);
+  chk(FT.active()===true,'trail turns on during a timelapse');
+
+  const m=G.simulation.moas.find(x=>x.alive) || G.simulation.moas[0];
+  chk(!!m && (m instanceof Boid),'a live moa (a Boid) is available to trail');
+  if(m){
+    const px0=m.pos.x, py0=m.pos.y, ga0=ctx.drawingContext.globalAlpha;
+    // Spy the animal's render so ring-building never depends on sprite validity or draws for real:
+    // record the alpha each ghost is replayed at, and whether _ghosting was set during it.
+    const spy={calls:0, alphas:[], sawFlag:false};
+    m.render=function(){ spy.calls++; spy.alphas.push(+ctx.drawingContext.globalAlpha); if(FT._ghosting) spy.sawFlag=true; };
+    ctx.drawingContext.globalAlpha=1;
+    m._trailX=null; ctx.frameCount++; FT.renderGhosts(m);      // lazy-arm the ring
+    const buf=m._trailX;
+    chk(buf && (buf instanceof Float32Array) && buf.length===FT.ghosts,'the sample ring is a fixed-length Float32Array');
+    // Walk the animal across several sampling windows: the ring must record the motion and be REUSED.
+    for(let w=0; w<FT.ghosts+1; w++){ m.pos.x+=40; m.pos.y+=8; ctx.frameCount+=FT.sampleEvery; FT.renderGhosts(m); }
+    delete m.render;                                            // restore the prototype render
+    chk(m._trailX===buf,'the ring is reused across frames (no per-frame allocation)');
+    let spread=0; for(let i=0;i<buf.length;i++) spread=Math.max(spread,Math.abs(buf[i]-m.pos.x));
+    chk(spread>3,`a moving animal spreads its samples into a trail (max ${spread.toFixed(0)}px behind)`);
+    chk(spy.calls>=1,`ghosts are replayed as extra renders (${spy.calls} across the run)`);
+    chk(spy.alphas.length>=1 && spy.alphas.every(a=>a<0.999),'every ghost is drawn at reduced alpha (an afterimage, not a solid duplicate)');
+    chk(spy.sawFlag,'_ghosting is set while a ghost draws, so render() skips its shadow/halo (sprite-only)');
+    chk(FT._ghosting===false,'_ghosting is cleared once renderGhosts returns');
+    chk(ctx.drawingContext.globalAlpha===1,'renderGhosts restores globalAlpha after drawing');
+    // The REAL render path (real sprite selection + projection) must not throw for a ghost.
+    let threw=null; try{ ctx.drawingContext.globalAlpha=1; FT.renderGhosts(m); }catch(e){ threw=e.message; }
+    chk(!threw,'the real render path draws ghosts without throwing'+(threw?` (${threw})`:''));
+    m.pos.x=px0; m.pos.y=py0; ctx.drawingContext.globalAlpha=ga0;
+  }
+  DT.endTimelapse(); DT.reset();
+  console.log(fail? `fauna trail: ${fail} FAILURES` : 'fauna trail: sprite-only afterimages, on only in fast-forward, ring reused (no per-frame alloc)');
+}catch(e){ console.log('fauna trail: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
+
+// ---- per-species boost seeding (§7.3) --------------------------------
+// Simulation.seedSpecies plants the ONE named type into any biome whose palette lists it.
+try{
+  const G=vm.runInContext('game',ctx), PT=vm.runInContext('PLANT_TYPES',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const sim=G.simulation;
+  chk(typeof sim.seedSpecies==='function','Simulation.seedSpecies exists');
+  // Find a type some biome palette actually supports (robust to palette edits) and confirm it plants.
+  let key=null, n=0;
+  for(const t of Object.keys(PT)){ n=sim.seedSpecies(t,6); if(n>0){ key=t; break; } }
+  chk(!!key && n>0,`seedSpecies plants a palette species (${key||'none'} x${n})`);
+  if(key){
+    const added=sim.plants.filter(p=>p.alive && p.type===key).length;
+    chk(added>=n,`the seeded plants are the requested species (${added} ${key})`);
+  }
+  chk(sim.seedSpecies('not_a_real_plant', 5)===0,'seedSpecies of an unknown type seeds nothing');
+  chk(sim.seedSpecies(key||'tussock', 0)===0,'seedSpecies with count 0 seeds nothing');
+  console.log(fail? `seedSpecies: ${fail} FAILURES` : 'seedSpecies: plants the named species where its habitat supports it');
+}catch(e){ console.log('SEEDSPECIES FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- second-screen bus: the boost drives the sim ---------------------
+// BroadcastChannel is absent in the harness so the module is otherwise inert (reply() no-ops), but
+// the boost's sim-side effects — regime-fit gate → per-species seed → ramped timelapse — still run.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx),
+        TB=vm.runInContext('TMBus',ctx), PT=vm.runInContext('PLANT_TYPES',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  chk(TB && typeof TB.boost==='function','TMBus.boost is callable');
+  // an interglacial year + a warm species → a MATCHED boost (seeds generously + starts a timelapse)
+  DT.seekTo(122000);
+  let key=null;
+  for(const t of Object.keys(PT)){ if(PT[t].coldTolerance<=0.65 && G.simulation.seedSpecies(t,1)>0){ key=t; break; } }
+  chk(!!key,'a warm species is placeable for the boost test');
+  const before=G.simulation.plants.filter(p=>p.alive).length;
+  TB.boost({ plantKey: key||'Totara' });
+  chk(DT.isTimelapsing(),'a boost begins a timelapse');
+  chk(DT._tlTarget<122000,'the timelapse targets a younger regime boundary');
+  const after=G.simulation.plants.filter(p=>p.alive).length;
+  chk(after>before,`a matched boost seeds the chosen species (${after-before} added)`);
+  // Boost OUTLINE highlight: the chosen plant marked; helpers present; render must stay safe.
+  const ES=vm.runInContext('EntitySprites',ctx);
+  chk(G._boostHi && G._boostHi.keys && G._boostHi.keys.has(key||'Totara'),'a boost marks the chosen species for the outline highlight');
+  chk(ES && typeof ES.boostOutline==='function' && typeof ES.drawSpriteOutline==='function','EntitySprites has the outline helpers');
+  FRAME(ctx.draw);   // render with the highlight active — boostOutline is a safe no-op with GL off in the harness
+  DT.endTimelapse();
+  // Fauna coupling (§9.3): a matched Tōtara boost RECRUITS its linked harrier (spec §5).
+  DT.seekTo(122000); G._boostHi=null;
+  chk(typeof G.simulation.boostFauna==='function','Simulation.boostFauna exists');
+  const eB=G.simulation.countAliveEagles();
+  TB.boost({ plantKey:'Totara' });                 // Totara (warm) matched at the 122ka interglacial → recruits harrier
+  const eA=G.simulation.countAliveEagles();
+  chk(eA>eB,`a matched boost recruits the linked fauna (harriers ${eB}→${eA})`);
+  DT.endTimelapse(); DT.reset(); G._boostHi=null; G.resetEcosystem();
+  console.log(fail? `bus boost: ${fail} FAILURES` : 'bus boost: gate → per-species seed → ramped timelapse + outline highlight');
+}catch(e){ console.log('BUS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- biomes: one table, and the bands actually reachable --------------
 // There were two biome tables: levelDef.biomes (which renders) and a BIOMES

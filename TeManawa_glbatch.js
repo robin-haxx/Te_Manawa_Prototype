@@ -65,13 +65,20 @@ const GLBatch = {
   _edgeMarginPx: 0,      // marginFrac × min(W,H), recomputed each begin()
 
   // GL objects
-  _prog: null, _aPos: 0, _aUV: 1, _aCol: 2, _uSampler: null,
+  _prog: null, _aPos: 0, _aUV: 1, _aCol: 2, _aSil: 3, _uSampler: null,
   _vbo: null,
   _tex: new Map(),       // source HTMLCanvasElement -> { tex, w, h }
   _discTex: null,        // baked soft-disc texture for captured ellipses (shadows/halos)
 
-  // Batch buffer: interleaved [x, y, u, v, r, g, b, a] per vertex, 6 verts / quad.
-  FLOATS_PER_VERT: 8,
+  // Silhouette mode: while true, a captured sprite quad outputs the per-quad colour where the
+  // texture is opaque (a pure-colour cut-out, alpha-hardened) instead of the texel — the field the
+  // second-screen boost outline uses (EntitySprites.drawSpriteOutline stamps a ring of these UNDER
+  // the sprite, all in THIS batch, so an outline costs no extra draw call or pass). Ported from Mauri.
+  _silhouette: false,
+
+  // Batch buffer: interleaved [x, y, u, v, r, g, b, a, sil] per vertex, 6 verts / quad.
+  // sil is 1 for a silhouette (pure-colour) quad, 0 for a normal textured one.
+  FLOATS_PER_VERT: 9,
   _cap: 0, _verts: null, _n: 0,
   _curTex: null,
 
@@ -255,16 +262,25 @@ const GLBatch = {
 
   _buildProgram() {
     const gl = this.gl;
-    const vs = 'attribute vec2 aPos;attribute vec2 aUV;attribute vec4 aCol;' +
-      'varying vec2 vUV;varying vec4 vCol;void main(){vUV=aUV;vCol=aCol;gl_Position=vec4(aPos,0.0,1.0);}';
-    const fs = 'precision mediump float;varying vec2 vUV;varying vec4 vCol;uniform sampler2D uTex;' +
-      'void main(){vec4 t=texture2D(uTex,vUV);gl_FragColor=vec4(t.rgb*vCol.rgb,t.a*vCol.a);}';
+    const vs = 'attribute vec2 aPos;attribute vec2 aUV;attribute vec4 aCol;attribute float aSil;' +
+      'varying vec2 vUV;varying vec4 vCol;varying float vSil;' +
+      'void main(){vUV=aUV;vCol=aCol;vSil=aSil;gl_Position=vec4(aPos,0.0,1.0);}';
+    // Normal (vSil=0): texel.rgb × colour. Silhouette (vSil=1): the per-quad colour ALONE where the
+    // texel is opaque — a pure-colour cut-out for the boost outline ring. Silhouette alpha is hardened
+    // (smoothstep) so a soft sprite edge still cuts a solid outline. mix() with vSil=0 collapses to the
+    // normal path, so a non-outlined sprite pays only a trivial per-fragment MAD — no extra pass.
+    const fs = 'precision mediump float;varying vec2 vUV;varying vec4 vCol;varying float vSil;uniform sampler2D uTex;' +
+      'void main(){vec4 t=texture2D(uTex,vUV);' +
+      'float a=mix(t.a,smoothstep(0.06,0.30,t.a),vSil)*vCol.a;' +
+      'vec3 rgb=mix(t.rgb*vCol.rgb,vCol.rgb,vSil);' +
+      'gl_FragColor=vec4(rgb,a);}';
     const co = (ty, src) => { const s = gl.createShader(ty); gl.shaderSource(s, src); gl.compileShader(s);
       if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
     const p = gl.createProgram();
     gl.attachShader(p, co(gl.VERTEX_SHADER, vs));
     gl.attachShader(p, co(gl.FRAGMENT_SHADER, fs));
-    gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aUV'); gl.bindAttribLocation(p, 2, 'aCol');
+    gl.bindAttribLocation(p, 0, 'aPos'); gl.bindAttribLocation(p, 1, 'aUV');
+    gl.bindAttribLocation(p, 2, 'aCol'); gl.bindAttribLocation(p, 3, 'aSil');
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     this._prog = p; this._uSampler = gl.getUniformLocation(p, 'uTex');
@@ -415,9 +431,10 @@ const GLBatch = {
     const sxBR = SX(lx1, ly1), syBR = SY(lx1, ly1);
     const sxBL = SX(lx0, ly1), syBL = SY(lx0, ly1);
     const V = this._verts; let o = this._n * this.FLOATS_PER_VERT;
+    const sil = this._silhouette ? 1 : 0;
     const put = (sx, sy, u, v) => {
       const x = (sx / W) * 2 - 1, y = 1 - (sy / H) * 2, va = edgeA(sx, sy);
-      V[o]=x; V[o+1]=y; V[o+2]=u; V[o+3]=v; V[o+4]=r; V[o+5]=g; V[o+6]=b; V[o+7]=va; o+=8;
+      V[o]=x; V[o+1]=y; V[o+2]=u; V[o+3]=v; V[o+4]=r; V[o+5]=g; V[o+6]=b; V[o+7]=va; V[o+8]=sil; o+=9;
     };
     put(sxTL, syTL, u0, v0); put(sxTR, syTR, u1, v0); put(sxBR, syBR, u1, v1);
     put(sxTL, syTL, u0, v0); put(sxBR, syBR, u1, v1); put(sxBL, syBL, u0, v1);
@@ -434,6 +451,7 @@ const GLBatch = {
     gl.enableVertexAttribArray(this._aPos); gl.vertexAttribPointer(this._aPos, 2, gl.FLOAT, false, stride, 0);
     gl.enableVertexAttribArray(this._aUV);  gl.vertexAttribPointer(this._aUV,  2, gl.FLOAT, false, stride, 2 * F);
     gl.enableVertexAttribArray(this._aCol); gl.vertexAttribPointer(this._aCol, 4, gl.FLOAT, false, stride, 4 * F);
+    gl.enableVertexAttribArray(this._aSil); gl.vertexAttribPointer(this._aSil, 1, gl.FLOAT, false, stride, 8 * F);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this._curTex);
     gl.uniform1i(this._uSampler, 0);

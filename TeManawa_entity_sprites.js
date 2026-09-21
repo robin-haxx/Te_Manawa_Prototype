@@ -244,6 +244,56 @@ const ART_SETS = {
 // ============================================
 
 const EntitySprites = {
+  // ============================================================
+  // BOOST OUTLINE — a coloured silhouette ring under a boosted sprite.
+  // ------------------------------------------------------------
+  // The second-screen boost (md/TEMANAWA_SECOND_SCREEN.md) rings the chosen plant + its linked
+  // birds. Ported from Mauri's field-guide outline: in GL mode a ring of pure-colour SILHOUETTE
+  // quads (GLBatch._silhouette) is stamped UNDER the sprite, into the SAME entity batch — so an
+  // outline adds NO draw call and NO extra pass, only a handful of quads for the few boosted
+  // entities. 2D mode (?render=2d) has no silhouette shader, so the ring is simply skipped.
+  // ============================================================
+
+  // Stamp a sprite-shaped colour ring around the CURRENT origin (caller centres the sprite at 0,0,
+  // or boostOutline wraps a translate). `thickness` is in source-sprite px so the ring keeps a
+  // constant proportion at any zoom. `col` is [r,g,b]; alpha gently pulses unless given.
+  drawSpriteOutline(baseSprite, drawW, drawH, col, thickness = 6, alpha = null) {
+    if (!baseSprite || !col) return;
+    if (!(typeof GLBatch !== 'undefined' && GLBatch.enabled && GLBatch._open)) return;   // GL-only (see header)
+    const a = (alpha != null) ? alpha : 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(frameCount * 0.12));
+    const off = thickness * (drawW / (baseSprite.width || drawW));
+    const steps = 16;
+    push();
+    imageMode(CENTER);
+    tint(col[0], col[1], col[2], 255 * a);      // per-quad colour — free on GL, never a bake
+    GLBatch._silhouette = true;
+    for (let i = 0; i < steps; i++) {
+      const ang = (i / steps) * TWO_PI;
+      image(baseSprite, Math.cos(ang) * off, Math.sin(ang) * off, drawW, drawH);
+    }
+    GLBatch._silhouette = false;
+    noTint();
+    pop();
+  },
+
+  // Gate + stamp for the boost highlight. Called from an entity render() just before it draws its
+  // own sprite: outlines this entity iff its species key is in the live boost set (`game._boostHi`)
+  // and the window is open. (cx,cy) is the sprite centre in the current transform (default 0,0, for
+  // fauna that draw imageMode(CENTER) at the origin). Allocation-free and push-free on the common
+  // no-boost path — it returns before touching the matrix.
+  boostOutline(entity, sprite, drawW, drawH, cx, cy) {
+    const g = (typeof game !== 'undefined') ? game : null;
+    const hi = g && g._boostHi;
+    if (!hi || !sprite) return;
+    if (typeof millis === 'function' && millis() > hi.until) return;
+    const key = entity && (entity.speciesKey || entity.type);
+    if (!key || !hi.keys.has(key)) return;
+    push();
+    if (cx !== undefined) translate(cx, cy || 0);
+    this.drawSpriteOutline(sprite, drawW, drawH, hi.color);
+    pop();
+  },
+
   // Generic moa set. No longer authored art — load() aliases it to the
   // stout-legged illustration so the per-genus tint path (getMoaSpriteTinted,
   // exercised by the boot harness) has valid source frames. In-game every
@@ -573,18 +623,19 @@ const EntitySprites = {
     return this._resolveMoaSet(variant).faceSign;
   },
 
-  // animTime span of ONE full eating cel cycle for a variant (frames ÷ cadence).
-  // The moa uses this to hold a bite for a complete eating animation before moving
-  // on (TeManawa_moa.js executeState). Measured in animTime — the same clock the
-  // renderer indexes frames from — so it is exactly one cycle at any pace, and it
-  // resolves through the same fallback as getMoaSprite so it matches the art that
-  // actually plays (a set with no dedicated eating art falls back to walk frames).
-  moaEatCyclePeriod(variant = null) {
+  // animTime span of ONE full cel cycle of a STATE for a variant (frames ÷ cadence).
+  // Measured in animTime — the same clock the renderer indexes frames from — so it is
+  // exactly one cycle at any pace, and it resolves through the same fallback as
+  // getMoaSprite so it matches the art that actually plays. Used to hold a full eating
+  // cycle before moving on (executeState) and to latch the walk pose to a clean cycle
+  // instead of strobing when speed dithers across the gate (Boid.update walk latch).
+  moaCyclePeriod(state, variant = null) {
     const set = this._resolveMoaSet(variant);
-    const list = this._framesForState(set, 'eating');
+    const list = this._framesForState(set, state);
     const n = (list && list.length) ? list.length : 1;
     return n / this.animation.moaWalkSpeed;
   },
+  moaEatCyclePeriod(variant = null) { return this.moaCyclePeriod('eating', variant); },
 
   // Bake one tinted copy of a loaded frame into an offscreen buffer, so the tint
   // is applied once here instead of per draw. Falls back to the untinted frame if
