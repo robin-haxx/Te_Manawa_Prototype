@@ -7,9 +7,11 @@ research to draw on rather than build from.
 
 **Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka).
 The land morph, the glacial-cycle climate, five buttons, habitat health and the kererū dispersal
-loop are all running; the frontier is the fauna cast, the flora art, the disturbance clocks, and
-the **second-screen overhaul** (a 1080p touchscreen; the spec + page + bus are built, the sim
-half — paused geology, per-species boost — is the open frontier: `TEMANAWA_SECOND_SCREEN.md`).
+loop are all running, as is the **second-screen overhaul** — a 1080p touchscreen console over a
+`BroadcastChannel` bus, with the sim side built (paused geology, per-species boost, ramped
+timelapse to the next glacial/interglacial), harness-green (`TEMANAWA_SECOND_SCREEN.md`). The
+frontier now is the flora art, the disturbance clocks, and the tuning passes (interaction health;
+the second-screen boost feel — ramp, seeding, fauna coupling).
 
 **New here?** Read `TEMANAWA_PLAN_V3.md` (the spine — current design, honest phase status, and the
 road ahead), or `TEMANAWA_PEDAGOGY.md` for the visitor's-eye view of *what the wall teaches today*.

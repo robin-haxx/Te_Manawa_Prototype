@@ -173,12 +173,14 @@ bus is only the cross-window channel.
 | **Bus receiver** | `TeManawa_bus.js` (new, loaded after `sketch.js`) | Opens the channel, dispatches intents to `InstallHUD.press` / new entry points, emits `clock`/`goal`/`timelapse` telemetry. Guarded so the diorama runs identically with no screen present |
 | **Server** | `tools/serve.js` | Now serves `.webm`/`.mp4` (highlight loops) alongside the existing types |
 
-**Two load-bearing sim changes it drives** (the open frontier, `SECOND_SCREEN.md` §7):
-the **geology pauses** (`DeepTime` holds `yearsBP` until a timelapse), and the boost is
-**per-species** (`Simulation.seedSpecies`) and runs a **500→5000 yr/s ramp to the next
-glacial/interglacial** (a regime-boundary finder in `climate.js`). Both ripple into the climate,
-the terrain morph, the eruptions and the short-dwell budget (§5.4), so they want deliberate
-tuning — the ramp stays inside the photosensitivity slew (§3, `PLAN_V3` §7).
+**Two load-bearing sim changes it drives — now built** (`SECOND_SCREEN.md` §7, harness-green):
+the **geology pauses** (`DeepTime.update` holds `yearsBP` and returns a life scale so the cast
+lives on; a timelapse or a legacy deep burst moves it), and the boost is **per-species**
+(`Simulation.seedSpecies`) and runs a **500→5000 yr/s ramp to the next glacial/interglacial**
+(`Climate.nextRegimeBoundary` + `DeepTime.beginTimelapse`), eruption-aware. Both ripple into the
+climate, the terrain morph, the eruptions and the short-dwell budget (§5.4); the ramp stays inside
+the photosensitivity slew (§3, `PLAN_V3` §7). What remains is a data-tunable feel pass (`TM_BOOST`,
+`DeepTime.tl*`), not new machinery.
 
 ---
 

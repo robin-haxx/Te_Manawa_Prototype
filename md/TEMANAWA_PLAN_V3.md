@@ -455,8 +455,9 @@ others. Honest current state:
 | **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | ✅ **Built** — spec + touchscreen page + `BroadcastChannel` bus (`TEMANAWA_SECOND_SCREEN.md`, `secondscreen/`, `TeManawa_bus.js`), **and the sim overhaul (§7)**: geology **paused by default**, `DeepTime.beginTimelapse` 500→5000 yr/s ramp, `Climate.nextRegimeBoundary`, `Simulation.seedSpecies`, the real regime-fit boost + eruption-aware ending, live telemetry. Bootcheck extended & green; browser-verified end-to-end. Remaining: the **tuning pass** (ramp feel, seeding strength, fauna coupling) |
 | **8 — Kiosk** | hardening, audio, lockdown | **Not started** — audio still preloads 6.5 MB; `mapGrid` still 512 |
 
-The true frontier is narrow and specific: **the fauna cast turning on, the flora art, the disturbance
-clocks, the back half of the interaction loop, and the second-screen sim overhaul.**
+The true frontier is narrow and specific: **the flora art, the disturbance clocks, and the tuning
+passes** — the interaction/health feel and the second-screen boost feel (ramp, seeding, fauna
+coupling). The fauna cast and the second-screen sim overhaul are now built.
 
 ---
 
@@ -494,9 +495,10 @@ into the **land and the cast**, where a visitor reads them in forty seconds with
    (`Climate.nextRegimeBoundary` + `DeepTime.beginTimelapse`), seeds the **chosen species**
    (`Simulation.seedSpecies`) behind a per-species regime-fit gate, and is **eruption-aware** (stops
    short, fires the ash beat a moment later). What's left is the **load-bearing tuning pass** — the
-   ramp feel and photosensitivity slew, seeding strength, and the fauna coupling (a plant boost lifting
-   its linked birds, §9.3) — the paused clock's ripples into climate, the morph and the short-dwell
-   pedagogy are now settled in code and green in the harness.
+   ramp feel and photosensitivity slew, seeding strength, and fauna-coupling *strength* (`boostFauna`
+   is wired — a matched boost recruits its linked birds; how many is the open number, §9.3) — the
+   paused clock's ripples into climate, the morph and the short-dwell pedagogy are now settled in code
+   and green in the harness.
 8. **Kiosk hardening + audio** (Phase 8): preload only the ambient bed and lazy-load the rest (the biggest
    cold-boot fix outstanding), drop `mapGrid` 512 → 256, photosensitivity and touch-target sign-off.
 9. **Interpretation + mana whenua co-design** (§16): the mute layer — nine moa and twelve plants carry

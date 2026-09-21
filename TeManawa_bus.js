@@ -80,6 +80,16 @@ const TMBus = (function () {
   // ==========================================================
   function onMessage(m) {
     const g = G();
+
+    // A console message IS visitor presence: reset the diorama's idle/attract timer, exactly as a
+    // local keypress does (Game.handleKey → Kiosk.noteInput). WITHOUT this, someone actively using
+    // the touchscreen still trips the 180 s idle → attract reset, because their input reaches the
+    // sim only over the bus, never as a local keydown/mouse event. Every inbound message is a
+    // console-originated intent or `hello` (BroadcastChannel never delivers a channel its own posts,
+    // so the sim's own telemetry can't loop back and hold the screen awake), so noting all of them
+    // is correct — the console posts only on a user action or on load, never on a timer.
+    if (typeof Kiosk !== 'undefined' && typeof Kiosk.noteInput === 'function') Kiosk.noteInput();
+
     switch (m.type) {
       case 'hello':
         emitClock(); emitGoal(); break;
@@ -301,6 +311,7 @@ const TMBus = (function () {
   return {
     available() { return !!ch; },
     emitClock, emitGoal, emitTimelapse, nextRegimeBoundary,
-    boost: onBoost   // testable entry point (also usable from the console)
+    boost: onBoost,       // testable entry point (also usable from the console)
+    dispatch: onMessage   // the channel's message handler, exposed so bootcheck can drive intents
   };
 })();

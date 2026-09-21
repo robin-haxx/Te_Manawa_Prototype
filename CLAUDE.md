@@ -212,7 +212,10 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 The build runs ahead of the old phase ledger — see `md/TEMANAWA_PLAN_V3.md` §13 for the honest
 status. Done or substantially built: the terrain (SVG skeleton + uplift/incision/emergence morph +
 3/4 cel look + water layer), the glacial-cycle climate to 1 Ma, forest contraction, the four
-eruptions, the **five buttons**, habitat health, and the kererū dispersal loop. The **frontier** is
+eruptions, the **five buttons**, habitat health, the kererū dispersal loop, and the **second-screen
+interaction overhaul** (a 1080p touchscreen console over a `BroadcastChannel` bus — geology paused
+until a boost, per-species boost, ramped timelapse to the next glacial/interglacial; built and
+harness-green — see `md/TEMANAWA_SECOND_SCREEN.md`). The **frontier** is
 four things: the **fauna cast** turning on (the scaffold now founds a 9-species grazer-guild mix — 5 moa +
 the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli` + the North Island
 brown kiwi `Apteryx mantelli` + Finsch's duck `Chenonetta finschi`, all moa-guild birds on dedicated

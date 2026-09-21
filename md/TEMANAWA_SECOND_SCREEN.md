@@ -1,6 +1,9 @@
 # Te Manawa — the second screen and the interaction overhaul
 
-**Status:** design spec, ready to build against. Authored 2026-09-20.
+**Status:** spec **and built implementation** — the touchscreen (`secondscreen/`), the
+`BroadcastChannel` bus (`TeManawa_bus.js`) and the sim overhaul (§7: paused clock, per-species
+boost, ramped timelapse, regime-boundary goal) are all built and harness-green. What remains is a
+data-tunable feel pass and the encyclopedia content (§8–§9). Authored 2026-09-20, updated 2026-09-21.
 Supersedes the "five buttons" model in `TEMANAWA_PLAN_V3.md` §6 (which now points here).
 
 > This document is the spine for the **second touchscreen** — a 1080p, touch, no-network
@@ -312,58 +315,23 @@ the "jump the geology forward hard" control, distinct from the boost's measured 
 
 ---
 
-## 7. What the sim needs (the "proceed with the build" work)
+## 7. The sim overhaul — built
 
-This is the sim-side change list. The screen and the bus receiver are built; these are the
-behaviours the bus intents drive. Each is scoped to a file so the build can proceed piece by
-piece. **None of this is wired blind — the risky parts (the paused clock, the rate ramp, the
-boundary engine) are called out because they ripple into climate, the terrain morph, the
-eruptions and the "readable in a short dwell" pedagogy, so they want deliberate tuning.**
+Everything below is **built and harness-green** (`bootcheck.js`: `seedSpecies` · `bus boost` ·
+`fauna trail`; the clock now reads a paused `1000000 BP` after 120 frames). What remains is a
+data-tunable feel pass (§9), not new machinery. Where each piece lives:
 
-### 7.1 A regime-boundary finder — `TeManawa_climate.js`
+| Piece | Where | What it does |
+|---|---|---|
+| **Regime-boundary finder** | `Climate.nextRegimeBoundary(yearsBP, endYearsBP)` (pure) | Scans younger, bisects the interglacial/glacial crossing to ~1 yr. The goal readout **and** the timelapse target both read it, so they can't disagree. `Climate.regimeThreshold` (0.5) is the cut. |
+| **Paused clock + ramp** | `TeManawa_time.js` — `beginTimelapse` / `_tlRate` / `update` | Geology holds `yearsBP` by default; a timelapse eases 500→5000 yr/s over 20 s to a target. `update()` returns a **life scale** (never 0), so the cast lives on at 1× when paused and keeps pace during a timelapse (§9.7). The morph rides the existing throttled driver as the year drifts (same path a legacy deep burst uses). |
+| **Per-species seed** | `Simulation.seedSpecies(plantKey, n)` | Seeds the *named* type only where its own biome palette supports it, land-only, density-gated. |
+| **Fauna coupling** | `Simulation.boostFauna(keys, n)` | A matched boost also recruits a few of the birds the plant supports (§5 links), founded on-screen. |
+| **The boost** | `TeManawa_bus.js` `onBoost` + `TM_BOOST` | Regime-fit gate → `boostResult` → seed (matched only) → fauna recruit → the existing regime-fit desaturation lesson → a climate-keyed coloured outline on the plant + its birds (`_boostHi` → `EntitySprites.boostOutline`, drawn by moa/eagle/kererū/plant) → ramped timelapse. |
+| **Eruption-aware ending** | `TeManawa_bus.js` `beginBoostTimelapse` | If an unfired eruption falls before the boundary, the timelapse stops ~300 yr short (`eruptionLeadYears`) and the eruption fires ~2 s after the result settles (`_pendingEruption` → `Game._fireEruptionInPlace`, §6.3). |
+| **Telemetry** | `TeManawa_bus.js` heartbeat (250 ms `setInterval`) | Pushes `clock` + `goal` ~4/s, `timelapse` while one runs, and the `achieved` verdict the moment it ends — off the bus, never the 60 fps draw path. |
 
-Add a pure helper: given `yearsBP` and the play direction (younger), return the next year at
-which `glacialIndexAt` crosses the interglacial/glacial threshold (reuse `stageOf`, or a
-single 0.5 cut). Scans the `ANCHORS`/samples the curve. Pure, testable in `bootcheck.js`
-against known terminations (e.g. Termination II ≈ 128 ka, MIS 5e ≈ 122 ka).
-
-### 7.2 The paused clock + the ramp — `TeManawa_time.js`
-
-- **Pause by default.** `DeepTime.update()` holds `yearsBP` unless a timelapse (or an
-  eruption seek) is active. Add `paused`/`_timelapse` state; the ambient sim keeps running at
-  the fixed date.
-- **Ramped timelapse.** Replace the flat `yrPerSec × deepMult` with
-  `beginTimelapse(targetYearsBP)` that eases the *rate* from 500 → 5000 yr/s over ~20 s and
-  stops at `targetYearsBP` (or the eruption cutoff, §6.3). Keep it photosensitivity-safe
-  (ramp ≥ 500 ms, ≤ 3 luminance transitions/s — `TEMANAWA_BUILD_V3.md` §3).
-- The morph is heavy and synchronous (`terrain.morphTo`). **As built**, a timelapse advances
-  `yearsBP` and the existing throttled morph driver (`Game._morphTick` / `shouldMorphBake`) re-bakes
-  as the year drifts — exactly the path a legacy deep burst already uses for fast-forward, so no new
-  morph machinery was needed and the behaviour is proven. When paused, `yearsBP` holds, so the driver
-  never fires and the land is static (the user's requirement). If the throttled re-bakes read as
-  hitchy under the faster 5000 yr/s crest, the fallback is destination-only morphing (suppress the
-  driver during a timelapse, force one bake at the target) — a tuning follow-up, not wired now.
-
-### 7.3 Per-species seeding — `TeManawa_simulation.js`
-
-Add `seedSpecies(plantKey, count)` beside `seedGrowth`: seeds the *named* type into any biome
-whose palette contains it, on land, with the same density gate. The boost calls this instead
-of the warm/cold-set-wide `seedGrowth`. (Fauna coupling — lifting the linked animals'
-recruitment — is a follow-on in the fauna files.)
-
-### 7.4 The bus receiver + dispatcher — `TeManawa_bus.js` (new; wired from `setup()`)
-
-A small classic-script module: opens the `'temanawa'` channel, dispatches §3.1 intents to
-`InstallHUD.press` / the new entry points, and pushes §3.2 telemetry (a `clock`/`goal` tick
-each frame-ish, plus event replies). Added to `index.html` load order **after** `sketch.js`
-(it needs `game`, `InstallHUD`, `DeepTime`). Guarded so the diorama runs identically with no
-second screen present. **Shipped in this pass as: storm/eruption/deep wired to existing
-seams; habitat/plant/boost as marked stubs pointing here.**
-
-### 7.5 Telemetry emit — `TeManawa_sketch.js` (`Game.update` tail)
-
-Once per few frames, `TMBus.emitClock()` and, while a timelapse runs, `emitTimelapse()`.
-Cheap; never allocates in `draw()`.
+All boost/timelapse numbers are console-tunable: `TM_BOOST` (bus) and `DeepTime.tl*` (time).
 
 ---
 
@@ -391,9 +359,10 @@ page logic changes when you do.
    desaturates (the existing regime-fit lesson), consistent with today's wrong FOREST/TUSSOCK press.
    Neutral pioneers (mānuka/flax) count as matched in either climate. All in `TeManawa_bus.js`'s
    `TM_BOOST`, console-tunable.
-3. **Fauna coupling** — does a plant boost actively spawn/refound its linked fauna, or only
-   improve their odds? (§7.3 follow-on — the boost seeds the *plant* today; the fauna lift is
-   still unwired, a fauna-file tuning task.)
+3. ✅ **Fauna coupling** — RESOLVED: a matched boost recruits `TM_BOOST.faunaRecruit` (2) of each
+   linked bird via `Simulation.boostFauna`, founded on-screen through the founder paths; a
+   mismatched boost recruits none. Links in `TM_BOOST.faunaLinks` (a boost message may override with
+   `m.fauna`). Open only as a *tuning* question: how many, and whether to top up vs hard-found.
 4. **Switch hardware** — momentary up/down vs absolute 5-position (§1.1); set in `input.js`.
 5. ✅ **The readout placement** — RESOLVED (partly): the **goal is now shown on the SIM/diorama
    screen**, floated **above the bottom timeline** in the same format as the year (FreckleFace, dark

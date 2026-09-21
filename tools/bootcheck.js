@@ -1278,8 +1278,19 @@ try{
   TB.boost({ plantKey:'Totara' });                 // Totara (warm) matched at the 122ka interglacial → recruits harrier
   const eA=G.simulation.countAliveEagles();
   chk(eA>eB,`a matched boost recruits the linked fauna (harriers ${eB}→${eA})`);
-  DT.endTimelapse(); DT.reset(); G._boostHi=null; G.resetEcosystem();
-  console.log(fail? `bus boost: ${fail} FAILURES` : 'bus boost: gate → per-species seed → ramped timelapse + outline highlight');
+  DT.endTimelapse();
+  // Idle-reset: a console intent over the bus IS visitor input, so it must reset the diorama's
+  // idle/attract timer. The bug it guards: pressing buttons on the touchscreen still tripped the
+  // 180 s idle→attract, because bus intents never reached Kiosk.noteInput (only local keys did).
+  const KI=vm.runInContext('Kiosk',ctx);
+  chk(KI && typeof TB.dispatch==='function','Kiosk + TMBus.dispatch present for the idle test');
+  if(KI && typeof TB.dispatch==='function'){
+    KI.lastInputAt = Date.now() - 999000;                                 // pretend the wall has been idle ~16 min
+    TB.dispatch({ type:'plant', habitat:'forest', plantKey:'Totara' });   // a browse intent: no sim effect, but presence
+    chk(Date.now() - KI.lastInputAt < 5000,'a console intent resets the diorama idle/attract timer');
+  }
+  DT.reset(); G._boostHi=null; G.resetEcosystem();
+  console.log(fail? `bus boost: ${fail} FAILURES` : 'bus boost: gate → per-species seed → ramped timelapse + outline highlight; console intents reset idle');
 }catch(e){ console.log('BUS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- biomes: one table, and the bands actually reachable --------------
