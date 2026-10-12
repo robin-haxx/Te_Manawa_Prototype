@@ -346,7 +346,8 @@ data file ships with:
 - **Placeholder** (`description: 'TODO …'`, best-guess `fauna: []`) for every other plant.
 
 Fill `secondscreen/encyclopedia.js` with final names, prose and fauna links; nothing in the
-page logic changes when you do.
+page logic changes when you do. **`TEMANAWA_ENCYCLOPEDIA_FLORA.md`** reviews the roster against the
+research (interglacial vs glacial screens) and drafts card copy and fauna links for every plant.
 
 ---
 

@@ -1,6 +1,6 @@
 # Te Manawa — document index
 
-26 documents. This says which ones are live, which are superseded, and which are
+27 documents. This says which ones are live, which are superseded, and which are
 research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
@@ -61,6 +61,7 @@ reaches the screen — which is deliberately not much.
 | `TEMANAWA_ECOLOGY_OPEN.md` | 413 | Open country, downland, loess |
 | `TEMANAWA_ECOLOGY_FAUNA.md` | 326 | Fauna in ecological context |
 | `TEMANAWA_RESEARCH.md` | 86 | Sources and reading notes. Points at `research/*.pdf` |
+| `TEMANAWA_ENCYCLOPEDIA_FLORA.md` | — | **The second-screen plant roster, checked.** Interglacial/glacial verdict on each habitat's five plants, the boost-gate conflicts, and a per-plant write-up (Esler + deep-time studies + card copy) for `secondscreen/encyclopedia.js` |
 
 Primary sources are the five PDFs in `research/`.
 
