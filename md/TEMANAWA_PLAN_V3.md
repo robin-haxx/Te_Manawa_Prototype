@@ -149,7 +149,7 @@ crown, fan or rosette legible from directly overhead (mamaku/tree-fern — **the
 tōtara, tawa, tī kōuka, harakeke, nīkau, mānuka, black beech, kōwhai). The seven palette species
 (spinifex, pīngao, toetoe, raupō, bracken, short tussock, grey scrub) are a **ground colour + tiling
 micro-texture**, never entities — from above, ground cover *is* colour, and a whole-field colour change
-reads better than a change in the density of small objects. Totara, kawakawa and rewarewa are cut (§15).
+reads better than a change in the density of small objects. Rimu, kawakawa and rewarewa are cut (§15).
 
 **`coldTolerance` does the era work.** Warm/forest types have low tolerance; open-country types have
 high tolerance. The glacial dormancy path suppresses low-tolerance plants as `winterness` climbs, and
@@ -177,6 +177,14 @@ code puts it in `FOREST_TREES`, so the glacial forest-contraction *suppresses* i
 backwards. Making beech hold (or gain) through the cold is the more interesting teaching fix; it touches
 the contraction machinery and a bootcheck assertion, so it is flagged, not yet done.
 
+`[ENCYCLOPEDIA 2026-10-13]` **The second-screen roster is era-framed and the sim now agrees with
+it** (`TEMANAWA_ENCYCLOPEDIA_FLORA.md`). Black beech is a cold species (coldTolerance 0.8, and its
+glacial-stage modifier rises into the cold), which closes the follow-up above. Kōwhai and tī kōuka
+are neutral (0.7), since each sits on one warm and one cold screen. Two **art-sharing types** were
+added: `sedge` (pūrei, *Carex secta*, wetland, on the tussock art) and `wharariki` (mountain flax,
+subalpine, on the flax art). The doc's §5 ranks the remaining omissions: rimu first, then a glacial
+conifer shrub (~26% of southern North Island LGM pollen), then raupō.
+
 **Cover changes two ways, and they teach two different things.** *Browsing prunes; it never clears.* A
 grazer's bite takes a slice of a plant's foliage — the plant gets a little smaller and regrows in place —
 so moa crop the bush without ever clear-felling it (`Plant.consume`; knobs `browseBite`/`browseFloor`).
@@ -199,9 +207,10 @@ have usable art.
 *(The built cast is `TeManawa_fauna_impl` → `TEMANAWA_FAUNA_IMPL.md`.)*
 
 Every animal is a `Boid` subclass on a **two-clock split**: `behave(sim, season, dt)` runs life
-(aging, hunger, breeding, feeding, dispersal) on the **deep-time-warped** clock, while `update(rdt)`
-runs motion/animation on the **real** frame clock — so a 10× fast-forward morphs the world without
-turning the animals into a sped-up cartoon. Reproduction goes through one `Egg` type tagged with
+(aging, breeding, dispersal) on the **deep-time-warped** clock, while `update(rdt)` runs
+motion/animation on the **real** frame clock — so a 10× fast-forward morphs the world without
+turning the animals into a sped-up cartoon. Metabolism (hunger, starvation) also runs on the real
+clock, since feeding is motion; on the life clock every time-lapse starved the grazers (`MISTAKES.md`). Reproduction goes through one `Egg` type tagged with
 `offspringType`. Per-entity UI (bars, hearts, glyphs) is debug-only.
 
 **Three classes are in the code:**
@@ -371,6 +380,10 @@ button paths, so it establishes only on raw alluvium (storm flood, eruption sedi
 time channel shift), and a stand with no fresh disturbance **ages out** (`Plant` senescence). This is the
 rule that finally couples the moving river to the swamp forest. Verified: FOREST press → 0 kahikatea,
 storm → +8, eruption → +6, a static river declines to nothing. Memory: `warp-disturbance-clock`.
+While deep time is MOVING (a boost's time-lapse, a deep burst) the river works its whole floodplain,
+so wetland kahikatea don't age; a kahikatea boost seeds only on the wetland, as a fresh flood. Without
+this every boosted stand aged out inside its own time-lapse (2026-10-14,
+`TEMANAWA_ENCYCLOPEDIA_CARDS.md` gap 2).
 
 **Still deferred here:** only the per-cell `wet`/`open`/`bare` substrate remains unbuilt (the `warp` list
 covers the actual usage). Today `ashCover`, the glacial `forestBand`, the sand-flux, the `warp` clock
@@ -450,7 +463,7 @@ others. Honest current state:
 | **4 — Climate/fields** | glacial cycle + per-cell fields | **Partial** — glacial rebind, climate to 1 Ma, forest contraction **built**; the four `disturb()` fields + `warp` **not built** (§9) |
 | **5 — Flora** | plant table + art | **Partial** — table + spawning **built** (`plant_defs`, populated `plantTypes`); **cover dynamics reworked** so grazing *prunes* (a plant gets smaller, never removed) and *unsuitable habitat* is what makes trees disappear — the glacial forest band die-back now retreats and regrows the forest (§4); **art is placeholder** |
 | **6 — Disturbance** | `disturb()` + `warp`, wire buttons | **Mostly built** — eruption clear/regrow (`ashCover`) + the **`warp` clock** (`disturb`/`warpAt`, real-time-paced recovery) + storm windthrow aftermath + the **wetland bloom** all built (§9). Remaining: `wet`/`open`/`bare` per-cell fields, kahikatea river-recruitment |
-| **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **7 grazers** (5 moa + North Island goose + mōho/NI takahē) **+ 3 flyers** (kererū, kōkako, huia) with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier); **per-species cold adaptation now live** (`seasonalModifiers` re-keyed by glacial phase). Remaining: harrier flight behaviour, the *Dinornis* dimorphism pair |
+| **7 — Fauna** | seven-species cast, predator corrections | **Mostly built** — the founder mix now spawns **8 grazers** (4 **North Island** moa: giant, little bush, Mantell's, stout-legged; the South Island upland and heavy-footed moa were dropped 2026-10-13 — plus North Island goose, mōho/NI takahē, kiwi, Finsch's duck) **+ 4 flyers** (kererū, kōkako, huia, tūī), each bird linked to one second-screen plant (`TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6), with a no-extinction feedback model; **raptor identity resolved** (Eyles' harrier); **per-species cold adaptation now live** (`seasonalModifiers` re-keyed by glacial phase). Remaining: harrier flight behaviour, the *Dinornis* dimorphism pair |
 | **+ Interaction** | five buttons, health, kererū | ✅ **Built** (steps 1–4); tuning (step 5) open — *new track, not in the v2.1 ledger* |
 | **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | ✅ **Built** — spec + touchscreen page + `BroadcastChannel` bus (`TEMANAWA_SECOND_SCREEN.md`, `secondscreen/`, `TeManawa_bus.js`), **and the sim overhaul (§7)**: geology **paused by default**, `DeepTime.beginTimelapse` 500→5000 yr/s ramp, `Climate.nextRegimeBoundary`, `Simulation.seedSpecies`, the real regime-fit boost + eruption-aware ending, live telemetry. Bootcheck extended & green; browser-verified end-to-end. Remaining: the **tuning pass** (ramp feel, seeding strength, fauna coupling) |
 | **8 — Kiosk** | hardening, audio, lockdown | **Not started** — audio still preloads 6.5 MB; `mapGrid` still 512 |
@@ -515,7 +528,7 @@ Fertility as a second axis; the light-at-
 ground-level field; five wetland classes (collapsed to a single `wet` axis, itself deferred); the 1.8 m
 zonation; the dune-phase chronology as a mechanic; the divaricate/moa-browse debate (browse is modelled
 only as simple pruning — §4 — not the co-evolutionary arms race in plant architecture); ~20 plant species
-indistinguishable from above (including Totara, kawakawa, rewarewa); then-and-now framing. **Fire is a
+indistinguishable from above (including rimu, kawakawa, rewarewa); then-and-now framing. **Fire is a
 correction, not a cut** — no ignition source in this window, volcanic only. **The wetland bloom** (finding
 #4) is deferred, not cut — it waits on a wetland biome, with a hook left in the eruption code (§8).
 

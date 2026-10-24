@@ -7,34 +7,38 @@ Research companion to `secondscreen/encyclopedia.js`. It does two jobs:
 2. **Gives a short write-up per plant**: what Esler recorded for the Manawatū, what deep-time work
    adds, suggested card copy for the `desc` field, and a suggested fauna link.
 
-**Status: research and recommendations only.** `encyclopedia.js`, `TeManawa_plant_defs.js` and
-`TeManawa_bus.js` are unchanged. §3 lists the code changes the recommendations imply.
+**Status: applied 2026-10-13.** The §2.5 roster, the §4 card copy and the fauna links are live in
+`secondscreen/encyclopedia.js`, the switch is reordered (§2.5), and the sim changes in §3 are made.
+`node tools/bootcheck.js` ("encyclopedia roster") guards them. §5 weighs the plants still missing.
 
 **How the sources were used.** Esler (1978) was read from the scans in `research/*.pdf`, which have
 no text layer, so they were OCR'd for this pass. Page numbers are the book's own. Every modern figure
-below was checked against the paper or its abstract (§5). Where a statement is inference rather than
+below was checked against the paper or its abstract (§6). Where a statement is inference rather than
 measurement, it says so. Esler is paraphrased throughout, not quoted.
 
-> ⚠️ **Rimu caution, for anyone reusing the ecology docs.** Commit `b0baa85` renamed the sim key
-> `rimu` → `Totara`, and the find-and-replace also ran through the research docs. Several "Totara"
-> facts in `TEMANAWA_ECOLOGY*.md` are really about **rimu** (*Dacrydium cupressinum*). Examples: the
-> most conspicuous emergent at Keebles Bush, the ~50 m height and 600–800-year lifespan, the 1868
-> Linton survey's "rimu and tawa bush", and Norton's *Dacrydium* review. Esler's originals say
-> rimu (pp. 39, 42). None of those facts are used for tōtara below.
+> ℹ️ **Rimu, restored (2026-10-14).** Commit `b0baa85` renamed the sim key `rimu` → `Totara`, and
+> the find-and-replace also ran through the research docs, turning rimu facts into "Totara" ones
+> (Keebles Bush's most conspicuous emergent, the ~50 m height and 600–800-year lifespan, the 1868
+> Linton survey's "rimu and tawa bush"). Those 25 prose lines across seven docs now read rimu again,
+> checked against Esler (pp. 39, 42); references to the sim's `Totara` code key were left alone.
 
 ---
 
 ## 1. The framing: switch up is warm, switch down is cold
 
-The four-screen framing is sound, and it maps neatly onto the physical switch:
+The four-screen framing is sound, and it maps neatly onto the physical switch. As reordered
+2026-10-13, with Forest and Alpine one detent from the centre:
 
-| Switch | Current title | Era framing |
+| Switch | Title | Era framing |
 |---|---|---|
-| up ×2 | Forest Habitat | **Interglacial forest** |
-| up ×1 | Wetland Habitat | **Interglacial wetland** |
+| up ×2 | Wetland Habitat | **Interglacial wetland** |
+| up ×1 | Forest Habitat | **Interglacial forest** |
 | centre | Select a Habitat | — |
-| down ×1 | Lowland Habitat | **Glacial flats** |
-| down ×2 | Alpine Habitat | **Glacial alpine** |
+| down ×1 | Alpine Habitat | **Glacial alpine** |
+| down ×2 | Lowland Habitat | **Glacial flats** |
+
+The on-screen titles are unchanged. Each habitat carries an `era` field in `encyclopedia.js`
+(not yet rendered), ready if you want an "Interglacial" / "Glacial" label under the title.
 
 Esler's Manawatū (c. 1840–1970) is a snapshot of an interglacial: the Holocene, the one we are in.
 The Last Glacial Maximum (LGM, ~29–19 ka) pollen record is the other pole. Three findings from that
@@ -123,22 +127,72 @@ this one.
 | Tree fern | ❌ **Take it out.** It is the one plant that defines a glacial by its *absence* (0.7% vs ~7%). Ground ferns would be fine botanically, but there is no sprite for them, and the `fern` key is the tree fern. |
 | ➕ **Wharariki / mountain flax** (replacement) | Esler records *Phormium cookianum* moving into the dying leatherwood on Arawaru (p. 69). It reuses the flax sprite. |
 
-### 2.5 Recommended roster
+### 2.5 The roster (applied)
 
-| Screen | Five plants | Changes from your list |
+Listed top to bottom in the reordered switch:
+
+| Switch | Screen | Five plants | Changes from your list |
+|---|---|---|---|
+| up ×2 | **Interglacial wetland** | Kahikatea · Harakeke · Tī kōuka · **Pūrei** (*Carex secta*) · **Tōtara** | sedge renamed; "podocarp" → tōtara |
+| up ×1 | **Interglacial forest** | Tōtara · Tawa · Mamaku & ponga · Nīkau · **Kōwhai** | beech → kōwhai |
+| down ×1 | **Glacial alpine** | **Mountain beech** · Dracophyllum · Snow tussock · Subalpine scrub · **Wharariki** | tree fern → mountain flax; red → black → mountain beech |
+| down ×2 | **Glacial flats** | Tussock · Grey scrub · Mānuka · Tī kōuka · Kōwhai | as you proposed |
+
+The roster uses all 13 original sprite keys plus two art-sharing keys (`sedge` on the tussock art,
+`wharariki` on the flax art). Plants that repeat (tōtara, kōwhai, tī kōuka, coprosma, tussock) tell a
+different habitat story on each card, with their own `desc`. Card positions are the original
+mockup slots.
+
+### 2.6 The bird policy (one bird per plant, 2026-10-13; revised 2026-10-15)
+
+**One bird per plant, full representation, no hogging.** Every plant adds exactly one bird to the
+sim; a card's copy may still mention other relevant birds. Every bird the sim founds is on at least
+one plant, and a bird may sit on several plants, but on no more than two, so no species hogs the
+encyclopedia. A plant shown on two screens carries the same bird on both cards. The touchscreen sends that bird with the boost, so boosting the plant
+recruits and outlines it. The cast is **North Island only**. Upland moa (*Megalapteryx*) and
+heavy-footed moa (*Pachyornis elephantopus*) are South Island birds (`TEMANAWA_FAUNA.md`: wrong
+place, not wrong time), so they are out of the founder mix:
+
+- the **North Island giant moa** takes upland moa's slot and its numbers;
+- **Mantell's moa**, heavy-footed moa's North Island sister species, absorbs its share.
+
+The four North Island moa sit on the three moa sprites. The **giant** art is *Dinornis*, the
+**bush** art is *Anomalopteryx*, and the **Pachyornis** art is shared by Mantell's moa and its
+stocky emeid relative, the stout-legged moa.
+
+| Bird | Plant | Why (habitat notes from NZ Birds Online unless stated) |
 |---|---|---|
-| **Interglacial forest** | Tōtara · Tawa · Tree fern (mamaku/ponga) · Nīkau · **Kōwhai** | beech → kōwhai |
-| **Interglacial wetland** | Kahikatea · Harakeke · Tī kōuka · **Pūrei** (*Carex secta*) · **Tōtara** | sedge renamed; "podocarp" → tōtara |
-| **Glacial flats** | Short tussock · Grey scrub (coprosma) · Mānuka · Tī kōuka · Kōwhai | as you proposed |
-| **Glacial alpine** | **Black beech** · Dracophyllum · Snow tussock · Leatherwood/grey scrub · **Wharariki** | tree fern → mountain flax; red → black beech |
+| Eyles' harrier | Tōtara | Dry forest, forest-edge and shrubland hunter; tōtara grew at the forest–grassland margin (Esler p. 34). Mockup link, kept |
+| Kererū | Tawa | Sole disperser of tawa's large fruit |
+| Kōkako | Nīkau | Tawa forest under emergent podocarps; eats mostly fruit and leaves, often in the understorey where nīkau grows. Was the mockup's mānuka link |
+| Tūī | Kōwhai, wharariki | Nectar. In the sim it feeds at kōwhai, harakeke and wharariki flowers (`extraForage`, no seed carried) as well as fruit trees |
+| Kiwi | Tree fern | Forest-floor prober of litter and rotten logs |
+| Little bush moa | Kahikatea | Closed-canopy, wet lowland forest; browsed twigs |
+| Mantell's moa | Harakeke | Lowland wetlands and dunelands; a sturdy bill for a fibrous diet |
+| Finsch's duck | Tī kōuka | Terrestrial grazer of grassland, scrub and open forest. Was the mockup's tī kōuka bird (kererū) |
+| Mōho / NI takahē | Pūrei | Grassland, scrub and forest; bones from swamps, dunes and caves, sea level to ~1,000 m |
+| North Island goose | Tussock | Open-country grazer, most widespread in the ice ages, shrinking as forest spread |
+| NI giant moa | Grey / subalpine scrub, Dracophyllum | Browsed twigs and leaves to ~3 m, coast to subalpine herbfields; the divaricate debate. No moa diet record names Dracophyllum, so its card says so |
+| Stout-legged moa | Mānuka | Drier lowland mosaic of grassland, shrubland and open forest; Esler's dry sand plains carry mānuka |
+| Huia | Mountain beech | Ruahine, Tararua and Rimutaka ranges. Mockup link, kept. In the sim it works beech for huhu grubs (`extraForage`, no seed carried) |
 
-The roster uses all 13 sprite keys. The seven repeats (tōtara, kōwhai, tī kōuka, coprosma, flax, and
-tussock three times including the sedge stand-in) each tell a different habitat story, written into
-each card's `desc` separately.
+Two mockup links changed, mānuka → kōkako and tī kōuka → kererū. Kererū had to go to tawa, its
+strongest link, and kōkako fits the tawa-forest understorey better than glacial mānuka. The
+harness asserts all of this ("encyclopedia roster"):
+
+- the founder cast holds no South Island-only moa;
+- every plant adds exactly one bird;
+- every cast bird is on one or two plants;
+- every card bird is in the cast;
+- `TM_BOOST.faunaLinks` matches the cards.
+
+With no visitor input, the founder mix holds every species above its floor through two full
+warm↔cold sweeps. The giant moa sits at 2–4 birds, below its target of 6: a slow-breeding giant.
+Raise its `speciesTargets` entry if more giants should show.
 
 ---
 
-## 3. What the sim needs to match (not changed)
+## 3. What the sim needed to match (applied 2026-10-13)
 
 The boost gate (`TeManawa_bus.js`, `onBoost`) reads only `coldTolerance`:
 
@@ -150,36 +204,60 @@ If the screens are labelled by era, every plant on a glacial screen must pass in
 plant on an interglacial screen must pass in an interglacial. Otherwise a visitor who picks the right
 screen for the climate still gets the grey "wrong" pulse and a desaturated scene.
 
-| Plant (key) | coldTolerance | Gate | Recommended screen(s) | Conflict |
-|---|---|---|---|---|
-| Black beech (`beech`) | 0.6 | warm | glacial alpine | ❌ A beech boost during a glacial fails and desaturates the scene, the opposite of its `COLD_REFUGE` role. The **current** alpine screen already has this bug. |
-| Kōwhai (`kowhai`) | 0.45 | warm | forest + glacial flats | ❌ fails on flats (also on the current lowland screen) |
-| Tī kōuka (`cabbagetree`) | 0.6 | warm | wetland + glacial flats | ❌ fails on flats (also on the current lowland screen) |
-| Pūrei (currently `tussock`) | 1.0 | cold | interglacial wetland | ❌ a sedge boost in an interglacial fails (also on the current wetland screen) |
-| Tree fern (`fern`), current alpine | 0.1 | warm | removed | resolved by removal |
-| Nīkau (`nikau`), current lowland | 0.2 | warm | removed | resolved by removal |
-| Everything else | | | | ✅ |
+The conflicts found in the review, and what changed:
 
-Suggested fixes, for you to decide:
+| Plant (key) | Was | Problem | Now |
+|---|---|---|---|
+| Black beech (`beech`) | 0.6, warm | A beech boost from the Alpine screen during a glacial failed and desaturated the scene, the opposite of its `COLD_REFUGE` role | **0.8, cold** |
+| Kōwhai (`kowhai`) | 0.45, warm | failed on the glacial flats | **0.7, neutral** |
+| Tī kōuka (`cabbagetree`) | 0.6, warm | failed on the glacial flats | **0.7, neutral** |
+| Pūrei (was the `tussock` key) | 1.0, cold | a sedge boost in an interglacial failed | **new `sedge` key, 0.7, neutral** |
+| Tree fern (`fern`) on Alpine, nīkau on Lowland | warm | failed in a glacial | removed from those screens |
 
-- **`beech` → ≥ 0.75 (cold).** Side effects to check: beech joins the TUSSOCK growth set, and kererū
-  stop dispersing it. The second is correct, since beech seed is wind-dispersed. Its dormancy
-  behaviour also shifts. The beech-refuge assertion in `tools/bootcheck.js` (~line 421) should still
-  hold, because `COLD_REFUGE` is a separate set.
-- **`kowhai`, `cabbagetree` → 0.7 (neutral, like flax and mānuka).** "Fits both worlds" is what both
-  cards will say.
-- **A `sedge` plant key for pūrei**, reusing the tussock art at a warm or neutral tolerance. The
-  alternative is to accept that the wetland sedge counts as a cold plant in the sim.
-- **`TM_BOOST.faunaLinks`** has only four entries. §4 suggests links for the rest.
-- **Cosmetic:** a wharariki boost seeds the `flax` key, which lives only in the lowland and wetland
-  palettes, so it grows harakeke on the plains.
+Everything the sim changed (2026-10-13):
+
+- **`TeManawa_plant_defs.js`**: the three tolerances above, and two **art-sharing types**, `sedge`
+  (pūrei) and `wharariki` (mountain flax), both neutral 0.7.
+- **Side effects of the tolerance moves, all intended.** Beech now joins the TUSSOCK/glacial growth
+  set and is no longer a kererū fruit tree (beech seed is wind-dispersed). Kōwhai and tī kōuka leave
+  the FOREST growth set and the kererū fruit set, like the other neutral plants (mānuka, harakeke).
+  The beech-refuge assertion still passes, since `COLD_REFUGE` is separate.
+- **`TeManawa_seasons.js`**: beech's glacial-stage type modifier now *rises* into the cold
+  (1.0 → 1.6) instead of sinking with Tōtara (1.3 → 0.3). Beech's art is size-only, so this changes
+  behaviour, not looks: it keeps its food value and stays above the cold-dormancy trigger in the full
+  glacial (montane 0.15 × 1.6 = 0.24, against 0.045 before).
+- **`TeManawa_sketch.js`**: `PLANT_SPRITE_ALIASES` gives the two new types the tussock and flax
+  frames without loading them twice (the atlas still packs 449 frames), with wharariki drawn at
+  0.8×. Both join `STORM_HARDY`.
+- **`levels/level_temanawa_scaffold.js`**: pūrei replaces one of the wetland palette's two
+  tussock entries; wharariki joins the subalpine palette, so a boost from the Alpine screen lands on
+  the tops. Wharariki only appears once the ranges rise, like *Dracophyllum*.
+- **`TeManawa_bus.js`**: `TM_BOOST.faunaLinks` covers every roster plant (the fallback).
+- **The touchscreen now sends its card's fauna with the boost** (`m.fauna`, the sim species keys
+  incl. the juvenile harrier), so the diorama recruits and outlines exactly the birds on the card.
+  Verified end to end in the browser: Forest → Tōtara recruited its linked birds with a green
+  outline; Alpine → Black beech at 150 ka (glacial) matched, outlined blue, seeded beech and
+  recruited huia. The links themselves are now one bird per plant (§2.6).
+- **`secondscreen/secondscreen.css`**: the card's plant sprite is capped at half the card width, so
+  wide sprites (grey scrub, tussock, pūrei) no longer cover the description text.
+- **`tools/bootcheck.js`**, new section "encyclopedia roster". It asserts:
+  - the switch order (warm above the centre, cold below, Forest and Alpine adjacent to it);
+  - every card passes the boost gate in its screen's era;
+  - every card resolves to a real plant type, palette, sprite file, card copy and registered species;
+  - the art aliases don't leak a scale override;
+  - beech's stage modifier rises into the cold.
+
+  Mutation-tested: restoring beech to 0.6 makes the section fail.
 
 ---
 
 ## 4. Plant write-ups
 
-Each entry gives Esler's record, then the deep-time picture, then suggested card copy (~40 words, in
-the voice of the four existing cards), then a fauna link. Plants on two screens get two cards.
+Each entry gives Esler's record, then the deep-time picture, then the card copy, then its bird
+(§2.6). Plants on two screens get two cards. **The "Card." lines below are the earlier short drafts.**
+Since 2026-10-15 the cards for tōtara, tawa, tree ferns, nīkau, kōwhai, kahikatea, harakeke, tī kōuka
+and pūrei carry the longer, fact-checked write-ups in `TEMANAWA_GOALS.md` §3, and the cards can
+scroll. `secondscreen/encyclopedia.js` is the source of truth for what visitors read.
 
 ### Tōtara: *Podocarpus totara*
 **Screens:** forest, wetland (levée) · **Sim:** `Totara`, 0.3 warm
@@ -204,14 +282,14 @@ afterwards that palynologists infer podocarp forest was never far from any site.
 
 **Card (forest).** *A great podocarp of the dry river levées and terraces, growing right at the edge
 where forest gives way to grass. Birds carry off its red fruit. The Manawatū was famous for its
-tōtara forests, and almost none survive.*
+tōtara forests.*
 
 **Card (wetland).** *Tōtara holds the high, firm levée beside the swamp. When the sea rose after the
-last ice age and the water table climbed, whole tōtara forests drowned where they stood. Their stumps
-still lie under the Manawatū peat.*
+last ice age and the water table climbed, whole tōtara forests drowned where they stood. Their
+stumps still lie under the peat.*
 
-**Fauna.** The mockup links Eyles' harrier, which is loose ecologically: the harrier hunted open and
-edge country. Tōtara's real partner is the **kererū** (fruit). Suggest adding it.
+**Fauna (§2.6).** **Eyles' harrier**, kept from the mockup. The harrier hunted dry forest, forest
+edge and shrubland, and tōtara grew right at the forest–grassland margin Esler describes.
 
 ### Tawa: *Beilschmiedia tawa*
 **Screen:** forest · **Sim:** `tawa`, 0.4 warm
@@ -235,7 +313,7 @@ rode on kererū, which today carry tawa seed less than 100 m on average.
 Its plum-like fruit is too big for any bird but the kererū to swallow. Where kererū fly, tawa
 follows.*
 
-**Fauna.** **Kererū**: a strong link, as its sole disperser.
+**Fauna (§2.6).** **Kererū**: the strongest link in the cast, as its sole disperser.
 
 ### Tree fern: mamaku *Cyathea medullaris*, ponga *C. dealbata*, whekī *Dicksonia squarrosa*
 **Screen:** forest · **Sim:** `fern`, 0.1 warm
@@ -251,11 +329,11 @@ Holocene samples, 0.7% at the LGM (McGlone et al. 2010). At Auckland, *Cyathea* 
 through the LGM and became common only afterwards. They are frost-tender, fast gap-fillers. In a warm
 climate they flood back after any disturbance; in a cold one they all but vanish.
 
-**Card.** *Tree ferns crowd the stream banks and light gaps of the warm forest, quick to fill any hole
-in the canopy. In the ice ages they almost disappeared. If you can see tree ferns, the climate is
+**Card.** *Tree ferns crowd the stream banks and light gaps of the warm forest, quick to fill any
+hole in the canopy. In the ice ages they almost disappeared. If you see tree ferns, the climate is
 warm.*
 
-**Fauna.** None strong. **Kiwi** (forest-floor forager) if a link is wanted.
+**Fauna (§2.6).** **Kiwi**: a forest-floor prober of leaf litter and rotten logs.
 
 **Naming note.** The card says ponga, *C. dealbata*. Mamaku is the one Esler dwells on and the one
 `TEMANAWA_PLAN_V3.md` calls the era signal. Either is right. The genus moves to *Alsophila* /
@@ -277,11 +355,12 @@ must have retreated to warm coastal or northern refuges (inference: there is no 
 record for it). Kererū eat the fruit; passing through the bird cleans the seed but is not needed for
 germination.
 
-**Card.** *The world's southernmost palm, a slow-growing plant of the shady lowland forest. Its red
-fruit feeds kererū. Nīkau cannot survive hard frost, so it grows here only in the warm
+**Card.** *The world's southernmost palm, growing slowly in the shade of the tawa forest, where
+kōkako feed on fruit and leaves. Nīkau cannot survive hard frost, so it grows here only in the warm
 interglacials.*
 
-**Fauna.** **Kererū** (fruit), **tūī** (flowers).
+**Fauna (§2.6).** **Kōkako**. Its home is tawa forest under emergent podocarps, where it eats
+mostly fruit and leaves and often feeds in the understorey (NZ Birds Online), the layer nīkau lives in.
 
 ### Kōwhai: *Sophora microphylla* and *S. godleyi*
 **Screens:** forest, glacial flats · **Sim:** `kowhai`, 0.45 warm (see §3)
@@ -300,14 +379,14 @@ The Kōwhai swamp of the Taonui basin carries its name (p. 26).
   a holotype collected in the Pohangina Valley. It grows on mudstone (papa) in the Whanganui and
   Manawatū hill country (Heenan, de Lange & Wilton 2001). The card should probably name both species.
 
-**Card (forest).** *Kōwhai lights the forest edge and river banks with spring gold. Tūī come for the
-nectar and kererū for the leaves. Its seeds float, which is how kōwhai crossed oceans.*
+**Card (forest).** *Kōwhai lights the forest edge and river banks with spring gold, and tūī come for
+its nectar. Its seeds float, which is how kōwhai crossed oceans.*
 
 **Card (flats).** *A survivor. DNA shows kōwhai lived through the last ice age across much of New
-Zealand, not just in warm northern refuges. On the cold river flats it probably held on along
+Zealand, not only in warm northern refuges. On the cold river flats it probably held on along
 sheltered banks.*
 
-**Fauna.** **Tūī** (nectar), **kererū** (leaves and flowers).
+**Fauna (§2.6).** **Tūī** (nectar), on both kōwhai cards.
 
 ### Kahikatea: *Dacrycarpus dacrydioides*
 **Screen:** wetland · **Sim:** `kahikatea`, 0.35 warm, `disturbanceRecruit`
@@ -327,11 +406,12 @@ eruptions feed the swamp rather than ending it. After the Ōruanui ash, the cano
 for under 10 years, sedge and pondweed expanded for ~60 years, and the community that settled was
 stable but altered (Piva et al. 2023). This confirms the ~60-year figure in the wetland doc.
 
-**Card.** *New Zealand's tallest tree, and one that stands in water. Kahikatea grows on the wettest
-silt behind the river levées, its roots raised above the swamp. It needs a wandering river to clear
-fresh ground for its seedlings.*
+**Card.** *New Zealand's tallest tree, standing in water on the wettest silt behind the river
+levées. It needs a wandering river to clear ground for its seedlings. Little bush moa browsed the
+dark swamp forest beneath.*
 
-**Fauna.** **Kererū** (fruit).
+**Fauna (§2.6).** **Little bush moa**, the moa of closed-canopy wet lowland forest, which browsed
+twigs and other tough material (NZ Birds Online).
 
 ### Harakeke: *Phormium tenax*
 **Screen:** wetland · **Sim:** `flax`, 0.7 neutral
@@ -349,11 +429,12 @@ on 1.8 m of peat over tōtara stumps (p. 38): when the water table rises, swamp 
 big eruptions wetlands widen (Piva et al. 2023). Harakeke's neutral rating in the sim is reasonable
 for a hardy plant that grows up into the subalpine, though there is no direct glacial record for it.
 
-**Card.** *Harakeke grows in the band just above the raupō, where swamp meets firmer ground. Its
-nectar feeds tūī. Much of the Manawatū's famous flax spread only after the swamps were drained.
-Before that, toetoe and raupō held the wettest ground.*
+**Card.** *Harakeke grows just above the raupō, where swamp meets firmer ground. Mantell's moa, a
+stocky moa of lowland swamps and dunes, had a strong bill suited to tough, fibrous plants like
+this.*
 
-**Fauna.** **Tūī** (nectar).
+**Fauna (§2.6).** **Mantell's moa**: a North Island moa of lowland wetlands and dunelands, whose
+sturdy bill suggests a fibrous diet (NZ Birds Online).
 
 ### Tī kōuka: *Cordyline australis*
 **Screens:** wetland, glacial flats · **Sim:** `cabbagetree`, 0.6 warm (see §3)
@@ -372,15 +453,16 @@ needs for a glacial. Northland holds the most genetic diversity, consistent with
 persisting in the north. There is no Manawatū glacial pollen record for it, so its glacial role is
 likely but inferred.
 
-**Card (wetland).** *Keep the existing card-confirmed copy:* "The cabbage tree of open, wet ground
-and swamp margins, hardy and frost-tolerant but light-demanding. Its dense flower and fruit heads
-feed many birds."
+**Card (wetland).** *The cabbage tree of open, wet ground and swamp margins, hardy and
+frost-tolerant but light-demanding. Its dense flower and fruit heads feed many birds.*
 
-**Card (flats).** *Tough enough for the ice age. Cabbage trees from colder places are genetically
-hardier than northern ones. On the wet margins of the cold, open plains, tī kōuka probably stood
-above the tussock.*
+**Card (flats).** *Tough enough for the ice age: cabbage trees from colder places are genetically
+hardier. On the cold, open plains tī kōuka probably stood above the grass where Finsch's duck
+grazed.*
 
-**Fauna.** **Kererū** (card-confirmed).
+**Fauna (§2.6).** **Finsch's duck**, a terrestrial grazer of grassland, scrub and open forest. It
+had little to do with wetlands, so it suits the flats card better than the wetland one. The mockup's
+kererū link moved to tawa.
 
 ### Pūrei / pūkio: *Carex secta*
 **Screen:** wetland · **Sim:** currently `tussock`, 1.0 cold (see §3)
@@ -399,7 +481,8 @@ through the cold.
 **Card.** *Pūrei stands in open water on a trunk-like pedestal of its own old roots, the first plant
 at the swamp's deep edge. After a big eruption, ash-silted swamp margins widen and sedges spread.*
 
-**Fauna.** **Mōho** / North Island takahē (grazes sedge and tussock bases).
+**Fauna (§2.6).** **Mōho** / North Island takahē. Its bones come from swamps, dunes and caves, from
+sea level to ~1,000 m (NZ Birds Online). Its diet is unrecorded, so the card copy makes no claim.
 
 ### Tussock: short tussock (flats) and snow tussock (alpine)
 **Screens:** glacial flats, glacial alpine · **Sim:** `tussock`, 1.0 cold
@@ -420,15 +503,15 @@ Zealand from only ~0.95 Ma, right when the Te Manawa run opens. They also note t
 ranges are young, some under ~200,000 years old, with few alpine endemics: their alpine flora is
 borrowed from the south.
 
-**Card (flats).** *In the ice ages grass covered the open plains. Short tussocks of Poa, Festuca and
-their kin made the ground layer of a cold, windswept country, grazed by moa, geese and mōho.*
+**Card (flats).** *In the ice ages grass covered the open plains. The North Island goose spread with
+it across the cold, windswept flats, then shrank back as the forests returned.*
 
-**Card (alpine).** *Snow tussock is the grass of the high tops. Alpine country is young in Aotearoa:
-it became a permanent habitat only about a million years ago, as the mountains rose and the climate
-cooled.*
+**Card (alpine).** *The grass of the high tops. In the ice ages tussock grassland ran from the coast
+to the summits, grazed by the North Island goose. Alpine country itself is young: permanent for only
+a million years.*
 
-**Fauna.** Flats: **North Island goose**, **Finsch's duck**, **mōho**. Alpine: **upland moa**,
-**mōho**.
+**Fauna (§2.6).** **North Island goose**, on both tussock cards: an open-country grazer, most
+widespread in the ice ages and shrinking as the forests spread (NZ Birds Online).
 
 ### Grey scrub: mingimingi *Coprosma propinqua*, pōhuehue *Muehlenbeckia complexa* (and leatherwood)
 **Screens:** glacial flats, glacial alpine · **Sim:** `coprosma`, 0.85 cold
@@ -448,14 +531,17 @@ flora) is still argued. Greenwood & Atkinson (1977) proposed a defence against m
 worked alongside Esler. McGlone & Webb (1981) proposed a shield against glacial frost and wind. Both
 hypotheses are about exactly what this installation shows.
 
-**Card (flats).** *Grey scrub is a tangle of tiny-leaved, criss-crossed branches, woven through with
-pōhuehue vine. Did it grow that way to keep out moa beaks, or to survive ice-age frost and wind?
-Scientists still argue.*
+**Card (flats).** *A tangle of tiny-leaved, criss-crossed branches. Did it grow that way to fend off
+the giant moa, which could browse three metres up, or to survive ice-age frost and wind? Scientists
+still argue.*
 
-**Card (alpine, as leatherwood).** *At the bushline, tough shrubs take over from trees. Leatherwood,
-coprosma and their kin form a dense, waist-high thicket that wind and snow cannot flatten.*
+**Card (alpine, as leatherwood).** *At the bushline, tough shrubs take over from trees: leatherwood,
+coprosma and their kin make a dense, waist-high thicket. The giant moa browsed all the way up into
+it, from the coast to the tops.*
 
-**Fauna.** **Moa** (browse; e.g. Mantell's or heavy-footed).
+**Fauna (§2.6).** **North Island giant moa**, on both scrub cards. It browsed twigs and leaves up
+to ~3 m and ranged from coastal dunes to subalpine shrubland (NZ Birds Online), which is the browse
+height at the heart of the divaricate debate.
 
 ### Mānuka: *Leptospermum scoparium*
 **Screen:** glacial flats · **Sim:** `manuka`, 0.7 neutral
@@ -475,14 +561,25 @@ al. 2023), and New Zealand palynologists class it as a wetland shrub (McGlone et
 Genomically, New Zealand mānuka split from Australian *L. scoparium* ~9–12 million years ago, with
 five regional gene pools within New Zealand (Koot et al. 2022).
 
-**Card.** *Mānuka is the tough pioneer of poor, wet or burnt ground. It shades out the grass, then
-slowly thins to let the next forest in. New Zealand mānuka has been evolving apart from its
-Australian relatives for about ten million years.*
+**Card.** *The tough pioneer of poor ground, holding the dry sand plains and leached terraces. The
+stout-legged moa browsed this open, dry scrub. New Zealand mānuka has evolved apart from Australia's
+for about ten million years.*
 
-**Fauna.** The mockup links kōkako, which is loose: kōkako are birds of tall forest. Keep it if the
-design wants it, but it isn't a habitat link.
+**Fauna (§2.6).** **Stout-legged moa** (*Euryapteryx curtus*). It lived in the drier lowland
+mosaic of grassland, shrubland and open forest, often near the coast (NZ Birds Online), the dry sand
+plains Esler gives to mānuka. The mockup's kōkako link moved to nīkau.
 
 ### Black beech / tawhai rauriki: *Fuscospora solandri*
+
+> **2026-10-15: the card is now mountain beech** (*Fuscospora cliffortioides*). The Alpine screen
+> shows the plants of the Ruahine and Tararua ranges, and black beech is a lowland–montane tree of
+> dry, infertile ground. Mountain beech is the upper-montane–subalpine beech (nzflora): it forms the
+> treeline in the central, eastern and northern Ruahine (Wellington Botanical Society 1945; DOC),
+> while the Tararua treeline is silver beech and the fog-bound southern Ruahine has no beech at all.
+> LGM *Fuscospora*-type pollen covers both, so "the tree of the ice ages" holds; mountain beech masts
+> (Allen et al. 2014). The two hybridise where they meet. Esler's Aokautere patch stays on the card
+> as "its close cousin, black beech". Esler's Arawaru is a northern Tararua summit, renamed
+> **Aruwaru** in the 2017 Rangitāne o Manawatū settlement; the cards use the new name.
 **Screen:** glacial alpine · **Sim:** `beech`, 0.6 (warm by the gate; see §3)
 
 **Esler.** Pockets of black beech occur along the Manawatū and Pohangina rivers, but only one fell
@@ -499,12 +596,12 @@ the same poor-soil niche as Aokautere. New Zealand's beeches show distribution g
 environment alone does not explain, likely of historic origin (Leathwick & Austin 2001). That fits
 the usual reading: beech recolonises slowly after each glacial.
 
-**Card.** *Beech is the tree of the ice ages: most forest pollen from the last glacial is beech. It
-holds poor soils and sheltered pockets that other trees cannot, and fruits heavily in "mast" years
-that feed the whole forest.*
+**Card.** *The tree of the ice ages: most forest pollen from the last glacial is beech. It holds
+poor soils and sheltered pockets other trees cannot, and fruits heavily in 'mast' years that feed
+the forest.*
 
-**Fauna.** **Huia** (card-confirmed). Reasonable: huia lived in the montane forest of the southern
-North Island ranges.
+**Fauna (§2.6).** **Huia** (mockup link, kept). Huia were recorded mostly from the Ruahine,
+Tararua and Rimutaka ranges (NZ Birds Online).
 
 ### Dracophyllum: *D. filifolium* (Esler), inaka *D. longifolium*
 **Screen:** glacial alpine · **Sim:** `dracophyllum`, 0.9 cold
@@ -520,11 +617,11 @@ Manawatū may have looked more like Campbell Island than like anywhere on the ma
 genus is most species-rich in New Zealand, from a rapid, recent radiation within the last 3–6 million
 years that coincided with mountain uplift and Pleistocene glaciations (Wagstaff et al. 2010).
 
-**Card.** *Stiff, needle-leaved and wind-proof, Dracophyllum grows on the high tops. In the ice ages
-the Manawatū may have looked like Campbell Island today, where Dracophyllum is the main woody plant.
-Its species multiplied as the mountains rose.*
+**Card.** *Stiff, needle-leaved and wind-proof. In the ice ages the Manawatū may have looked like
+Campbell Island today, where Dracophyllum is the main woody plant. Its species multiplied as the
+mountains rose.*
 
-**Fauna.** **Upland moa** (the subalpine moa).
+**Fauna (§2.6).** None. Upland moa, the obvious subalpine browser, was a South Island bird.
 
 ### Wharariki / mountain flax: *Phormium cookianum*
 **Screen:** glacial alpine · **Sim:** reuses `flax`, 0.7 neutral
@@ -539,14 +636,118 @@ treeline swung up and down ~800 m through each cycle, the boundary between their
 moved with it (inference). There is no direct LGM record for either flax.
 
 **Card.** *Mountain flax is the smaller, drooping cousin of harakeke, at home on cold, windswept
-ground. On the Arawaru summit it moves in where old leatherwood dies. Tūī carry its pollen from flower
-to flower.*
+ground. On the Arawaru summit it moves in where old leatherwood dies, and it crosses with harakeke
+where the two meet.*
 
-**Fauna.** **Tūī** (nectar).
+**Fauna (§2.6).** None (tūī belongs to kōwhai).
 
 ---
 
-## 5. Sources
+## 5. What's still missing: rimu, kāmahi and the rest
+
+**Short answer: rimu is a major omission; kāmahi is not, for the encyclopedia.** The biggest gap is
+one not yet named: the glacial screens have no conifer shrub.
+
+Ranked by what each would add to *this* installation. That weighs the evidence, how it reads in the
+side-on cartoon, and whether it fits a screen:
+
+| Rank | Plant | Screen | Verdict |
+|---|---|---|---|
+| 1 | **Rimu** | Interglacial forest | Major omission |
+| 2 | **Bog pine / mountain toatoa** (conifer shrubs) | Glacial flats + alpine | Major omission |
+| 3 | **Kaikawaka** (*Libocedrus*) | Glacial alpine | Strong addition |
+| 4 | **Raupō** | Interglacial wetland | Strong addition |
+| 5 | Northern rātā | Interglacial forest | Good, secondary |
+| 6 | Kāmahi | none (montane) | Moderate, and mostly a sim question |
+| — | Mātai, pukatea, toetoe, silver beech, māhoe, Hall's tōtara | — | Covered by existing cards or ground palette |
+
+**If three more assets get drawn: rimu, a glacial conifer shrub, raupō.**
+
+### Rimu (*Dacrydium cupressinum*): yes, a major omission
+
+- **Esler.** Rimu was the most conspicuous emergent at Keebles Bush, the district's reference
+  podocarp–broadleaf stand (p. 42). The 1868 Linton survey describes rimu and tawa bush (p. 39),
+  and Stewart's survey names rimu with tōtara, mātai and tawa across the plains (p. 39). Browns Flat
+  was milled mostly for rimu (pp. 40–41). Old rimu still stand over the Tiritea tawa (p. 46), and
+  with miro and northern rātā it formed the emergent layer of the Tararua forest (p. 49).
+- **Deep time.** Rimu is the conifer of the warm phases. Conifer pollen falls from ~44% of
+  pre-human Holocene samples to ~2.8% at the LGM (McGlone et al. 2010). At Waverley, rimu with tawa
+  dominated the mid-Holocene forest (Bussell 1988). Even at LGM Onepoto, rimu pollen rose after the
+  Ōruanui ash opened the canopy (Piva et al. 2023).
+- **Why it matters on screen.** Rimu is the emergent of Esler's two-layer forest: giants over a
+  9–15 m tawa canopy. The forest screen can't show that structure without it. It also carries the
+  true version of the "Totara" facts that leaked into the research docs.
+- **Cost.** It needs new art. The old `sprites/Rimu_*.png` are tiny top-down pixel placeholders from
+  the Mauri fork, unusable in the illustrated style. Rimu's weeping, drooping foliage reads
+  differently from tōtara's dense crown side-on.
+- **Where it goes.** The forest screen, replacing kōwhai there; kōwhai keeps its glacial-flats card.
+  It needs a new plant key with a warm tolerance (~0.3), a `PLANT_SPRITE_SETS` entry, and a place in
+  the podocarp and montane palettes. Rimu would take nīkau's slot or share it; kōkako would stay with
+nīkau unless rimu replaces it, in which case kōkako moves to rimu (its emergent podocarps).
+
+### Glacial conifer shrubs: the biggest gap
+
+In the southern North Island, conifer shrubs are ~26% of LGM pollen, more than all tree pollen
+combined (~15%; McGlone et al. 2010). At LGM Onepoto, *Halocarpus*-type pollen alone was 12.5%. It
+was also the taxon that thinned as the post-Ōruanui vegetation settled into a milder interstadial
+(Piva et al. 2023). The candidates are bog pine (*Halocarpus bidwillii*), mountain toatoa
+(*Phyllocladus alpinus*) and snow tōtara (*Podocarpus nivalis*). One sprite of a low, dark, dense
+conifer shrub would serve both glacial screens. It would be the single most accurate addition to
+the cold half of the encyclopedia, and to the glacial palettes in the sim.
+
+### Kaikawaka / pāhautea (*Libocedrus bidwillii*): the other glacial tree
+
+LGM tree pollen across the North Island was dominated by *Fuscospora*, silver beech and *Libocedrus*
+(McGlone et al. 2010). *Libocedrus* pollen also turns up on the Whanganui lowlands around 110 ka,
+where it does not grow today (Bussell 1992). Today it is a montane–subalpine tree of the ranges: a
+clear story of the cold pushing it down and the warmth pushing it back up. Its narrow spire would
+read well in the alpine cluster.
+
+### Raupō (*Typha orientalis*): the missing band of the wetland
+
+The wetland screen is built on the Moutoa sequence: pūrei, then raupō, then harakeke, then swamp
+scrub, then kahikatea (p. 59). Raupō is the only band without a card. Esler watched it spread fast
+across Pukepuke Lagoon in his own time (p. 60). In the sim it is ground palette, so a card would need
+a sprite and a plant key.
+
+### Northern rātā (*Metrosideros robusta*): good, secondary
+
+Northern rātā was an emergent with rimu and miro in the Tararua forest (p. 49), and among the
+largest trees around Rongotea (p. 35). *Metrosideros* was scarce or absent at the LGM and common only
+afterwards (McGlone et al. 2010), so it is a warm-phase marker like tree ferns. It also has red
+crowns and a tūī link. Its best-known story, the possum collapse after 1907, falls outside the
+pre-human window.
+
+### Kāmahi (*Pterophylla racemosa*): moderate, and mostly a sim question
+
+Esler believed kāmahi was a major canopy tree of the Tararua rātā–kāmahi forest that the historical
+record missed. Settlers did not count it among the timber trees, and its wood rots, so few stumps
+survive (pp. 49–52). It replaces tawa with altitude (Bussell 1988). Its pollen disperses poorly, so
+pollen records under-count it too (McGlone et al. 2010). It is still a low priority for the
+encyclopedia:
+
+- There is no montane screen, and it fits neither the lowland forest nor the glacial screens well.
+- Side-on, it would not read as distinct from tawa.
+- Its famous story, possums killing it between the 1940s and 1960s, is after the window.
+
+Where kāmahi does matter is the sim's **montane** palette, currently tawa, tōtara, tree fern and
+beech. The real Manawatū montane forest was rātā–kāmahi with Hall's tōtara above ~365 m (p. 49). If
+montane art is ever drawn, kāmahi comes first.
+
+### Already covered
+
+- **Mātai** is cited in the LGM literature as a tree that survived the glacial maximum even in the
+  south. It is also part of Leathwick's mataī–kahikatea–tōtara forest for the plains. It could be
+  named in the tōtara card rather than drawn, since side-on it reads like the other podocarps.
+- **Pukatea**, the semi-swamp co-dominant, could be named in the kahikatea card.
+- **Toetoe** is ground palette, and on the harakeke card it is the plant of the pre-drainage wet
+  ground.
+- **Silver beech** (the Tararua treeline beech) is folded into the mountain beech card.
+- **Māhoe** and **Hall's tōtara** add little visually.
+
+---
+
+## 6. Sources
 
 **Primary**
 
@@ -597,6 +798,18 @@ to flower.*
   [RNZIH conference paper](https://www.rnzih.org.nz/pages/1999ConferenceWarwickHarris2.htm)
 - Nīkau range and frost tolerance: [NZ Geographic](https://www.nzgeo.com/stories/nikau-the-kiwi-palm/);
   kererū and nīkau germination: [Auckland Botanical Society 1996](https://btsnew.nzpcn.org.nz/site/assets/files/20301/auck_1996_51_1_37.pdf).
+
+**Bird habitats for the §2.6 map** (NZ Birds Online species accounts, checked this pass):
+[kōkako](https://www.nzbirdsonline.org.nz/species/north-island-kokako),
+[Finsch's duck](https://www.nzbirdsonline.org.nz/species/finschs-duck),
+[Mantell's moa](https://www.nzbirdsonline.org.nz/species/mantells-moa),
+[little bush moa](https://www.nzbirdsonline.org.nz/species/little-bush-moa),
+[North Island giant moa](https://www.nzbirdsonline.org.nz/species/north-island-giant-moa),
+[stout-legged moa](https://www.nzbirdsonline.org.nz/species/stout-legged-moa),
+[North Island goose](https://www.nzbirdsonline.org.nz/species/north-island-goose),
+[North Island takahē](https://www.nzbirdsonline.org.nz/species/north-island-takahe),
+[North Island brown kiwi](https://www.nzbirdsonline.org.nz/species/north-island-brown-kiwi),
+[huia](https://www.nzbirdsonline.org.nz/species/huia).
 
 **Carried over from the repo's deep dives** (not re-checked this pass): Rogers (1994) on fire-induced
 grassland; Greenwood & Atkinson (1977) and McGlone & Webb (1981) on divaricates; the kererū

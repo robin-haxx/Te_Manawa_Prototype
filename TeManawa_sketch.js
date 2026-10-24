@@ -76,7 +76,7 @@ const PLANT_SPRITE_SETS = {
   // sizeOnly keeps it on its size variant instead of switching frames.
   Totara:      { prefix: 'Totara', folder: 'Totara/', growingFrames: 2,
                matureVariants: 3, sizeOnly: true, anchor: 'base', scale: 1.0 },
-  // beech (black beech, tawhai) — dedicated-folder art has a trunk, so base-anchor.
+  // beech (mountain beech on the card, tawhai) — dedicated-folder art has a trunk, so base-anchor.
   // Grows through two Grow frames (Beech_Grow_01..02), then holds one of three variant
   // sprites (Beech_Sprite_00001..00003). sizeOnly: no seasonal state art.
   beech:     { folder: 'Beech/', sizeOnly: true, anchor: 'base',
@@ -133,6 +133,14 @@ const PLANT_SPRITE_SETS = {
   dracophyllum: { folder: 'Dracophyllum/', sizeOnly: true, anchor: 'base',
                   growingFiles: ['Dracophyllum_Grow_01.png'],
                   variantFiles: ['Dracophyllum_Sprite_00001.png', 'Dracophyllum_Sprite_00002.png', 'Dracophyllum_Sprite_00003.png'] }
+};
+
+// Plant types with no art of their own that draw with another type's sprites. Aliased AFTER the
+// load loop, so no PNG is loaded twice (loadImage is not deduped) and the atlas packs one copy
+// (it dedupes by image identity). `scale` overrides the source's footprint scale for this type.
+const PLANT_SPRITE_ALIASES = {
+  sedge:     { from: 'tussock' },               // pūrei (Carex secta): a tussock-like pedestal sedge
+  wharariki: { from: 'flax', scale: 0.8 }       // mountain flax: the smaller cousin of harakeke
 };
 
 const PLANT_SPRITE_STATES = ['Mature', 'Thriving', 'Wilting', 'Dormant'];
@@ -235,6 +243,16 @@ function preload(){
                  fixedGrowthSize: !!def.fixedGrowthSize,
                  growFromVariant: def.growFromVariant != null };
     plantSprites[key] = set;
+  }
+
+  // Art-sharing types: a shallow copy shares the source's frames and arrays (one load, one atlas
+  // copy) with its own meta, so a scale override doesn't leak back onto the source type.
+  for (const [key, alias] of Object.entries(PLANT_SPRITE_ALIASES)) {
+    const src = plantSprites[alias.from];
+    if (!src) { console.warn(`Plant sprite alias ${key}: no source set '${alias.from}'`); continue; }
+    const meta = Object.assign({}, src.meta);
+    if (alias.scale != null) meta.scale = alias.scale;
+    plantSprites[key] = Object.assign({}, src, { meta });
   }
 
   loadPlaceableSprites();
@@ -483,7 +501,7 @@ const CONFIG = {
   initialMoaCount: 7,
   maxMoaPopulation: 60,
   eagleCount: 2,
-  startingSpecies: 'upland_moa',
+  startingSpecies: 'little_bush_moa',
 
   eggIncubationTime: 500,
   securityTimeToLay: 800,
@@ -900,7 +918,7 @@ if (typeof window !== 'undefined') window.SANDFLUX = SANDFLUX;
 // so a glacial gale bites hardest (§10D). Live-tunable, like HEALTH / SANDFLUX.
 const STORM_EMERGENT = new Set(['Totara', 'kahikatea', 'tawa', 'beech']);                 // killed when tall (leave gaps)
 const STORM_HARDY    = new Set(['tussock', 'flax', 'manuka', 'matagouri', 'speargrass', // ride it out / thrive (§10C)
-                                'patotara', 'coprosma', 'dracophyllum']);
+                                'patotara', 'coprosma', 'dracophyllum', 'sedge', 'wharariki']);
 const STORM_SOFT     = new Set(['cabbagetree', 'kowhai', 'nikau', 'fern', 'kawakawa', 'lancewood']); // buried out (§10C)
 const STORMFX = {
   coastalHi:         0.24,  // elevation below which a plant sits in the salt-burn / dune-slack seaward zone
@@ -1092,6 +1110,7 @@ class Game {
   resetEcosystem() {
     if (!this.currentLevel || !this.terrain) { this.init(); return; }
     this._buildSimulation();
+    if (typeof TMGoals !== 'undefined') TMGoals.reset();   // a new visitor starts the goal book again
   }
 
   // Re-bake the terrain in place from the CURRENT look values (LOOK) and camera
@@ -1351,7 +1370,10 @@ class Game {
         // spares most of the standing swamp while the forest above it is knocked back.
         if (p.biomeKey === 'wetland') vuln *= (M && M.wetlandAshSpare != null ? M.wetlandAshSpare : 0.25);
         if (Math.random() < tier.clearFraction * vuln) {
-          p.alive = false; p.growth = 0; p.regrowthTimer = 0;
+          // A TREE killed by the ash falls over and fades (Plant.fall → dies to bare ground,
+          // regrows), like any tree death; it never just vanishes. Shrubs/grasses are cleared.
+          if (p._tree && p.fall) p.fall('throw');
+          else { p.alive = false; p.growth = 0; p.regrowthTimer = 0; }
           killed++;
         }
       }
@@ -1558,8 +1580,10 @@ class Game {
       const hIt = hits[i];
       if (now < hIt.at) { hits[w++] = hIt; continue; }    // not due yet — keep it queued
       const p = hIt.p;
-      if (p && p.alive && !p._consumed) {
-        if (hIt.kind === 'throw') { p.alive = false; p.growth = 0; p.regrowthTimer = 0; }   // windthrown — regrows from bare
+      if (p && p.alive && !p._consumed && !p._toppling) {
+        // Windthrown: the tree falls DOWNWIND (the storm blows W→E, so toppleDir +1) and fades, then
+        // dies and regrows from bare (Plant.fall), rather than vanishing in a frame.
+        if (hIt.kind === 'throw') p.fall('throw', 1);
         else { const g = p.growth * hIt.mul; p.growth = g < C.minGrowth ? C.minGrowth : g; }
         if (this.simulation && this.simulation.disturb)                                     // warp §9: the thrown/knocked spot grows back into the storm over the aftermath beat
           this.simulation.disturb(p.pos.x, p.pos.y, C.warpRadius || 55, 'gale', 1);
@@ -1578,11 +1602,11 @@ class Game {
     let thrown = 0, knocked = 0;
     for (let i = 0; i < plants.length; i++) {
       const p = plants[i];
-      if (!p || !p.alive) continue;
+      if (!p || !p.alive || p._toppling) continue;
       const dmg = Game._stormPlantDamage(p.type, p.growth, p.elevation, wind, C) * strength;
       if (dmg <= 0.001) continue;
       if (STORM_EMERGENT.has(p.type) && dmg > C.killThresh && Math.random() < dmg) {
-        p.alive = false; p.growth = 0; p.regrowthTimer = 0; thrown++;   // windthrown — regrows from bare
+        p.fall('throw', 1); thrown++;                                   // windthrown — falls downwind, then regrows from bare
       } else {
         const g = p.growth * (1 - dmg);
         p.growth = g < C.minGrowth ? C.minGrowth : g;
@@ -2014,6 +2038,8 @@ class Game {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
     // Swallow D so tap-vs-hold resolves on release/tick (see TeManawa_plant_debug.js).
     if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyDown(k)) return;
+    // The macro pad's TIME DIAL ([ / ] / \ by default — DeepTime.DIAL_KEYS): a standing 0–5,000 yr/s fast-forward.
+    if (typeof DeepTime !== 'undefined' && DeepTime.dialKey && DeepTime.dialKey(k)) return;
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
     if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
 
@@ -2097,7 +2123,11 @@ function setup() {
   // Consolidate every loaded sprite PNG into shared GPU atlas pages now that
   // preload() has resolved them all and the canvas exists. Transparent to the
   // render code (see TeManawa_spriteatlas.js); a no-op if nothing packed.
+  // The live fauna outline's border masks are built FIRST, so the atlas packs each beside its sprite;
+  // link() then maps the packed sprite frames to their mask frames (TeManawa_outline.js).
+  if (typeof FaunaOutline !== 'undefined') FaunaOutline.build();
   if (typeof SpriteAtlas !== 'undefined') SpriteAtlas.build();
+  if (typeof FaunaOutline !== 'undefined') FaunaOutline.link();
 
   // WebGL entity layer (DEFAULT; opt out ?render=2d). Init at the SPRITE resolution
   // (logical × spriteSS) so the cast stays crisp even though the main canvas is now the
@@ -2371,11 +2401,16 @@ function keyPressed() { game.handleKey(key); }
 function keyReleased() { game.handleKeyUp(key); }
 
 // Mouse wheel pans the plant gallery when it's up (its true-scale content can run
-// taller than the screen). Returning false stops the page itself from scrolling.
-// The sim never reads the wheel, so it's a no-op otherwise.
+// taller than the screen). Otherwise it turns the TIME DIAL (a macro-pad dial set to
+// scroll lands here). Returning false stops the page itself from scrolling.
 function mouseWheel(e) {
   if (typeof PlantGallery !== 'undefined' && PlantGallery.active) {
     PlantGallery.scroll(e.deltaY);
+    return false;
+  }
+  if (typeof DeepTime !== 'undefined' && DeepTime.dialWheel) {
+    if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
+    DeepTime.dialWheel(e.deltaY);
     return false;
   }
 }

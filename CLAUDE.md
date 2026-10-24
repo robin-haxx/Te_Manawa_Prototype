@@ -21,6 +21,13 @@ design. See `md/TEMANAWA_REORG.md` §5.
 node tools/serve.js          # then open the printed 127.0.0.1 URL
 ```
 
+`node tools/serve.js 8093 --export` (dev only) also accepts `POST /__export?path=…` and writes the
+body under `exports/`. Load `tools/export_frames.js` in the page and call
+`TM_EXPORT.run(TM_EXPORT.peaks(), 'terrain_geology_timeline/peak')`. Take terrain snapshots at the
+glacial and interglacial PEAKS, not at the mid-swing boost stops, which hide the coast's breathing; see
+`exports/terrain_geology_timeline/README.md`. Stop the browser preview before you judge harness timings:
+a running sim makes soft resets and `init()` read 3–10× slower.
+
 ## Test it — before every commit
 
 ```
@@ -63,6 +70,7 @@ TeManawa_spatial.js        spatial hash grids
 TeManawa_simulation.js     the world: entity lists, update/render loops, spawning
 TeManawa_species_data.js   MOA_SPECIES, EAGLE_SPECIES
 TeManawa_entity_sprites.js SpriteAngle, ArtMode, ART_SETS, EntitySprites
+TeManawa_outline.js        live fauna outline (PROTOTYPE: bush moa + kererū) — recolours the baked border, 1 quad/creature
 geo/manawatu.geo.js        SVG-authored geography skeleton (ranges + river) — see TEMANAWA_GEOGRAPHY.md
 TeManawa_terrain.js        TerrainGenerator — geo skeleton, noise, biome classify, 3/4 relief bake, LOOK look-dev
 TeManawa_projection.js     plan-oblique 3/4 projection — pure, p5-free (like climate.js)
@@ -71,6 +79,7 @@ TeManawa_boid.js           steering base class
 TeManawa_moa.js  _eagle.js  _egg.js  _plant.js  _placeable.js
 TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored
 TeManawa_time.js           DeepTime — yearsBP is the authoritative clock
+TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) — pure, p5-free
 TeManawa_hud.js            InstallHUD: timeline, four buttons, storm/ash FX
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
 TeManawa_UI.js             thin host; delegates to InstallHUD
@@ -90,7 +99,9 @@ sprites/  audio/  typefaces/  research/
 
 - `kiosk.js` **first** — its error handlers must be armed before anything else loads
 - `climate.js` and `time.js` **before** `hud.js` — the HUD renders from them
+- `goals.js` **before** `hud.js` and `bus.js` — the HUD draws its line, the bus judges each boost
 - `hud.js` **before** `UI.js` — `UI.js` reads `InstallHUD.TOP_H`
+- `outline.js` **before** `spriteatlas.js` — `setup()` builds the border masks before the atlas packs them beside their sprites
 - `sketch.js` **last** — it owns `setup()` and `draw()`
 
 `tools/bootcheck.js` derives its load order by parsing `index.html`, so a wrong order
@@ -199,6 +210,7 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 | Key | |
 |---|---|
 | `1`–`5` | The five visitor buttons (deep time, FOREST growth, TUSSOCK growth, storm, eruption) — FOREST helps in the interglacial, TUSSOCK in the glacial; the wrong one for the climate desaturates the scene |
+| `]` / `[` / `\` | **Time dial** (macro-pad encoder: CW / CCW / push) — a standing fast-forward over 30 detents, 0 (geology paused) → 5,000 yr/s (the whole window in ~3¼ min), power-curve so the low end is fine. The rate eases (0.6 s), a boost timelapse never runs slower than it, and the detent survives soft resets. The mouse wheel turns it too. Works in the sim window and the console (relayed over the bus as `{type:'dial'}`). Keys in `DeepTime.DIAL_KEYS` + `secondscreen/input.js` |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` — **debug overlay on only** (a full synchronous rebuild) |
 | `B` / `G` / `N` | Dev tools **(debug overlay on only)**: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. Each is a ~5 s synchronous terrain bake, so they are gated behind `Debug.enabled` — a stray `B` no longer freezes the sim (and no longer collides with the second screen's `b`=boost). See `md/TEMANAWA_DEVTOOLS.md` |
@@ -216,13 +228,15 @@ eruptions, the **five buttons**, habitat health, the kererū dispersal loop, and
 interaction overhaul** (a 1080p touchscreen console over a `BroadcastChannel` bus — geology paused
 until a boost, per-species boost, ramped timelapse to the next glacial/interglacial; built and
 harness-green — see `md/TEMANAWA_SECOND_SCREEN.md`). The **frontier** is
-four things: the **fauna cast** turning on (the scaffold now founds a 9-species grazer-guild mix — 5 moa +
-the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli` + the North Island
+four things: the **fauna cast** turning on (the scaffold now founds an 8-species grazer-guild mix — 4
+**North Island** moa (giant `Dinornis`, little bush `Anomalopteryx`, Mantell's `Pachyornis` and the
+stout-legged `Euryapteryx`, on the three moa sprites; the South Island upland and heavy-footed moa
+are defined but not founded) + the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli` + the North Island
 brown kiwi `Apteryx mantelli` + Finsch's duck `Chenonetta finschi`, all moa-guild birds on dedicated
 multi-state art, plus four flighted forest birds — kererū, kōkako, huia and the tūī `Prosthemadera`
 (a strong-flying nectar-feeder that reuses the kōkako's song/territory). The goose/mōho/duck make
 the cold phase busier; the kiwi is the warm-phase forest counterweight, and its quirk — soil-turning —
-gently heals the forest floor where it forages, closing the forest loop with the kererū. The remaining
-moa and the raptor identity are still unresolved), the
+gently heals the forest floor where it forages, closing the forest loop with the kererū. Every second-screen
+plant adds one bird, and every founded bird is on one or two plants — `md/TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6), the
 **flora art** (~113 assets — all fauna run on placeholder art), the **disturbance clocks** (`disturb()`
 + `warp`, not yet built), and the **interaction tuning**. `CONFIG.mapGrid` is still 512 (can now drop).

@@ -21,6 +21,11 @@ const TM_TIME = {
   stormPressureDecay: 0.999,  // per-frame decay (τ ≈ 17 s at 60 fps): one press bleeds off, spamming stacks
   stormOveruseAt:     0.55,   // pressure above this = overuse (chronic grounding + recruitment stall)
   stormCloudAnim:  0.07,  // thunderhead cel cadence (frame = floor(animTime·this)); a slow, non-flashing churn
+  // A lightning cloud FADES in, holds, and fades out (frames @ ~60 fps) instead of blinking on for a
+  // handful of frames; the ramps keep it a slow luminance change (≥500 ms, the photosensitivity rule).
+  stormBoltFadeIn:  30,
+  stormBoltHold:    30,
+  stormBoltFadeOut: 42,
   growWarmSeconds:  8,    // forest growth pulse (interglacial-suited) — button 2
   growColdSeconds:  8,    // open-country growth pulse (glacial-suited) — button 3
   ashMillis:   1600,      // ramped ash flash — seizure-safe, see renderAshFlash
@@ -155,9 +160,12 @@ const InstallHUD = {
       action: (g) => { g._tmGrowWarmUntil = millis() + TM_TIME.growWarmSeconds * 1000;   // timer set either way: lights the button + drives the regime-fit desaturation lesson
                        InstallHUD.beginWind(g, 'warm');                                   // the interglacial gust blows W→E on the FOREST boost
                        if (InstallHUD._growMatches(g, true)) {                            // right for the climate → it actually grows
+                         DeepTime.boostsOk++;                                             // the tally under the climate line
+                         if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(true);   // the forest habitats hold a busier stock (homeostasis)
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
                          InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
                        } else {
+                         if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // wrong boost for the climate → grey pulse, and no growth (gated in update)
                        } },
       isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
@@ -165,9 +173,12 @@ const InstallHUD = {
       action: (g) => { g._tmGrowColdUntil = millis() + TM_TIME.growColdSeconds * 1000;
                        InstallHUD.beginWind(g, 'cold');                                   // the glacial chill blows W→E on the TUSSOCK boost
                        if (InstallHUD._growMatches(g, false)) {
+                         DeepTime.boostsOk++;
+                         if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(false);  // the open-country habitats hold a busier stock
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
                          InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
                        } else {
+                         if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // grey pulse, no growth
                        } },
       isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
@@ -334,6 +345,9 @@ const InstallHUD = {
     // it matures against the climate get suppressed anyway by the existing forest-band /
     // dormancy machinery, so a mismatched press is doubly futile.
     const nowMs = millis();
+    // The plant goal (TeManawa_goals.js): release a verdict once its time-lapse is over, re-pick the
+    // live goal when the climate or the land changes. Off the draw path, allocation-free.
+    if (typeof TMGoals !== 'undefined') TMGoals.update(g, nowMs);
     // Only the climate-appropriate boost matures cover; a wrong-climate press still lights the
     // button and drains regime fit (the desaturation lesson), but grows nothing (user request).
     // Gated per frame on the current climate, so a boost held across a phase flip stops growing.
@@ -479,8 +493,20 @@ const InstallHUD = {
     g._tmStormCells = cells;
     // Bolts are spaced well apart (frames @ ~60fps → ~1.2–2.7 s to the first) so the white rim
     // blink stays occasional — one on press, then one per bolt — rather than a rapid strobe.
-    // `variant` is the lightning-shape variant (0–2), rolled per strike in updateStormCells.
-    g._tmBolt = { active: false, timer: 70 + Math.random() * 90, duration: 0, x: 0, y: 0, scale: 1, rot: 0, variant: 0 };
+    // `variant` is the lightning-shape variant (0–2), rolled per strike in updateStormCells. `cell` is
+    // the thunderhead it strikes from (the bolt drifts with it); `age` runs through the fade envelope.
+    g._tmBolt = { active: false, timer: 70 + Math.random() * 90, age: 0, cell: 0, pulsed: false, x: 0, y: 0, scale: 1, rot: 0, variant: 0 };
+  },
+
+  // Lightning-cloud opacity 0..1 at bolt age (frames): smoothstep up, hold, smoothstep down.
+  boltAlpha(age) {
+    const fi = TM_TIME.stormBoltFadeIn, ho = TM_TIME.stormBoltHold, fo = TM_TIME.stormBoltFadeOut;
+    let u;
+    if (age < fi) u = age / fi;
+    else if (age < fi + ho) return 1;
+    else u = 1 - (age - fi - ho) / fo;
+    u = u < 0 ? 0 : (u > 1 ? 1 : u);
+    return u * u * (3 - 2 * u);
   },
 
   updateStormCells(g, dt) {
@@ -497,18 +523,26 @@ const InstallHUD = {
     const b = g._tmBolt;
     if (!b) return;
     if (b.active) {
-      b.duration -= dt;
-      if (b.duration <= 0) { b.active = false; b.timer = 80 + Math.random() * 100; }   // long gap to the next bolt → occasional flashes
+      b.age += dt;
+      const c = cells[b.cell];
+      if (c) { b.x = c.x; b.y = c.y + 10; }   // ride the thunderhead it struck from while it fades
+      if (!b.pulsed && b.age >= TM_TIME.stormBoltFadeIn) {
+        b.pulsed = true;
+        InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs);   // one short white blink per strike, at its brightest
+      }
+      if (b.age >=TM_TIME.stormBoltFadeIn + TM_TIME.stormBoltHold + TM_TIME.stormBoltFadeOut) {
+        b.active = false; b.timer = 80 + Math.random() * 100;   // long gap to the next bolt → occasional flashes
+      }
     } else {
       b.timer -= dt;
       if (b.timer <= 0) {
-        const c = cells[(Math.random() * cells.length) | 0];
-        b.active = true; b.duration = 4 + Math.random() * 4;
+        b.cell = (Math.random() * cells.length) | 0;
+        const c = cells[b.cell];
+        b.active = true; b.age = 0; b.pulsed = false;
         b.x = c.x; b.y = c.y + 10;
         b.scale = 0.6 + Math.random() * 0.4;
         b.rot = (Math.random() - 0.5) * 0.6;
         b.variant = (Math.random() * 3) | 0;   // pick one of the three bolt shapes
-        InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs);   // one short white blink per lightning strike
       }
     }
   },
@@ -567,17 +601,17 @@ const InstallHUD = {
         // Fade the strike via globalAlpha, NOT a per-frame tint(): a tint value that changes
         // every frame makes p5 rebake the image's tint cache each frame — the strike stutter.
         noTint();
-        _dc.globalAlpha = Math.min(1, b.duration / 8 + 0.6) * env;
+        const ba = this.boltAlpha(b.age);
+        // Soft glow behind the cloud, riding the same fade (kept gentle for photosensitivity).
+        noStroke();
+        fill(255, 255, 200, 40 * ba * env);
+        ellipse(0, 0, 150 * z, 150 * z);
+        _dc.globalAlpha = ba * env;
         const asp = boltStrip ? SpriteStrips.aspect('storm_bolt', b.variant) : (lightning.width / lightning.height);
         const bh = 130 * b.scale * z, bw = bh * asp;
         if (boltStrip) SpriteStrips.draw('storm_bolt', b.variant, 0, 0, bw, bh);
         else image(lightning, 0, 0, bw, bh);
         _dc.globalAlpha = 1;
-        if (b.duration > 6) {   // brief, soft glow — kept gentle for photosensitivity
-          noStroke();
-          fill(255, 255, 200, 50 * env);
-          ellipse(0, 0, 150 * z, 150 * z);
-        }
         pop();
       }
       _dc.globalAlpha = 1;
@@ -857,20 +891,48 @@ const InstallHUD = {
     this._timelineBody(g, x0, w, this.TOP_H - 30);
     if (DeepTime.isDeep()) {
       this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, TOP, x0 + w, 12, [255, 210, 120]);
-    }
+    } else this._renderDialBadge(x0 + w, 12, TOP, [255, 210, 120]);
     pop();
   },
 
+  // The TIME DIAL's readout (DeepTime.dialStep): the detent's rate, shown while the dial is off
+  // zero, and "real time" for dialBadgeMs after it is turned back down. The text is the DETENT's
+  // rate (quantised, so the _blitText cache sees ~30 strings, never a per-frame value) and the
+  // fade rides drawingContext.globalAlpha, not the colour, for the same reason (per-frame tint).
+  dialBadgeMs: 2500,
+  _dialLabel(rate) {
+    const r = rate < 100 ? Math.max(1, Math.round(rate)) : rate < 1000 ? Math.round(rate / 10) * 10 : Math.round(rate / 50) * 50;
+    return '>> ' + r.toLocaleString() + ' yrs/s';
+  },
+  _renderDialBadge(x, y, av, col) {
+    if (typeof DeepTime === 'undefined' || DeepTime.dialStep === undefined) return;
+    let a = 1, str;
+    if (DeepTime.dialStep > 0) str = this._dialLabel(DeepTime.dialTargetRate());
+    else {
+      const since = millis() - (DeepTime._dialAt || 0);
+      if (!DeepTime._dialAt || since >= this.dialBadgeMs) return;
+      a = 1 - since / this.dialBadgeMs;
+      str = 'real time';
+    }
+    const ctx = drawingContext, a0 = ctx.globalAlpha;
+    ctx.globalAlpha = a0 * a;
+    this._blitText(str, FreckleFace, 'freckle', 15, RIGHT, av, x, y, col);
+    ctx.globalAlpha = a0;
+  },
+
   // VISITOR timeline — the deep-time axis relocated to a thin strip at the bottom (the top
-  // of where the buttons used to sit). The year is NOT drawn here; it floats larger and
-  // higher via renderVisitorYear. On the wall the five buttons are physical, so their
-  // on-screen twins only appear in debug — this is the clean, uncluttered visitor layout.
+  // of where the buttons used to sit), with the goal line above it and the year just below it
+  // (renderVisitorGoal / renderVisitorYear), all three keyed off _visAxisY so they move as one.
+  // On the wall the five buttons are physical, so their on-screen twins only appear in debug —
+  // this is the clean, uncluttered visitor layout.
   VIS_STRIP_H: 64,
+  VIS_AXIS_UP: 168,          // px from the top of the bottom strip up to the timeline axis (was 128)
   VIS_INSET: 0.10,           // horizontal inset each side, as a fraction of canvas width (compacted from the debug strip)
+  _visAxisY(H) { return (H - this.VIS_STRIP_H) - this.VIS_AXIS_UP; },
   renderVisitorTimeline(g, W, H) {
     const inset = Math.round(W * this.VIS_INSET);
     const x0 = inset, w = W - 2 * inset;
-    const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = yTop - 128;
+    const stripH = this.VIS_STRIP_H, yTop = H - stripH, ay = this._visAxisY(H);
     push();
     // Light backing — kept low-alpha so the edge band glows THROUGH behind the axis while
     // the marks still have enough contrast to read (the band is now drawn under the HUD).
@@ -878,7 +940,7 @@ const InstallHUD = {
     this._visitorTimelineBody(g, x0, w, ay);
     if (DeepTime.isDeep()) {
       this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [240, 240, 240]);
-    }
+    } else this._renderDialBadge(x0 + w, yTop + 16, BOTTOM, [240, 240, 240]);
     pop();
   },
 
@@ -924,26 +986,77 @@ const InstallHUD = {
     }
   },
 
-  // VISITOR year — the one always-on readout, large and lowered to float over the northern
-  // forest (the spot the design brief marks). A soft dark halo keeps it legible over the
-  // busy scene; no strip behind it, since the scene runs to the top edge in visitor mode.
-  VIS_YEAR_SIZE: 50,
-  VIS_YEAR_Y: 0.11,          // vertical centre, as a fraction of canvas height
+  // VISITOR year — the one always-on readout, centred just BELOW the timeline axis, so the
+  // timeline reads goal (above) → axis → date (below). Clears the playhead token (TL_PLAYHEAD_H).
+  // A soft dark halo keeps it legible over the busy scene; no strip behind it.
+  VIS_YEAR_SIZE: 42,
+  VIS_YEAR_BELOW: 46,        // px from the timeline axis down to the year's centre
   renderVisitorYear(g, W, H) {
     const label = DeepTime.label();
-    const cx = W / 2, cy = Math.round(H * this.VIS_YEAR_Y);
+    const cx = W / 2, cy = this._visAxisY(H) + this.VIS_YEAR_BELOW;
     push();
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
+    this._renderClimateLine(cx, cy + this.VIS_CLIMATE_BELOW);
     pop();
   },
 
-  // VISITOR goal — the objective for the interglacial/glacial the run is heading toward, floated
-  // ABOVE the bottom timeline in the SAME format as the year (FreckleFace, dark halo + light fill,
-  // centred). It names where a boost is aiming: "Reach the next Interglacial!" / "…Glacial!". Blank
-  // once there is no crossing left before the window end (nothing more to aim for).
-  VIS_GOAL_SIZE: 50,          // matches VIS_YEAR_SIZE (the year's format)
+  // "The climate is INTERGLACIAL / GLACIAL" under the year: the state in the climate boost colours
+  // (green / blue, as the goal verdicts and boost outlines). The same regime cut as the boost gate
+  // (TMGoals.glacialNow → Climate.regimeThreshold). Centred as one line, so the two parts' widths are
+  // measured once per regime change, never per frame.
+  VIS_CLIMATE_SIZE: 28,
+  VIS_CLIMATE_BELOW: 42,     // px from the year's centre down to this line's centre
+  CLIMATE_PREFIX: 'The climate is ',
+  _climateLine: null,        // { glacial, word, col, prefixW, wordW }
+  _renderClimateLine(cx, cy) {
+    const glacial = (typeof TMGoals !== 'undefined') ? TMGoals.glacialNow() : false;
+    let c = this._climateLine;
+    if (!c || c.glacial !== glacial) {
+      const word = glacial ? 'GLACIAL' : 'INTERGLACIAL';
+      const col = (typeof TMGoals !== 'undefined') ? TMGoals.climateColor(glacial)
+                : (glacial ? [150, 205, 236] : [84, 210, 96]);
+      push(); textFont(FreckleFace); textSize(this.VIS_CLIMATE_SIZE);
+      const prefixW = textWidth(this.CLIMATE_PREFIX), wordW = textWidth(word);
+      pop();
+      c = this._climateLine = { glacial, word, col, prefixW, wordW };
+    }
+    const x0 = cx - (c.prefixW + c.wordW) / 2, s = this.VIS_CLIMATE_SIZE;
+    this._blitText(this.CLIMATE_PREFIX, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + 2, cy + 2, this._GOAL_HALO);
+    this._blitText(this.CLIMATE_PREFIX, FreckleFace, 'freckle', s, LEFT, CENTER, x0, cy, this._GOAL_COL);
+    this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW + 2, cy + 2, this._GOAL_HALO);
+    this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW, cy, c.col);
+    this._renderBoostCount(cx, cy + this.VIS_BOOSTS_BELOW);
+  },
+
+  // "Successful boosts: N" under the climate line: right-for-the-climate boosts (second screen or the
+  // FOREST/TUSSOCK keys) since the timeline last restarted (DeepTime.boostsOk, zeroed in DeepTime.reset).
+  // The label is rebuilt only when the count changes, never per frame.
+  VIS_BOOSTS_SIZE: 24,
+  VIS_BOOSTS_BELOW: 36,      // px from the climate line's centre down to this line's centre
+  BOOSTS_PREFIX: 'Successful boosts: ',
+  _boostLine: null,          // { n, text }
+  _renderBoostCount(cx, cy) {
+    const n = (typeof DeepTime !== 'undefined' && DeepTime.boostsOk > 0) ? DeepTime.boostsOk : 0;
+    let b = this._boostLine;
+    if (!b || b.n !== n) b = this._boostLine = { n, text: this.BOOSTS_PREFIX + n };
+    const s = this.VIS_BOOSTS_SIZE;
+    this._blitText(b.text, FreckleFace, 'freckle', s, CENTER, CENTER, cx + 2, cy + 2, this._GOAL_HALO);
+    this._blitText(b.text, FreckleFace, 'freckle', s, CENTER, CENTER, cx, cy, this._GOAL_COL);
+  },
+
+  // VISITOR goal — floated ABOVE the bottom timeline in the SAME format as the year (FreckleFace,
+  // dark halo + light fill, centred). It shows the live PLANT GOAL and, after a boost, its verdict
+  // (TeManawa_goals.js decides which line and colour). With no plant goal live it falls back to the
+  // regime objective ("Boost a glacial plant!"), and it is blank once there is no crossing left
+  // before the window end. Lines wrap to the screen and stack UPWARD from the anchor, so a long
+  // verdict never runs into the timeline. A change of line CROSSFADES (GOAL_FADE_MS, above the
+  // 500 ms photosensitivity floor) via globalAlpha, never a per-frame tint (see per-frame tint stutter).
+  VIS_GOAL_SIZE: 50,          // the year's format (FreckleFace), a touch larger than the year itself
   VIS_GOAL_GAP: 104,          // px above the timeline axis — clears the eruption pins + their labels
+  GOAL_WRAP: 0.88,            // max line width, as a fraction of the canvas width
+  GOAL_LINE_H: 1.12,          // line spacing, × VIS_GOAL_SIZE
+  GOAL_FADE_MS: 800,          // crossfade between successive lines (goal → verdict → next goal)
   GOAL_OBJECTIVE: {           // per-regime objective text (edit here); falls back to a generated line
     interglacial: 'Boost a glacial plant!',
     glacial:      'Boost an interglacial plant!'
@@ -951,6 +1064,9 @@ const InstallHUD = {
   // Cache the next-boundary lookup: it scans the climate curve + allocates, so recompute ONLY when
   // the regime flips or the clock jumps back — never per frame (CLAUDE.md: no allocation in draw()).
   _goalCache: null,
+  // Two text layers: `cur` fading in, `out` fading out. Swapped (not reallocated) on a change; the
+  // wrapped lines are rebuilt only when the text changes.
+  _goalFade: null,
   renderVisitorGoal(g, W, H) {
     if (typeof Climate === 'undefined' || typeof DeepTime === 'undefined' || !Climate.nextRegimeBoundary) return;
     const y = DeepTime.yearsBP;
@@ -964,13 +1080,86 @@ const InstallHUD = {
     } else {
       c.at = y;                                            // track forward motion (mutate, no allocation)
     }
-    if (!c.label) return;                                  // no crossing left before the window end
-    const ay = (H - this.VIS_STRIP_H) - 128;              // the bottom timeline axis (see renderVisitorTimeline)
+
+    // The plant goal (or its verdict) wins; otherwise the regime objective. Both colours are stable
+    // references, so an identity test spots a change without allocating.
+    const goals = (typeof TMGoals !== 'undefined') ? TMGoals : null;
+    const gt = goals ? goals.text() : null;
+    const want = gt || (c.label || null);
+    const col = gt ? goals.color() : this._goalPromptCol();
+    const now = millis();
+    let F = this._goalFade;
+    if (!F) F = this._goalFade = { cur: { text: null, col: null, lines: null, t0: -1e9, a0: 1 },
+                                   out: { text: null, col: null, lines: null, t0: -1e9, a0: 0 } };
+    if (want !== F.cur.text || col !== F.cur.col) {
+      const fade = this.GOAL_FADE_MS;
+      const shown = Math.min(1, (now - F.cur.t0) / fade);  // how far the old line had faded in
+      const o = F.out; F.out = F.cur; F.cur = o;
+      F.out.a0 = shown; F.out.t0 = now;
+      F.cur.text = want; F.cur.col = col; F.cur.t0 = now;
+      F.cur.lines = want ? this._wrapGoal(want, W) : null;
+    }
+
+    const ay = this._visAxisY(H);                         // the bottom timeline axis (see renderVisitorTimeline)
     const cx = W / 2, cy = ay - this.VIS_GOAL_GAP;
+    const fade = this.GOAL_FADE_MS;
+    const aOut = F.out.a0 * (1 - Math.min(1, (now - F.out.t0) / fade));
+    const aIn  = Math.min(1, (now - F.cur.t0) / fade);
     push();
-    this._blitText(c.label, FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
-    this._blitText(c.label, FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
+    if (aOut > 0.004 && F.out.lines) this._drawGoalLines(F.out.lines, F.out.col, aOut, cx, cy);
+    if (aIn > 0.004 && F.cur.lines)  this._drawGoalLines(F.cur.lines, F.cur.col, aIn, cx, cy);
     pop();
+  },
+
+  _goalPromptCol() {
+    return (typeof TM_GOALS !== 'undefined' && TM_GOALS.colPrompt) || this._GOAL_COL;
+  },
+  _GOAL_COL: [236, 244, 240],
+  _GOAL_HALO: [8, 14, 12, 170],
+
+  // Word-wrap to GOAL_WRAP of the width, BALANCED: as few lines as greedy wrapping needs, but at the
+  // narrowest width that still fits in that many, so a two-line goal splits evenly instead of
+  // stranding its last word ("…than" / "today"). Runs only when the line changes.
+  _wrapGoal(str, W) {
+    const words = String(str).split(' ');
+    const wrapAt = (maxW) => {
+      const lines = [];
+      let line = '';
+      for (let i = 0; i < words.length; i++) {
+        const tryLine = line ? line + ' ' + words[i] : words[i];
+        if (line && textWidth(tryLine) > maxW) { lines.push(line); line = words[i]; }
+        else line = tryLine;
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    push(); textFont(FreckleFace); textSize(this.VIS_GOAL_SIZE);
+    const maxW = W * this.GOAL_WRAP;
+    let lines = wrapAt(maxW);
+    if (lines.length > 1) {
+      let lo = 0, hi = maxW;
+      for (let it = 0; it < 12; it++) {
+        const mid = (lo + hi) / 2;
+        if (wrapAt(mid).length > lines.length) lo = mid; else hi = mid;
+      }
+      lines = wrapAt(hi);
+    }
+    pop();
+    return lines;
+  },
+
+  // Bottom-anchored: the last line sits on the anchor and earlier lines stack above it.
+  _drawGoalLines(lines, col, alpha, cx, cy) {
+    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null;
+    const a0 = dc ? dc.globalAlpha : 1;
+    if (dc) dc.globalAlpha = a0 * alpha;
+    const lh = this.VIS_GOAL_SIZE * this.GOAL_LINE_H, n = lines.length;
+    for (let i = 0; i < n; i++) {
+      const ly = cy - (n - 1 - i) * lh;
+      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 2, ly + 3, this._GOAL_HALO);
+      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx, ly, col || this._GOAL_COL);
+    }
+    if (dc) dc.globalAlpha = a0;
   },
 
   // The ambient colour band framing the scene at all times (TM_EDGE). Hue by climate,

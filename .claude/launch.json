@@ -7,6 +7,12 @@
       "runtimeArgs": ["tools/serve.js"],
       "port": 8080,
       "autoPort": true
+    },
+    {
+      "name": "temanawa-export",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["tools/serve.js", "8093", "--export"],
+      "port": 8093
     }
   ]
 }

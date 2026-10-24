@@ -2,8 +2,9 @@
 // NORTH ISLAND GOOSE: the open-country grazer
 // ------------------------------------------------------------
 // Cnemiornis gracilis. A heavy flightless goose of open grassland, scrub and
-// coast, and it is IN THE BONES held in this building (the Te Ahu a Tūranga
-// assemblage; md/TEMANAWA_ECOLOGY_FAUNA.md §, md/TEMANAWA_SPECIES_SUMMARY.md).
+// coast, and it is IN THE LOCAL BONES (the Te Ahu a Tūranga assemblage, returned to
+// the Ruahine; replicas at Te Manawa — md/TEMANAWA_ECOLOGY_FAUNA.md §2,
+// md/TEMANAWA_SPECIES_SUMMARY.md).
 // Its ecological job here is to make the COLD phase busier, not emptier: when the
 // forest contracts and the plains open out in a glacial, the large grazing birds
 // (this goose, the plains/coastal moa) come into their own.

@@ -226,20 +226,20 @@ const Kiosk = {
       let reseed = (this.resetCount + 1) % this.reseedEvery === 0;
       if (opts && typeof opts.reseed === 'boolean') reseed = opts.reseed;
 
-      // Return to the LAST ERUPTION rather than the far start (user request): an idle or
-      // end-of-window reset seeks back to the previous eruption checkpoint and replays it
-      // (Game.applyEruptionAt), so the ambient loop cycles on the eruptions instead of
-      // restarting the whole 1 Ma every time. Exceptions:
+      // Where the reset lands (Game.applyEruptionAt replays an eruption checkpoint):
+      //   · end-of-window (the timeline ran out at Oruanui) → back to the START, 1 Ma. It used
+      //     to seek the previous eruption, which from 25.5 ka is always Whakamaru (349 ka), so
+      //     the run never replayed its opening;
+      //   · the attract loop (idle / error / manual) → a RANDOM eruption checkpoint, so an
+      //     unattended wall shows a different chapter each time;
       //   · a periodic reseed (every reseedEvery) is a deliberate FULL restart at 1 Ma: it
-      //     also varies the land, and lets the whole cycle (emergence onward) replay;
-      //   · before the first eruption (no prior), a plain rebuild at the current start.
+      //     also varies the land, and lets the whole cycle (emergence onward) replay.
       // NOTE: applyEruptionAt morphs the terrain to the eruption year, so this reset is
       // heavier than the bare resetEcosystem() swap, but it is crossfaded and infrequent
       // (idle / once per cycle), well short of the watchdog. See TEMANAWA_BUILD_V3.md §5.1.
-      const beforeYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null;
-      const lastEr = (typeof DeepTime !== 'undefined' && beforeYear != null) ? DeepTime.prevEruption(beforeYear) : null;
-      if (!reseed && lastEr != null && typeof g.applyEruptionAt === 'function') {
-        g.applyEruptionAt(lastEr, DeepTime.eruptionByYear(lastEr));   // back to the last eruption
+      const target = (typeof DeepTime !== 'undefined') ? this._attractTarget(reason) : null;
+      if (!reseed && target != null && typeof g.applyEruptionAt === 'function') {
+        g.applyEruptionAt(target, DeepTime.eruptionByYear(target));
       } else if (reseed) {
         g.init();                                                     // full restart at 1 Ma (+ reseed the land)
       } else {
@@ -259,6 +259,15 @@ const Kiosk = {
     this.lastResetMs_duration = ms;
     console.log(`[Kiosk] soft reset (${reason}) in ${ms.toFixed(1)}ms, #${this.resetCount}`);
     return ms;
+  },
+
+  // The eruption year a soft reset replays: the oldest checkpoint (1 Ma) when the window
+  // ran out, otherwise a random one. Never the terminal Oruanui (skipTargets excludes it).
+  _attractTarget(reason) {
+    const t = DeepTime.skipTargets();
+    if (!t.length) return null;
+    if (reason === 'end-of-window') return Math.max.apply(null, t);
+    return t[Math.floor(Math.random() * t.length)];
   },
 
   // Draw over the top of everything while the reset settles.

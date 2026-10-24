@@ -40,11 +40,11 @@ Three stations along the touchscreen, left → right, matching the wireframe:
  STATION 1              STATION 2                         STATION 3
  habitat switch         encyclopedia / boost-select       activate
 
-   FOREST   ┐                                              ( ERUPTION )
-   WETLAND  │  up          [ STORM ]                        skip ahead
+   WETLAND  ┐                                              ( ERUPTION )
+   FOREST   │  up          [ STORM ]                        skip ahead
   ─CENTER─  ┤ (Select)     ┌───────────────────────┐
-   LOWLAND  │  down        │  species card /        │      ( BOOST >> )
-   ALPINE   ┘              │  encyclopedia entry    │       timelapse to the
+   ALPINE   │  down        │  species card /        │      ( BOOST >> )
+   LOWLAND  ┘              │  encyclopedia entry    │       timelapse to the
                            └───────────────────────┘       next glacial/interglacial
 ```
 
@@ -80,17 +80,20 @@ target, so the exact wiring can change without touching app logic (`secondscreen
 
 From the centre "Select a Habitat" rest, top → bottom:
 
-| Switch position | Habitat | Reads as |
-|---|---|---|
-| up ×2 | **Forest** | closed podocarp–broadleaf forest (warm, interglacial) |
-| up ×1 | **Wetland** | swamp forest and flax on wet alluvium |
-| centre | *(Select a Habitat)* | neutral / attract |
-| down ×1 | **Lowland** | open lowland — grass, scrub, pioneer trees |
-| down ×2 | **Alpine** | subalpine tops — tussock, grass-trees, beech line |
+| Switch position | Habitat | Era | Reads as |
+|---|---|---|---|
+| up ×2 | **Wetland** | interglacial | the Moutoa zonation: pūrei in open water, harakeke, tī kōuka, kahikatea, tōtara on the levée |
+| up ×1 | **Forest** | interglacial | podocarp–broadleaf forest: tōtara, tawa, tree ferns, nīkau, kōwhai |
+| centre | *(Select a Habitat)* | — | neutral / attract |
+| down ×1 | **Alpine** | glacial | the plants of the Ruahine and Tararua ranges, the treeless glacial tops: mountain beech in shelter, Dracophyllum, snow tussock, scrub, wharariki |
+| down ×2 | **Lowland** | glacial | the glacial flats: tussock, grey scrub, mānuka, kōwhai, tī kōuka |
 
-(Order is exactly as specified: *"above it is wetland, then forest; below it is lowland then
-alpine."* The vertical axis reads loosely as climate/topography, not a strict elevation
-gradient.)
+**Up is warm, down is cold.** The two interglacial habitats sit above the centre rest and the two
+glacial habitats below it, with Forest and Alpine one detent from the centre (reordered
+2026-10-13 from Forest/Wetland/·/Lowland/Alpine). Each habitat's `era` lives in
+`secondscreen/encyclopedia.js`, and `tools/bootcheck.js` ("encyclopedia roster") asserts that every
+plant on a screen passes the boost gate in that screen's era. Rosters and the evidence behind them:
+`TEMANAWA_ENCYCLOPEDIA_FLORA.md`.
 
 ---
 
@@ -156,7 +159,7 @@ sim sends *telemetry* so the readout tracks the clock.
 | `hello` | — | handshake; sim replies with current `clock` + `goal` |
 | `habitat` | `habitat` (`forest`/`wetland`/`lowland`/`alpine`/`null`) | optional: focus/hint the camera or highlight; safe to ignore at first |
 | `plant` | `habitat`, `plantKey` | the highlighted species (station 2). Optional: preview highlight in the sim |
-| `boost` | `plantKey`, `habitat` | **the main event** — regime-fit gate → per-species seed → begin timelapse to the next boundary (§6) |
+| `boost` | `plantKey`, `habitat`, `fauna` (the card's sim bird keys), `plantName` (the card's name) | **the main event** — regime-fit gate → plant-goal verdict (§6.5) → per-species seed → begin timelapse to the next boundary (§6) |
 | `storm` | — | `InstallHUD.press(game,'storm')` — works today, unchanged |
 | `eruption` | `phase` (`down`/`up`) | eruption skip; maps to `InstallHUD.erDown/erUp` (tap = revert, hold = skip) |
 | `deep` | — | legacy plain deep-time press (kept for parity; the boost replaces it on the wall) |
@@ -166,9 +169,9 @@ sim sends *telemetry* so the readout tracks the clock.
 | `type` | fields | drives |
 |---|---|---|
 | `clock` | `yearsBP`, `glacialIndex`, `stage`, `stageName`, `mis` | the KYA date + glacial/interglacial label (sent ~4/s) |
-| `goal` | `targetYearsBP`, `targetStage`, `targetStageName` | the goal readout (the next glacial/interglacial) |
+| `goal` | `targetYearsBP`, `targetStage`, `targetStageName`, `prompt` | the goal readout: the live plant goal's line (`prompt`, §6.5), else the next glacial/interglacial |
 | `timelapse` | `active`, `progress` (0..1), `yrPerSec`, `achieved` (bool/null) | the timelapse progress bar + goal-met indicator |
-| `boostResult` | `plantKey`, `matched` (bool) | the immediate regime-fit verdict (right species for the climate?) |
+| `boostResult` | `plantKey`, `matched` (bool), `goal` (`answer`/`matched`/`wrong`/`answerWrongClimate`/null), `text` | the immediate regime-fit verdict (right species for the climate?) and the plant-goal verdict line the diorama shows (§6.5) |
 | `eruptionSoon` | `name`, `yearsBP` | when a timelapse will stop early at a looming eruption (§6.3) |
 
 The screen never assumes the sim is up: it renders from its own state and simply reflects
@@ -193,21 +196,23 @@ hand-tap glyph, title, orange subtitle, flanking trees.
 
 ### 4.1 Habitat → plant palettes
 
-Drawn from the mockups and cross-checked against the biome palettes in
-`levels/level_temanawa_scaffold.js`. **The four species shown on the mockup cards are
-confirmed; the rest are my reading of the sprite clusters and are marked `TODO` for you to
-confirm.** All live data-driven in `secondscreen/encyclopedia.js`.
+Reviewed against Esler (1978) and the deep-time pollen record in
+`TEMANAWA_ENCYCLOPEDIA_FLORA.md` (2026-10-13), which replaced the first reading of the mockup
+sprite clusters. The four mockup-card species are kept (red beech renamed black beech). All live
+data-driven in `secondscreen/encyclopedia.js`.
 
-| Habitat | Plants (mockup reading) | Card-confirmed |
+| Habitat (era) | Plants | Card-confirmed |
 |---|---|---|
-| **Forest** | **Tōtara**, Nīkau, Tawa, (tree)Fern, Beech | Tōtara → Eyles' harrier |
-| **Wetland** | Kahikatea, **Tī kōuka**, Flax, (tall podocarp), Tussock/sedge | Tī kōuka → kererū |
-| **Lowland** | Nīkau, Tussock, (broadleaf), Tī kōuka, **Mānuka** | Mānuka → kōkako |
-| **Alpine** | (tree)Fern, Tussock, Dracophyllum, **Red beech**, (beech/broadleaf) | Red beech → huia |
+| **Wetland** (interglacial) | Kahikatea, **Tī kōuka**, Harakeke, Tōtara (levée), Pūrei (*Carex secta*) | Tī kōuka → kererū |
+| **Forest** (interglacial) | **Tōtara**, Nīkau, Tawa, Mamaku & ponga, Kōwhai | Tōtara → Eyles' harrier |
+| **Alpine** (glacial) | **Mountain beech**, Wharariki, Snow tussock, Dracophyllum, Subalpine scrub | Mountain beech → huia |
+| **Lowland** (glacial) | **Mānuka**, Grey scrub, Tussock, Kōwhai, Tī kōuka | Mānuka → kōkako |
 
 Plant keys map to `PLANT_TYPES` in `TeManawa_plant_defs.js` (`Totara`, `cabbagetree`,
 `manuka`, `beech`, `nikau`, `tawa`, `fern`, `tussock`, `flax`, `kahikatea`, `dracophyllum`,
-`coprosma`, `kowhai`), so a boost names a type the sim already knows.
+`coprosma`, `kowhai`, and the art-sharing `sedge` and `wharariki`), so a boost names a type the
+sim already knows. Every plant passes the boost gate in its screen's era: kōwhai and tī kōuka,
+which sit on one warm and one cold screen, are neutral (coldTolerance 0.7); black beech is cold.
 
 ---
 
@@ -215,27 +220,29 @@ Plant keys map to `PLANT_TYPES` in `TeManawa_plant_defs.js` (`Totara`, `cabbaget
 
 Highlighting a plant (plant-select control, or touch) fills the card:
 
-- the plant's **large sprite** (right of the card);
-- its **common name** (serif) and **scientific name** (orange italic);
-- its **description** (prose — Lorem in the mockups, so authored copy is *pending*, §8);
-- the **fauna it supports** — one or two animated sprites, top-left of the card. This is the
-  teaching link: *boosting this plant helps these animals*. The sim reads the same link when
-  the boost fires (a Tōtara boost is also a harrier boost, downstream).
+- its **common name** (serif) and **scientific name** (orange italic), top left;
+- a small **scene**, top right: the plant (its big sprite is already highlighted in the cluster)
+  with the **fauna it supports** placed on it — flyers in the canopy, the moa guild at its foot
+  (`TM_FAUNA[…].pose`). The plant's box is cropped to its visible pixels so the birds sit on it,
+  and its height follows the cluster's, so a tree still stands taller than a tussock;
+- the **write-up**, full width and touch-scrollable (a fade at the bottom while there is more):
+  the plant's paragraphs (`desc`), then *"Boosting <plant> helps: <bird>"* and the bird's
+  paragraphs (`birdDesc`). The copy is the fact-checked entries in `TEMANAWA_GOALS.md` §3.
+  The card is 845 px wide (widened leftward from 690).
+- The fauna is the teaching link: *boosting this plant helps these animals*. The card's list travels with the
+  boost (`m.fauna`, the sim species keys), so the sim recruits and outlines exactly the birds the
+  visitor sees; `TM_BOOST.faunaLinks` in `TeManawa_bus.js` is the fallback when no list is sent.
 
-**Plant ↔ fauna links (confirmed from the mockup cards):**
-
-| Plant | Fauna shown | Sprite source |
-|---|---|---|
-| Tōtara | Eyles' harrier (kērangi) | `sprites/EylesHarrier/…` |
-| Mānuka | Kōkako | `sprites/Flighted/Kokako…` |
-| Tī kōuka | Kererū (×2) | `sprites/Kereru_*.png`, `sprites/Flighted/Kereru/` |
-| Red beech | Huia (×2) | `sprites/Flighted/HuiaMale…`, `HuiaFemale…` |
-
-Every other plant's fauna list is `TODO` in the data file. The full fauna roster the links
-can point at: the moa guild (`upland_moa`, `little_bush_moa`, `stout_legged_moa`,
-`mantells_moa`, `heavy_footed_moa`, + the giants/eastern/crested), `giant_goose`,
-`north_island_takahe` (mōho), `north_island_brown_kiwi`, `finschs_duck`, and the flighted
-birds `kereru`, `kokako`, `huia`, `tui`, plus the raptor `eyles_harrier`.
+**Plant ↔ fauna links: the bird policy** (2026-10-13, revised 2026-10-15; map and evidence in
+`TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6). One bird per plant; each of the 13 birds the sim founds is on
+one or two plants, so none hogs the cards: Tōtara → Eyles' harrier, tawa → kererū, nīkau → kōkako, kōwhai and wharariki → tūī, tree fern → kiwi,
+kahikatea → little bush moa, harakeke → Mantell's moa, tī kōuka → Finsch's duck, pūrei → mōho,
+tussock → North Island goose, grey/subalpine scrub and Dracophyllum → North Island giant moa, mānuka → stout-legged
+moa, mountain beech → huia. The cast is North Island only:
+`north_island_giant_moa`, `little_bush_moa`, `mantells_moa`, `stout_legged_moa` (the four on the
+three moa sprites), `giant_goose`, `north_island_takahe`, `north_island_brown_kiwi`,
+`finschs_duck`, `kereru`, `kokako`, `huia`, `tui`, `eyles_harrier`. The South Island upland and
+heavy-footed moa remain defined in `MOA_SPECIES` but are not founded.
 
 The **storm** button lives at this station (one, maybe two non-deep-time interaction buttons;
 only storm for now). It sends `{type:'storm'}` — already wired on the sim to
@@ -313,6 +320,50 @@ event. Maps to the existing eruption navigation (`InstallHUD.erDown/erUp` →
 `Game.applyEruptionAt`, tap = revert to the previous event, hold = skip to the next). It is
 the "jump the geology forward hard" control, distinct from the boost's measured timelapse.
 
+### 6.5 Plant goals (built)
+
+The line above the diorama's timeline is a **question one plant answers**, e.g. *"Boost a plant that
+was rarer in ancient times than today"* → harakeke (Esler: it spread after drainage and stopbanking).
+Each boost is judged against the live goal, and the line becomes a **verdict** until the boost's
+time-lapse is over:
+
+| Boost | Line | What else happens |
+|---|---|---|
+| The answer, right climate | *"Harakeke was an interglacial plant, and was rarer in ancient times than today!"*, in the climate boost colour (green/blue) | A **bigger** boost (`answerSeed` 24 seedlings, `answerFauna` 4 birds), and a **solid white** outline on the plant + its bird that eases to green/blue over 6 s. When the verdict fades, the **next goal** in the book comes up. |
+| Another plant, right climate | *"Tōtara was in interglacial habitats, but is not rarer in ancient times than today..."*, in the goal colour | The normal matched boost: outline, rim pulse, time-lapse trails. Same goal after. |
+| Wrong climate | *"Tawa was not glacial, and was not rarer in ancient times than today"*, **grey** | The normal wrong boost: nothing grows, grey pulse, the scene desaturates. Same goal after. |
+| The answer, wrong climate | *"… was rarer in …, but was not glacial..."*, grey | As a wrong boost. Only possible when a goal has both a warm and a cold answer. |
+
+The verdict holds at least `holdMs` (7 s) and until the time-lapse ends, then crossfades back
+(`InstallHUD.GOAL_FADE_MS`, 800 ms). Long lines wrap, balanced, and stack upward from the anchor.
+
+**Where it lives.** `TeManawa_goals.js`: `TM_GOALS` (the goal book, the verdict templates, colours,
+the answer's bigger boost) and `TMGoals` (which goal is live, `judge()`, release). The bus calls
+`TMGoals.judge` in `onBoost` *before* seeding; the HUD only crossfades whatever `TMGoals.text()`
+says. Soft reset (`Game.resetEcosystem`) starts the book again for the next visitor.
+
+**The book.** Seventeen live goals and seventeen suggested drafts, grouped by the bird their main answer feeds and
+drawn at random among the live ones along a moa → harrier → lowland animals → forest birds sequence.
+Every goal, when it appears in the timeline, the fact-check behind it and the sim gaps it exposes:
+**`TEMANAWA_GOALS.md`**. Under the year, *"The climate is INTERGLACIAL / GLACIAL"* names the climate
+in the same green / blue as the verdicts. Under that, *"Successful boosts: N"* counts the boosts that
+were right for the climate (second screen, or the FOREST / TUSSOCK keys) since the timeline last
+restarted: `DeepTime.boostsOk`, zeroed by `DeepTime.reset()` on every soft reset and full restart.
+
+**Adding a goal.** Append `{ id, prompt, cond, answer: [plantKeys] }` to `TM_GOALS.list`. `cond` is
+worded to slot into the verdict templates; a goal can also word any verdict line itself with
+`text: { answer: '…' }` (or `matched` / `wrong` / `answerWrongClimate`), and lines it leaves out use
+`TM_GOALS.text`. Every answer must be on a touchscreen card (the harness checks). **Staging** is mostly automatic: a goal is live only while one of its answers *fits the
+current climate* (a warm answer only in an interglacial) and *has habitat on the land*
+(`Simulation.hasHabitat`, at least `minHabitatCells`). So a Dracophyllum goal stays dark until the
+ranges have risen and carry subalpine tops, with nothing authored. For an explicit window add
+`fromYearsBP` (opens once the clock is at or younger than it) or `untilYearsBP`, and a goal can
+`require` grown plants, birds alive or an eruption this session. `off: true` keeps a draft undelivered. When no goal is live,
+the line falls back to the regime objective (`InstallHUD.GOAL_OBJECTIVE`).
+
+Bootcheck **"plant goals"** covers the book's shape, all four verdicts, the bigger boost, the white
+outline, release timing, solving vs missing, staging (habitat, climate, window) and the soft reset.
+
 ---
 
 ## 7. The sim overhaul — built
@@ -329,6 +380,7 @@ data-tunable feel pass (§9), not new machinery. Where each piece lives:
 | **Fauna coupling** | `Simulation.boostFauna(keys, n)` | A matched boost also recruits a few of the birds the plant supports (§5 links), founded on-screen. |
 | **The boost** | `TeManawa_bus.js` `onBoost` + `TM_BOOST` | Regime-fit gate → `boostResult` → seed (matched only) → fauna recruit → the existing regime-fit desaturation lesson → a climate-keyed coloured outline on the plant + its birds (`_boostHi` → `EntitySprites.boostOutline`, drawn by moa/eagle/kererū/plant) → ramped timelapse. |
 | **Eruption-aware ending** | `TeManawa_bus.js` `beginBoostTimelapse` | If an unfired eruption falls before the boundary, the timelapse stops ~300 yr short (`eruptionLeadYears`) and the eruption fires ~2 s after the result settles (`_pendingEruption` → `Game._fireEruptionInPlace`, §6.3). |
+| **Plant goals** | `TeManawa_goals.js` — `TM_GOALS` + `TMGoals` | The visitor line is a question one plant answers; each boost is judged (`TMGoals.judge`, from `onBoost`) into a verdict line, and the answer gets a bigger boost + a white-to-climate outline. Goals stage themselves by climate fit + habitat (§6.5). |
 | **Telemetry** | `TeManawa_bus.js` heartbeat (250 ms `setInterval`) | Pushes `clock` + `goal` ~4/s, `timelapse` while one runs, and the `achieved` verdict the moment it ends — off the bus, never the 60 fps draw path. |
 
 All boost/timelapse numbers are console-tunable: `TM_BOOST` (bus) and `DeepTime.tl*` (time).
@@ -337,24 +389,23 @@ All boost/timelapse numbers are console-tunable: `TM_BOOST` (bus) and `DeepTime.
 
 ## 8. Encyclopedia content status
 
-The mockups' body copy is **Lorem ipsum**, so authored museum copy does not exist yet. The
-data file ships with:
-
-- **Real** for the four card species: common + scientific names and the fauna link
-  (Tōtara/*Podocarpus totara*→harrier; Mānuka/*Leptospermum scoparium*→kōkako;
-  Tī kōuka/*Cordyline australis*→kererū; Red beech/*Nothofagus fusca*→huia).
-- **Placeholder** (`description: 'TODO …'`, best-guess `fauna: []`) for every other plant.
-
-Fill `secondscreen/encyclopedia.js` with final names, prose and fauna links; nothing in the
-page logic changes when you do. **`TEMANAWA_ENCYCLOPEDIA_FLORA.md`** reviews the roster against the
-research (interglacial vs glacial screens) and drafts card copy and fauna links for every plant.
+The mockups' body copy was **Lorem ipsum**. As of 2026-10-13 every card in
+`secondscreen/encyclopedia.js` carries **researched draft copy** (~25–35 words, sized to the card's
+text column) and fauna links, from **`TEMANAWA_ENCYCLOPEDIA_FLORA.md`** §4, which also holds the
+evidence behind each line. It is draft: names, narration and which stories are told remain for
+co-design with mana whenua (`TEMANAWA_RESEARCH.md`, cultural grounding). Edit the data file freely;
+nothing in the page logic changes, and the harness ("encyclopedia roster") rejects Lorem/TODO copy,
+unknown keys, missing sprites and a plant that fails its screen's era. **Fuller three-part card drafts**
+(fun facts · role · boost effect) are in `TEMANAWA_ENCYCLOPEDIA_CARDS.md`, which needs a longer card
+or a layout change before it can go on screen.
 
 ---
 
 ## 9. Open decisions / assumptions to confirm
 
-1. **The 5 plants per habitat** (§4.1) and their on-screen positions are my reading of the
-   mockups — confirm the exact roster and swap the placeholders.
+1. ✅ **The 5 plants per habitat** (§4.1) — RESOLVED 2026-10-13: rosters reviewed against the
+   research (`TEMANAWA_ENCYCLOPEDIA_FLORA.md`) and the switch reordered so up = warm, down = cold.
+   On-screen positions (`cx`/`cy`/`h`) are still the original mockup reading; tune by eye.
 2. ✅ **Boost seeding strength** — RESOLVED: a matched boost seeds `TM_BOOST.matchedSeed` (12) of
    the chosen species; a mismatched boost seeds **nothing** (`mismatchedSeed: 0`) and the scene
    desaturates (the existing regime-fit lesson), consistent with today's wrong FOREST/TUSSOCK press.

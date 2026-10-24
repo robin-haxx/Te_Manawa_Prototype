@@ -40,10 +40,19 @@ const TMBus = (function () {
     // ---- intent helpers (thin, so app.js reads clearly) ----
     habitat(habitat)          { this.send({ type: 'habitat', habitat: habitat }); },
     plant(habitat, plantKey)  { this.send({ type: 'plant', habitat: habitat, plantKey: plantKey }); },
-    boost(habitat, plantKey)  { this.send({ type: 'boost', habitat: habitat, plantKey: plantKey }); },
+    // fauna: the card's sim species keys; the sim recruits/outlines these (else its faunaLinks fallback)
+    // plantName: the card's name, so the sim's goal verdict says "Harakeke", not the sim's "Flax"
+    boost(habitat, plantKey, fauna, plantName) {
+      const m = { type: 'boost', habitat: habitat, plantKey: plantKey };
+      if (Array.isArray(fauna) && fauna.length) m.fauna = fauna;
+      if (plantName) m.plantName = plantName;
+      this.send(m);
+    },
     storm()                   { this.send({ type: 'storm' }); },
     eruption(phase)           { this.send({ type: 'eruption', phase: phase }); },   // 'down' | 'up'
     deep()                    { this.send({ type: 'deep' }); },
+    dial(delta)               { this.send({ type: 'dial', delta: delta }); },   // time dial: ±detents
+    dialReset()               { this.send({ type: 'dial', reset: true }); },    // time dial push: back to real time
     hello()                   { this.send({ type: 'hello' }); }
   };
 })();

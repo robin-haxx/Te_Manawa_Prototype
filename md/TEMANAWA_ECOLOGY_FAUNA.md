@@ -42,12 +42,22 @@ The strongest local hook in the entire project, and it is in this building.
 - Also a **pelvis, vertebra and other leg bones**.
 - Taken to **Te Manawa** for safekeeping; analysed by **Dr Richard Holdaway**, working
   with Te Manawa Head of Collections and Exhibitions **Jeff Fox** and Te Ahu a Tūranga
-  Kaitiaki **Terry Hapi**.
+  Kaitiaki **Terry Hapi**. Identified with Te Papa curator **Alan Tennyson**, by remote
+  consultation, because the bones could not be moved to Te Papa.
 - Dated to **at least 180 ka, possibly ~345 ka** — the older estimate sits almost on
   the Whakamaru eruption.
-- The wider assemblage as recorded in `TEMANAWA_RESEARCH.md`: **two moa genera, an
-  extinct predator, and the extinct North Island goose, with both hatchling and adult
-  bones.** Returned to the Ruahine maunga under tikanga.
+- **The assemblage** (Holdaway 2022, Birds New Zealand conference abstract): several
+  individuals of **two moa genera, *Euryapteryx* and *Pachyornis*** (both sexes of
+  *Euryapteryx*), at least one **North Island adzebill** (*Aptornis otidiformis*), at least
+  one **North Island goose** (*Cnemiornis gracilis*), and an **unidentified moa hatchling**.
+  The "extinct predator" earlier docs mention is the **adzebill**. No raptor is listed.
+- **The bones are no longer at Te Manawa.** After sampling they were returned to the
+  Ruahine maunga in a private iwi ceremony, under tikanga. Te Manawa and Te Papa hold
+  **replicas** made from photographs and 3D scans (RNZ).
+
+`[BUILD]` In cast terms: *Euryapteryx* is the **stout-legged moa** and *Pachyornis* is
+**Mantell's moa**, and both are founded in the sim, as is the goose. The adzebill is not
+in the cast (§8).
 
 **Why this is worth more than its size.** It isn't a single bone — it's an
 **assemblage**, with an age bracket that falls inside the installation's window,
@@ -240,7 +250,7 @@ budget is realistically **six**.
 | # | Animal | K | W | L | S | The one-line case |
 |---|---|:-:|:-:|:-:|:-:|---|
 | **1** | **NI giant moa** *Dinornis novaezealandiae* | 5 | 5 | 5 | 5 | The tallest bird that ever lived. **Reverse dimorphism gives two sprites from one species.** |
-| **2** | **Eyles' harrier / kērangi** | 1 | 5 | 4 | 5 | Apex predator; **the North Island form is the large one**; probably the "extinct predator" in the local bones; hunts kererū and small moa |
+| **2** | **Eyles' harrier / kērangi** | 1 | 5 | 4 | 5 | Apex predator; **the North Island form is the large one**; hunts kererū and small moa. *Not* in the local bones after all (the "extinct predator" there is the adzebill, §9.1); Local stays 4 on its range and the nearby Te Aute type material |
 | **3** | **Mantell's moa** *Pachyornis geranoides* | 1 | 4 | 5 | 5 | The **cold-phase** moa. Held the same ground for hundreds of thousands of years |
 | **4** | **Little bush moa** *Anomalopteryx didiformis* | 2 | 4 | 4 | 5 | The **warm-phase** moa. The only NI moa whose diet is properly known |
 | **5** | **North Island goose** *Cnemiornis gracilis* | 1 | 4 | **5** | 5 | **It is in the bones in this building.** Makes the cold phase busier, not emptier |
@@ -299,11 +309,12 @@ visual slot); the small forest birds (**one flock asset, not five entities**).
 
 ## 9. To verify before committing art
 
-1. **Which predator is in the Te Ahu a Tūranga assemblage.** `TEMANAWA_RESEARCH.md`
-   records "an extinct predator" without naming it. Confirming it is Eyles' harrier
-   would lift its Local score to 5 and let the installation say *"this bird, from this
-   ground."* **Ask Te Manawa and Dr Holdaway directly** — this is a phone call, not a
-   literature search, and it's the highest-value open question in the project.
+1. ~~**Which predator is in the Te Ahu a Tūranga assemblage.**~~ ✅ **Answered
+   (2026-10-18): the North Island adzebill**, not Eyles' harrier. Holdaway's 2022 Birds
+   New Zealand conference abstract lists *Euryapteryx*, *Pachyornis*, the adzebill, the
+   North Island goose and a moa hatchling, and no raptor (§2). The harrier's Local score
+   stays at 4. The phone call to Te Manawa and Dr Holdaway is still worth making, but now
+   for the dating results and for whether the abstract's list is final.
 2. ***Euryapteryx* taxonomy** — *gravis* vs *curtus* remains unsettled, and the coastal
    southern-NI distribution attaches to *gravis*, which some authors sink into *curtus*.
 3. **Species-level identity at 345 ka.** The aDNA population-structure result is
@@ -321,6 +332,8 @@ visual slot); the small forest birds (**one flock asset, not five entities**).
 - [Eyles's harrier — Wikipedia](https://en.wikipedia.org/wiki/Eyles's_harrier) — prey up to 40 kg; female mass
 - [NZTA — Moa bones at Te Ahu a Turanga undergo scientific analysis](https://www.nzta.govt.nz/media-releases/moa-bones-at-te-ahu-a-turanga-manawatu-tararua-highway-site-undergo-scientific-analysis/) and [Te Ahu a Turanga project unearths moa bones](https://nzta.govt.nz/media-releases/te-ahu-a-turanga-project-unearths-moa-bones) — the assemblage, the bones, Holdaway, Fox, Hapi
 - [Te Āpiti — Te Ahu a Turanga project unearths moa bones](https://www.teapiti.co.nz/2021/03/18/te-ahu-a-turanga-project-unearths-moa-bones/)
+- [Holdaway, R. N. 2022. The Manawatu-Tararua Highway fossil avifauna: a unique window into the late Pleistocene of North Island (Birds New Zealand conference abstract)](https://www.birdsnz.org.nz/?p=21593) — the full assemblage: *Euryapteryx*, *Pachyornis*, NI adzebill, NI goose, a moa hatchling
+- [RNZ — Unearthed moa bones at least 180,000 years old](https://www.rnz.co.nz/news/national/464677/unearthed-moa-bones-at-least-180-000-years-old) — ≥180 ka, possibly ~345 ka; returned to the Ruahine maunga; replicas at Te Papa and Te Manawa
 - [Manaaki Whenua — Reconstructing the past from poop: what the little bush moa ate](https://www.landcareresearch.co.nz/news/reconstructing-the-past-from-poop-now-we-know-what-the-little-bush-moa-ate) and [Wood et al. 2021, *Quaternary Science Reviews*](https://www.sciencedirect.com/science/article/abs/pii/S0277379121001992) — understorey browsing, ground ferns, mistletoe, few seeds
 - [An avian seed dispersal paradox: New Zealand's extinct megafaunal birds did not disperse large seeds. *Proc. R. Soc. B* 285](https://royalsocietypublishing.org/doi/10.1098/rspb.2018.0352) and [The Conversation summary](https://theconversation.com/despite-living-amongst-plants-with-large-seeds-extinct-giant-moa-dispersed-only-tiny-seeds-95361) — the 3.3 mm gizzard limit
 - [Highly informative ancient DNA 'snippets' for New Zealand moa. *PLOS One*](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0050732) — population structure held for hundreds of thousands of years

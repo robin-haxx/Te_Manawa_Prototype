@@ -23,6 +23,7 @@
   --card-bg: rgba(8, 16, 10, 0.60);
   --card-br: rgba(240, 235, 210, 0.10);
   --display: 'Nadira', Georgia, 'Times New Roman', serif;
+  --display-aa: blur(0.55px);   /* Nadira edge smoothing — see the note below #selectCard h1 */
   --sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
@@ -52,6 +53,7 @@ html, body {
 #bg {
   position: absolute; inset: 0;
   background-size: cover; background-position: center;
+  transition: background-color 800ms ease;   /* the tint under the image eases rather than snapping (= app.js SCROLL_MS) */
 }
 /* Per-habitat tint + soft vignette, shown until/behind the 1080p artist image. */
 .theme-forest  { background-color: #24422a; }
@@ -83,26 +85,20 @@ html, body {
   transition: transform 140ms ease;
 }
 .sticker img { height: 100%; width: auto; display: block; pointer-events: none; }
-/* Un-highlighted stickers read slightly recessed (grey sticker outline in the
-   mockups); the highlighted one lifts and gets a cream ring. */
-.sticker::before {
-  content: ''; position: absolute; inset: -10px;
-  border-radius: 18px; background: rgba(120, 130, 115, 0.16);
-  filter: blur(6px); opacity: 0.9; z-index: -1;
+/* The highlighted plant swaps to its outlined copy (off-white border, soft falloff, the birds'
+   colour): baked by tools/outline_plants.js, padded 10% of W/H on every side, so it is laid
+   over the plant at 120% size, offset -10%. Keep in step with OPT.pad in that script. */
+.sticker .lit {
+  position: absolute; left: -10%; top: -10%; width: 120%; height: 120%;
+  opacity: 0; transition: opacity 160ms ease;
 }
-.sticker.selected {
-  transform: translate(-50%, -50%) scale(1.04);
-  filter: drop-shadow(0 0 0 #f6f1e2) drop-shadow(0 10px 16px rgba(0,0,0,0.5));
-}
-.sticker.selected::before {
-  inset: -16px; background: rgba(246, 241, 226, 0.9);
-  filter: blur(2px);
-}
+.sticker.selected { transform: translate(-50%, -50%) scale(1.04); }
+.sticker.selected .lit { opacity: 1; }
 
 /* ---- the species card ----------------------------------- */
 #card {
-  position: absolute; left: 1155px; top: 120px;
-  width: 690px; height: 840px;
+  position: absolute; left: 1000px; top: 120px;   /* widened leftward (was left 1155, width 690) */
+  width: 845px; height: 840px;
   background: var(--card-bg); border: 1px solid var(--card-br);
   border-radius: 26px; padding: 54px;
   backdrop-filter: blur(2px);
@@ -110,6 +106,7 @@ html, body {
 }
 #card.matched    { border-color: rgba(120, 200, 120, 0.55); box-shadow: 0 0 40px rgba(90,180,90,0.25); }
 #card.mismatched { border-color: rgba(150, 150, 150, 0.45); box-shadow: 0 0 40px rgba(120,120,120,0.18); }
+#card.answer     { border-color: rgba(255, 255, 255, 0.85); box-shadow: 0 0 48px rgba(255,255,255,0.35); }  /* the plant goal's answer */
 
 /* prompt state ("Select a Plant") */
 #cardPrompt {
@@ -128,29 +125,100 @@ html, body {
   margin-top: 18px; font-style: italic; font-size: 30px; color: var(--orange); line-height: 1.35;
 }
 
-/* species state */
-#cardSpecies { position: absolute; inset: 54px; }
-/* The plant sprite and the birds it supports read as the foreground imagery — ABOVE
-   the text (z-order), with the text column narrowed so they barely overlap. */
-#cardPlant {
-  position: absolute; right: 0; bottom: 0; z-index: 2;
-  height: 66%; width: auto; object-fit: contain; object-position: bottom right;
+/* species state: the head (name left, scene right), then the scrolling write-up filling the rest */
+/* top inset is short to lift the contents; bottom inset is short because the "Scroll for more" pill
+   sits in flow under the text and carries its own gap. The head is the tallest scene plant (250, app.js SCENE_TO). */
+#cardSpecies { position: absolute; inset: 30px 54px 20px; display: flex; flex-direction: column; }
+#cardHead { flex: none; height: 250px; display: flex; align-items: flex-end; gap: 12px; }
+#cardTitle { flex: 1 1 auto; min-width: 0; padding-bottom: 4px; }
+/* The scene: the plant (height set per plant in app.js, its box cropped to the plant) standing on
+   the scene's floor, with its birds placed relative to the plant's own box. */
+#cardScene {
+  flex: 0 0 330px; height: 100%;
+  display: flex; justify-content: center; align-items: flex-end;
+}
+#cardSceneBox { position: relative; display: inline-block; }
+/* The plant is cropped to its opaque box (and a card's `crop` half) by a clipping box that app.js
+   sizes and offsets (layoutScenePlant): works in every browser, unlike object-view-box (Chrome only;
+   Firefox drew the whole sprite). */
+#cardPlantClip {
+  position: relative; overflow: hidden; width: 150px; height: 200px;
   filter: drop-shadow(0 8px 14px rgba(0,0,0,0.5));
 }
-#cardFauna {
-  position: absolute; left: 0; top: 0; z-index: 3;
-  display: flex; gap: 14px; align-items: flex-start;
+#cardPlant { position: absolute; left: 0; top: 0; max-width: none; }
+/* A cropped plant (a card's `crop`, app.js CROP_KEEP): half the plant, enlarged, fading out at the cut. */
+#cardPlantClip.crop-top {
+  -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent);
+          mask-image: linear-gradient(to bottom, #000 62%, transparent);
 }
+#cardPlantClip.crop-bottom {
+  -webkit-mask-image: linear-gradient(to top, #000 62%, transparent);
+          mask-image: linear-gradient(to top, #000 62%, transparent);
+}
+#cardFauna { position: absolute; inset: 0; pointer-events: none; }
 #cardFauna .faunaImg {
-  height: 110px; width: auto;
+  position: absolute; width: auto;
   filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
 }
-.card-text { position: absolute; left: 0; bottom: 0; width: 52%; z-index: 1; }
-#cardName { font-family: var(--display); font-style: italic; font-size: 62px; color: var(--cream); }
-#cardSci  { font-style: italic; font-size: 30px; color: var(--orange); margin-top: 2px; }
-#cardDesc { margin-top: 22px; font-size: 24px; line-height: 1.5; color: var(--body); }
+/* flyers perch in the canopy; the moa guild stands at the plant's foot, in front of it */
+#cardFauna .canopy        { height: 96px;  top: -6px; }
+#cardFauna .canopy.left   { left: -56px; }
+#cardFauna .canopy.right  { right: -56px; top: 34px; transform: scaleX(-1); }
+#cardFauna .ground        { height: 108px; bottom: -8px; }
+#cardFauna .ground.left   { left: -84px; }
+#cardFauna .ground.right  { right: -84px; transform: scaleX(-1); }
+/* Upright: only the Regular Nadira is loaded, so italic here was a browser-faked oblique (soft) */
+#cardName { font-family: var(--display); font-style: normal; font-size: 58px; line-height: 1.05; color: var(--cream); }
+#cardSci  { font-style: italic; font-size: 28px; color: var(--orange); margin-top: 6px; }
+/* The write-up scrolls by touch: a scroll container with pan-y overrides the page's
+   touch-action:none inside it. A thin cream bar shows the position; the fade at the bottom
+   (class 'more', set by app.js) says there is more below. */
+#cardBody {
+  flex: 1 1 auto; min-height: 0; margin-top: 18px; padding-right: 18px;
+  overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  font-size: 24px; line-height: 1.5; color: var(--body);
+}
+#cardBody p { margin-bottom: 14px; }
+#cardBody .card-boost {
+  margin: 22px 0 8px; font-style: italic; font-weight: normal; font-size: 26px; color: var(--orange);
+}
+#cardBody.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 80%, transparent);
+          mask-image: linear-gradient(to bottom, #000 80%, transparent);
+}
+/* "Scroll for more": a cream pill under the faded text, centred, with a drawn chevron (no emoji
+   glyphs). In flow (its space is kept even while hidden, so the text never jumps); fades in only
+   while there is more below; the chevron bobs gently (motion only, no luminance change). */
+#cardMore {
+  flex: none; align-self: center; margin-top: 18px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 24px 8px 20px; border-radius: 24px;
+  background: var(--cream); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font-size: 24px; font-weight: 600; color: #1b2a1c; white-space: nowrap;
+  opacity: 0; transition: opacity 300ms ease; pointer-events: none;
+}
+#cardMore.show { opacity: 1; pointer-events: auto; }
+#cardMore .chev {
+  width: 12px; height: 12px; margin-top: -6px;
+  border-right: 3px solid #b5651d; border-bottom: 3px solid #b5651d;   /* a darker orange, for contrast on cream */
+  transform: rotate(45deg);
+  animation: chevBob 1.6s ease-in-out infinite;
+}
+@keyframes chevBob {
+  0%, 100% { transform: translateY(0) rotate(45deg); }
+  50%      { transform: translateY(5px) rotate(45deg); }
+}
+#cardBody::-webkit-scrollbar { width: 8px; }
+#cardBody::-webkit-scrollbar-track { background: transparent; }
+#cardBody::-webkit-scrollbar-thumb { background: rgba(246, 241, 226, 0.35); border-radius: 4px; }
 
 /* ---- "Select a Habitat" centre attract screen ---------- */
+/* The two screens are full-stage layers so a habitat switch can slide them (app.js scrollScreens);
+   #bg sits outside both and stays still. .scrollGhost = the outgoing snapshot, gone when it ends. */
+#habitatScreen { position: absolute; inset: 0; }
+.scrollGhost { pointer-events: none; }
+/* habitat → habitat with a card change: the outgoing card fades its contents only (the live box stays) */
+.scrollGhost #card.bare { background: none; border-color: transparent; box-shadow: none; backdrop-filter: none; }
 #selectScreen {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -160,8 +228,15 @@ html, body {
   background: var(--card-bg); border: 1px solid var(--card-br); border-radius: 26px;
   padding: 80px 90px; text-align: center;
 }
-#selectCard .hand { margin: 0 auto 30px; }
+/* The logo's viewBox carries ~2.4% margin on every side, so the negative top margin
+   keeps its visual gap to the card edge in line with the padding. */
+#selectCard .logo { display: block; width: 640px; height: auto; margin: -24px auto 0; }
 #selectCard h1 { font-family: var(--display); font-style: italic; font-size: 96px; color: var(--cream); }
+/* Nadira's outlines are hand-inked (an 'H' is ~180 points), so drawn 1:1 the micro-wobbles alias
+   into a crunchy edge; the main screen hides this by downscaling its canvas, which averages
+   neighbouring pixels. A sub-pixel blur does the same averaging here. (A text-shadow halo was
+   tried and didn't help: it sits behind the glyph, so the jagged top edge still shows.) */
+#habitatTitle, #cardPrompt .prompt-title, #cardName, #selectCard h1 { filter: var(--display-aa); }
 #selectCard .prompt-sub { margin-top: 16px; font-style: italic; font-size: 34px; color: var(--orange); }
 #selectCard p { margin-top: 34px; font-size: 26px; line-height: 1.55; color: var(--body); max-width: 760px; margin-left: auto; margin-right: auto; }
 .select-tree { position: absolute; bottom: 40px; height: 620px; opacity: 0.96; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.4)); }

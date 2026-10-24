@@ -16,13 +16,14 @@
   <!-- ============ CENTRE: "Select a Habitat" attract ============ -->
   <div id="selectScreen">
     <div id="selectCard">
-      <!-- hand-touch asset. Drop the final art at secondscreen/assets/hand.png (or tell me the
-           name/format and I'll repoint src). Hidden until present, so no broken-image icon. -->
-      <img class="hand" src="assets/hand.png" alt="" aria-hidden="true"
+      <!-- the Te Manawa mark (white on transparent). The landing card is not a touch target, so
+           it shows the logo; the "Tap a Plant!" card below keeps the hand-touch glyph. -->
+      <img class="logo" src="../sprites/UI/Logo/Logo_Ink_00.svg" alt="" aria-hidden="true"
            onerror="this.style.visibility='hidden'">
-      <h1>Select a Habitat</h1>
-      <div class="prompt-sub">Learn more about the Manawatū's prehistoric ecosystem!</div>
-      <p>Move the switch on the left.</p>
+      <h1>Habitat Explorer</h1>
+      <div class="prompt-sub"><b>Move the switch on the left,</b></div>
+      <div class="prompt-sub">And uncover the ancient secrets of the Manawatū...</div>
+      
     </div>
   </div>
 
@@ -36,18 +37,29 @@
       <div id="cardPrompt">
         <img class="hand" src="assets/hand.png" alt="" aria-hidden="true"
              onerror="this.style.visibility='hidden'">
-        <div class="prompt-title">Select a Plant</div>
-        <div class="prompt-sub">Learn more about the Manawatū's prehistoric ecosystem!</div>
+        <div class="prompt-title">Tap a Plant!</div>
+        <div class="prompt-sub">Every native plant has a story to tell...</div>
       </div>
       <!-- species state -->
       <div id="cardSpecies" class="hidden">
-        <div id="cardFauna"></div>
-        <img id="cardPlant" alt="">
-        <div class="card-text">
-          <h2 id="cardName"></h2>
-          <div id="cardSci"></div>
-          <p id="cardDesc"></p>
+        <!-- the head: the name on the left; on the right, the plant with the bird(s) it feeds as
+             one little scene (the big sprite is already highlighted in the cluster on the left) -->
+        <div id="cardHead">
+          <div id="cardTitle">
+            <h2 id="cardName"></h2>
+            <div id="cardSci"></div>
+          </div>
+          <div id="cardScene">
+            <div id="cardSceneBox">
+              <div id="cardPlantClip"><img id="cardPlant" alt=""></div>
+              <div id="cardFauna"></div>
+            </div>
+          </div>
         </div>
+        <!-- the write-up: touch-scrolls; a fade at the bottom says there is more -->
+        <div id="cardBody"></div>
+        <!-- shown only while the write-up has more below (app.js updateMore); a tap scrolls it -->
+        <div id="cardMore"><span class="chev" aria-hidden="true"></span>Scroll for more</div>
       </div>
     </div>
   </div>

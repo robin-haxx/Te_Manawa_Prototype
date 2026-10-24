@@ -202,10 +202,16 @@ not worth a second sprite unless the art budget is generous.
 
 ## 9. To verify
 
-1. **Is kērangi the "extinct predator" in the Te Ahu a Tūranga assemblage?** Still the
-   highest-value open question in the project — it would let the installation say
-   *"this bird, from this ground."* A call to Te Manawa and Dr Holdaway, not a
-   literature search.
+1. ~~**Is kērangi the "extinct predator" in the Te Ahu a Tūranga assemblage?**~~ ✅
+   **Answered (2026-10-18): no.** Holdaway's 2022 Birds New Zealand conference abstract
+   lists the fauna as several individuals of two moa genera, *Euryapteryx* and *Pachyornis*
+   (both sexes of *Euryapteryx*), at least one **North Island adzebill** (*Aptornis
+   otidiformis*), at least one North Island goose, and an unidentified moa hatchling. No
+   raptor is listed, so the "extinct predator" is the adzebill. The installation can't say
+   *"this bird, from this ground"* of kērangi. The case for a Manawatū harrier rests on its
+   range (Wairarapa to Coromandel) and the Te Aute type material just over the ranges.
+   (The bones themselves were sampled, then returned to the Ruahine maunga; Te Manawa and
+   Te Papa hold replicas made from 3D scans.) See `TEMANAWA_NATURAL_HISTORY.md` §II.6.
 2. **Which name to display.** *C. teauteensis* is current (OSNZ 2022) and is the North
    Island name. But **kērangi** is the te reo name NZ Birds Online carries, and for a
    museum screen that is likely the one to lead with — subject to mana whenua co-design,
@@ -228,3 +234,5 @@ not worth a second sprite unless the art budget is generous.
 - Tennyson, A. & Martinson, P. 2006. *Extinct Birds of New Zealand.* Te Papa Press
 - Worthy, T. H. & Holdaway, R. N. 2002. *The Lost World of the Moa.* Canterbury University Press / Indiana University Press
 - Checklist Committee (OSNZ) 2022. *Checklist of the Birds of New Zealand* — *C. eylesi* invalid, junior synonym of *C. teauteensis*
+- [Holdaway, R. N. 2022. The Manawatu-Tararua Highway fossil avifauna (Birds New Zealand conference abstract)](https://www.birdsnz.org.nz/?p=21593) — the Te Ahu a Tūranga assemblage; no raptor (§9.1)
+- [RNZ — Unearthed moa bones at least 180,000 years old](https://www.rnz.co.nz/news/national/464677/unearthed-moa-bones-at-least-180-000-years-old) — return to the Ruahine; replicas at Te Papa and Te Manawa

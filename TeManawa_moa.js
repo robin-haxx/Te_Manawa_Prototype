@@ -60,7 +60,7 @@ class Moa extends Boid {
     super(x, y, terrain);
     this.config = config;
     
-    const species = speciesData || (typeof REGISTRY !== 'undefined' && REGISTRY.getSpecies('upland_moa')) || { config: {} };
+    const species = speciesData || (typeof REGISTRY !== 'undefined' && REGISTRY.getSpecies('little_bush_moa')) || { config: {} };
     const s = { ...Moa.DEFAULTS, ...(species.config || {}) };
     this.speciesConfig = s;
     
@@ -68,6 +68,7 @@ class Moa extends Boid {
     this.speciesKey = species.key || null;
 
     this.isFemale = random() < 0.5;
+    this._sizePct = undefined;   // adult size percentile, drawn once by EylesHarrier.withinPreyCeiling
 
     // Size & age
     this.baseSize = typeof s.size === 'object' ? random(s.size.min, s.size.max) : (s.size || random(8, 11));
@@ -120,7 +121,14 @@ class Moa extends Boid {
     this.currentState = MOA_STATE.IDLE;
     this.panicLevel = 0;
     this.inShelter = false;
-    
+    // Flee scatter (see _pickFleeScatter): rolled once per flight, so a flushed herd
+    // breaks in varied, mostly sideways directions instead of one radial fan.
+    this._fleeT = 0;
+    this._fleeSide = 1;
+    this._fleeLateral = 0;
+    this._fleeCos = 1;
+    this._fleeSin = 0;
+
     // Hunger
     this.hunger = random(15, 35);
     this.maxHunger = s.maxHunger;
@@ -131,6 +139,13 @@ class Moa extends Boid {
     
     // Foraging
     this.targetPlant = null;
+    // Forage give-up (see _forageStalled): the target being tracked, its closest approach so
+    // far, frames since that last improved, and a small ring of plants recently given up on.
+    this._tpTrack = null;
+    this._tpBestSq = Infinity;
+    this._tpStall = 0;
+    this._tpSkip = [null, null, null, null];
+    this._tpSkipI = 0;
     this.isFeeding = false;
     this.feedingAt = null;
     // Eat-cycle commitment: an animTime deadline. Once a bite lands (or the bird
@@ -323,11 +338,16 @@ class Moa extends Boid {
     this._updateSeasonCache(seasonManager);
     
     const sc = this._seasonCache;
-    
+
+    // Metabolism runs on the REAL clock (mdt), like the walk: a bird finds and eats food at
+    // wall-clock pace, so hunger must burn at that pace too or every time-lapse starves the guild
+    // (Simulation.update lifeScale; MISTAKES.md). Ageing, cooldowns and breeding stay on dt.
+    const mdt = (simulation && simulation.lifeScale > 1) ? dt / simulation.lifeScale : dt;
+
     // Hunger (juveniles 30% faster)
     const hungerMod = this.speciesConfig.seasonalModifiers?.[sc.key]?.hungerRate || 1;
     this.hungerRate = this.baseHungerRate * sc.hungerMod * hungerMod * (this.isJuvenile() ? 1.3 : 1);
-    this.hunger = Math.min(this.hunger + this.hungerRate * dt, this.maxHunger);
+    this.hunger = Math.min(this.hunger + this.hungerRate * mdt, this.maxHunger);
 
     // Vulnerable-founder highlight flag (drawn in render): active while the
     // species is still below its threshold.
@@ -349,7 +369,7 @@ class Moa extends Boid {
           let penalty = LEVEL_MECHANICS.habitatStressPenalty ?? 0.45;
           // Ramp the cold-season surcharge in smoothly rather than at the winter boundary.
           penalty *= 1 + ((LEVEL_MECHANICS.winterStressMult ?? 1.4) - 1) * sc.winterness;
-          this.hunger = Math.min(this.hunger + err * penalty * dt, this.maxHunger);
+          this.hunger = Math.min(this.hunger + err * penalty * mdt, this.maxHunger);
         }
       }
     }
@@ -369,7 +389,7 @@ class Moa extends Boid {
       if (g && g._tussockFlush) {
         this._openCountryBoost = true;
         const relief = LEVEL_MECHANICS.openCountryBoostHungerRelief ?? 0.04;
-        this.hunger = Math.max(0, this.hunger - relief * dt);
+        this.hunger = Math.max(0, this.hunger - relief * mdt);
       }
     }
 
@@ -440,6 +460,7 @@ class Moa extends Boid {
 
     // Determine and execute state
     this.currentState = this.determineState(placeables, sc, moas);
+    if (this.currentState !== MOA_STATE.FLEEING) this._fleeT = 0;   // next flush re-rolls its scatter
     this.executeState(simulation, sc, moas, placeables, dt);
 
     // While committed to an eating cycle (planted mid-meal, not fleeing), the herd
@@ -647,11 +668,29 @@ class Moa extends Boid {
         this.targetPlant = null;
         this.targetMate = null;
         this._eatHoldUntil = 0;         // a threat cancels any in-progress meal
-        this.maxSpeed = this.fleeSpeed * speedMod;
+        {
+          const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+          const threats = this._threateningEagles;
+          if (this._fleeT === 0) this._pickFleeScatter(threats[0].eagle, M);
+          this._fleeT += dt;
+          // Speed: the harrier's chosen prey runs flat out (the chase must stay a chase);
+          // bystanders bolt in a short burst, then settle to a trot, so a hunt lasting a
+          // few seconds doesn't send half the forest sprinting across the map.
+          let primary = false;
+          for (let i = 0; i < threats.length; i++) if (threats[i].eagle.target === this) { primary = true; break; }
+          let top = this.fleeSpeed;
+          if (!primary) {
+            const burst = Math.min(this.fleeSpeed, this.baseSpeed * (M.fleeBurstMult ?? 2.2));
+            const trot  = Math.min(burst, this.baseSpeed * (M.fleeTrotMult ?? 1.4));
+            const k = Math.min(1, this._fleeT / (M.fleeBurstFrames ?? 60));
+            top = burst + (trot - burst) * k;
+          }
+          this.maxSpeed = top * speedMod;
+        }
         // Use cached threatening eagles
         for (let i = 0; i < this._threateningEagles.length; i++) {
           const { eagle, distSq } = this._threateningEagles[i];
-          const flee = this.fleeFrom(eagle.pos.x, eagle.pos.y);
+          const flee = this._scatterFrom(eagle.pos.x, eagle.pos.y);
           flee.mult(2.5 * this.flightiness);
           this.applyForce(flee);
           this.panicLevel = Math.max(this.panicLevel, 1 - Math.sqrt(distSq) / this.fleeRadius);
@@ -943,20 +982,49 @@ class Moa extends Boid {
   // MOVEMENT
   // ============================================
 
-  fleeFrom(tx, ty) {
-    const f = this._returnForce;
-    const dx = this.pos.x - tx, dy = this.pos.y - ty;
-    const dSq = dx * dx + dy * dy;
-    
-    if (dSq < this.fleeRadiusSq && dSq > 0.0001) {
-      const urgency = 1 - Math.sqrt(dSq) / this.fleeRadius;
-      f.set(dx, dy);
-      f.setMag(this.maxSpeed * (1 + urgency));
-      f.sub(this.vel);
-      f.limit(this.maxForce * 2);
-    } else {
-      f.set(0, 0);
+  // Roll this flight's scatter once, at the moment of flushing. A pure "directly away"
+  // flee fans a herd out radially and uniformly, and a northbound harrier drives every
+  // bird ahead of it off the top of the frame. Prey instead breaks SIDEWAYS out of the
+  // raptor's line: each bird picks a screen side (mostly the side of the harrier it's
+  // already on, sometimes the other), its own lateral strength, and a personal veer.
+  _pickFleeScatter(eagle, M) {
+    const dx = this.pos.x - eagle.pos.x;
+    let side = Math.abs(dx) < 6 ? (random() < 0.5 ? -1 : 1) : Math.sign(dx);
+    if (random() < (M.fleeSideFlip ?? 0.25)) side = -side;
+    // Don't break toward a visible left/right edge we're already pressed against.
+    const t = this.terrain;
+    if (t && t.mapWidth) {
+      const ins = (typeof CONFIG !== 'undefined' && CONFIG.viewInsetX) ? CONFIG.viewInsetX : 0;
+      if (side < 0 && this.pos.x < ins + 90) side = 1;
+      else if (side > 0 && this.pos.x > t.mapWidth - ins - 90) side = -1;
     }
+    this._fleeSide = side;
+    const lat = M.fleeLateral ?? 0.9;
+    this._fleeLateral = lat * (0.45 + random() * 1.1);   // 0.4..1.4× — some bolt flat sideways, some angle off
+    const veer = (random() * 2 - 1) * (M.fleeVeer ?? 0.6); // ±~35° personal jink
+    this._fleeCos = Math.cos(veer);
+    this._fleeSin = Math.sin(veer);
+  }
+
+  // Steering away from a harrier along this flight's scatter (see _pickFleeScatter):
+  // the away vector, veered, pushed toward the chosen side, its vertical damped.
+  _scatterFrom(tx, ty) {
+    const f = this._returnForce;
+    let ax = this.pos.x - tx, ay = this.pos.y - ty;
+    const d = Math.sqrt(ax * ax + ay * ay);
+    if (d >= this.fleeRadius || d < 0.01) { f.set(0, 0); return f; }
+    ax /= d; ay /= d;
+    let rx = ax * this._fleeCos - ay * this._fleeSin;
+    let ry = ax * this._fleeSin + ay * this._fleeCos;
+    rx += this._fleeSide * this._fleeLateral;
+    ry *= ((typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS.fleeVertDamp : undefined) ?? 0.55;
+    // Never bolt off the top/bottom of the frame: kill the outward vertical near it.
+    const h = this.terrain && this.terrain.mapHeight;
+    if (h && ((ry < 0 && this.pos.y < 90) || (ry > 0 && this.pos.y > h - 90))) ry *= 0.1;
+    const m = Math.sqrt(rx * rx + ry * ry) || 1;
+    const sp = this.maxSpeed * (1 + (1 - d / this.fleeRadius));
+    f.set(rx / m * sp - this.vel.x, ry / m * sp - this.vel.y);
+    f.limit(this.maxForce * 2);
     return f;
   }
 
@@ -1158,8 +1226,16 @@ class Moa extends Boid {
         if (egm && egm !== 1) gain *= egm;
         this.hunger = Math.max(0, this.hunger - gain);
         this.targetPlant = null;
+        this._tpTrack = null;                                   // a bite: the give-up watch starts afresh
+        this._tpSkip[0] = this._tpSkip[1] = this._tpSkip[2] = this._tpSkip[3] = null;
         this.vel.mult(0.3);
         this._commitEatCycle();   // finish a full eating cycle before seeking the next plant
+      } else if (this._forageStalled(dSq)) {
+        // Can't close on it: give it up and re-pick next frame (findPlant skips it).
+        this._tpSkip[this._tpSkipI] = this.targetPlant;
+        this._tpSkipI = (this._tpSkipI + 1) % this._tpSkip.length;
+        this.targetPlant = null;
+        this._tpTrack = null;
       } else {
         this.applyForce(this.seek(this.targetPlant.pos, map(this.hunger, this.hungerThreshold, this.maxHunger, 0.5, 0.9), 10));
       }
@@ -1168,16 +1244,37 @@ class Moa extends Boid {
     }
   }
 
+  // Forage give-up. The seek toward a plant is capped at 0.5–0.9× maxForce, and the herd
+  // separation (50 px, up to ~1× maxForce or more), the shore steer and the edge steer can
+  // each out-push it. So a bird whose plant had a herd-mate beside it was held off at a
+  // standstill. It never re-picked (findPlant only runs once the plant stops being edible),
+  // and it starved beside food. This was most of the grazer deaths in the fauna sweep. Like
+  // the harrier's eagleMaxChase: no new closest approach in LEVEL_MECHANICS.forageGiveUpFrames
+  // frames → give the plant up. Counted per call (one per frame, the motion clock), so a
+  // time-lapse doesn't shorten it. See MISTAKES.md.
+  _forageStalled(dSq) {
+    if (this._tpTrack !== this.targetPlant) {
+      this._tpTrack = this.targetPlant; this._tpBestSq = dSq; this._tpStall = 0;
+      return false;
+    }
+    const best = Math.sqrt(this._tpBestSq) - 0.5;              // progress = ≥ 0.5 px closer than ever
+    if (best > 0 && dSq < best * best) { this._tpBestSq = dSq; this._tpStall = 0; return false; }
+    const limit = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.forageGiveUpFrames) || 180;
+    return ++this._tpStall > limit;
+  }
+
   findPlant(simulation) {
     // Starving moa cast a wider net rather than dying next to just-out-of-range food
     const _range = (this.hunger > this.criticalHunger ? 150 : 100) * this.foragingBonus;
     const plants = simulation.getNearbyPlants(this.pos.x, this.pos.y, _range);
     let best = null, bestScore = Infinity;
-    
+    const skip = this._tpSkip;
+
     for (let i = 0; i < plants.length; i++) {
       const p = plants[i];
       if (!p.alive || p._consumed || p.growth < 0.5) continue;
       if (p.seasonalModifier < 0.3 && this.hunger < 70) continue;
+      if (p === skip[0] || p === skip[1] || p === skip[2] || p === skip[3]) continue;   // given up on (forage)
       
       const dx = p.pos.x - this.pos.x, dy = p.pos.y - this.pos.y;
       let score = Math.sqrt(dx * dx + dy * dy) / this.foragingBonus / p.seasonalModifier / (p.nutrition * 0.033);
@@ -1450,6 +1547,7 @@ class Moa extends Boid {
     if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
       EntitySprites.boostOutline(this, sprite, _drawW, _drawH, 0, -_drawH * 0.5);   // boost highlight ring, under the bird
     image(sprite, 0, -_drawH * 0.5, _drawW, _drawH);
+    if (typeof FaunaOutline !== 'undefined') FaunaOutline.draw(this, sprite, 0, -_drawH * 0.5, _drawW, _drawH);   // live border colour
     pop();
   }
 

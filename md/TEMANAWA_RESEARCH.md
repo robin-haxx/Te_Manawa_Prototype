@@ -16,6 +16,13 @@ forest — and moa lived through all of it.
 - **~349 ka — Whakamaru caldera supereruption.** One of the largest Quaternary
   eruptions on Earth; its Rangitawa Tephra blanketed the southern North Island as
   a single fingerprinted marker bed. This is the **reset** point (Button 4).
+- **Before the window: the Manawatū Strait closes (~1.6 Ma).** A seaway ran across
+  the line of the axial ranges, over the Manawatū Saddle, linking the Whanganui Basin
+  to the east coast. Marine conditions held there from ~3 Ma until **~1.6 Ma**, with
+  closure under way from ~1.63 Ma (Rees, Palmer & Palmer). So by the ~1 Ma opening the
+  through-strait was gone. What remains is a western marginal-marine embayment in the
+  Pohangina and Whanganui Basin. The sim's wide strait at 1 Ma is a compression; see
+  `TEMANAWA_NATURAL_HISTORY.md` §I.
 - **Continuous range uplift + antecedent incision.** The Ruahine–Tararua greywacke
   block rises across the Manawatū's course; most uplift is young (bulk within the
   last ~1 Myr, probably accelerating), so across this whole window the gorge is a
@@ -53,10 +60,15 @@ juvenile moa** and other birds — so its pressure falls on chicks and small moa
 not adult giants. This is the predator to reskin the eagle system to.
 
 **Local bone hook (nice pop-up, optional):** the **Te Ahu a Turanga** moa bones,
-found 2021 during the Manawatū–Tararua highway build and held at **Te Manawa**,
-were dated to **at least 180 ka, possibly ~345 ka** — an *assemblage* (two moa
-genera, an extinct predator, and the extinct North Island goose, with hatchling
-and adult bones). The ~345 ka estimate sits almost on the Whakamaru eruption, and
+found 2021 during the Manawatū–Tararua highway build and studied at **Te Manawa**,
+were dated to **at least 180 ka, possibly ~345 ka**. The originals were then
+returned to the Ruahine maunga; Te Manawa and Te Papa hold **replicas** made from
+3D scans. They are an *assemblage* (Holdaway 2022): two moa genera, ***Euryapteryx***
+(stout-legged moa, both sexes) and ***Pachyornis*** (Mantell's moa), the extinct
+**North Island adzebill** (*Aptornis otidiformis*) and the extinct **North Island
+goose**, plus a moa hatchling. The adzebill is the "extinct predator" earlier notes
+mention. It is **not** Eyles' harrier, which is absent from the list. The ~345 ka
+estimate sits almost on the Whakamaru eruption, and
 the taphonomy (gully fills, tephra falls, dune ponds bury bone) is *why* we have
 any of this record. A quiet, literal tie between the installation and the museum.
 
@@ -77,9 +89,15 @@ as replaceable hooks.
 - Manawatū antecedent river / gorge / terraces: [Manawatū River — Wikipedia](https://en.wikipedia.org/wiki/Manawat%C5%AB_River),
   [Te Ara — Manawatū & Horowhenua places](https://teara.govt.nz/en/manawatu-and-horowhenua-places/page-6),
   [Te Ara — Features of the landscape](https://teara.govt.nz/en/manawatu-and-horowhenua-region/page-2)
-- Te Ahu a Turanga moa bones (≥180 ka, ~345 ka; assemblage; Te Manawa):
+- Te Ahu a Turanga moa bones (≥180 ka, ~345 ka; returned to the Ruahine, replicas at Te Manawa):
   [RNZ](https://www.rnz.co.nz/news/national/464677/unearthed-moa-bones-at-least-180-000-years-old),
-  [NZTA / Waka Kotahi](https://www.nzta.govt.nz/media-releases/moa-bones-at-te-ahu-a-turanga-manawatu-tararua-highway-site-undergo-scientific-analysis/)
+  [NZTA / Waka Kotahi](https://www.nzta.govt.nz/media-releases/moa-bones-at-te-ahu-a-turanga-manawatu-tararua-highway-site-undergo-scientific-analysis/);
+  the assemblage (*Euryapteryx*, *Pachyornis*, NI adzebill, NI goose, a moa hatchling):
+  [Holdaway 2022, Birds New Zealand conference abstract](https://www.birdsnz.org.nz/?p=21593)
+- Manawatū Strait closed ~1.6 Ma: Rees, Palmer & Palmer, Plio-Pleistocene geology of the
+  Lower Pohangina Valley, *NZ J. Geology and Geophysics*
+  ([doi:10.1080/00288306.2017.1408023](https://www.tandfonline.com/doi/full/10.1080/00288306.2017.1408023));
+  [Milner 2017 thesis](https://ref.coastalrestorationtrust.org.nz/documents/the-pliocene-pleistocene-development-uplift-and-emergence-history-of-the-manawatu-strait-new-zealand/)
 - Eyles' harrier (NI apex raptor; Haast's = SI): [Wikipedia](https://en.wikipedia.org/wiki/Eyles's_harrier),
   [NZ Birds Online](https://www.nzbirdsonline.org.nz/species/eyles-harrier)
 - Ōruanui ~25.5 ka (Kawakawa tephra, VEI 8): [Wikipedia](https://en.wikipedia.org/wiki/Oruanui_eruption),

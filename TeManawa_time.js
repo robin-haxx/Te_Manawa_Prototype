@@ -60,6 +60,25 @@ const DeepTime = {
   tlMaxRate:     5000,    // yr/s the ramp eases up to and holds
   tlRampSeconds: 20,      // real seconds to ease start → max
 
+  // ---- the TIME DIAL (macro-pad encoder) --------------------
+  // A standing fast-forward the dial scrolls: detent 0 = geology paused (real time — a year a year
+  // is indistinguishable from stopped), detent dialSteps = dialMaxRate yr/s, which plays the whole
+  // ~975 ky window in ~3¼ min. The curve is a power (dialCurve) so the low end is fine-grained
+  // (detent 1 ≈ 6 yr/s, 10 ≈ 560, 15 ≈ 1,250) and one ~30-detent turn spans it all. The played
+  // rate EASES toward the detent's rate (dialEaseSeconds, exponential) so a fast spin never snaps
+  // the land, inside the photosensitivity ramp budget (≥500 ms, BUILD_V3 §3). A boost timelapse or
+  // a deep burst runs at max(its own rate, the dial's), so the dial never slows one down. The
+  // detent survives soft resets and seeks: it is a control setting, not run state. Keys:
+  // TeManawa_sketch.js (this window) and secondscreen/input.js (the console, over the bus).
+  dialSteps:       30,
+  dialMaxRate:     5000,    // yr/s at the top detent
+  dialCurve:       2,       // rate = dialMaxRate · (step/dialSteps)^dialCurve
+  dialEaseSeconds: 0.6,     // time constant of the ease toward the detent's rate
+  // Program the macro pad's dial to send these (CW / CCW / push). Mirrored in secondscreen/input.js
+  // for when the console window has focus. A mouse wheel also turns the dial (dialWheelStep per detent).
+  DIAL_KEYS: { faster: [']'], slower: ['['], reset: ['\\'] },
+  dialWheelStep:   100,     // wheel deltaY per detent (one Windows wheel notch)
+
   // ---- state -----------------------------------------------
   yearsBP:     1000000,
   timeScale:   1,
@@ -70,10 +89,16 @@ const DeepTime = {
   _tlTarget:   0,
   _tlFrom:     0,         // millis() at begin, for the rate ramp
   _tlStartYear: 0,        // yearsBP at begin, for the progress readout
+  dialStep:    0,         // the dial's detent, 0..dialSteps (kept across reset/seek)
+  _dialRate:   0,         // the eased dial rate (yr/s) update() actually plays
+  _dialAt:     0,         // millis() of the last dial turn, for the HUD readout's fade
+  geoRate:     0,         // yr/s the geology actually played last frame (any source), for readouts
+  boostsOk:    0,         // successful (right-for-the-climate) boosts since the timeline last restarted; shown under the climate line
 
   // ==========================================================
   reset() {
     this.yearsBP   = this.yearsStart;
+    this.boostsOk  = 0;   // a restarted timeline starts the visitor's tally again
     this.timeScale = 1;
     this._deepUntil = 0;
     this._deepFrom  = 0;
@@ -123,6 +148,52 @@ const DeepTime = {
   },
 
   isTimelapsing() { return !!this._timelapse; },
+
+  // ---- the time dial ---------------------------------------
+  // One encoder detent per call (delta ±1; a bigger delta is a fast spin). Clamped to the range.
+  dialTurn(delta) { return this.dialSet(this.dialStep + (delta | 0)); },
+  dialSet(step) {
+    this.dialStep = Math.max(0, Math.min(this.dialSteps, step | 0));
+    this._dialAt  = (typeof millis === 'function') ? millis() : 0;
+    return this.dialStep;
+  },
+  dialReset() { return this.dialSet(0); },          // the dial's push: straight back to real time
+
+  // A key from either window. Returns true when it was a dial key (so the caller stops there).
+  dialKey(k) {
+    const K = this.DIAL_KEYS;
+    if (K.faster.indexOf(k) !== -1) { this.dialTurn(1);  return true; }
+    if (K.slower.indexOf(k) !== -1) { this.dialTurn(-1); return true; }
+    if (K.reset.indexOf(k)  !== -1) { this.dialReset();  return true; }
+    return false;
+  },
+  // A wheel event's deltaY, accumulated into whole detents (wheel up = faster). Trackpads send many
+  // small deltas, so the remainder carries over rather than each event counting as a detent.
+  _wheelAcc: 0,
+  dialWheel(deltaY) {
+    this._wheelAcc += deltaY;
+    const n = Math.trunc(this._wheelAcc / this.dialWheelStep);
+    if (n !== 0) { this._wheelAcc -= n * this.dialWheelStep; this.dialTurn(-n); }
+    return n;
+  },
+
+  // A detent's rate (yr/s): what the dial eases toward, and what the HUD names.
+  dialTargetRate(step) {
+    const s = (step === undefined) ? this.dialStep : step;
+    if (s <= 0) return 0;
+    return this.dialMaxRate * Math.pow(Math.min(1, s / this.dialSteps), this.dialCurve);
+  },
+  dialRate() { return this._dialRate; },
+
+  // Geology advancing at all: a timelapse, a deep burst, or the dial off zero. Callers that mean
+  // "the land is moving" (the river working its floodplain) read this, not isTimelapsing().
+  isMoving() {
+    return !!(this._timelapse || this.isDeep() || this.dialStep > 0 || this._dialRate > 0);
+  },
+  // Fast-forward in the LIFE sense (the cast sped past 1×): the fauna afterimage trails.
+  isFastForward() {
+    return !!(this._timelapse || this.isDeep() || this._dialRate > this.yrPerSec);
+  },
 
   // The current timelapse rate (yr/s): smoothstepped from tlStartRate to tlMaxRate over tlRampSeconds.
   _tlRate() {
@@ -214,24 +285,41 @@ const DeepTime = {
   // ==========================================================
   update(dt) {
     // The GEOLOGY clock (yearsBP) and the LIFE clock are decoupled now (md/TEMANAWA_SECOND_SCREEN.md
-    // §0). yearsBP moves only under a timelapse (a boost) or a legacy deep burst (button 1);
+    // §0). yearsBP moves only under a timelapse (a boost), a legacy deep burst (button 1) or the time dial;
     // otherwise it is PAUSED — the land holds at one date. But the ambient world keeps living, so
     // this returns a LIFE scale (never 0): 1× when paused, and sped up to match the fast-forward
     // while a timelapse/deep runs, so the cast lives THROUGH the years the boost plays out.
     let lifeScale = 1;
+    const sec = dt / this.fps;
+
+    // The TIME DIAL: ease the played rate toward the detent's (exponential, frame-rate independent),
+    // snapping the tail to exactly 0 so "real time" really is paused.
+    const dialTarget = this.dialTargetRate();
+    const k = this.dialEaseSeconds > 0 ? 1 - Math.exp(-sec / this.dialEaseSeconds) : 1;
+    this._dialRate += (dialTarget - this._dialRate) * k;
+    if (dialTarget === 0 && this._dialRate < 0.5) this._dialRate = 0;
+    const dial = this._dialRate;
+    let geoRate = 0;
 
     if (this._timelapse) {
-      const rate = this._tlRate();                        // yr/s, eased 500 → 5000
+      const rate = Math.max(this._tlRate(), dial);        // yr/s, eased 500 → 5000, never below the dial
       lifeScale = rate / this.yrPerSec;                   // life keeps pace with the fast-forward
-      this.yearsBP -= (dt / this.fps) * rate;
+      geoRate = rate;
+      this.yearsBP -= sec * rate;
       if (this.yearsBP <= this._tlTarget) {               // reached the boost's destination
         this.yearsBP = this._tlTarget;
         this.endTimelapse();
-        lifeScale = 1;
+        lifeScale = Math.max(1, dial / this.yrPerSec);
       }
-    } else if (this.isDeep()) {                           // legacy deep burst — unchanged: 1 → deepMult, eased
-      lifeScale = this.currentScale();
-      this.yearsBP -= (dt / this.fps) * this.yrPerSec * lifeScale;
+    } else if (this.isDeep()) {                           // legacy deep burst: 1 → deepMult, eased (or the dial, if faster)
+      const rate = Math.max(this.yrPerSec * this.currentScale(), dial);
+      lifeScale = rate / this.yrPerSec;
+      geoRate = rate;
+      this.yearsBP -= sec * rate;
+    } else if (dial > 0) {                                // the dial alone: geology at its rate, life never below 1×
+      lifeScale = Math.max(1, dial / this.yrPerSec);
+      geoRate = dial;
+      this.yearsBP -= sec * dial;
     }
     // else: PAUSED — geology frozen, ambient life at 1× (lifeScale stays 1).
 
@@ -244,6 +332,7 @@ const DeepTime = {
     }
 
     this.timeScale = lifeScale;
+    this.geoRate   = geoRate;
     return lifeScale;
   },
 

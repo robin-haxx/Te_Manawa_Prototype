@@ -18,8 +18,17 @@ const TM_FADE_MS = 380;
 // the footprint edge — so a bird only dissolves the bit of canopy it is actually
 // behind, and the forest stays solid everywhere else. All-real-time-safe (no state,
 // recomputed each frame). Console-tunable via window.PLANT_GHOST.
+//
+// REVEAL — fading the plant alone draws the eye to the TREE (the whole crown changes), not
+// to the bird. So each covered animal is also re-stamped OVER the canopy, after the ground
+// pass, at `reveal` × its cover strength: its own render() replayed sprite-only (the trail's
+// FaunaTrail._ghosting flag — no shadow, halo, live outline or boost ring). Where the bird is
+// already visible the re-stamp lands on its own pixels and changes nothing; where a tree
+// hides it the bird shows through, so the only shape that changes on screen is the bird's.
+// One extra quad per covered bird, in the same batch (no draw call). reveal: 0 turns it off.
 const PLANT_GHOST = {
   on: true,
+  reveal:      0.45,   // opacity of the over-canopy re-stamp of a fully covered animal (0 = off)
   maxReduce:   0.55,   // deepest opacity cut: a plant dead-centre over an animal drops to 1-this alpha
   minHalfW:    9,      // world half-width below which a plant is too small to bother ghosting (tussock etc.)
   widthMul:    1.0,    // scales the footprint used for the horizontal overlap test
@@ -53,6 +62,7 @@ const FaunaTrail = {
   // Trails exist only during a fast-forward. Guarded so a missing/older DeepTime is a no-op.
   active() {
     if (!this.on || typeof DeepTime === 'undefined') return false;
+    if (typeof DeepTime.isFastForward === 'function') return DeepTime.isFastForward();   // incl. the time dial past 1× life
     return !!((typeof DeepTime.isTimelapsing === 'function' && DeepTime.isTimelapsing()) ||
               (typeof DeepTime.isDeep === 'function' && DeepTime.isDeep()));
   },
@@ -199,6 +209,7 @@ class Simulation {
   init() {
     this._tempPos = createVector(0, 0);
     this.spawnPlants();
+    this._initHomeostasis();   // per-habitat plant targets, measured off the spawn just made
     
     // Check if the level defines a species distribution
     const level = this.game.currentLevel;
@@ -445,7 +456,11 @@ class Simulation {
     // spawning is unchanged, but it now DEPICTS ~this-much-more terrain, so bumping density by
     // the same factor keeps the on-screen plant density (plants per screen) constant instead of
     // looking sparse after zooming out. 1 = off. Well under the ≤1000 live-plant budget.
-    const density = this.config.plantDensity * ((this.config.viewAreaGain > 0) ? this.config.viewAreaGain : 1);
+    // Plant homeostasis spawns the land at its UNATTENDED floor (homeoBaseFrac of the full density);
+    // correct boosts are what build it back up past it (homeoTarget).
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const baseFrac = (M && M.plantHomeostasis !== false) ? (M.homeoBaseFrac ?? 1) : 1;
+    const density = this.config.plantDensity * ((this.config.viewAreaGain > 0) ? this.config.viewAreaGain : 1) * baseFrac;
     const terrain = this.terrain;
     
     for (let row = 0; row < spawnRows; row++) {
@@ -465,9 +480,8 @@ class Simulation {
     }
   }
 
-  // KERERŪ SEED DISPERSAL. The only runtime path that GROWS the plant population, so it is the
-  // single place the live-plant cap is enforced (nothing else adds plants — spawnPlants runs once
-  // at init, and browsed plants regrow in place). Plants a FOREST seedling (a warm, large-fruited
+  // KERERŪ SEED DISPERSAL. Grows the plant population, cap-guarded like every spawn path and held
+  // to the habitat's homeostasis target (_updateHomeostasis). Plants a FOREST seedling (a warm, large-fruited
   // type the biome supports) near (x,y) at low growth so it visibly grows in. Returns the new
   // plant, or null if capped / no forest-capable spot found. See TeManawa_kereru.js.
   disperseSeed(x, y) {
@@ -494,6 +508,12 @@ class Simulation {
         if (d && d.coldTolerance <= warmMax && !d.disturbanceRecruit) warm.push(t);   // kahikatea needs a river disturbance, not a kererū
       }
       if (!warm.length) continue;
+      // Homeostasis: a habitat already over its target takes no more seed (it would only be thinned).
+      const H = this._homeo;
+      if (H && H.count[biome.key] != null) {
+        const tgt = this.homeoTarget(biome.key);
+        if (tgt != null && H.count[biome.key] >= tgt + this._homeoDeadband(tgt)) continue;
+      }
       // Skip this site if the neighbourhood already holds enough live plants.
       let live = 0;
       const near = this.getNearbyPlants(px, py, densR);
@@ -559,23 +579,50 @@ class Simulation {
   // in forest ground, a tussock boost tussock on the tops, and a type lands nowhere its habitat does
   // not support it. The bus (TeManawa_bus.js) decides HOW MANY: a climate-matched boost seeds
   // generously, a mismatched boost seeds nothing (and the scene desaturates — the regime-fit lesson).
-  // Same cap + density gate as seedGrowth/disperseSeed. Unlike seedGrowth this does NOT skip a
-  // disturbanceRecruit type (kahikatea): a direct species boost is a deliberate choice, and the fresh
-  // seedling is then governed honestly by Plant.update (it needs a river disturbance to fatten).
+  // Same cap + density gate as seedGrowth/disperseSeed. A disturbanceRecruit type (kahikatea) is NOT
+  // skipped, because a direct boost is a deliberate choice. It recruits only on raw river alluvium,
+  // though, so the boost lays that alluvium: it seeds on the river WETLAND and stamps a flood warp at
+  // each seedling, exactly like the storm/eruption recruit (recruitKahikatea).
+  //
+  // Sites are sampled from the habitat's own CELLS, not from random map points. Map-wide sampling
+  // gave a THIN habitat (the wetland corridor, the subalpine tops) almost no tries: a boost landed
+  // 0–2 of 12 pūrei / Dracophyllum / wharariki (md/TEMANAWA_ENCYCLOPEDIA_CARDS.md, sim gap 1).
   // Returns how many established. Fired from the boost intent (a burst), off the per-frame path.
   seedSpecies(plantKey, count = 12) {
     const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
     const terrain = this.terrain;
     if (!TYPES || !terrain || !TYPES[plantKey] || count <= 0) return 0;
+    const map = terrain.biomeIndexMap, biomes = terrain.biomeArray;
+    if (!map || !biomes) return 0;
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
     const cap = (M && M.maxLivePlants) || 900;
+    const riverOnly = !!TYPES[plantKey].disturbanceRecruit;
+    const takes = (b) => this._biomeTakes(b, plantKey, riverOnly);
+
+    // Which biome indices take this species, then a one-pass reservoir sample of their cells (no full
+    // cell list is built). Shuffled so the tries below are in random order.
+    const ok = new Uint8Array(biomes.length);
+    for (let b = 0; b < biomes.length; b++) ok[b] = takes(biomes[b]) ? 1 : 0;
+    const K = count * 12, pick = new Int32Array(K);
+    let n = 0;
+    for (let i = 0; i < map.length; i++) {
+      if (!ok[map[i]]) continue;
+      if (n < K) pick[n] = i;
+      else { const j = (random() * (n + 1)) | 0; if (j < K) pick[j] = i; }
+      n++;
+    }
+    const m = n < K ? n : K;
+    for (let i = m - 1; i > 0; i--) { const j = (random() * (i + 1)) | 0; const t = pick[i]; pick[i] = pick[j]; pick[j] = t; }
+
+    const cols = terrain.gridCols, cell = terrain.scale;
+    const floodR = (M && M.warpBloomRadius) || 60;
     let seeded = 0;
-    for (let tries = 0; tries < count * 12 && seeded < count; tries++) {
+    for (let k = 0; k < m && seeded < count; k++) {
       if (this.plants.length >= cap) break;
-      const px = random(this.worldWidth), py = random(this.worldHeight);
+      const c = pick[k];
+      const px = ((c % cols) + random()) * cell, py = (((c / cols) | 0) + random()) * cell;
       const biome = terrain.getBiomeAt(px, py);
-      if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
-      if (biome.plantTypes.indexOf(plantKey) < 0) continue;   // only where this species' own habitat supports it
+      if (!takes(biome)) continue;                            // only where this species' own habitat supports it
       if (!this._plantSiteIsLand(px, py)) continue;           // never seed onto river/sea water
       // Density gate: don't carpet an already-dense stand (mirrors seedGrowth / disperseSeed).
       let live = 0;
@@ -583,11 +630,39 @@ class Simulation {
       for (let i = 0; i < near.length; i++) { if (near[i].alive && ++live >= 3) break; }
       if (live >= 3) continue;
       const p = new Plant(px, py, plantKey, terrain, biome.key);
-      p.growth = 0.08; p._matured = false;   // a fresh seedling — grows in visibly
+      p.growth = riverOnly ? 0.06 : 0.08; p._matured = false;   // a fresh seedling — grows in visibly
+      if (riverOnly) { p._kahiAge = 0; this.disturb(px, py, floodR, 'flood', 1); }
       this.plants.push(p);
       seeded++;
     }
     return seeded;
+  }
+
+  // Can a biome take this species? Its palette lists it; a river recruit (kahikatea) only the wetland.
+  _biomeTakes(b, plantKey, riverOnly) {
+    return !!(b && b.canHavePlants && b.plantTypes && b.plantTypes.indexOf(plantKey) >= 0 &&
+              (!riverOnly || b.key === 'wetland'));
+  }
+
+  // Does the CURRENT land have room for this species: at least `minCells` cells of the biomes that
+  // take it? The plant goals (TeManawa_goals.js) use it to keep a goal dark until its answer's habitat
+  // exists: no subalpine tops, so no Dracophyllum or wharariki, before the ranges rise. A threshold,
+  // not "any cell": the 1 Ma land can carry a stray subalpine cell or two before the ranges have
+  // risen. O(cells) with an early exit; event-driven (a solve, a regime flip, a land morph), never per frame.
+  hasHabitat(plantKey, minCells = 1) {
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    const terrain = this.terrain;
+    const map = terrain && terrain.biomeIndexMap, biomes = terrain && terrain.biomeArray;
+    if (!TYPES || !TYPES[plantKey] || !map || !biomes) return false;
+    const riverOnly = !!TYPES[plantKey].disturbanceRecruit;
+    const ok = new Uint8Array(biomes.length);
+    let any = false;
+    for (let b = 0; b < biomes.length; b++) if (this._biomeTakes(biomes[b], plantKey, riverOnly)) { ok[b] = 1; any = true; }
+    if (!any) return false;
+    const need = Math.max(1, minCells);
+    let n = 0;
+    for (let i = 0; i < map.length; i++) if (ok[map[i]] && ++n >= need) return true;
+    return false;
   }
 
   // PER-SPECIES FAUNA RECRUITMENT — the boost's fauna coupling (md/TEMANAWA_SECOND_SCREEN.md §6.1/§9.3).
@@ -761,6 +836,349 @@ class Simulation {
     for (let i = 0; i < this.plants.length; i++) { const p = this.plants[i]; if (p.alive && p._kahikatea) n++; }
     if (n >= target) return 0;
     return this.recruitKahikatea((M && M.kahiRecruitMorph) || 4);
+  }
+
+  // ============================================================
+  // PLANT HOMEOSTASIS. Each plant-bearing habitat holds a TARGET stock, area-based (the density it
+  // was spawned at × the cells it covers now, so land that emerges over deep time fills in too). A
+  // real-clock census recruits seedlings where a habitat runs under its target and fades plants out
+  // where it runs over, so with nobody at the buttons the counts hold steady. The land is spawned at
+  // an open UNATTENDED floor (homeoBaseFrac of the full density). Correct boosts LIFT the target of
+  // the habitats they serve, one step each, so a run of right answers grows those habitats back to
+  // full and past it, through the climate swings; a wrong-for-the-climate boost drops every habitat
+  // back to its floor and the surplus thins out over the next ~20 s. A plant counts while it is in
+  // the list (rootstock and regrowing dead included), so a glacial die-back or an eruption never
+  // triggers a refill. Kahikatea is counted but left to its own disturbance clock.
+  //
+  // REPRESENTATION. However open the floor, each habitat keeps every species of its palette (its
+  // characteristic plants: tawa + Tōtara + tree fern + beech on the montane, tussock + Dracophyllum on
+  // the tops...): a species below its share (_homeoSpeciesFloor) is recruited first, even at target,
+  // and thinning never takes one at or under it and leans on the over-represented. Knobs: homeo* in
+  // the scaffold mechanics.
+  // ============================================================
+  _initHomeostasis() {
+    this._homeo = { lift: {}, favour: {}, cells: {}, dens: {}, count: {}, members: {}, typeCount: {},
+                    timer: 0, areaStale: true };
+    const H = this._homeo, terrain = this.terrain;
+    if (!terrain || !terrain.biomeArray) return;
+    this._homeoArea();
+    // Founding mix: top up any species the random spawn left under its share, as mature founders, so
+    // the open floor never opens on a habitat missing one of its characteristic plants.
+    this._homeoCensus();
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65 };
+    const glacial = this._homeoGlacial();
+    for (const b of terrain.biomeArray) {
+      if (!b || !b.canHavePlants || !b.plantTypes || !TYPES) continue;
+      const n = H.count[b.key] || 0;
+      if (!n) continue;
+      const floor = this._homeoSpeciesFloor(b, n), tc = H.typeCount[b.key] || (H.typeCount[b.key] = {});
+      for (let i = 0; i < b.plantTypes.length; i++) {
+        const t = b.plantTypes[i], d = TYPES[t];
+        if (b.plantTypes.indexOf(t) !== i || !d || d.disturbanceRecruit) continue;
+        if (glacial && (d.coldTolerance ?? 0.5) <= G.warmMax) continue;
+        // Each species on its own, a few misses allowed: a thin corridor rejects many sites.
+        for (let miss = 0; (tc[t] || 0) < floor && miss < 8; ) if (!this._homeoRecruit(b.key, t, true)) miss++;
+      }
+    }
+    this._homeoCensus();
+    // Measured density per habitat = what was actually placed per cell. This folds in the painted-
+    // water rejection (the wetland corridor keeps only ~¼ of its formula density), so an untouched
+    // world starts exactly on target and does not churn.
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const gain = (this.config.viewAreaGain > 0) ? this.config.viewAreaGain : 1;
+    const formula = (this.config.plantDensity || 0) * gain / 4 * (M.homeoBaseFrac ?? 1);   // spawnPlants: one try per 2×2 world units
+    for (const b of terrain.biomeArray) {
+      if (!b || !b.canHavePlants) continue;
+      const cells = H.cells[b.key] || 0;
+      // A habitat too small to measure (or absent at boot, e.g. the subalpine before the ranges rise)
+      // takes the spawn formula instead.
+      H.dens[b.key] = cells >= 400 ? (H.count[b.key] || 0) / cells
+                                   : formula * (b.plantDensityMult || 1);
+    }
+    H.areaStale = false;
+  }
+
+  _homeoGlacial() {
+    const sm = this.seasonManager;
+    return !!(sm && sm.getWinterness && sm.getWinterness() >= 0.5);
+  }
+
+  // Count each habitat and each species within it; drop thinned / aged-out plants whose fade is done.
+  _homeoCensus() {
+    const H = this._homeo, plants = this.plants;
+    let w = 0;
+    for (let i = 0; i < plants.length; i++) {
+      const p = plants[i];
+      if (p._senescent && !p.alive && !p._toppling) continue;
+      plants[w++] = p;
+    }
+    if (w !== plants.length) { plants.length = w; if (this._plantBatchIndex >= w) this._plantBatchIndex = 0; }
+    for (const k in H.count) H.count[k] = 0;
+    for (const k in H.members) H.members[k].length = 0;
+    for (const k in H.typeCount) { const tc = H.typeCount[k]; for (const t in tc) tc[t] = 0; }
+    for (let i = 0; i < plants.length; i++) {
+      const p = plants[i];
+      if (p._senescent || p._fallKind === 'thin') continue;
+      const k = p.biomeKey;
+      H.count[k] = (H.count[k] || 0) + 1;
+      (H.members[k] || (H.members[k] = [])).push(p);
+      const tc = H.typeCount[k] || (H.typeCount[k] = {});
+      tc[p.type] = (tc[p.type] || 0) + 1;
+    }
+  }
+
+  // The share of a habitat each palette species is guaranteed: homeoSpeciesShare of the stock, at
+  // least homeoSpeciesMin plants, but never so much that the floors together crowd out the rest.
+  // Kahikatea (its own disturbance clock) has no floor.
+  _homeoSpeciesFloor(biome, stock) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    let distinct = 0;
+    const list = biome.plantTypes;
+    for (let i = 0; i < list.length; i++) {
+      if (list.indexOf(list[i]) !== i) continue;
+      const d = TYPES && TYPES[list[i]];
+      if (d && !d.disturbanceRecruit) distinct++;
+    }
+    if (!distinct) return 0;
+    const want = Math.max(M.homeoSpeciesMin ?? 3, stock * (M.homeoSpeciesShare ?? 0.06));
+    return Math.round(Math.min(want, stock * 0.6 / distinct));   // whole plants: a stray-cell habitat gets 0
+  }
+
+  // The palette species furthest under its floor that can establish now (not kahikatea; no warm tree
+  // in a glacial, the cold would only suppress it), or null when every one is represented.
+  _homeoUnderFloor(biome, stock, glacial) {
+    const H = this._homeo, TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    if (!TYPES || !biome.plantTypes) return null;
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65 };
+    const floor = this._homeoSpeciesFloor(biome, stock);
+    const tc = H.typeCount[biome.key] || {};
+    let best = null, bestRatio = 1;
+    for (const t of biome.plantTypes) {
+      const d = TYPES[t];
+      if (!d || d.disturbanceRecruit || (glacial && (d.coldTolerance ?? 0.5) <= G.warmMax)) continue;
+      const r = (tc[t] || 0) / floor;
+      if (r < bestRatio) { bestRatio = r; best = t; }
+    }
+    return best;
+  }
+
+  // Cells per habitat on the CURRENT biome map. One pass; re-run only after a land morph.
+  _homeoArea() {
+    const H = this._homeo, t = this.terrain;
+    const map = t && t.biomeIndexMap, biomes = t && t.biomeArray;
+    if (!map || !biomes) return;
+    const n = new Int32Array(biomes.length);
+    for (let i = 0; i < map.length; i++) n[map[i]]++;
+    for (const k in H.cells) H.cells[k] = 0;
+    for (let b = 0; b < biomes.length; b++) if (biomes[b]) H.cells[biomes[b].key] = (H.cells[biomes[b].key] || 0) + n[b];
+    H.areaStale = false;
+  }
+
+  // The stock a habitat is held at: its base (density × area) plus any lift earned by correct boosts.
+  homeoTarget(biomeKey) {
+    const H = this._homeo;
+    if (!H || H.dens[biomeKey] == null) return null;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const base = H.dens[biomeKey] * (H.cells[biomeKey] || 0);
+    // The floor on a step helps a thin habitat (the wetland corridor) read the lift, but never more
+    // than half its base: a habitat that barely exists yet (a few stray subalpine cells) stays tiny.
+    const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
+    return base + (H.lift[biomeKey] || 0) * step;
+  }
+
+  _homeoDeadband(target) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    return Math.max(M.homeoMinDeadband ?? 2, target * (M.homeoDeadband ?? 0.06));
+  }
+
+  // A CORRECT boost: lift every habitat whose palette carries the boosted plant(s). minShare > 0
+  // narrows it to habitats the set dominates (the FOREST/TUSSOCK buttons boost a whole set, which
+  // touches almost every palette). steps > 1 for the goal's answer. Returns how many were lifted.
+  liftHabitats(keys, minShare = 0, steps = 1) {
+    const H = this._homeo, biomes = this.terrain && this.terrain.biomeArray;
+    if (!H || !biomes || !keys || !keys.length) return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    if (M.plantHomeostasis === false) return 0;
+    const maxSteps = M.homeoLiftMaxSteps ?? 4;
+    let lifted = 0;
+    for (const b of biomes) {
+      if (!b || !b.canHavePlants || !b.plantTypes || !b.plantTypes.length) continue;
+      let hit = 0;
+      for (let i = 0; i < b.plantTypes.length; i++) if (keys.indexOf(b.plantTypes[i]) !== -1) hit++;
+      if (!hit || hit / b.plantTypes.length < minShare) continue;
+      H.lift[b.key] = Math.min(maxSteps, (H.lift[b.key] || 0) + steps);
+      if (keys.length === 1) H.favour[b.key] = keys[0];   // its recruits lean toward the boosted species
+      lifted++;
+    }
+    return lifted;
+  }
+
+  // The FOREST (warm) / TUSSOCK (cold) button's set, lifted where it makes up a real share of the palette.
+  liftGrowSet(warm) {
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    if (!TYPES) return 0;
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65, coldMin: 0.75 };
+    const keys = [];
+    for (const k in TYPES) {
+      const d = TYPES[k];
+      if (!d || d.disturbanceRecruit) continue;
+      const ct = d.coldTolerance ?? 0.5;
+      if (warm ? (ct <= G.warmMax) : (ct >= G.coldMin)) keys.push(k);
+    }
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    return this.liftHabitats(keys, M.homeoButtonShare ?? 0.34);
+  }
+
+  // A WRONG-for-the-climate boost: every habitat drops back to its original floor.
+  resetHabitatLift() {
+    const H = this._homeo;
+    if (!H) return;
+    for (const k in H.lift) delete H.lift[k];
+    for (const k in H.favour) delete H.favour[k];
+  }
+
+  // The census. Real clock (rdt), every homeoIntervalFrames, so a time-lapse neither speeds the
+  // thinning up nor freezes it. Off the draw path; ≤1000 plants once a second.
+  _updateHomeostasis(rdt) {
+    const H = this._homeo;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (!H || !M || M.plantHomeostasis === false) return;
+    H.timer += rdt;
+    if (H.timer < (M.homeoIntervalFrames ?? 60)) return;
+    H.timer = 0;
+    if (H.areaStale) this._homeoArea();
+    this._homeoCensus();
+
+    const plants = this.plants;
+    const cap = M.maxLivePlants || 900;
+    const maxPer = M.homeoMaxPerTick ?? 6;
+    const glacial = this._homeoGlacial();
+    for (const k in H.dens) {
+      const target = this.homeoTarget(k);
+      if (target == null) continue;
+      const n = H.count[k] || 0, band = this._homeoDeadband(target);
+      if (n < target - band) {
+        const want = Math.min(maxPer, Math.ceil((target - n) * (M.homeoRecruitRate ?? 0.25)));
+        for (let j = 0; j < want && plants.length < cap; j++) if (this._homeoRecruit(k)) H.count[k]++;
+      } else if (n > target + band) {
+        const want = Math.min(maxPer, Math.ceil((n - target) * (M.homeoThinRate ?? 0.15)));
+        H.count[k] -= this._homeoThin(k, want, target);
+      } else if (n < target + band) {
+        // On target: still restore a characteristic species that has slipped under its share. The
+        // band absorbs it; once it pushes the habitat over, thinning trims the over-represented.
+        const b = this._biomeByKey(k);
+        const t = b && this._homeoUnderFloor(b, target, glacial);
+        if (t && plants.length < cap && this._homeoRecruit(k, t)) H.count[k]++;
+      }
+    }
+  }
+
+  // One seedling into habitat k: beside a standing plant of that habitat (seed rain from a parent,
+  // which also lands reliably in a thin corridor), else a few random map tries. The species: `type`
+  // if given, else a palette species under its floor, else a palette draw leaning toward the last
+  // boosted species there, skipping kahikatea (its own disturbance clock) and, in a glacial, the warm
+  // trees the cold would only suppress. founder=true plants it mature (the founding mix at init).
+  _homeoRecruit(k, type = null, founder = false) {
+    const H = this._homeo, terrain = this.terrain;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const biome = this._biomeByKey(k);
+    if (!biome || !biome.plantTypes) return false;
+    const glacial = this._homeoGlacial();
+    if (!type) {
+      const stock = H.dens[k] != null ? this.homeoTarget(k) : (H.count[k] || 0);
+      type = this._homeoUnderFloor(biome, stock, glacial) || this._homeoPickType(biome, glacial, H.favour[k]);
+    }
+    if (!type) return false;
+    const members = H.members[k], R = M.homeoRecruitRadius ?? 40;
+    const dR = M.homeoDensityRadius ?? 12;
+    for (let tries = 0; tries < 16; tries++) {
+      let px, py;
+      if (members && members.length && (tries & 1) === 0) {
+        const a = members[(random() * members.length) | 0];
+        const ang = random(TWO_PI), r = 3 + random(R) * (1 - tries / 16);   // tightening: a thin corridor (the wetland) needs short hops
+        px = a.pos.x + Math.cos(ang) * r; py = a.pos.y + Math.sin(ang) * r;
+      } else {
+        px = random(this.worldWidth); py = random(this.worldHeight);
+      }
+      if (px < 2 || py < 2 || px > this.worldWidth - 2 || py > this.worldHeight - 2) continue;
+      const b = terrain.getBiomeAt(px, py);
+      if (!b || b.key !== k || !this._plantSiteIsLand(px, py)) continue;
+      // Density gate, as every other spawn path: no carpeting a stand. Tighter than the kererū's
+      // sparse-canopy gate (26), which rejects nearly every site at the habitat's own spawn density.
+      let live = 0;
+      const near = this.getNearbyPlants(px, py, dR);
+      for (let i = 0; i < near.length; i++) { if (near[i].alive && ++live >= 3) break; }
+      if (live >= 3) continue;
+      const p = new Plant(px, py, type, terrain, k);
+      if (!founder) { p.growth = 0.08; p._matured = false; }   // a seedling that grows in visibly
+      this.plants.push(p);
+      const tc = H.typeCount[k] || (H.typeCount[k] = {});
+      tc[type] = (tc[type] || 0) + 1;
+      if (members) members.push(p);
+      return true;
+    }
+    return false;
+  }
+
+  _homeoPickType(biome, glacial, favour) {
+    const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65 };
+    const ok = (t) => {
+      const d = TYPES && TYPES[t];
+      return !!d && !d.disturbanceRecruit && !(glacial && (d.coldTolerance ?? 0.5) <= G.warmMax);
+    };
+    if (favour && biome.plantTypes.indexOf(favour) !== -1 && ok(favour) && random() < (M.homeoFavourChance ?? 0.4)) return favour;
+    const list = biome.plantTypes;
+    for (let tries = 0; tries < 8; tries++) {
+      const t = list[(random() * list.length) | 0];
+      if (ok(t)) return t;
+    }
+    return null;
+  }
+
+  // Fade out up to `want` plants of habitat k. Spared: a species at or under its representation
+  // floor, the young (homeoGraceMs, so a fresh boost or wetland bloom plays out before the habitat is
+  // trimmed), the species a live boost outline is ringing, kahikatea (its own clock), and anything
+  // already falling. Leans on species above their fair share, so the mix evens out as it thins.
+  // Returns how many went.
+  _homeoThin(k, want, target) {
+    const H = this._homeo, members = H.members[k];
+    if (!members || !members.length || want <= 0) return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const now = (typeof millis === 'function') ? millis() : 0;
+    const grace = M.homeoGraceMs ?? 25000;
+    const hi = this.game && this.game._boostHi;
+    const hiKeys = (hi && hi.keys && now < hi.until) ? hi.keys : null;
+    const biome = this._biomeByKey(k);
+    const floor = biome ? this._homeoSpeciesFloor(biome, target) : 0;
+    const tc = H.typeCount[k] || {};
+    let kinds = 0; for (const t in tc) if (tc[t] > 0) kinds++;
+    const fair = kinds ? (H.count[k] || 0) / kinds : 0;
+    let done = 0;
+    for (let tries = 0; tries < want * 10 && done < want; tries++) {
+      const p = members[(random() * members.length) | 0];
+      if (!p || p._senescent || p._toppling || p._kahikatea) continue;
+      const c = tc[p.type] || 0;
+      if (c <= floor) continue;                                    // keeps the habitat's character
+      if (c <= fair && random() < 0.75) continue;                  // prefer the over-represented
+      if (now - (p._bornMs || 0) < grace) continue;
+      if (hiKeys && hiKeys.has(p.type)) continue;
+      if (p.alive) p.fall('thin');
+      else p._senescent = true;   // already bare ground: just stop it regrowing
+      tc[p.type] = c - 1;
+      done++;
+    }
+    return done;
+  }
+
+  _biomeByKey(k) {
+    const biomes = this.terrain && this.terrain.biomeArray;
+    if (!biomes) return null;
+    for (let i = 0; i < biomes.length; i++) if (biomes[i] && biomes[i].key === k) return biomes[i];
+    return null;
   }
 
   spawnMoas(count, speciesKey = null) {
@@ -1323,16 +1741,23 @@ class Simulation {
   // MAIN UPDATE LOOP
   // ============================================
   
-  // Two clocks. `dt` is the sim/life clock (deep-time-warped: aging, hunger,
-  // breeding, growth, spawn cadence). `rdt` is the real frame clock, threaded to
-  // fauna MOTION and ANIMATION so a moa walks and a harrier beats its wings at
-  // wall-clock rate even in 10x fast-forward. Defaults to `dt`, so any single-arg
-  // caller keeps the old fully-warped behaviour.
+  // Two clocks. `dt` is the sim/life clock (deep-time-warped: aging, breeding,
+  // growth, spawn cadence). `rdt` is the real frame clock, threaded to fauna MOTION,
+  // ANIMATION and METABOLISM, so a moa walks, eats and gets hungry, and a harrier
+  // beats its wings, at wall-clock rate even in 10x fast-forward. Defaults to `dt`,
+  // so any single-arg caller keeps the old fully-warped behaviour.
   update(dt = 1, rdt = dt) {
+    // How far the life clock runs ahead of the real one (1 at rest, up to ~10 in a boost's time-lapse).
+    // behave() only gets the life dt, so fauna divide by this to burn hunger on the REAL clock: finding
+    // and eating food is motion, and motion runs at wall-clock pace. Hunger on the life clock starved the
+    // whole grazer guild to its floor in every time-lapse (goose 5→2), so a boost's "the birds answer
+    // the plant" ended with fewer birds. See MISTAKES.md.
+    this.lifeScale = (rdt > 0 && dt > rdt) ? dt / rdt : 1;
     this.updateSpatialGrids();
     this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
-    
+    this._updateHomeostasis(rdt);       // hold each habitat at its (boost-lifted) target, on real time
+
     if (this.seasonManager.justChanged) this.onSeasonChange();
     
     this._placeableTimer += dt;
@@ -1576,9 +2001,17 @@ class Simulation {
     // InstallHUD.update). 1 = normal; >1 hurries a kahikatea through its CURRENT process
     // (grow/age/senesce), rather than force-growing it. Ignored by every other plant type.
     const kahiBoost = (this.game && this.game._kahiBoost) || 1;
+    // While deep time is MOVING (a boost's time-lapse, a deep burst, the time dial) the river is working its whole
+    // floodplain, so a kahikatea on the river WETLAND stands on continually fresh alluvium and does not
+    // age (Plant.update). At rest the river is static and a stand ages out unless a storm floods it.
+    // Without this every kahikatea, a boosted stand included, aged out inside one time-lapse while the
+    // river was visibly moving (md/TEMANAWA_ENCYCLOPEDIA_CARDS.md, sim gap 2).
+    const riverWorking = !!((typeof DeepTime !== 'undefined') &&
+      (typeof DeepTime.isMoving === 'function' ? DeepTime.isMoving()
+        : (DeepTime.isTimelapsing() || (typeof DeepTime.isDeep === 'function' && DeepTime.isDeep()))));
     for (let i = this._plantBatchIndex; i < endIdx; i++) {
       const p = plants[i];
-      p.update(this.seasonManager, dt, warpActive ? this.warpAt(p.pos.x, p.pos.y) : 0, kahiBoost);
+      p.update(this.seasonManager, dt, warpActive ? this.warpAt(p.pos.x, p.pos.y) : 0, kahiBoost, riverWorking);
     }
     
     this._plantBatchIndex = endIdx >= len ? 0 : endIdx;
@@ -1630,6 +2063,7 @@ class Simulation {
       plants[writeIdx++] = p;
     }
     if (writeIdx !== plants.length) plants.length = writeIdx;
+    if (this._homeo) this._homeo.areaStale = true;          // the habitats moved: re-measure their area next census
     if (culled && CONFIG.debugMode) console.log(`cullSubmergedPlants: removed ${culled} plant(s) now in water`);
     // The channel just shifted (this runs once per morph re-bake) → a small kahikatea recruitment
     // pulse on the freshly-worked alluvium, so the swamp forest tracks the moving river ambiently.
@@ -1938,11 +2372,19 @@ class Simulation {
   // the plant's footprint; the fade eases off the plant's centre-line (and, optionally, off
   // the back of the depth band), taking the strongest cover found. Returns 1 (no change)
   // for a plant clear of any animal. Allocation-free.
+  //
+  // It also MARKS each covered animal for the reveal re-stamp (PLANT_GHOST.reveal): the
+  // animal's strongest cover this frame goes in `_occ` and it joins `_revealList` once
+  // (`_occStamp` = this frame's stamp), which render() replays over the canopy afterwards.
+  // With reveal on, the scan can't stop at the first full cover — every animal under this
+  // plant needs its mark.
   _plantGhostAlpha(p, list, i, G) {
-    const halfW = p.size * (p.growth || 1) * 0.5 * G.widthMul;
+    const halfW = p.size * ((p._dg ? p._dg() : p.growth) || 1) * 0.5 * G.widthMul;   // the DRAWN size (trees ratchet)
     if (halfW < G.minHalfW) return 1;                 // too small to hide anything
     const py = p.pos.y, pxw = p.pos.x;
     const band = G.depthBehind;
+    const mark = G.reveal > 0;
+    const stamp = this._revealStamp;
     let strongest = 0;
     for (let j = i - 1; j >= 0; j--) {
       const a = list[j];
@@ -1957,9 +2399,31 @@ class Simulation {
       let t = 1 - adx / halfW;                         // 1 on the centre-line, 0 at the footprint edge
       t = t * t * (3 - 2 * t);                         // smoothstep — gentle near both ends
       if (G.depthFalloff) t *= 1 - dy / band;          // an animal at the back of the band ghosts less
-      if (t > strongest) { strongest = t; if (strongest >= 1) break; }
+      if (mark && t > 0) {
+        if (a._occStamp !== stamp) { a._occStamp = stamp; a._occ = 0; this._revealList.push(a); }
+        if (t > a._occ) a._occ = t;
+      }
+      if (t > strongest) { strongest = t; if (strongest >= 1 && !mark) break; }
     }
     return strongest > 0 ? 1 - strongest * G.maxReduce : 1;
+  }
+
+  // Re-stamp every animal _plantGhostAlpha marked this frame OVER the canopy (PLANT_GHOST
+  // reveal): its own render() at `strength` × cover × death fade, sprite-only via the trail's
+  // _ghosting flag. Called straight (not through _renderWithFade) so it lays no trail ghosts.
+  _renderReveal(reveal, strength) {
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    FaunaTrail._ghosting = true;
+    for (let k = 0; k < reveal.length; k++) {
+      const a = reveal[k];
+      const f = a._fade === undefined ? 1 : a._fade;
+      const ga = strength * a._occ * f;
+      if (ga <= 0.01) continue;
+      dc.globalAlpha = a0 * ga;
+      a.render();
+    }
+    FaunaTrail._ghosting = false;
+    dc.globalAlpha = a0;
   }
 
   render() {
@@ -2017,6 +2481,9 @@ class Simulation {
       list[j + 1] = e;
     }
     const ghost = (typeof PLANT_GHOST !== 'undefined' && PLANT_GHOST.on) ? PLANT_GHOST : null;
+    const reveal = this._revealList || (this._revealList = []);
+    reveal.length = 0;
+    this._revealStamp = (this._revealStamp | 0) + 1;   // new frame: every animal's old _occ mark is stale
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
       // A canopy plant sitting in front of a live animal fades over it (centre-line
@@ -2034,6 +2501,7 @@ class Simulation {
         this._renderWithFade(e, 'render');
       }
     }
+    if (reveal.length) this._renderReveal(reveal, ghost.reveal);
 
     // ---- Above the ground plane (flyers, storms, indicators) -----------------
     // Flying others (kea, kererū, kōkako, huia) fly over the canopy — render above

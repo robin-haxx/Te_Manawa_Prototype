@@ -127,6 +127,12 @@ class Kereru extends Boid {
     this._lastLand = { x, y };
     this._waterTicks = 0;
 
+    // Extra forage beyond the warm fruit trees: plant types this bird ALSO feeds at, without carrying
+    // their seed (the tūī's nectar flowers, the huia's grubs in dead beech). See _findFruitTree and the
+    // seedless crop in _feeding. Null for the kererū, which takes fruit only.
+    this._extraForage = (sp.extraForage && sp.extraForage.length) ? new Set(sp.extraForage) : null;
+    this._cropSeedless = false;
+
     // Flight legs
     this._hopRadius  = sp.hopRadius ?? 120;
     this._feedRadius = sp.feedRadius ?? 170;
@@ -203,7 +209,10 @@ class Kereru extends Boid {
     // Age → maturity, and hunger (feeding pays it back below).
     this.age += dt;
     if (!this.mature && this.age >= this._maturityFrames) this.mature = true;
-    this.hunger = Math.min(this.hunger + this.hungerRate * dt, this.maxHunger);
+    // Metabolism on the REAL clock (mdt): the flights between trees run at wall-clock speed, so
+    // hunger and starvation must too, or a time-lapse starves the flock (Simulation.update lifeScale).
+    const mdt = (sim && sim.lifeScale > 1) ? dt / sim.lifeScale : dt;
+    this.hunger = Math.min(this.hunger + this.hungerRate * mdt, this.maxHunger);
     if (this._eggCooldown > 0) this._eggCooldown = Math.max(0, this._eggCooldown - dt);
 
     // Flush from a hunting harrier before anything else — a raptor on the hunt
@@ -221,7 +230,7 @@ class Kereru extends Boid {
     // so a long glacial thins the flock without ever stranding the forest with no
     // disperser to recruit it back (recruitment keys off kererū being ALIVE).
     if (this.hunger >= this.maxHunger) {
-      this._starveTimer += dt;
+      this._starveTimer += mdt;
       if (this._starveTimer >= this._starveFrames) {
         const floor = this._populationFloor();
         if (sim.getSpeciesCount && sim.getSpeciesCount(this.speciesKey) > floor) {
@@ -233,7 +242,7 @@ class Kereru extends Boid {
         this._starveTimer = 0;
       }
     } else if (this._starveTimer > 0) {
-      this._starveTimer = Math.max(0, this._starveTimer - dt * 2);
+      this._starveTimer = Math.max(0, this._starveTimer - mdt * 2);
     }
 
     this.edges();
@@ -253,7 +262,15 @@ class Kereru extends Boid {
       const dx = this.pos.x - e.pos.x, dy = this.pos.y - e.pos.y;
       if (dx * dx + dy * dy < RSq) { ex += dx; ey += dy; threat = true; }
     }
-    if (!threat) return false;
+    if (!threat) { this._fleeSide = 0; return false; }
+    // Roll a sideways break once per flush (as the ground birds do — Moa._pickFleeScatter):
+    // mostly the side of the harrier's line the bird is on, sometimes the other, with its
+    // own strength, so a flushed flock scatters L/R rather than fanning out radially.
+    if (!this._fleeSide) {
+      this._fleeSide = (Math.abs(ex) < 6 ? random() < 0.5 : ex < 0) ? -1 : 1;
+      if (random() < 0.25) this._fleeSide = -this._fleeSide;
+      this._fleeLat = 0.4 + random() * 1.1;
+    }
     this.state = KERERU_STATE.FLYING;
     this._targetTree = null;
     const base = this.speciesData?.config?.baseSpeed || 0.42;
@@ -263,7 +280,9 @@ class Kereru extends Boid {
     // A short veer away from the threat — NOT a map-crossing dash — and clamped onto
     // land so a fright never flushes the bird out over the ocean.
     const m = Math.hypot(ex, ey) || 1;
-    const land = this._clampToLand(this.pos.x + (ex / m) * 60, this.pos.y + (ey / m) * 60);
+    const fx = ex / m + this._fleeSide * this._fleeLat, fy = (ey / m) * 0.55;
+    const fm = Math.hypot(fx, fy) || 1;
+    const land = this._clampToLand(this.pos.x + (fx / fm) * 60, this.pos.y + (fy / fm) * 60);
     this._target.set(land.x, land.y);
     this.applyForce(this.seek(this._target, 1.6));
     this.applyForce(this._landward());   // hard bounce off water even mid-flee
@@ -398,7 +417,8 @@ class Kereru extends Boid {
         // crop is always spent (the bird moved the fruit off the parent) but the
         // seed only ESTABLISHES with probability _disperseChance — how the smaller
         // forest birds disperse >50% less than the kererū (which is always 1).
-        if (sim.disperseSeed && random() < this._disperseChance) sim.disperseSeed(this.pos.x, this.pos.y);
+        // A seedless crop (nectar, grubs) moves no seed at all.
+        if (!this._cropSeedless && sim.disperseSeed && random() < this._disperseChance) sim.disperseSeed(this.pos.x, this.pos.y);
         this.crop -= 1;
         this._disperseTimer = this._disperseFrames;
         this.state = KERERU_STATE.PERCHED;
@@ -421,6 +441,11 @@ class Kereru extends Boid {
     this._feedTimer -= dt;
     if (this._feedTimer <= 0) {
       this.crop = this._cropCapacity;                // a full crop of fruit
+      // Fed at an extra-forage plant (not a warm, large-fruited tree): the crop is nectar or grubs, so
+      // the dispersal legs that follow plant nothing.
+      const ft = this._targetTree;
+      const warmMax = (typeof TM_GROW !== 'undefined') ? TM_GROW.warmMax : 0.65;
+      this._cropSeedless = !!(ft && (ft.coldTolerance ?? 0.5) > warmMax);
       // Global diet richness (CONFIG.faunaNutritionScale) applies to flyers too.
       const _relief = this._feedRelief * ((typeof CONFIG !== 'undefined' && CONFIG.faunaNutritionScale) ? CONFIG.faunaNutritionScale : 1);
       this.hunger = Math.max(0, this.hunger - _relief);
@@ -495,7 +520,8 @@ class Kereru extends Boid {
 
   // Nearest fruiting FOREST tree: alive, grown, warm/large-fruited (the types the
   // kererū can actually swallow — coldTolerance ≤ TM_GROW.warmMax, the same set
-  // Simulation.disperseSeed recruits). Uses the plant spatial grid.
+  // Simulation.disperseSeed recruits), or one of this species' `extraForage` types
+  // (fed at without carrying seed). Uses the plant spatial grid.
   _findFruitTree(sim) {
     if (!sim.getNearbyPlants) return null;
     const plants = sim.getNearbyPlants(this.pos.x, this.pos.y, this._feedRadius);
@@ -505,7 +531,8 @@ class Kereru extends Boid {
     for (let i = 0; i < plants.length; i++) {
       const p = plants[i];
       if (!p.alive || p._consumed || p.dormant || p.growth < 0.5) continue;
-      if ((p.coldTolerance ?? 0.5) > warmMax) continue;   // only large-fruited forest
+      if ((p.coldTolerance ?? 0.5) > warmMax &&           // only large-fruited forest…
+          !(this._extraForage && this._extraForage.has(p.type))) continue;   // …or this bird's extra forage
       const dx = p.pos.x - px, dy = p.pos.y - py;
       const dSq = dx * dx + dy * dy;
       if (dSq < bestSq) { bestSq = dSq; best = p; }
@@ -668,6 +695,7 @@ class Kereru extends Boid {
       if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
         EntitySprites.boostOutline(this, sprite, drawW, drawH);   // boost highlight ring, under the bird
       image(sprite, 0, 0, drawW, drawH);
+      if (typeof FaunaOutline !== 'undefined') FaunaOutline.draw(this, sprite, 0, 0, drawW, drawH);   // live border colour
     } else {
       this._renderGlyph(s, perched);
     }

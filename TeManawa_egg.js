@@ -106,8 +106,8 @@ class Egg {
       return this.parentSpecies;
     }
     
-    // Default to upland moa if no parent species
-    return 'upland_moa';
+    // Default to little bush moa if no parent species (a North Island moa; upland moa is SI-only)
+    return 'little_bush_moa';
   }
   
   /**

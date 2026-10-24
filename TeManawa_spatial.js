@@ -11,7 +11,7 @@ class SpatialGrid {
     this.cols = Math.ceil(width * this.invCellSize);
     this.rows = Math.ceil(height * this.invCellSize);
     
-    // Use a flat array instead of Map for O(1) access without hashing
+    // A flat array instead of Map, for O(1) access without hashing.
     this.totalCells = this.cols * this.rows;
     this.cells = new Array(this.totalCells);
     
@@ -20,7 +20,7 @@ class SpatialGrid {
       this.cells[i] = [];
     }
     
-    // Track which cells have entities for faster clearing
+    // Now, track which cells have entities for faster clearing.
     this.activeCells = [];
     
     // Reusable result array to reduce allocations
@@ -28,9 +28,8 @@ class SpatialGrid {
     this._resultBuffer2 = [];
   }
   
-  /**
-   * Get grid dimensions
-   */
+  // A helper function that gets grid dimensions.
+   
   getDimensions() {
     return {
       width: this.width,
@@ -42,7 +41,7 @@ class SpatialGrid {
   }
   
   clear() {
-    // Only clear cells that had entities
+    // Ensures that only cells that had entities are cleared.
     const active = this.activeCells;
     for (let i = 0, len = active.length; i < len; i++) {
       this.cells[active[i]].length = 0;
@@ -130,7 +129,7 @@ class SpatialGrid {
     return result;
   }
   
-  // Get nearby entities with actual distance check (more precise)
+  // Get nearby entities with actual distance check (This is more precise.)
   getInRadius(x, y, radius) {
     const result = this._resultBuffer;
     result.length = 0;
@@ -169,7 +168,7 @@ class SpatialGrid {
     return result;
   }
   
-  // Find the closest entity within radius
+  // Finds the closest entity (within radius.)
   getClosest(x, y, radius, filter = null) {
     const invCellSize = this.invCellSize;
     const cellRadius = Math.ceil(radius * invCellSize);

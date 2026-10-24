@@ -79,7 +79,7 @@ per-frame draws. From directly overhead, ground cover *is* colour.
 | 4 | **Mantell's moa** *Pachyornis geranoides* | **Dry forest and shrubland — the cold-phase marker.** Ancient DNA has its populations holding the same ground for hundreds of thousands of years | **cold** | 5 |
 | 5 | **Juvenile moa** | Recruitment made visible — **and the harrier's actual prey class** | both | 5 |
 | 6 | **Kērangi** *Circus teauteensis* | **Sole apex predator of the North Island.** Goshawk-build forest and forest-edge hunter with a **40 kg prey ceiling**, so it constrains moa *recruitment*, not adult survival. **At home in the open phases** — its habitat is dry forest and shrubland, sea level to subalpine | **all** | 20 |
-| 7 | **NI goose** *Cnemiornis gracilis* | Large flightless open-ground grazer. **In the Te Ahu a Tūranga bones held in this building** | **cold** | 5 |
+| 7 | **NI goose** *Cnemiornis gracilis* | Large flightless open-ground grazer. **In the Te Ahu a Tūranga bones**, alongside *Euryapteryx*, *Pachyornis* and the NI adzebill. Replicas are in this building; the originals were returned to the Ruahine maunga | **cold** | 5 |
 | 8 | **Kererū** | Three jobs: **the only large-seed disperser** (then and now), **the harrier's favoured prey**, and the recognition anchor | warm | 5 |
 | 9 | **Huia ♀/♂** | Hill-forest insectivore; **the Manawatū's own bird**. The second free dimorphism pair — female's long curved bill against the male's chisel | warm | 6 |
 | 10 | **Egg / nest** | The recruitment step the harrier acts on | — | 2 |
@@ -129,7 +129,7 @@ the same totals down by what is drawn versus outstanding.)
 
 ## 7. Cut, in one line each
 
-**Plants (20).** Totara *(duplicates tōtara from above)* · kawakawa *(occluded under
+**Plants (20).** Rimu *(duplicates tōtara from above)* · kawakawa *(occluded under
 canopy)* · rewarewa *(a spire is a dot from above)* · mingimingi *(folded into grey
 scrub)* · pukatea, mātai, ngaio, akeake, māhoe, oioi, *Dracophyllum*, tutu, pōhuehue,
 tauhinu, rangiora, tūpari, mountain flax, pūrei, *Raoulia*, kānuka *(absorbed into

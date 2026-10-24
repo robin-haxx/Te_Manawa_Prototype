@@ -10,6 +10,217 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## The Ōroua was not where it was drawn
+
+- **What happened.** The Ōroua in `geo/manawatu.svg` had been rotated 180° in the editor. The sim drew
+  it un-rotated: entering from the north-west across the coastal plain, swinging east to the gorge and
+  back. Its fan streams started at random distances down that line, so on the timeline frames the
+  tributary seemed to rise out of open sand, and at every highstand its lower reach ran from the beach.
+- **Root cause.** `tools/svg2geo.js` read point data only. The editor stored the turn as a `transform`
+  attribute about a `transform-origin` in the style, which the converter never looked at. Its attribute
+  lookup also matched `d="…"` inside `id="…"`.
+- **Consequence.** Every frame since the SVG was edited showed a river nobody drew, and the review of
+  the river's behaviour started from the wrong course.
+- **Rule.** A converter applies everything the editor shows: element transforms, their origin, and
+  enclosing `<g>` transforms (`svg2geo.js`, harness "svg2geo"). After an edit, overlay the converted
+  lines on a frame before judging the geography (2026-10-20).
+
+---
+
+## The early coast ran on stand-ins, not on sea level
+
+- **What happened.** Read against the dated maps, the 1.0–0.8 Ma coast never moved: the north-west
+  plain was dry at every sea level, where T&B Fig. 4D shows ground flooded at highstands and the
+  c. 0.88 Ma Waitapu map has the Feilding–Halcombe highs under shelf.
+- **Root cause.** Relative sea level counted the plain's uplift back only 400 kyr and faded it out
+  under a positional "marine emergence", so the early window ran at eustatic sea level as if the land
+  already stood at today's height. The early sea came from regions drowned on fixed clocks instead.
+  Separately, the highstand shift attenuated with elevation, so no highstand could flood more than
+  ~+60 m however high the relative sea stood. The first fix then sank only the ground below the new
+  contour. That left the land just above it at full height, so every highstand shore was a step the
+  height of the whole rise, which the relief bake drew as sheer cliffs. And counting uplift-since all
+  the way back (a ramp to 120 m) assumed today's plain existed then, lowered. The basin kept building its
+  surface up to sea level, so the early glacials should bare the plain; instead the sea sat +30 m over it
+  at every early lowstand, and the run read as a coast steadily expanding west.
+- **Rule.** One rule for the whole window. If a physical driver (here relative sea level) explains
+  an era, drive that era from it and calibrate against the sources' dated landmarks, rather than
+  painting the era with a positional term on its own clock. Keep a positional term only for what the
+  driver cannot produce (the Levin–Foxton depocentre). A rising sea moves the whole surface relative
+  to the water; lower the land around the shore with the drowned part, never the drowned part alone.
+  In a filling basin, back-calculate past sea level against the land that existed then: offset by
+  uplift near the present, saturating further back. Check the coast's swing per cycle, not just its
+  extremes.
+  Harness: "geography" asserts the early coast breathes and that older highstands reach higher, and
+  `_seaShift` has no step (monotonic, continuous at the contour).
+
+## The tributaries arrived after the gorge they were meant to have cut
+
+- **What happened.** Read against Trewick & Bland Fig. 4D, the deep-time snapshots had the river's
+  layout right and its history backwards. The tributaries east of the ranges appeared only at
+  0.5–0.2 Ma, so for the first half-million years nothing flowed into the gorge, although T&B's
+  explanation for an antecedent gorge is exactly that flow. The east at 1 Ma was sea (the central
+  patch, and the strait factor widening the main right across it) where the figure shows land.
+- **Root cause.** Each piece was tuned for the look of its own era and checked against the text one
+  claim at a time ("the river turned west", "a lake ponded") rather than against the map as a whole.
+  "Tributaries assemble over deep time" read as plausible on its own. Then the river field kept one
+  river per cell, chosen by margin, so every change to the tributaries needed another patch on that
+  selection (emergence fronts, an early schedule, an NE-arm hand-over).
+- **Rule.** Check a deep-time change against the source's figure at the dates it shows, not only its
+  prose, and ask what each feature needs to have been there first (a gorge needs its river; a river
+  needs its catchment). When a feature needs geometry the field cannot hold, rebuild the field into
+  layers rather than patching the selection: the main stem and the tributary fan are now separate
+  layers unioned in the carve, classify and paint. Harness: "land/water" asserts every tributary
+  joins the main at 1 Ma, 600 and 300 ka and the end, and that the fans are open at 1 Ma and closed
+  at the end; "geography" asserts the lake and fan clocks.
+
+## A boost could stop one year short of the climate it promised
+
+- **What happened.** Chaining boosts from 1 Ma, the stop at 519.2 ka came back twice: the first
+  boost's time-lapse ended still in the glacial, and the next boost played one year.
+- **Root cause.** `Climate.nextRegimeBoundary` bisects the crossing to a 1-year bracket, then
+  returned `Math.round(lo)`. `lo` is the new-regime side, but rounding can move it up a year onto
+  the old side (g 0.500002 at 519,245).
+- **Rule.** When you round the result of a threshold bisection, round toward the side you promised
+  (`Math.floor` here, since yearsBP falls forward in time), then check the rounded value against the
+  threshold. Harness: "deep time" chains every boost stop the way back-to-back boosts do, and
+  requires each to sit in its new regime and none to be a near no-op.
+
+## The glacial coast held still, then flipped; the new shore came out speckled
+
+- **What happened.** With sea level driving the coast in metres, the western shore barely moved
+  through most of a glacial and then jumped kilometres in one morph step, with a horizontal seam
+  where neighbouring rows jumped at different moments. Once the floor was rebuilt as a shelf, the
+  MIS 3 shore came out as a speckled archipelago of islets. Later the eastern tributary was cut off
+  two cells above its mouth.
+- **Root cause.**
+  1. The sea floor was free noise packed into a thin band just under the waterline, so a uniform
+     lift carried the whole band across the line at once. The metres-to-elevation mapping was right;
+     the floor it was applied to wasn't.
+  2. The coast detector took the first land cell on a row. Offshore islet clusters counted as coast,
+     so the lagoons behind them stayed noise floor and flipped together.
+  3. The biome-border wobble (`wobbleAmp` 0.05) is sized for steep relief. On a gentle shelf the same
+     wobble moves the land/sea line a long way sideways, so the shore broke up into specks.
+  4. The NE arm's drying taper ran in cells owned by the main. The eastern tributary's last reach
+     runs along the arm, and the wider main wins those cells on margin, so they dried with the arm.
+- **Rule.** (1) If a slow shift moves a threshold across a field, the field must ramp through the
+  threshold: `_bakeShelf` solves each floor cell (`shelfFloorE`) so a sea fall of its depth lifts it
+  exactly to the waterline. (2) Find a coast as the first run that is mostly land (85% of the next
+  `span` cells), and smooth it across rows before using it. (3) Noise sized for steep ground must fade
+  where the ground is flat: `_seaWobbleFade`. (4) A taper that removes one channel must not remove
+  cells another channel needs: `_tribTakesArmCell`. Harness: "geography" asserts the coast moves
+  inland monotonically with relative sea level and the main runs unbroken from the lowstand sea;
+  "land/water" (b3) asserts every tributary joins the main.
+
+## Tributaries pinched into pools and floated free; swimmers stranded on land paced in place
+
+- **What happened.** Sampled along their own polylines, tributaries were wet in 2–4 separate runs
+  even at 30 ka, with dry stretches mid-channel. While emerging (0.4–0.2 Ma) they were a wet stub at
+  the source with dry land between it and the main. The eastern tributary ended in dry ground on
+  some seeds. Fish on the tributaries paced the pools. An eel that a morph left on dry land flipped
+  direction every tick without moving.
+- **Root cause.** Four separate bugs, all resting on the assumption that the water is continuous:
+  1. `LOOK.riverWobble` (0.02) is added to the DISTANCE from the polyline, not as a sideways shift. On
+     a ~0.016-wide tributary that lifted the centre line itself past the water threshold wherever the
+     noise ran positive, so the channel pinched shut.
+  2. The emergence front grew each tributary source → confluence, so until it arrived the stream
+     drained into dry land. Real streams lengthen headward, cutting back from the river they feed.
+  3. `LOOK.mainArmKeep` 0.55 started the NE arm's drying taper below the eastern tributary's
+     confluence (~wPos 0.62), so with ±0.07 front jitter it was seed luck whether that tributary
+     had a river to join.
+  4. The swimmers' bounce reverts to the previous step and flips direction. That only escapes if
+     the previous step was wet. `reconcile()` assumed "the main is always present, so an eel is never
+     stranded", but a morph can dry the water under one (strait thinning, NE arm, coast), after which
+     both directions are dry forever. The same bounce also turned a swimmer at the first dry cell, so
+     two islets in the coastal sea a few px apart boxed it into a pocket to pace (seed-dependent: the
+     harness caught it on one seed in four).
+- **Rule.** (1) Any noise added to a channel's distance must stay below the channel's own width:
+  `TerrainGenerator._riverWobbleFor` caps a tributary's wobble at `LOOK.tribWobbleFrac` (0.2) of its
+  width. (2) Growth fronts run headward from the confluence (`_headwardPos`, shared by carve, classify
+  and paint). (3) A drying taper must end above every confluence it can reach. (4) Anything that rides
+  a moving surface must be re-checked after the surface moves: `WaterLayer._revalidateSwimmers` on
+  every reconcile, and `_rescue` when a step finds both directions dry; and a dry speck shorter than
+  `cfg.swimHop` (12 px) is hopped, not bounced off (`_hop`). Harness: "geography" asserts
+  headward growth; "land/water discipline" asserts every tributary is one channel joined to the main
+  at 300 ka and 25.5 ka, no swimmer strands or paces across a reconcile-only morph sequence, and a
+  deliberately stranded eel recovers.
+
+---
+
+## Grazers starved beside food: a herd-mate held them off their plant, and they never re-picked
+
+- **What happened.** The harness "fauna stability" sweep began failing about one run in six. The
+  quiet refound top-up fired 10–22 times against a bound of 20. At 300 ka (≈70% land) about half the
+  runs failed. The 1 Ma re-dating above only exposed it, because it gave the boot land more land.
+  Almost every moa-guild species sat at its floor of 2, against targets of 5–8.
+- **Root cause.** The deaths were starvation, not predation: 5–11 starved per species per sweep,
+  against 0–2 taken by the harrier. Every one of ~450 starvation deaths was a FORAGING adult inside its
+  elevation band, with 50+ edible plants within 100 px. Each starving bird held ONE target plant 17–68
+  px away for 1,000–2,000 frames, standing still. Measured along the line to that plant, the forage
+  seek (capped at 0.5–0.9× maxForce) was cancelled by the herd separation (50 px, about 0.84–1.6×
+  maxForce by `flockTendency`), with the shore and edge steers making up the rest. `findPlant` only
+  runs once the target stops being edible, so nothing ever told the bird to try another plant. About
+  a quarter of all grazer time went into this standoff, on both lands.
+- **Consequence.** The unattended cast hugged its floors and leaned on the top-up. More land made it
+  worse, because the few survivors also spread apart and met less (nearest conspecific 125–300 px at
+  300 ka, against 30–90 at 1 Ma).
+- **Rule.** A seek toward a target must never be able to stall forever against another steering
+  force. `Moa._forageStalled` gives a plant up after `forageGiveUpFrames` (180, scaffold ECOLOGY
+  FEEDBACK) frames with no new closest approach. `findPlant` then skips the last four plants given up
+  on, a list cleared on a bite. It is the grazer's version of the harrier's `eagleMaxChase`. Refounds
+  fell to 5–14 at either land, with no breeding knob touched. Harness: "fauna stability" now sweeps
+  1 Ma AND 300 ka, and stages the standoff (a herd-mate standing on the plant) to assert the give-up.
+  General: when a population sits at its floor, find out what its deaths ARE before tuning breeding.
+  Here it was a behaviour bug, not the ecology.
+
+---
+
+## The opening showed the wrong million years: a ~2.4 Ma seaway at 1 Ma
+
+- **What happened.** For the first ~600,000 years of the run, the wall drew a broad sea straight
+  across the axis, with flat ranges sitting under it. That is the Manawatū Strait at its widest, about
+  2.4 Ma. But the strait had closed by ~1.6 Ma, and at 1 Ma the axis was a low emergent finger of
+  greywacke with a lake ponded at the gorge (Trewick & Bland 2012; Rees, Palmer & Palmer 2017/2018).
+  The research doc caught it by reading the geo factors live against the dated literature.
+- **Root cause.** Each marine term was authored on its own and tuned by eye. The south strait carried
+  range protection, but the SW strait and the central patch did not, so they drowned the Tararua. The
+  ranges started at uplift 0. The 6× main-stem "strait" ran through the range gap. And a southern
+  pulse was dated to a design brief, not a source. None of these was wrong alone; together they
+  painted the earlier epoch.
+- **Consequence.** A natural-history wall opened on the wrong geography. It also read like what
+  visitors (and the team) half-expect: "the sea came in where the mountains are".
+- **Rule.** Every deep-time term is dated against a source, and the opening state is checked as a
+  whole against a palaeogeographic map of that date, not term by term. Marine terms never cover the
+  range footprints unless a source says the axis was under water at that date. Harness: "geography"
+  asserts the Tararua stands as land under the full 1 Ma flood. See `md/TEMANAWA_NATURAL_HISTORY.md` §I.
+- **Also.** A harness test that probes a FIXED world position inherits whatever the terrain is there.
+  The storm windthrow test silently became a forest-band die-back test when the 1 Ma land changed. Seat
+  probes in the habitat the test is about.
+
+---
+
+## A time-lapse starved the grazers: hunger ran on the life clock, eating on the real one
+
+- **What happened.** Every boost's time-lapse cut the grazer guild down to its protected floor of 2
+  (Finsch's duck 5 → 7 → 2, Mantell's moa 4 → 6 → 2). The card's promise that "the birds answer the
+  plant" ended with fewer birds than it began. At rest nothing died. Found by the headless encyclopedia
+  boost trials (`md/TEMANAWA_ENCYCLOPEDIA_CARDS.md`, gap 5), not by reading the code.
+- **Root cause.** The two-clock split (`Simulation.update(dt, rdt)`) put hunger on the warped LIFE
+  clock with ageing and breeding. The search, walk and eating cadence that pays hunger back ran on the
+  REAL clock. At 8–10× life speed a bird burned 8–10× the hunger per real second, but still found and
+  ate food at walking pace. The first fix scaled each bite by `lifeScale`. It didn't hold: a bite is
+  clipped at hunger 0, so the extra food was wasted, and the time spent searching doesn't shrink. A
+  probe at a fixed year (no climate swing) showed an 8× life clock alone dropping the guild 29 → 21
+  while edible plants held steady. The food was there; the birds couldn't reach it fast enough.
+- **Consequence.** The climax of every boost read as a die-off.
+- **Rule.** Metabolism is behaviour, not life history. Hunger, habitat stress and starvation run on
+  the same real clock as the motion that answers them (`mdt = dt / sim.lifeScale` in `Moa.behave`,
+  `Kereru.behave` and `EylesHarrier.behave`). Only ageing, breeding cooldowns and plant succession use
+  the warped clock. General: anything that accrues on one clock and is paid back by an action on
+  another drifts by the ratio of the two. Put the accrual on the clock of the thing that pays it back,
+  rather than scaling the payment. Bootcheck "boost follow-through" asserts equal hunger per real
+  frame at 1× and 10× life speed, for a moa, a kererū and a harrier, and that an 8× life clock doesn't
+  thin the guild.
+
 ## The harrier re-picked its prey every frame, so it swerved instead of chasing
 
 - **What happened.** Hunting harriers would "swoop towards something like the goose then rubber-band

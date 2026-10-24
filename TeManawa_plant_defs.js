@@ -19,8 +19,15 @@ const PLANT_TYPES = {
   Totara: { name: "Totara", nutrition: 50, color: '#8B0000', size: 40, growthTime: 400,
     coldTolerance: 0.3, ashVulnerability: 0.65,
     description: "Ancient podocarp with bright red fruit" },
+  // Beech (Fuscospora; the second screen shows mountain beech, F. cliffortioides, the Ruahine treeline
+  // beech; Esler's lowland patch is its cousin black beech): the GLACIAL tree. ~88% of LGM forest pollen is
+  // beech, while in the interglacial Manawatū it was one ~526 ha patch on leached soil (Esler p. 48).
+  // coldTolerance 0.8 (>= coldMin) makes it a COLD species everywhere the sim asks: a second-screen
+  // boost succeeds in a glacial, the TUSSOCK/glacial growth button matures it, and kererū do not
+  // treat it as a fruit tree (beech seed is wind-dispersed). COLD_REFUGE (plant.js) separately
+  // exempts it from forest-band contraction. See md/TEMANAWA_ENCYCLOPEDIA_FLORA.md.
   beech: { name: "Beech", nutrition: 40, color: '#8b430f', size: 32, growthTime: 350,
-    coldTolerance: 0.6, ashVulnerability: 0.6,
+    coldTolerance: 0.8, ashVulnerability: 0.6,
     description: "Tawhai: produces mast seed in good years" },
   kawakawa: { name: "Kawakawa", nutrition: 40, color: '#3d9a5e', size: 11, growthTime: 150,
     coldTolerance: 0.15, ashVulnerability: 0.85,
@@ -54,12 +61,14 @@ const PLANT_TYPES = {
     description: "Taramea: spiny herb of the hills" },
 
   // Kōwhai (Sophora): small flowering lowland/riparian tree, spreads into the
-  // podocarp margin. coldTolerance 0.45 (< warmMax) makes it a warm, kererū-
-  // dispersable type, so it recruits in the interglacial. Not in FOREST_TREES,
-  // so the forest-band contraction does not suppress it. Single-asset art for
-  // now; the flowering (spring gold) state comes with its own frame later.
+  // podocarp margin. coldTolerance 0.7 is NEUTRAL (like mānuka/flax): DNA shows
+  // Sophora survived the Last Glacial Maximum across much of NZ, not only in warm
+  // refuges (Shepherd et al. 2017), so it sits on BOTH the interglacial-forest and
+  // glacial-flats encyclopedia screens and a boost fits either climate. Its hard,
+  // buoyant seed is not kererū-carried, so it is (correctly) outside the kererū set.
+  // Not in FOREST_TREES, so the forest-band contraction does not suppress it.
   kowhai: { name: "Kōwhai", nutrition: 38, color: '#cba33c', size: 30, growthTime: 300,
-    coldTolerance: 0.45, ashVulnerability: 0.7,
+    coldTolerance: 0.7, ashVulnerability: 0.7,
     description: "Kōwhai: spring-gold flowers, a lowland nectar tree" },
 
   // --- Dedicated-folder species (single-asset art). Habitats set in the level
@@ -98,8 +107,28 @@ const PLANT_TYPES = {
 
   // Tī kōuka / cabbage tree (Cordyline): open, damp lowland and wetland margins;
   // hardy and frost-tolerant but light-demanding, so open country not closed
-  // forest. Warm-hardy 0.6; bird-dispersed. Not in FOREST_TREES.
+  // forest. coldTolerance 0.7 is NEUTRAL: it stands on both the interglacial-wetland
+  // and glacial-flats screens (cold tolerance is genetically variable with latitude),
+  // so a boost fits either climate. Not in FOREST_TREES.
   cabbagetree: { name: "Tī Kōuka", nutrition: 32, color: '#7a8a4e', size: 26, growthTime: 260,
-    coldTolerance: 0.6, ashVulnerability: 0.5,
-    description: "Tī kōuka: the cabbage tree of open, wet ground" }
+    coldTolerance: 0.7, ashVulnerability: 0.5,
+    description: "Tī kōuka: the cabbage tree of open, wet ground" },
+
+  // --- Art-sharing types (no art of their own; sprites aliased in sketch.js PLANT_SPRITE_ALIASES) ---
+
+  // Pūrei / pūkio (Carex secta): the swamp sedge standing in open water, first plant of the
+  // Moutoa zonation (Esler p. 59). Reuses the tussock art. NEUTRAL 0.7: sedge swamps persisted
+  // through the glacials, and a boost from the interglacial-wetland screen must not fail the way
+  // the cold `tussock` key did. Grazed like tussock (grazers are generalists).
+  sedge: { name: "Pūrei", nutrition: 25, color: '#6f8a3c', size: 18, growthTime: 200,
+    coldTolerance: 0.7, ashVulnerability: 0.25,
+    description: "Pūrei: swamp sedge standing in open water on its own root pedestal" },
+
+  // Wharariki / mountain flax (Phormium cookianum): the cold-tops cousin of harakeke, recorded
+  // invading the dying leatherwood on the Arawaru summit (Esler p. 69). Reuses the flax art
+  // (drawn smaller). Lives in the subalpine palette so a boost from the glacial-alpine screen lands
+  // on the tops rather than growing harakeke on the plains. NEUTRAL 0.7, like harakeke.
+  wharariki: { name: "Wharariki", nutrition: 30, color: '#55702a', size: 15, growthTime: 260,
+    coldTolerance: 0.7, ashVulnerability: 0.35,
+    description: "Wharariki: mountain flax of the cold, windswept tops" }
 };

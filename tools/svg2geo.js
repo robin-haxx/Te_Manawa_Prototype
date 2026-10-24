@@ -13,7 +13,13 @@
 //   class/id "coast"      an open path/polyline  = the coastline            (future)
 //   class/id "dune"       a filled polygon/path  = a dune field             (future)
 //   optional attrs:       data-width data-depth (river/tributary/coast),
-//                         data-height data-spread (range/dune)
+//                         data-height data-spread (range/dune),
+//                         data-name (or id) — carried through as the river's `name`
+//
+// TRANSFORMS are applied, as the editor shows them: an element's `transform` attribute (or a CSS
+// `transform` in its style) about its `transform-origin` (style or attribute; px, user units or %),
+// composed with every enclosing <g transform>. Until 2026-10-20 they were ignored, so a path rotated
+// in the editor (the Ōroua carried a 180° turn) reached the sim un-rotated.
 //
 // DEFAULT: an untagged open stroke (a <polyline>, or a <path> that isn't a closed
 // shape) is treated as a tributary. So you can just draw a line in the editor and it
@@ -45,7 +51,9 @@ if (!(VW > 0 && VH > 0)) { console.error('svg2geo: bad viewBox', vb); process.ex
 
 const CURVE_STEPS = 16;
 const round = (n) => Math.round(n * 100000) / 100000;
-const attr = (tag, name) => { const m = tag.match(new RegExp(name + '\\s*=\\s*"([^"]*)"')); return m ? m[1] : null; };
+// The attribute must start after whitespace, so `d` never matches inside `id="…"` and `transform`
+// never matches inside `data-transform`.
+const attr = (tag, name) => { const m = tag.match(new RegExp('\\s' + name + '\\s*=\\s*"([^"]*)"')); return m ? m[1] : null; };
 const numAttr = (tag, name, dflt) => { const v = attr(tag, name); const n = v == null ? NaN : parseFloat(v); return Number.isNaN(n) ? dflt : n; };
 
 function classify(tag) {
@@ -91,6 +99,58 @@ function flattenPath(d) {
   return pts;
 }
 
+// ---- transforms: [a,b,c,d,e,f] maps (x,y) → (a·x + c·y + e, b·x + d·y + f), as SVG's matrix() ----
+const IDENT = [1, 0, 0, 1, 0, 0];
+const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1],
+                       m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
+                       m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+const translate = (x, y) => [1, 0, 0, 1, x, y];
+function parseTransform(str) {
+  let m = IDENT;
+  const re = /(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^)]*)\)/g;
+  let t;
+  while ((t = re.exec(str || ''))) {
+    const a = t[2].trim().split(/[\s,]+/).map(parseFloat);
+    let n = IDENT;
+    if (t[1] === 'matrix' && a.length >= 6) n = a.slice(0, 6);
+    else if (t[1] === 'translate') n = translate(a[0] || 0, a[1] || 0);
+    else if (t[1] === 'scale') n = [a[0], 0, 0, a.length > 1 ? a[1] : a[0], 0, 0];
+    else if (t[1] === 'rotate') {
+      const r = a[0] * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+      n = [c, s, -s, c, 0, 0];
+      if (a.length >= 3) n = mul(mul(translate(a[1], a[2]), n), translate(-a[1], -a[2]));
+    }
+    else if (t[1] === 'skewX') n = [1, 0, Math.tan(a[0] * Math.PI / 180), 1, 0, 0];
+    else if (t[1] === 'skewY') n = [1, Math.tan(a[0] * Math.PI / 180), 0, 1, 0, 0];
+    m = mul(m, n);
+  }
+  return m;
+}
+// transform-origin from the style (as editors such as Boxy SVG write it) or an attribute.
+function originOf(tag) {
+  const st = attr(tag, 'style') || '';
+  const s = (st.match(/transform-origin\s*:\s*([^;]+)/) || [])[1] || attr(tag, 'transform-origin');
+  if (!s) return null;
+  const parts = s.trim().split(/\s+/);
+  const val = (q, ref) => {
+    if (q === 'center') return ref / 2;
+    if (q === 'left' || q === 'top') return 0;
+    if (q === 'right' || q === 'bottom') return ref;
+    return /%$/.test(q) ? parseFloat(q) / 100 * ref : parseFloat(q);
+  };
+  return [val(parts[0], VW), val(parts.length > 1 ? parts[1] : parts[0], VH)];
+}
+function elementMatrix(tag) {
+  const st = attr(tag, 'style') || '';
+  const s = attr(tag, 'transform') || (st.match(/(?:^|;)\s*transform\s*:\s*([^;]+)/) || [])[1];
+  if (!s) return IDENT;
+  let m = parseTransform(s);
+  const o = originOf(tag);
+  if (o) m = mul(mul(translate(o[0], o[1]), m), translate(-o[0], -o[1]));
+  return m;
+}
+const applyM = (m, pts) => (m === IDENT) ? pts : pts.map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+
 const out = { source: path.basename(SRC), viewBox: { w: VW, h: VH }, rivers: [], ranges: [], coasts: [], dunes: [] };
 const norm = (pts) => pts.map(([x, y]) => [round(x / VW), round(y / VH)]);
 
@@ -127,10 +187,19 @@ const counts = { river: 0, tributary: 0, range: 0, coast: 0, dune: 0, autoTrib: 
 // OPEN strokes default to tributary; a closed untagged path is skipped like a polygon.
 const pathIsClosed = (tag) => /z\s*"?\s*$/i.test((attr(tag, 'd') || '').trim());
 
-const tagRe = /<(polyline|polygon|path)\b[^>]*?\/?>/g;
+// Walk the shapes in document order, with a stack of the enclosing <g> transforms.
+const tagRe = /<(\/?)(g|polyline|polygon|path)\b[^>]*?(\/?)>/g;
+const gStack = [IDENT];
 let m;
 while ((m = tagRe.exec(svg))) {
-  const tag = m[0], kind = m[1];
+  const tag = m[0], closing = m[1] === '/', kind = m[2], selfClosing = m[3] === '/';
+  if (kind === 'g') {
+    if (closing) { if (gStack.length > 1) gStack.pop(); }
+    else if (!selfClosing) gStack.push(mul(gStack[gStack.length - 1], elementMatrix(tag)));
+    continue;
+  }
+  if (closing) continue;
+  const M = mul(gStack[gStack.length - 1], elementMatrix(tag));
   let type = classify(tag);
   // Default an untagged OPEN stroke (polyline, or a non-closed path) to a tributary, so a
   // plainly-drawn line becomes a feeder stream. Untagged polygons / closed paths are skipped.
@@ -142,12 +211,14 @@ while ((m = tagRe.exec(svg))) {
   if (!type) continue;
   let pts = kind === 'path' ? flattenPath(attr(tag, 'd')) : parsePoints(attr(tag, 'points'));
   if (pts.length < 2) continue;
-  pts = norm(pts);
+  pts = norm(applyM(M, pts));
   // Simplify open strokes (rivers/tributaries/coasts). Ranges/dunes are closed few-point
   // polygons authored by hand, so leave them exact.
   if (type === 'river' || type === 'tributary' || type === 'coast') pts = simplify(pts, SIMPLIFY_EPS);
-  if (type === 'river')           out.rivers.push({ type: 'main',      width: numAttr(tag, 'data-width', 0.045), depth: numAttr(tag, 'data-depth', 1.0), pts });
-  else if (type === 'tributary') { out.rivers.push({ type: 'tributary', width: numAttr(tag, 'data-width', 0.02),  depth: numAttr(tag, 'data-depth', 1.0), pts }); if (autoTrib) counts.autoTrib++; }
+  const name = attr(tag, 'data-name') || attr(tag, 'id');
+  const named = (o) => { if (name) o.name = name; return o; };
+  if (type === 'river')           out.rivers.push(named({ type: 'main',      width: numAttr(tag, 'data-width', 0.045), depth: numAttr(tag, 'data-depth', 1.0), pts }));
+  else if (type === 'tributary') { out.rivers.push(named({ type: 'tributary', width: numAttr(tag, 'data-width', 0.02),  depth: numAttr(tag, 'data-depth', 1.0), pts })); if (autoTrib) counts.autoTrib++; }
   else if (type === 'range') out.ranges.push({ height: numAttr(tag, 'data-height', 0.85), spread: numAttr(tag, 'data-spread', 0.14), poly: pts });
   else if (type === 'coast') out.coasts.push({ width: numAttr(tag, 'data-width', 0.04), pts });
   else if (type === 'dune')  out.dunes.push({ height: numAttr(tag, 'data-height', 0.18), spread: numAttr(tag, 'data-spread', 0.07), poly: pts });

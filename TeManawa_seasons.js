@@ -24,12 +24,16 @@
 // use REAL biome keys (sea/coastal/grassland/podocarp/montane/subalpine/…) and
 // REAL plant types (tussock/flax/fern/Totara/beech); anything missing falls back
 // to 1.0. No `icon` field: visitor-facing UI is drawn glyphs only, no emoji.
+// beech RISES into the cold (1.0 → 1.6) while Totara/fern sink: beech (Fuscospora) is the glacial tree
+// (~88% of LGM forest pollen), so it keeps its food value and stays above the cold-dormancy trigger
+// (effectiveModifier < 0.2) where the warm podocarps sink. Its art is size-only, so this is
+// behaviour, not a sprite swap. Pairs with COLD_REFUGE (plant.js) and its cold coldTolerance.
 const GLACIAL_PHASES = {
   interglacial: {
     name: "Interglacial",
     color: '#6ba36b',
     plantModifiers: { coastal: 1.0, grassland: 1.0, podocarp: 1.2, montane: 1.2, subalpine: 0.9 },
-    plantTypeModifiers: { Totara: 1.4, beech: 1.3, fern: 1.4, tussock: 0.7, flax: 0.9 },
+    plantTypeModifiers: { Totara: 1.4, beech: 1.0, fern: 1.4, tussock: 0.7, flax: 0.9 },
     preferredElevation: { min: 0.40, max: 0.72 },   // moa range high into forest / subalpine
     migrationStrength: 0.5,
     hungerModifier: 0.9,
@@ -43,7 +47,7 @@ const GLACIAL_PHASES = {
     name: "Cooling",
     color: '#8a9a5b',
     plantModifiers: { coastal: 0.9, grassland: 1.1, podocarp: 1.0, montane: 0.8, subalpine: 0.8 },
-    plantTypeModifiers: { Totara: 1.0, beech: 1.0, fern: 0.9, tussock: 1.0, flax: 1.0 },
+    plantTypeModifiers: { Totara: 1.0, beech: 1.1, fern: 0.9, tussock: 1.0, flax: 1.0 },
     preferredElevation: { min: 0.32, max: 0.60 },
     migrationStrength: 0.6,
     hungerModifier: 1.0,
@@ -58,7 +62,7 @@ const GLACIAL_PHASES = {
     name: "Glacial",
     color: '#b7b393',
     plantModifiers: { coastal: 0.8, grassland: 1.2, podocarp: 0.6, montane: 0.4, subalpine: 0.6 },
-    plantTypeModifiers: { Totara: 0.6, beech: 0.6, fern: 0.4, tussock: 1.3, flax: 1.1 },
+    plantTypeModifiers: { Totara: 0.6, beech: 1.4, fern: 0.4, tussock: 1.3, flax: 1.1 },
     preferredElevation: { min: 0.22, max: 0.48 },
     migrationStrength: 0.8,
     hungerModifier: 1.15,
@@ -73,7 +77,7 @@ const GLACIAL_PHASES = {
     name: "Full glacial",
     color: '#cfd3d6',
     plantModifiers: { coastal: 0.7, grassland: 1.0, podocarp: 0.3, montane: 0.15, subalpine: 0.4 },
-    plantTypeModifiers: { Totara: 0.3, beech: 0.3, fern: 0.15, tussock: 1.4, flax: 1.0 },
+    plantTypeModifiers: { Totara: 0.3, beech: 1.6, fern: 0.15, tussock: 1.4, flax: 1.0 },
     preferredElevation: { min: 0.15, max: 0.40 },   // moa forced onto the low outwash flats
     migrationStrength: 1.0,
     hungerModifier: 1.3,

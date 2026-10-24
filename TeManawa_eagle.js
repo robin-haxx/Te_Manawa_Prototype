@@ -6,6 +6,9 @@
 // ============================================
 
 class EylesHarrier extends Boid {
+  // Fallback prey ceiling (kg) when the species data carries no maxPreyKg (EAGLE_SPECIES does).
+  static MAX_PREY_KG = 40;
+
   constructor(x, y, terrain, config = null, speciesData = null) {
     super(x, y, terrain);
 
@@ -45,6 +48,9 @@ class EylesHarrier extends Boid {
     this.lastTargetTime = 0;
     this._chaseTimer = 0;   // time spent locked on one prey; gives up a fruitless chase
     this._huntEventFired = false;
+    // Prey ceiling (kg): no adult moa heavier than this is taken (see withinPreyCeiling).
+    const _sc = speciesData && speciesData.config;
+    this.maxPreyKg = (_sc && _sc.maxPreyKg > 0) ? _sc.maxPreyKg : EylesHarrier.MAX_PREY_KG;
     
     // Hunger
     this.hunger = random(20, 25);
@@ -184,6 +190,25 @@ class EylesHarrier extends Boid {
     return this.hunting && this.target !== null;
   }
 
+  // 40 kg PREY CEILING. North Island kērangi could take moa only up to ~40 kg (NZ Birds
+  // Online), so adult giant moa were never on the menu. An adult is fair game only if ITS
+  // OWN body mass is under the ceiling. Each bird draws a size percentile once and keeps it;
+  // its mass is that percentile of its species' `adultMassKg` range — per sex where given (moa
+  // are reverse-dimorphic, so a stout-legged male is prey and a female is not). Keeping the
+  // percentile, not the mass, means the gate is a stable fact about the bird rather than a
+  // fresh roll every scan, and stays right if the sim reassigns its sex. Chicks and juveniles
+  // are always fair game: they are the harrier's real moa prey. Species with no adultMassKg
+  // (goose ~15 kg, mōho ~3, Finsch's duck 1–2, kiwi ~2–3, every flyer) are all well under it.
+  static withinPreyCeiling(cand, maxKg) {
+    const m = cand.speciesConfig && cand.speciesConfig.adultMassKg;
+    if (!m || !(maxKg > 0)) return true;
+    if (typeof cand.isJuvenile === 'function' && cand.isJuvenile()) return true;
+    const r = Array.isArray(m) ? m : (cand.isFemale ? m.female : m.male);
+    if (!r) return true;
+    if (cand._sizePct === undefined) cand._sizePct = random();
+    return r[0] + cand._sizePct * (r[1] - r[0]) <= maxKg;
+  }
+
   // World-space width of the off-screen L/R overflow (the cover-fit runs the map wider
   // than the canvas on some aspect ratios). Every target this bird aims at must stay
   // INSIDE this inset, or it chases a point in the overflow that Boid.update's _clampToView
@@ -226,7 +251,10 @@ class EylesHarrier extends Boid {
   behave(simulation, dt = 1) {
     // animTime is NOT advanced here: the wingbeat must not fast-forward with the
     // deep-time clock. It advances in Boid.update() on the real frame dt.
-    this.hunger = Math.min(this.hunger + this.hungerRate * dt, this.maxHunger);
+    // Metabolism likewise runs on the REAL clock (mdt): a hunt takes wall-clock time, so a
+    // life-clock hunger would have the harrier hunting lifeScale× harder in every time-lapse.
+    const mdt = (simulation && simulation.lifeScale > 1) ? dt / simulation.lifeScale : dt;
+    this.hunger = Math.min(this.hunger + this.hungerRate * mdt, this.maxHunger);
 
     // Flight altitude (visual only): cruise while flying/searching, drop to the
     // deck when diving on prey or resting, so a swoop reads as a real descent.
@@ -248,14 +276,14 @@ class EylesHarrier extends Boid {
 
       // Starvation: sustained high hunger kills; a recent feed pays the debt back.
       if (this.hunger >= this.starveThreshold) {
-        this.starveTimer += dt;
+        this.starveTimer += mdt;
         if (this.starveTimer >= this.starveTimeout) {
           this.alive = false;
           if (simulation.onEagleDeath) simulation.onEagleDeath(this);
           return;
         }
       } else if (this.starveTimer > 0) {
-        this.starveTimer = Math.max(0, this.starveTimer - dt * 2);
+        this.starveTimer = Math.max(0, this.starveTimer - mdt * 2);
       }
 
       // Reproduction check (throttled). Only when calm — never mid-hunt.
@@ -566,7 +594,8 @@ class EylesHarrier extends Boid {
     let prey = this.target;
     let preyDistSq = Infinity;
     if (prey) {
-      const stillOk = prey.alive && !simulation.isPreyProtected(prey) && !prey.inShelter;
+      const stillOk = prey.alive && !simulation.isPreyProtected(prey) && !prey.inShelter
+        && EylesHarrier.withinPreyCeiling(prey, this.maxPreyKg);   // a chick that grows past the ceiling mid-chase is let go
       if (stillOk) {
         const dx = prey.pos.x - px, dy = prey.pos.y - py;
         preyDistSq = dx * dx + dy * dy;
@@ -593,6 +622,7 @@ class EylesHarrier extends Boid {
         if (!cand.alive) continue;
         if (simulation.isPreyProtected(cand)) continue;             // never crop below the floor
         if (cand.inShelter) continue;                               // moa in cover (flyers: field undefined → no-op)
+        if (!EylesHarrier.withinPreyCeiling(cand, this.maxPreyKg)) continue;   // too heavy: the 40 kg ceiling
         if (cand.eagleResistance > 0 && random() < cand.eagleResistance) continue;
         if (cand.camouflage > 0 && random() < cand.camouflage) continue;   // camo hides prey from being SPOTTED
 

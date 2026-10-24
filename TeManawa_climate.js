@@ -6,9 +6,10 @@
 //     Climate.at(yearsBP) -> { glacialIndex, seaLevel, snowLine,
 //                              tempBias, stage, stageName, mis }
 //
-// glacialIndex is a low-frequency oscillator over yearsBP; sea level, snow
-// line and temperature are each a coefficient on it. The sim reads
-// glacialIndex directly; the timeline and debug overlay read the rest.
+// glacialIndex is a low-frequency oscillator over yearsBP; snow line and
+// temperature are each a coefficient on it. Sea level has its OWN curve
+// (SEA_ANCHORS), because a cold stage is not always a low sea. The sim reads
+// glacialIndex for vegetation and cold, seaLevel for the coast.
 //
 // The curve is a table, not a sine: anchor points from the LR04 benthic
 // stack, smoothstepped between and auditable one line at a time. Ages are
@@ -87,9 +88,66 @@ const Climate = {
     [ 29000,  14000, 'MIS 2']
   ],
 
-  // ---- coefficients on glacialIndex ------------------------
-  seaLevelWarm:   6,      // metres rel. present. MIS 5e stood ~+6 m
-  seaLevelCold: -125,     // LGM lowstand
+  // ---- SEA LEVEL: its own curve, NOT a coefficient on glacialIndex ------------------------
+  // Sea level and "how cold" are not one number: on the way into a glaciation the isotopes (and so
+  // the index) lead sea level, and MIS 3 was cold yet stood far above the LGM. The old straight
+  // line from glacialIndex put MIS 3 at −73 m and made every glacial bare the same land. So:
+  // [yearsBP, metres rel. present], ON THE SAME DATES AS ANCHORS (sea is low exactly when the land
+  // is cold), with magnitudes from the Spratt & Lisiecki (2016) sea-level stack (short stack to
+  // 430 ka, long stack to 798 ka; NOAA noaa-ocean-19982), read at that stage's turning point.
+  // Three deliberate departures, each from stronger evidence for that interval:
+  //   · MIS 5e and MIS 11 from the isostatically adjusted corals (+6, +10), which the stack's scaling
+  //     sits ~5–10 m under;
+  //   · MIS 3 (50–40 ka) from the Manawatū field record (−25 to −50 m, Sloss 2006) and GIA modelling
+  //     (peak ≈ −40 m, Pico et al. 2016/17), where the δ18O-based stack reads −68 to −86 m;
+  //   · before 798 ka (no stack) the weak 41-kyr cycles are given modest values in its style.
+  // Ages rounded; shape and order are what's true. md/TEMANAWA_COAST_PLAN.md §2.1.
+  SEA_ANCHORS: [
+    [1000000,  -20],  // MIS 25: weak pre-MPT interglacial
+    [ 950000,  -70],  // MIS 24
+    [ 920000,  -25],  // MIS 23
+    [ 880000,  -90],  // MIS 22: the ~900-ka intensification
+    [ 835000,  -15],  // MIS 21
+    [ 800000,  -92],  // MIS 20 (stack 798 ka: −92)
+    [ 787000,   -8],  // MIS 19 (stack max −6 at 774 ka)
+    [ 740000,  -89],  // MIS 18 (stack −89 at 720 ka)
+    [ 690000,  -16],  // MIS 17
+    [ 650000, -115],  // MIS 16 (stack min −115 at 627 ka)
+    [ 590000,  -10],  // MIS 15 (stack −9 at 570 ka)
+    [ 540000,  -62],  // MIS 14: a weak glacial
+    [ 500000,  -16],  // MIS 13: a weak interglacial
+    [ 450000, -120],  // MIS 12 (short stack −119 at 430 ka)
+    [ 410000,   10],  // MIS 11: corals +6 to +13 (stack +15 to +19)
+    [ 375000,  -40],
+    [ 350000,  -97],  // MIS 10
+    [ 335000,   -4],  // MIS 9e
+    [ 320000,  -20],
+    [ 300000,  -43],
+    [ 270000,  -98],  // MIS 8
+    [ 245000,  -18],  // MIS 7e
+    [ 230000,  -59],  // MIS 7d
+    [ 215000,  -11],  // MIS 7c
+    [ 195000,  -15],  // MIS 7a
+    [ 180000,  -65],
+    [ 160000,  -87],
+    [ 140000, -124],  // MIS 6 (stack −124 at 135 ka)
+    [ 128000,  -10],  // Termination II, sea rising fast
+    [ 122000,    6],  // MIS 5e: corals ~+6
+    [ 110000,  -46],  // MIS 5d
+    [ 100000,  -19],  // MIS 5c
+    [  87000,  -40],  // MIS 5b
+    [  80000,  -25],  // MIS 5a (Sloss: interstadials within ~30 m of present)
+    [  65000,  -83],  // MIS 4
+    [  50000,  -45],  // MIS 3 (field record, not the stack's −68)
+    [  40000,  -55],  // MIS 3 (field record, not the stack's −86)
+    [  30000, -100],  // the fall into the LGM: ~40 m in under 2 kyr around 30 ka (Lambeck et al. 2014)
+    [  28000, -115],
+    [  26000, -122],
+    [  21000, -126],  // LGM
+    [  18000, -113]
+  ],
+  seaLevelWarm:   6,      // the curve's warm and cold ends, for anything still wanting the range
+  seaLevelCold: -126,
   snowLineWarm:   0.92,   // normalised elevation, matches SeasonManager
   snowLineCold:   0.55,
   tempWarm:       0,      // degrees C rel. present
@@ -116,6 +174,21 @@ const Climate = {
     return a[a.length - 1][1];
   },
 
+  // Sea level (metres rel. present) at yearsBP, from SEA_ANCHORS, smoothstepped like the index.
+  seaLevelAt(yearsBP) {
+    const a = this.SEA_ANCHORS;
+    if (yearsBP >= a[0][0]) return a[0][1];
+    if (yearsBP <= a[a.length - 1][0]) return a[a.length - 1][1];
+    for (let i = 0; i < a.length - 1; i++) {
+      const [y0, s0] = a[i], [y1, s1] = a[i + 1];
+      if (yearsBP <= y0 && yearsBP >= y1) {
+        const t = (y0 - yearsBP) / (y0 - y1);
+        return s0 + (s1 - s0) * t * t * (3 - 2 * t);
+      }
+    }
+    return a[a.length - 1][1];
+  },
+
   // ==========================================================
   // THE FULL STATE
   // ==========================================================
@@ -123,7 +196,7 @@ const Climate = {
     const g = this.glacialIndexAt(yearsBP);
     return {
       glacialIndex: g,
-      seaLevel:  this.seaLevelWarm + (this.seaLevelCold - this.seaLevelWarm) * g,
+      seaLevel:  this.seaLevelAt(yearsBP),
       snowLine:  this.snowLineWarm + (this.snowLineCold - this.snowLineWarm) * g,
       tempBias:  this.tempWarm     + (this.tempCold     - this.tempWarm)     * g,
       stage:     this.stageOf(g),
@@ -193,7 +266,10 @@ const Climate = {
           const mid = (lo + hi) / 2;
           if ((this.glacialIndexAt(mid) >= thr) === cold0) hi = mid; else lo = mid;
         }
-        const by = Math.round(lo);
+        // floor, not round: lo is the NEW-regime side and yearsBP falls forward in time, so
+        // flooring stays in the new regime. Math.round could land a year on the OLD side (519.2 ka:
+        // g 0.500002), so a boost's time-lapse stopped still glacial and the next boost played 1 yr.
+        const by = Math.floor(lo);
         const g = this.glacialIndexAt(by);
         return { yearsBP: by, glacialIndex: g, stage: this.stageOf(g), stageName: cold ? 'glacial' : 'interglacial' };
       }

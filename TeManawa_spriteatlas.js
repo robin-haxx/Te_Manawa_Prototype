@@ -113,14 +113,18 @@ const SpriteAtlas = {
     // The on-page footprint of a source is its native size × the pack scale (fix #4).
     // width/height stay native on the frame, so every downstream aspect / draw-size
     // calculation is unchanged; only the STORED texels shrink.
+    // A live-outline mask (TeManawa_outline.js) is already built AT the pack scale and carries its
+    // sprite's native size (__nativeW/H): it is stored 1:1 and its frame reports the native size.
     const f = this._effectiveScale();
-    const pw = (img) => Math.max(1, Math.round(img.width * f));
-    const ph = (img) => Math.max(1, Math.round(img.height * f));
+    const natW = (img) => img.__nativeW || img.width, natH = (img) => img.__nativeH || img.height;
+    const pw = (img) => img.__nativeW ? img.width : Math.max(1, Math.round(img.width * f));
+    const ph = (img) => img.__nativeH ? img.height : Math.max(1, Math.round(img.height * f));
 
     // 2. Shelf bin-pack the unique images into pages, using their SCALED footprint.
-    //    Sort tallest-first so shelves stay tight. Simple and good enough: packing
-    //    efficiency only affects how many pages we end up with, not correctness.
-    const order = uniq.slice().sort((a, b) => b.height - a.height);
+    //    Sort tallest-first (by native height) so shelves stay tight. The sort is stable, so a
+    //    sprite and its outline mask, collected back to back, land side by side on one page.
+    //    Packing efficiency only affects how many pages we end up with, not correctness.
+    const order = uniq.slice().sort((a, b) => natH(b) - natH(a));
     const G = this.GUTTER, MAX = this.MAX_PAGE;
     const placements = [];     // { img, page, x, y, w, h }  (w/h = scaled on-page size)
     let pageIdx = 0, x = G, y = G, shelfH = 0;
@@ -169,7 +173,7 @@ const SpriteAtlas = {
       frameFor.set(p.img, {
         __atlas: true, __page: this.pages[p.page],
         sx: p.x, sy: p.y, sw: p.w, sh: p.h,
-        width: p.img.width, height: p.img.height
+        width: natW(p.img), height: natH(p.img)
       });
     }
     for (const s of slots) {
@@ -191,6 +195,12 @@ const SpriteAtlas = {
   // hold loaded sprites, so nothing unexpected (a p5.Image internal, a cycle) is
   // ever recursed into. `consider(holder, key)` records holder[key] if packable.
   _collectRoots(consider) {
+    // Live-outline pairs FIRST, sprite then mask, so each mask sits beside its sprite in the pack
+    // order (and so on the same page). The containers below then re-meet those sprites as dupes.
+    if (typeof FaunaOutline !== 'undefined' && FaunaOutline._pairs) {
+      for (const p of FaunaOutline._pairs) { consider(p, 'sprite'); consider(p, 'mask'); }
+    }
+
     // Fauna: EntitySprites (see TeManawa_entity_sprites.js).
     if (typeof EntitySprites !== 'undefined' && EntitySprites) {
       const E = EntitySprites;
@@ -209,6 +219,7 @@ const SpriteAtlas = {
       eachIn(E.kokako);
       eachIn(E.huiaMale);
       eachIn(E.huiaFemale);
+      eachIn(E.tui);          // was missing: every tūī draw switched texture (a GL flush) per bird
     }
 
     // Flora: plantSprites[key] = { <state>:img, growing:[], variants:[], meta }.

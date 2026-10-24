@@ -44,7 +44,7 @@ class WaterLayer {
     // ever shifting a surviving decal. Cached per footprint (see _slotsKey).
     this._slots = null;
     this._slotsKey = '';
-    this._flowRev = false;    // last-seen main-stem flow direction (flips seaward at ~0.6 Ma); drives eel re-orient
+    this._flowRev = false;    // last-seen main-stem flow direction (seaward from the ~1 Ma opening); drives eel re-orient
 
     // Tuning; held on the INSTANCE, never written back to CONFIG (same rule as
     // TerrainGenerator.noiseScale / Projection.K). All world-pixel units.
@@ -75,6 +75,7 @@ class WaterLayer {
       fishAlpha:        0.85,
       fishSpeed:        0.3,
       fishAnimSpeed:    0.14,
+      swimHop:          12,     // world px: a dry speck across a swimmer's line up to this long is hopped, not bounced off (islets, pinches); a longer dry stretch is a real end
       maxDecals:        420,    // hard cap; counts toward the ≤1500 image()/frame budget
     };
   }
@@ -116,6 +117,7 @@ class WaterLayer {
     this._buildEels(terrain, year);   // gated: no eels before 500 ka
     this._buildFish(terrain);         // always present (every river)
     this._flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
+    this._meanderRev = terrain._meanderRev || 0;
     if (this._capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals}, some water left un-stamped`);
   }
 
@@ -124,8 +126,9 @@ class WaterLayer {
   // that is still over water stays exactly where it is, keeping its position AND its animation
   // phase (no random re-scatter, which is what made the sea shimmer twitch every re-bake). Only
   // river/eel decals ride the terrain, so their elevation is refreshed to the new bed; sea is
-  // always flat. Eels travel the always-present main river and are never stranded, so they are
-  // left running. Allocation is limited to the add/remove delta.
+  // always flat. Eels and fish are left running, except that any the morph has left on dry
+  // land are moved back onto water (_revalidateSwimmers). Allocation is limited to the
+  // add/remove delta.
   reconcile(terrain, year) {
     this.terrain = terrain;
     if (!terrain || typeof terrain.waterTypeAt !== 'function') return;
@@ -133,7 +136,7 @@ class WaterLayer {
 
     // Eels are a deep-time feature. reconcile() runs on every morph, so this is where eels wink IN
     // as the clock crosses 500 ka (yearsBP <= eelsFromYear), and back OUT if a skip/reset jumps to
-    // an older year before it. Also re-orients on the ~0.6 Ma flow flip while eels are present.
+    // an older year before it. Also re-orients on the flow flip (~1 Ma) while eels are present.
     const rev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
     if (!this._eelsAllowed(year)) {
       this.eels.length = 0;
@@ -145,6 +148,14 @@ class WaterLayer {
     // somehow emptied (e.g. a footprint change dropped every path).
     if (this.fish.length === 0 || rev !== this._flowRev) this._buildFish(terrain);
     this._flowRev = rev;
+    // The channels meander from morph to morph (TerrainGenerator._meanderLUT): move every swimmer onto
+    // its river's new line at the same fraction along it, so nothing swims the old course.
+    if ((terrain._meanderRev || 0) !== this._meanderRev) {
+      this._repathSwimmers(terrain);
+      this._meanderRev = terrain._meanderRev || 0;
+    }
+    this._revalidateSwimmers(this.eels);   // anything the new land now covers swims back onto water
+    this._revalidateSwimmers(this.fish);
 
     // Index the live decals by their slot id so survivors can be reused in place.
     const have = new Map();
@@ -158,7 +169,10 @@ class WaterLayer {
       if (next.length >= this.cfg.maxDecals) { capped = true; break; }
       const keep = have.get(s.id);
       if (keep) {
-        if (s.needs === 2) keep.elev = terrain.getElevationAt(s.x, s.y);   // ride the (slowly deepening) bed; sea stays flat
+        if (s.needs === 2) {
+          keep.x = s.x; keep.y = s.y;                                       // a meandering channel moves its slots
+          keep.elev = terrain.getElevationAt(s.x, s.y);                     // ride the (slowly deepening) bed; sea stays flat
+        }
         next.push(keep);                                                   // survivor: same x/y, same animTime, no jump
       } else {
         next.push(this._mkDecal(s));                                       // newly-watered slot: place a fresh decal
@@ -191,10 +205,63 @@ class WaterLayer {
       if (e.d <= 0) { e.d = 0; e.dir = 1; }
       else if (e.d >= e.path.len) { e.d = e.path.len; e.dir = -1; }
       this._samplePath(e.path, e.d, e);           // -> e._x, e._y, e._angle
+      // A short dry speck across the line (an islet in the coastal sea, a pinch at a tributary's
+      // growing head) is hopped, not bounced off: turning at the first dry cell boxed swimmers into
+      // pockets a few px long, where they paced back and forth. Only a real end turns them round.
+      if (t && t.waterTypeAt(e._x, e._y) === 0 && this._hop(e)) continue;
       if (t && t.waterTypeAt(e._x, e._y) === 0) { // dried to bank → turn back
         e.d = prevD; e.dir = -e.dir;
         this._samplePath(e.path, e.d, e);
+        // STRANDED: the step back is dry too, so a morph dried the water under it. Bouncing
+        // alone would flip it in place on land forever (the "stuck eel"); move it to the
+        // nearest wet stretch of its path instead.
+        if (t.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
       }
+    }
+  }
+
+  // Look ahead along the swimmer's heading for water within cfg.swimHop world px; if there is some,
+  // jump it there (it never sits on land, so nothing draws on the bank) and return true.
+  _hop(e) {
+    const t = this.terrain, hop = this.cfg.swimHop || 0, len = e.path.len, d0 = e.d;
+    for (let h = 1.5; h <= hop; h += 1.5) {
+      const d = d0 + e.dir * h;
+      if (d < 0 || d > len) break;
+      this._samplePath(e.path, d, e);
+      if (t.waterTypeAt(e._x, e._y) !== 0) { e.d = d; return true; }
+    }
+    this._samplePath(e.path, d0, e);
+    return false;
+  }
+
+  // Move a swimmer to the nearest wet point on its own path, searching outward in riverStep
+  // increments both ways from where it is. Returns false (leaving it where it is, undrawn) if
+  // the whole path is dry. Allocation-free.
+  _rescue(e) {
+    const t = this.terrain, step = this.cfg.riverStep || 8, len = e.path.len;
+    if (!t || !(len > 0)) return false;
+    const d0 = e.d, n = Math.ceil(len / step);
+    for (let k = 1; k <= n; k++) {
+      for (let s = -1; s <= 1; s += 2) {
+        const d = d0 + s * k * step;
+        if (d < 0 || d > len) continue;
+        this._samplePath(e.path, d, e);
+        if (t.waterTypeAt(e._x, e._y) !== 0) { e.d = d; e.dir = s; return true; }   // keep heading away from the dry side
+      }
+    }
+    e.d = d0; this._samplePath(e.path, d0, e);
+    return false;
+  }
+
+  // After a morph the coast, the strait width and the NE arm can all have moved, so any
+  // swimmer the new land now covers is moved back onto water (a running eel used to be left
+  // where it was, and if the water under it had dried it paced in place on the bank).
+  _revalidateSwimmers(E) {
+    const t = this.terrain;
+    for (let i = 0; i < E.length; i++) {
+      const e = E[i];
+      this._samplePath(e.path, e.d, e);
+      if (t.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
     }
   }
 
@@ -291,7 +358,7 @@ class WaterLayer {
   _ensureSlots(terrain) {
     const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
     const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
-    const key = terrain.mapWidth + 'x' + terrain.mapHeight + '|' + rivers.length + '|' + (terrain._viewF || 1) + '|' + (flowRev ? 1 : 0);
+    const key = terrain.mapWidth + 'x' + terrain.mapHeight + '|' + rivers.length + '|' + (terrain._viewF || 1) + '|' + (flowRev ? 1 : 0) + '|' + (terrain._meanderRev || 0);   // meanders move the river slots
     if (this._slots && this._slotsKey === key) return this._slots;
     return this._computeSlots(terrain);
   }
@@ -304,7 +371,7 @@ class WaterLayer {
   _computeSlots(terrain) {
     const mapW = terrain.mapWidth, mapH = terrain.mapHeight, cfg = this.cfg;
     const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
-    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());   // main flow flipped seaward (~0.6 Ma)
+    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());   // main flow flipped seaward (~1 Ma)
     // Deterministic pseudo-random in [-1,1] from two integers (a cheap integer hash).
     const jit = (a, b) => { let h = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663)) >>> 0; h ^= h >>> 13; return ((h >>> 0) / 0xffffffff) * 2 - 1; };
     const slots = [];
@@ -355,12 +422,12 @@ class WaterLayer {
     }
 
     this._slots = slots;
-    this._slotsKey = terrain.mapWidth + 'x' + terrain.mapHeight + '|' + rivers.length + '|' + (terrain._viewF || 1) + '|' + (flowRev ? 1 : 0);
+    this._slotsKey = terrain.mapWidth + 'x' + terrain.mapHeight + '|' + rivers.length + '|' + (terrain._viewF || 1) + '|' + (flowRev ? 1 : 0) + '|' + (terrain._meanderRev || 0);
     return slots;
   }
 
   // (Re)seed the eels on the MAIN river(s). Separated from build() so reconcile() can leave the
-  // running eels alone: the main river is always present, so an eel is never stranded on land.
+  // running eels alone (it re-checks them for stranding instead).
   _buildEels(terrain, year) {
     this.eels.length = 0;
     if (!this._eelsAllowed(year)) return;   // eels are a post-500 ka feature; none before then
@@ -373,6 +440,7 @@ class WaterLayer {
       if (!rv.pts || rv.pts.length < 2) continue;
       const isMain = rv.type !== 'tributary';
       const path = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
+      path.rIdx = r;
       if (path.isMain && path.len > 0) mainPaths.push(path);
     }
     for (let i = 0; i < cfg.eelCount && mainPaths.length; i++) {
@@ -381,16 +449,14 @@ class WaterLayer {
                   size: cfg.eelSize, alpha: cfg.eelAlpha, _x: 0, _y: 0, _angle: 0 };
       // Seed on a WET stretch: with the NE arm receded, a reversed main path
       // starts at the drying inland end, so a raw random d can land on the bank.
-      // Resample a few times, then walk toward the mouth (d→0) as a last resort.
+      // Resample a few times, then take the nearest wet point as a last resort (the
+      // old fallback walked toward d = 0, which on the reversed path is the DRY arm).
       this._samplePath(path, e.d, e);
       for (let tries = 0; tries < 8 && terrain.waterTypeAt(e._x, e._y) === 0; tries++) {
         e.d = random() * path.len;
         this._samplePath(path, e.d, e);
       }
-      while (e.d > 0 && terrain.waterTypeAt(e._x, e._y) === 0) {
-        e.d = Math.max(0, e.d - cfg.riverStep);
-        this._samplePath(path, e.d, e);
-      }
+      if (terrain.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
       this.eels.push(e);
     }
   }
@@ -411,30 +477,55 @@ class WaterLayer {
       if (!rv.pts || rv.pts.length < 2) continue;
       const isMain = rv.type !== 'tributary';
       const path = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
+      path.rIdx = r;
       if (path.len > 0) paths.push(path);
     }
     for (let i = 0; i < cfg.fishCount && paths.length; i++) {
       const path = paths[i % paths.length];
       const e = { path, d: random() * path.len, dir: random() < 0.5 ? 1 : -1, animTime: random(1000),
                   size: cfg.fishSize, alpha: cfg.fishAlpha, _x: 0, _y: 0, _angle: 0 };
-      // Land on a wet stretch (a tributary can have a dry head): resample, then walk
-      // toward the mouth (d→0) as a last resort.
+      // Land on a wet stretch (a tributary can have a dry head): resample, then take
+      // the nearest wet point as a last resort.
       this._samplePath(path, e.d, e);
       for (let tries = 0; tries < 8 && terrain.waterTypeAt(e._x, e._y) === 0; tries++) {
         e.d = random() * path.len;
         this._samplePath(path, e.d, e);
       }
-      while (e.d > 0 && terrain.waterTypeAt(e._x, e._y) === 0) {
-        e.d = Math.max(0, e.d - cfg.riverStep);
-        this._samplePath(path, e.d, e);
-      }
+      if (terrain.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
       this.fish.push(e);
+    }
+  }
+
+  // Rebuild each swimmer's path from its river's current (meandered) line, keeping its fraction along
+  // it. One new path per river, shared; allocation is per morph, never per frame.
+  _repathSwimmers(terrain) {
+    const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
+    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
+    const mapW = terrain.mapWidth, mapH = terrain.mapHeight, made = new Map();
+    const pathFor = (r) => {
+      if (made.has(r)) return made.get(r);
+      const rv = rivers[r];
+      if (!rv || !rv.pts || rv.pts.length < 2) return null;
+      const isMain = rv.type !== 'tributary';
+      const p = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
+      p.rIdx = r; made.set(r, p);
+      return p;
+    };
+    for (const list of [this.eels, this.fish]) {
+      for (const e of list) {
+        if (!e.path || e.path.rIdx == null) continue;
+        const np = pathFor(e.path.rIdx);
+        if (!np || !(np.len > 0)) continue;
+        const frac = e.path.len > 0 ? e.d / e.path.len : 0;
+        e.path = np; e.d = frac * np.len;
+        this._samplePath(np, e.d, e);
+      }
     }
   }
 
   // Normalised polyline (pts in 0..1) -> world path with cumulative arc lengths. `reversed` walks the
   // polyline backwards (NE-source → SW-mouth for the main), which flips every downstream tangent, so
-  // the current decals and eels read as flowing SEAWARD once the main's flow has flipped (~0.6 Ma).
+  // the current decals and eels read as flowing SEAWARD once the main's flow has flipped (~1 Ma).
   _buildPath(pts, mapW, mapH, isMain, reversed) {
     const P = [], cum = [0], n = pts.length;
     for (let i = 0; i < n; i++) { const s = reversed ? pts[n - 1 - i] : pts[i]; P.push({ x: s[0] * mapW, y: s[1] * mapH }); }

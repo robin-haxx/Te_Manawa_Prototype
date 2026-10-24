@@ -32,9 +32,12 @@ entity.behave(sim, seasonManager, dt)   // LIFE clock: deep-time-WARPED dt
 entity.update(rdt)                        // MOTION/ANIM clock: REAL frame dt
 ```
 
-So aging, hunger, breeding, feeding and dispersal ride the warped clock (a 10× fast-
-forward morphs the world), while walk/wingbeat cadence, facing and integration ride the
-real clock (the animals never turn into a sped-up cartoon). `moas`/`eagles` get dedicated
+So aging, breeding and dispersal ride the warped clock (a 10× fast-forward morphs the
+world), while walk/wingbeat cadence, facing and integration ride the real clock (the
+animals never turn into a sped-up cartoon). **Metabolism is the exception inside
+`behave()`:** hunger, habitat stress and starvation divide the life dt by
+`sim.lifeScale` to run on the real clock, because finding and eating food is motion. On
+the life clock every time-lapse starved the grazers to their floor (`MISTAKES.md`). `moas`/`eagles` get dedicated
 loops (`updateMoas`/`updateEagles`); every `otherEntities` type is driven by the generic
 `_updateOtherEntities` loop, which requires **`behave()` + `update()`** (and `render()`).
 
@@ -181,8 +184,8 @@ mate inside `mateRadius`, lays a kererū egg (`offspringType:'kereru'`). Aggrega
 shared fruiting trees provides the pairing opportunity. `Simulation._hatchKereruEgg` adds
 a juvenile to the flock (minority-sex balanced).
 
-**Survival / population ebb:** hunger climbs on the life clock and is paid back by
-feeding; sustained max-hunger kills — but **never below `kereruPopulationFloor`**, so a
+**Survival / population ebb:** hunger climbs (on the real clock, like the flights that
+pay it back) and is paid back by feeding; sustained max-hunger kills — but **never below `kereruPopulationFloor`**, so a
 long glacial thins the flock without ever stranding the forest with no disperser (the
 recruitment term keys off kererū being *alive*, not actively dispersing).
 
@@ -239,9 +242,14 @@ See `TEMANAWA_INTERACTION_HEALTH_PLAN.md` §3–4.
   soaring circle), and cruise altitude dropped (`wingspan × 1.05`) for the low-quartering read.
   Predation (hunt/catch/restraint) untouched — patrol only runs when the bird is calm.
   `TeManawa_eagle.js`; `md/TEMANAWA_ECOLOGY_FAUNA.md` §5.
-- **Moa roster** — the scaffold now founds 5 moa (`upland`, `little_bush`, `stout_legged`,
-  `mantells`, `heavy_footed`) + the goose + mōho/NI takahē; the remaining moa (the two
-  `Dinornis` giants, `eastern`, `crested`) are defined but not yet placed. The *Dinornis*
-  dimorphism pair is the notable gap.
+- **Moa roster** — **North Island only (2026-10-13).** The scaffold founds 4 moa:
+  `north_island_giant_moa` (giant art), `little_bush_moa` (bush art), and `mantells_moa` with
+  `stout_legged_moa`, which share the Pachyornis art. Then the goose, mōho/NI takahē, kiwi and
+  Finsch's duck. Upland moa (*Megalapteryx*) and heavy-footed moa (*P. elephantopus*) were dropped
+  from the founder mix as South Island birds; their slots went to the NI giant moa and to Mantell's
+  moa, its NI sister species. They stay defined, with `south_island_giant`, `eastern` and
+  `crested`, as an unplaced pool. Each founded bird is linked to one second-screen plant
+  (`TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6). The *Dinornis* dimorphism (females far larger) is still
+  not modelled.
 - **Kererū flocking** — no explicit cohesion; the flock aggregates only via the shared
   fruiting-tree resource. Add gentle cohesion if a tighter flock read is wanted.

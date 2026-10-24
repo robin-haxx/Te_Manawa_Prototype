@@ -128,6 +128,10 @@ const HUIA_SPECIES = {
   disperseEverySec: 22,
   restSec:          9,
   disperseChance:   0.4,     // >50% fewer established seeds than the kererū (1.0)
+  // HUHU GRUBS: the huia pair also works beech for wood-boring larvae in decaying wood, so a pair
+  // has food in the glacial beech refuges, not only at the warm forest's fruit trees. A grub feed
+  // carries no seed (Kereru._cropSeedless). Without this huia never fed in beech (sim gap 4).
+  extraForage:      ['beech'],
 
   // Survival.
   maxHunger:        100,

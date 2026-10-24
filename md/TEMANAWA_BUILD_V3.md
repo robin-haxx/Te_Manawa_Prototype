@@ -295,7 +295,7 @@ TreeFern, Beech, Kōwhai, Mānuka, Kahikatea, Nīkau, Tawa, Cabbage tree — inc
 tier-K flowering frame, plus the palette micro-textures).
 
 **Superseded root files.** The old root `Beech_*`, `Fern_*`, `Flax_*` and `Tussock_*`
-state files (and `Totara_*`, aliased to tōtara) are no longer referenced now those keys
+state files (and `Rimu_*`, aliased to tōtara) are no longer referenced now those keys
 point at their folders; they are left in `sprites/` for reference, not deleted.
 `Patotara` and `Lancewood` were never in `PLANT_SPRITE_SETS` and render procedurally.
 

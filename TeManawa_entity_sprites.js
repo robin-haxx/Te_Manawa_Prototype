@@ -285,13 +285,58 @@ const EntitySprites = {
     const g = (typeof game !== 'undefined') ? game : null;
     const hi = g && g._boostHi;
     if (!hi || !sprite) return;
-    if (typeof millis === 'function' && millis() > hi.until) return;
+    if (typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting) return;   // a ghost / over-canopy reveal is sprite-only
+    const now = (typeof millis === 'function') ? millis() : 0;
+    if (now > hi.until) return;
     const key = entity && (entity.speciesKey || entity.type);
     if (!key || !hi.keys.has(key)) return;
+    // A creature with a live outline shows the boost by recolouring its own border (one quad)
+    // instead of this 16-stamp ring (TeManawa_outline.js).
+    if (typeof FAUNA_OUTLINE !== 'undefined' && FAUNA_OUTLINE.replaceBoostRing &&
+        typeof FaunaOutline !== 'undefined' && FaunaOutline.covers(sprite)) return;
+    const col = this.outlineStyle(hi, now);
     push();
     if (cx !== undefined) translate(cx, cy || 0);
-    this.drawSpriteOutline(sprite, drawW, drawH, hi.color);
+    this.drawSpriteOutline(sprite, drawW, drawH, col, hi.px || 6, this._olAlpha);
     pop();
+  },
+
+  // The ring's colour this frame; its alpha is left in `_olAlpha` (null = drawSpriteOutline's own
+  // pulse). A plant-goal ANSWER (hi.from set, TeManawa_goals.js) starts SOLID white and eases to the
+  // climate colour over hi.fadeMs, its alpha easing from solid into the normal pulse. Writes into
+  // hi._col (allocated once per boost, in the bus), so the per-entity call allocates nothing.
+  // FADE-OUT: over the last TM_BOOST.outlineFadeOutMs before hi.until the ring eases out (alpha ×
+  // smoothstep) instead of cutting off; `_olFade` (1 → 0) carries the same factor to FaunaOutline,
+  // which has no alpha and instead blends its border colour back to the un-boosted one.
+  _olAlpha: null,
+  _olFade: 1,
+  outlineStyle(hi, now) {
+    const fc = (typeof frameCount !== 'undefined') ? frameCount : 0;
+    const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(fc * 0.12));
+    let col = hi.color, a = null;
+    if (hi.from && hi.fadeMs && hi._col) {
+      const t = (now - hi.t0) / hi.fadeMs;
+      if (t < 1) {
+        const s = t <= 0 ? 0 : t * t * (3 - 2 * t);           // smoothstep
+        const c = hi._col, f = hi.from, to = hi.color;
+        c[0] = f[0] + (to[0] - f[0]) * s;
+        c[1] = f[1] + (to[1] - f[1]) * s;
+        c[2] = f[2] + (to[2] - f[2]) * s;
+        col = c;
+        a = 1 + (pulse - 1) * s;
+      }
+    }
+    const outMs = (typeof TM_BOOST !== 'undefined' && TM_BOOST.outlineFadeOutMs) || 0;
+    const left = hi.until - now;
+    let k = 1;
+    if (outMs > 0 && left < outMs) {
+      const u = left <= 0 ? 0 : left / outMs;
+      k = u * u * (3 - 2 * u);                              // smoothstep 1 → 0
+      a = (a != null ? a : pulse) * k;
+    }
+    this._olAlpha = a;
+    this._olFade = k;
+    return col;
   },
 
   // Generic moa set. No longer authored art — load() aliases it to the

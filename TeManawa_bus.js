@@ -19,7 +19,10 @@
 //                                regime boundary (DeepTime.beginTimelapse), eruption-aware
 //                                (§6.3). Replaces the interim growth-press stub.
 //   · habitat / plant          : accepted and ignored (optional sim-side highlight, §3.1).
-//   · clock / goal / timelapse : live telemetry; goal from Climate.nextRegimeBoundary (§7.1).
+//   · clock / goal / timelapse : live telemetry; goal from Climate.nextRegimeBoundary (§7.1), plus
+//                                the live plant goal's prompt (TeManawa_goals.js).
+//   · plant goals              : each boost is judged against the live goal (TMGoals.judge); the
+//                                answer gets a bigger boost + a white-to-climate outline.
 // ============================================================
 
 // Boost / timelapse tunables — console-tunable like TM_TIME / TM_GROW / TM_EDGE.
@@ -30,6 +33,7 @@ const TM_BOOST = {
   eruptionLeadYears: 300,   // stop a timelapse this many years BEFORE an intervening eruption...
   eruptionFireDelayMs: 2000, // ...then fire it this long after the boost result settles (§6.3)
   outlineMs:        22000,  // how long a boost keeps its coloured sprite outline (≈ the timelapse length)
+  outlineFadeOutMs:  2500,  // ...the last this-many ms of which ease the outline OUT (no hard cut-off; 0 = cut)
   // Matched-boost OUTLINE colours, climate-keyed to MATCH the ambient band + FOREST/TUSSOCK buttons
   // (blue = glacial everywhere, so a boost reads consistently with the scene): a successful
   // INTERGLACIAL boost rings GREEN, a successful GLACIAL boost rings BLUE. A wrong-for-the-climate
@@ -37,14 +41,28 @@ const TM_BOOST = {
   outlineInterglacial: [ 84, 210,  96],   // green
   outlineGlacial:      [150, 205, 236],   // blue
   outlineWrong:        [128, 132, 130],   // grey
-  // Confirmed plant → linked fauna (species keys) for the outline highlight, from spec §5: a boost
-  // rings the chosen plant AND the birds it supports. A boost message may also carry m.fauna to
-  // override/extend this per boost (the second screen's encyclopedia is the fuller source).
+  // Plant → linked fauna (species keys) for the outline highlight + recruitment: a boost rings the
+  // chosen plant AND the birds it supports. The touchscreen sends its card's own list as m.fauna,
+  // which wins (a plant on two screens can link differently per card); this table is the FALLBACK
+  // for a boost with no list, e.g. the diorama driven without the console. BIRD POLICY
+  // (md/TEMANAWA_ENCYCLOPEDIA_FLORA.md §2.6): one bird per plant, every cast bird on at least one
+  // plant, and none on more than two. young_eyles_harrier is outline-only.
   faunaLinks: {
-    Totara:      ['eyles_harrier', 'young_eyles_harrier'],
-    manuka:      ['kokako'],
-    cabbagetree: ['kereru'],
-    beech:       ['huia']
+    Totara:       ['eyles_harrier', 'young_eyles_harrier'],   // hunts the dry forest–grassland edge
+    tawa:         ['kereru'],                  // its sole large-seed disperser
+    fern:         ['north_island_brown_kiwi'], // forest-floor prober
+    nikau:        ['kokako'],                  // tawa-forest songbird, feeds in the understorey
+    kowhai:       ['tui'],                     // nectar
+    kahikatea:    ['little_bush_moa'],         // closed-canopy wet lowland forest browser
+    flax:         ['mantells_moa'],            // lowland wetland moa with a bill for fibrous food
+    cabbagetree:  ['finschs_duck'],            // open-country grazing duck
+    sedge:        ['north_island_takahe'],     // mōho: grassland, scrub and swamp
+    tussock:      ['giant_goose'],             // the ice-age grassland grazer
+    coprosma:     ['north_island_giant_moa'],  // divaricates and the 3 m browse line
+    manuka:       ['stout_legged_moa'],        // dry lowland/coastal shrubland moa
+    dracophyllum: ['north_island_giant_moa'],  // shares the subalpine browser with coprosma
+    wharariki:    ['tui'],                     // nectar, up on the tops
+    beech:        ['huia']                     // Ruahine/Tararua forest
   }
 };
 try { if (typeof window !== 'undefined') window.TM_BOOST = TM_BOOST; } catch (_) {}
@@ -112,6 +130,13 @@ const TMBus = (function () {
       case 'boost':
         onBoost(m); break;
 
+      case 'dial':   // the macro pad's TIME DIAL, relayed when the console window has focus
+        if (typeof DeepTime !== 'undefined' && DeepTime.dialTurn) {
+          if (m.reset) DeepTime.dialReset();
+          else if (typeof m.delta === 'number') DeepTime.dialTurn(m.delta);
+        }
+        break;
+
       case 'habitat':
       case 'plant':
         // Accepted; no sim-side effect yet (optional highlight/focus, §3.1).
@@ -125,28 +150,45 @@ const TMBus = (function () {
     const g = G();
     const key = m && m.plantKey;
     if (!key) return;
-    const defs = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
-    const def  = defs ? defs[key] : null;
-    const warmMax = (typeof TM_GROW !== 'undefined' && TM_GROW.warmMax != null) ? TM_GROW.warmMax : 0.65;
-    const coldMin = (typeof TM_GROW !== 'undefined' && TM_GROW.coldMin != null) ? TM_GROW.coldMin : 0.75;
-    const ct  = (def && def.coldTolerance != null) ? def.coldTolerance : 0.5;
     const thr = (typeof Climate !== 'undefined' && Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
     const glacial = (typeof Climate !== 'undefined' && typeof DeepTime !== 'undefined')
       ? Climate.glacialIndexAt(DeepTime.yearsBP) >= thr : false;
+    const nowMs = (typeof millis === 'function') ? millis() : 0;
 
-    // Regime fit: a warm species (low coldTolerance) wants the interglacial, a cold species the
-    // glacial; a mid-tolerance pioneer (mānuka/flax) is NEUTRAL and establishes in either.
-    const warmSpecies = ct <= warmMax, coldSpecies = ct >= coldMin;
+    // Regime fit (TMGoals.fitOf, shared with the plant goals): a warm species (low coldTolerance)
+    // wants the interglacial, a cold species the glacial; a mid-tolerance pioneer (mānuka/flax) is
+    // NEUTRAL and establishes in either.
+    const fit = (typeof TMGoals !== 'undefined') ? TMGoals.fitOf(key) : 'neutral';
+    const warmSpecies = fit === 'warm', coldSpecies = fit === 'cold';
     let matched;
     if (warmSpecies) matched = !glacial;
     else if (coldSpecies) matched = glacial;
     else matched = true;
 
-    reply({ type: 'boostResult', plantKey: key, matched: matched });
+    // The plant goal (TeManawa_goals.js): judge this boost against the live goal BEFORE seeding, so
+    // the ANSWER gets the bigger boost below. The verdict replaces the goal line above the timeline
+    // until the time-lapse is over. null when no plant goal is live (the regime objective shows).
+    const GL = (typeof TM_GOALS !== 'undefined') ? TM_GOALS : null;
+    const verdict = (typeof TMGoals !== 'undefined') ? TMGoals.judge(key, m.plantName, matched, glacial, nowMs) : null;
+    const isAnswer = !!(GL && verdict && verdict.kind === 'answer');
 
-    // Populate ESPECIALLY with the chosen species (§6.1 / §9.2): a matched boost seeds generously,
-    // a mismatched boost seeds nothing and the scene desaturates (the regime-fit lesson below).
-    const n = matched ? (TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
+    reply({ type: 'boostResult', plantKey: key, matched: matched,
+            goal: verdict ? verdict.kind : null, text: verdict ? verdict.text : null });
+
+    // Populate ESPECIALLY with the chosen species (§6.1 / §9.2): a matched boost seeds generously (the
+    // goal's answer more so), a mismatched boost seeds nothing and the scene desaturates (the
+    // regime-fit lesson below).
+    const n = matched ? ((isAnswer && GL.answerSeed) || TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
+    if (matched && typeof DeepTime !== 'undefined') DeepTime.boostsOk++;   // the tally under the climate line
+    // Plant homeostasis (Simulation._updateHomeostasis): a matched boost lifts the target of every
+    // habitat this plant grows in (the answer by more), so correct boosts accumulate; a wrong one
+    // drops every habitat back to its original floor. Lift BEFORE seeding so the seedlings fit it.
+    const simH = g && g.simulation;
+    if (simH && typeof simH.liftHabitats === 'function') {
+      const LM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+      if (matched) simH.liftHabitats([key], 0, isAnswer ? (LM.homeoAnswerSteps ?? 2) : 1);
+      else simH.resetHabitatLift();
+    }
     const seeder = (g && g.simulation && typeof g.simulation.seedSpecies === 'function')
       ? g.simulation.seedSpecies.bind(g.simulation) : null;
     if (seeder && n > 0) seeder(key, n);
@@ -158,14 +200,13 @@ const TMBus = (function () {
     if (matched && g && g.simulation && typeof g.simulation.boostFauna === 'function') {
       const faunaKeys = (Array.isArray(m.fauna) && m.fauna.length) ? m.fauna
                       : (TM_BOOST.faunaLinks && TM_BOOST.faunaLinks[key]);
-      if (faunaKeys) g.simulation.boostFauna(faunaKeys, TM_BOOST.faunaRecruit || 2);
+      if (faunaKeys) g.simulation.boostFauna(faunaKeys, (isAnswer && GL.answerFauna) || TM_BOOST.faunaRecruit || 2);
     }
 
     if (g) {
       // Reuse the EXISTING regime-fit lesson (Game._updateHabitatHealth + the ambient rim): a
       // warm/cold species arms the matching grow timer so a WRONG-climate boost desaturates exactly
       // like a wrong FOREST/TUSSOCK press; a neutral pioneer arms neither (it fits either climate).
-      const nowMs = (typeof millis === 'function') ? millis() : 0;
       if (typeof TM_TIME !== 'undefined') {
         if (warmSpecies) g._tmGrowWarmUntil = nowMs + TM_TIME.growWarmSeconds * 1000;
         else if (coldSpecies) g._tmGrowColdUntil = nowMs + TM_TIME.growColdSeconds * 1000;
@@ -180,7 +221,8 @@ const TMBus = (function () {
       // Coloured OUTLINE on the boosted plants + their linked birds (EntitySprites.boostOutline).
       // Climate-keyed for a successful boost: INTERGLACIAL → green, GLACIAL → blue (matching the
       // ambient band + buttons, so blue = glacial everywhere); a wrong-for-the-climate boost stays
-      // grey. GL-batched → no extra draw call. (Colours in TM_BOOST.outline*.)
+      // grey. GL-batched → no extra draw call. (Colours in TM_BOOST.outline*.) The plant goal's
+      // ANSWER rings solid WHITE first, easing to the climate colour (EntitySprites.outlineStyle).
       const hiKeys = new Set([key]);
       const linked = (Array.isArray(m.fauna) && m.fauna.length) ? m.fauna
                    : (TM_BOOST.faunaLinks && TM_BOOST.faunaLinks[key]);
@@ -188,7 +230,11 @@ const TMBus = (function () {
       const hiCol = matched ? (glacial ? TM_BOOST.outlineGlacial : TM_BOOST.outlineInterglacial)
                             : TM_BOOST.outlineWrong;
       g._boostHi = { keys: hiKeys, color: hiCol || [255, 220, 90],
-                     until: nowMs + (TM_BOOST.outlineMs || 22000) };
+                     until: nowMs + (TM_BOOST.outlineMs || 22000), t0: nowMs,
+                     from:   isAnswer ? GL.answerOutlineFrom : null,
+                     fadeMs: isAnswer ? GL.answerOutlineMs : 0,
+                     px:     isAnswer ? GL.answerOutlinePx : 6,
+                     _col:   isAnswer ? [255, 255, 255] : null };
     }
 
     beginBoostTimelapse(matched);
@@ -272,8 +318,10 @@ const TMBus = (function () {
   function emitGoal() {
     if (!ch || typeof DeepTime === 'undefined') return;
     const goal = nextRegimeBoundary(DeepTime.yearsBP);
+    // prompt: the live plant goal's line (TeManawa_goals.js), or null when the regime objective shows.
+    const prompt = (typeof TMGoals !== 'undefined') ? TMGoals.promptText() : null;
     if (goal) reply({ type: 'goal', targetYearsBP: goal.targetYearsBP,
-                      targetStage: goal.targetStage, targetStageName: goal.targetStageName });
+                      targetStage: goal.targetStage, targetStageName: goal.targetStageName, prompt: prompt });
   }
 
   // Live timelapse state off the real ramp (DeepTime): progress + the current yr/s the ramp is at.

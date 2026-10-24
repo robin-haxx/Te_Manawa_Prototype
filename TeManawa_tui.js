@@ -99,6 +99,10 @@ const TUI_SPECIES = {
   disperseEverySec: 18,
   restSec:          7,
   disperseChance:   0.5,
+  // NECTAR: the tūī also works flowering plants, kōwhai, harakeke and mountain flax, as well as the
+  // warm forest's fruit trees. A nectar feed carries no seed (Kereru._cropSeedless), so it feeds the
+  // bird without planting forest. Without this the tūī never visited a flower (sim gap 3).
+  extraForage:      ['kowhai', 'flax', 'wharariki'],
 
   // Survival.
   maxHunger:        100,

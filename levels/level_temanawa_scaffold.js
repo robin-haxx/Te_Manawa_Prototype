@@ -148,12 +148,13 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // TeManawa_terrain.js (_rebuildBiomeMap + the paint pass), which claims the LOW river reaches
     // — the banks plus a modest back-swamp margin (LOOK.riverWetlandT / riverWetlandElevMax).
     // Plants are the readable swamp assemblage: harakeke + tī kōuka, kahikatea swamp forest,
-    // mānuka margin, nīkau accent, mingimingi (coprosma) swamp scrub — PLUS tussock, so the
-    // riverbank feeds the open-country grazers (coastal moa + geese). The dark swampy ground colour
+    // mānuka margin, nīkau accent, mingimingi (coprosma) swamp scrub, pūrei (sedge, Carex secta,
+    // the open-water edge of the Moutoa zonation) — PLUS tussock, so the riverbank feeds the
+    // open-country grazers (coastal moa + geese). The dark swampy ground colour
     // reads as the raupō/reed mass from above (raupō/toetoe are ground-palette, not entities).
     wetland:   { key:'wetland',   name:"Wetland",         minElevation:0.16, maxElevation:0.29,
                  colors:habitatCols.wetland, contourColor:'#26382b', outlineColor:'#ffffff',
-                 walkable:true,  canHavePlants:true, plantDensityMult:3.8, plantTypes:['flax','tussock','cabbagetree','kahikatea','tussock','manuka','flax','nikau','coprosma'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantDensityMult:3.8, plantTypes:['flax','sedge','cabbagetree','kahikatea','tussock','manuka','flax','nikau','coprosma'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
@@ -161,13 +162,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // Manawatū (the "beech gap": tawa is in every forest type EXCEPT beech; the only beech in
     // Esler's survey is the ~526 ha Aokautere anomaly on leached terraces — TEMANAWA_ECOLOGY.md
     // §3.3, SPECIES_SUMMARY row 9). So tawa/Tōtara/fern lead and beech is a scattered minority (its
-    // real role is the GLACIAL REFUGE tree — see the build-plan follow-up on beech's cold behaviour).
+    // real role is the GLACIAL REFUGE tree: COLD_REFUGE + a cold coldTolerance + a seasons.js type
+    // modifier that rises into the cold, so it holds where the warm podocarps retreat).
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#ffffff',
                  walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'], canPlace:true },
+    // SUBALPINE — the glacial-mosaic tops: tussock, grey scrub, Dracophyllum, mānuka heath, and
+    // wharariki (mountain flax, art shared with harakeke; Esler records it on the Arawaru summit).
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
                  colors:habitatCols.subalpine, contourColor:'#bfcda8', outlineColor:'#ffffff',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','coprosma','dracophyllum','manuka'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','coprosma','dracophyllum','manuka','wharariki'], canPlace:true },
     alpine:    { key:'alpine',    name:"Alpine",          minElevation:0.77, maxElevation:0.90,
                  colors:habitatCols.alpine, contourColor:'#5c5c5c', outlineColor:'#ffffff',
                  walkable:false, canHavePlants:false, canPlace:false },
@@ -181,21 +185,25 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // the moa list and shares the grazer engine — hence it belongs in this list too.
     // The kiwi (own Kiwi class) is the forest-floor member of the same guild; Finsch's
     // duck (own FinschDuck class) is the open-country grazing duck of the same guild.
-    moa: ['upland_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'heavy_footed_moa', 'giant_goose', 'north_island_takahe', 'north_island_brown_kiwi', 'finschs_duck'],
+    // NORTH ISLAND MOA ONLY (2026-10-13). Upland moa (Megalapteryx) and heavy-footed moa
+    // (Pachyornis elephantopus) are South Island birds (TEMANAWA_FAUNA.md: "wrong place, not wrong
+    // time"), so they stay defined in MOA_SPECIES but are not founded here. The four NI moa sit on the
+    // three moa sprites: giant (Dinornis), little bush (Anomalopteryx), and the Pachyornis art shared
+    // by Mantell's moa and its stocky emeid relative the stout-legged moa (Euryapteryx).
+    moa: ['north_island_giant_moa', 'little_bush_moa', 'stout_legged_moa', 'mantells_moa', 'giant_goose', 'north_island_takahe', 'north_island_brown_kiwi', 'finschs_duck'],
     eagle: ['eyles_harrier']
   },
-  startingSpecies: 'upland_moa',
+  startingSpecies: 'little_bush_moa',
 
   // Multi-species founder spawn (used instead of startingSpecies when present).
   // A mix of forest and OPEN-COUNTRY grazers so the cold-phase reading works: the
   // goose + plains/coastal moa (all `openCountry`) fill the lowland when the visitor
   // grows TUSSOCK in a glacial, while the forest moa + the kiwi hold the interglacial.
   initialSpeciesDistribution: {
-    upland_moa:       3,   // small cold-forest moa (not open-country)
+    north_island_giant_moa: 3, // wide-ranging browser, coast to subalpine (not open-country); takes the upland moa's slot
     little_bush_moa:  3,   // forest floor (not open-country)
     stout_legged_moa: 3,   // coastal-to-lowland grazer (open-country)
-    mantells_moa:     2,   // lowland grazer (open-country)
-    heavy_footed_moa: 2,   // lowland flats specialist (open-country)
+    mantells_moa:     4,   // lowland wetland/duneland grazer (open-country); absorbs its SI sister heavy-footed moa's 2
     giant_goose:      5,   // North Island goose — open grassland/coast (open-country)
     north_island_takahe: 3, // mōho — territorial rail of grassland/scrub/forest margin (open-country)
     north_island_brown_kiwi: 3, // kiwi — forest-floor prober (NOT open-country; the warm-phase mirror)
@@ -257,7 +265,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     browseFloor:       0.30,   // browsing can never crop a plant below this stub — it always survives to regrow
     forestDieback:     true,   // suppressed canopy trees disappear (not just wilt in place) as the forest retreats
     forestDiebackFall: true,   // …by FALLING OVER and fading away (set false for the legacy shrink-in-place)
-    forestDiebackFallMs: 800,  // how long a tree's fall-and-fade plays (real ms; render-clock, pace-independent)
+    forestDiebackFallMs: 1600, // how long a tree's fall-and-fade plays (real ms; render-clock, pace-independent; shape: TOPPLE in TeManawa_plant.js)
     forestDiebackRate: 0.045,  // legacy shrink: growth lost per plant-update while a tree sits outside the band (used only when forestDiebackFall:false)
     forestRecoverRate: 0.020,  // regrowth per plant-update for canopy trees (recovery + sapling establishment)
 
@@ -307,6 +315,33 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     kiwiWarpStrength:  0.22,   // regrowth warp strength — gentle vs the storm/eruption-bloom's 1.0
 
     maxLivePlants: 900,                          // cap for kererū seed dispersal (≤1000 live-plant budget)
+
+    // PLANT HOMEOSTASIS (Simulation._updateHomeostasis). Each plant-bearing habitat is held at a
+    // target stock = its spawn density × the area it covers now, so the counts stay steady when
+    // nobody touches the buttons. The land is spawned OPEN (homeoBaseFrac of the full density) and a
+    // CORRECT boost lifts the target of the habitats it serves by one step (the goal's answer by two),
+    // up to homeoLiftMaxSteps, so density is something the visitor earns; a WRONG-for-the-climate
+    // boost drops every habitat back to its open floor and the surplus fades out. However open, every
+    // palette species keeps a representation floor (homeoSpecies*). The census runs on the REAL clock.
+    plantHomeostasis:    true,
+    homeoBaseFrac:       0.55,   // unattended floor as a share of the full plantDensity (spawn + targets)
+    homeoSpeciesShare:   0.06,   // each palette species is kept at ≥ this share of its habitat's stock...
+    homeoSpeciesMin:     3,      // ...and at least this many plants (both capped so the floors fill ≤60% of the habitat)
+    homeoIntervalFrames: 60,     // real frames between censuses (~1 s)
+    homeoDeadband:       0.06,   // ± share of the target inside which nothing changes (no churn)
+    homeoMinDeadband:    2,      // ...but never narrower than this many plants
+    homeoRecruitRate:    0.25,   // share of a deficit recruited per census
+    homeoThinRate:       0.15,   // share of a surplus faded out per census (slower than growth: a gentle fall-back)
+    homeoMaxPerTick:     6,      // cap on plants added or removed per habitat per census
+    homeoLiftStep:       0.25,   // one correct boost raises a habitat's target by this share of its base (4 steps: 0.55 → 1.1 of full density)...
+    homeoLiftStepMin:    6,      // ...or by at least this many plants (thin habitats like the wetland), capped at half the base
+    homeoLiftMaxSteps:   4,      // most steps a habitat can bank (4 × 25% = double the open floor; keep the total under maxLivePlants)
+    homeoAnswerSteps:    2,      // steps a goal's ANSWER earns
+    homeoButtonShare:    0.34,   // FOREST/TUSSOCK lift only habitats where their set is ≥ this share of the palette
+    homeoFavourChance:   0.4,    // chance a recruit is the habitat's last-boosted species rather than a palette draw
+    homeoRecruitRadius:  40,     // half the recruit tries land within this of a standing plant of the same habitat
+    homeoDensityRadius:  12,     // a recruit site is refused with ≥3 live plants inside this radius
+    homeoGraceMs:        25000,  // plants younger than this (real ms) are never thinned (lets a boost or bloom play out)
     disperseDensityRadius: 26,                   // a kererū seed only establishes where the canopy is
     disperseDensityMax: 3,                       // sparse: < this many live plants within the radius
     kereruMaxPopulation: 16,                     // flock cap (breeding stops at it); founders spawn 8
@@ -365,21 +400,30 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     flyerOverTargetBreed: 0.15,  // over-target flyers only lay 15% of the time
     eagleSurplusBonus:   4,      // how strongly the harrier prefers over-target prey
     eagleMaxChase:       420,    // ticks locked on one prey before the harrier gives up (less fruitless chasing)
+    forageGiveUpFrames:  180,    // frames a grazer may go without closing on its chosen plant before it picks another (Moa._forageStalled). Without it a bird held off by a herd-mate starved beside food
     eagleLoseRange:      169,    // world-px a committed target may open up to before the lock drops (≈huntRadius×1.3); higher = more tenacious, lower = breaks off sooner
     eagleHuntTurn:       2.4,    // pursuit turn authority (seek urgency): steering clamps to maxForce×this, NOT to top speed — raise to corner a fleeing/juking prey instead of overshooting (the "rubber-band" fix), lower for a lazier chase
     eagleStoopRange:     46,     // world-px from a committed target at which the final stoop engages
     eagleStoopSpeed:     0.9,    // top speed during the stoop (huntSpeed 0.6 × 1.5) — above goose/takahē flee speed so the strike closes instead of trailing at parity; raise for a snappier, deadlier stoop, lower toward huntSpeed for more escapes
     flyerFleeMult:       1.0,    // flee speed = baseSpeed×this (i.e. cruise, no speed-up) — well below the harrier's 0.6 hunt speed so a flee is calm and a chase resolves
+    // Ground-bird flee (Moa._pickFleeScatter / _scatterFrom). Only the harrier's chosen
+    // prey runs at its full fleeSpeed; bystanders burst, then settle to a trot.
+    fleeBurstMult:       2.2,    // bystander burst top speed = baseSpeed×this (capped at fleeSpeed)
+    fleeTrotMult:        1.4,    // …easing down to baseSpeed×this
+    fleeBurstFrames:     60,     // ticks the burst takes to ease down to the trot
+    fleeLateral:         0.9,    // sideways (screen L/R) pull added to "away" — higher = flatter, more sideways scatter
+    fleeVertDamp:        0.55,   // vertical part of the flee kept — lower = less running off the top/bottom
+    fleeVeer:            0.6,    // ± radians of per-bird jink off the away line (variety)
+    fleeSideFlip:        0.25,   // chance a bird breaks to the far side of the harrier's line instead of its own
 
     // target = comfortable population (harrier crops above it, breeding tapers to it);
     // floor = protected minimum (never hunted/starved below it). Targets sum to ~50
     // grazers + ~30 flyers, under the shared 60-moa cap and the per-species flyer caps.
     speciesTargets: {
-      upland_moa:          { target: 6, floor: 2 },
+      north_island_giant_moa: { target: 6, floor: 2 },   // the upland moa's old numbers (SI-only species dropped)
       little_bush_moa:     { target: 6, floor: 2 },
       stout_legged_moa:    { target: 5, floor: 2 },
-      mantells_moa:        { target: 4, floor: 2 },
-      heavy_footed_moa:    { target: 4, floor: 2 },
+      mantells_moa:        { target: 8, floor: 3 },   // + its SI sister heavy-footed moa's share
       giant_goose:         { target: 8, floor: 3 },
       north_island_takahe: { target: 5, floor: 2 },
       north_island_brown_kiwi: { target: 5, floor: 2 },

@@ -115,7 +115,8 @@ try{
 
 // ---- two-clock split: deep-time warps LIFE, not the walk cadence -------------
 // A moa's walk cadence (animTime) and ground speed ride the REAL frame dt so they
-// stay calm in 10x fast-forward; aging/hunger/breeding ride the warped sim clock.
+// stay calm in 10x fast-forward; aging/breeding ride the warped sim clock (hunger rides the real
+// one too: see "boost follow-through").
 // The contract has three seams — behave() (life), Boid.update() (motion + anim),
 // and simulation.update(dt, rdt) (the wiring) — and this asserts all three. Guards
 // against a regression that re-couples the animation cadence to the deep-time speed
@@ -412,6 +413,28 @@ try{
   chk(ht.growth<=0.05, 'once the fall finishes the tree drops to nothing (invisible rootstock)');
   chk(ht.alive===true, 'a died-back tree survives in place as rootstock — never yanked from the world');
   chk(ht._toppleProgress()===1, 'a fully-fallen tree reads complete (progress 1 — faded out)');
+  // TREES NEVER UN-GROW: the drawn growth (_dg) only rises, whatever browsing / dormancy / a storm
+  // knock-back does to the sim growth; it restarts only when the tree really dies. Shrubs still crop.
+  {
+    const tr=new Plant_(310,310,'Totara',terrain,bk); tr.alive=true; tr.growth=1; tr._matured=true;
+    chk(tr._dg()===1, 'a grown tree draws at full size');
+    tr.growth=0.3; tr.goDormant(); tr.dormant=false;
+    chk(tr._dg()===1, 'browsing/dormancy lowering a tree\'s sim growth never shrinks the drawn tree');
+    const sap=new Plant_(320,320,'Totara',terrain,bk); sap.alive=true; sap._matured=false; sap.growth=0.6;
+    chk(sap._dg()===0.6, 'a growing tree draws at its growth');
+    sap.growth=0.3; chk(sap._dg()===0.6, 'a bite never steps a growing tree back to an earlier sapling frame');
+    sap.growth=0.7; chk(sap._dg()===0.7, '…and it keeps growing visibly from there');
+    sap.alive=false; sap.update(season); sap.alive=true; sap.growth=0.3;
+    chk(sap._dg()===0.3, 'after a real death the tree regrows honestly from a sapling');
+    chk(new Plant_(330,330,'fern',terrain,bk)._tree===true, 'the tree fern is a tree (never un-grows)');
+    const sh=new Plant_(340,340,'tussock',terrain,bk); sh.alive=true; sh.growth=1; sh._dg(); sh.growth=0.4;
+    chk(sh._dg()===0.4, 'a shrub/grass still visibly shrinks when cropped');
+  }
+  // Gentle fall shape: a slow lean at the start (zero speed), a soft settle at the end, faded by the end.
+  const TA=(t)=>Plant_.toppleAngle(t), TAl=(t)=>Plant_.toppleAlpha(t);
+  chk(TA(0)===0 && TA(0.1)<0.03 && TA(0.3)<0.1, 'the fall STARTS gently — barely a lean over its first 30%');
+  chk(TA(1)-TA(0.95) < TA(0.55)-TA(0.5), 'the fall settles softly — slower at the end than mid-fall');
+  chk(TAl(0.5)===1 && TAl(1)===0 && TAl(0.8)>0 && TAl(0.8)<1, 'opaque through the fall, fades only as it settles');
   ht.elevation=0.30;                                         // the band climbs back over it
   for(let i=0;i<400;i++) ht.update(season);
   chk(ht._toppling===false, 'the tree stands back up when habitat returns (topple cleared)');
@@ -493,9 +516,17 @@ try{
 
   // 2. an over-age kahikatea senesces: wilts back, dies, and does NOT regrow (the stand ages out).
   const maxAge=(M&&M.kahiMaxAge)||900;
-  k._kahiAge=maxAge+1; k.growth=1; k.alive=true; k._senescent=false;
-  for(let i=0;i<400 && k.alive;i++) k.update(season,5,0);
-  chk(k._senescent===true && k.alive===false, 'an over-age kahikatea senesces and dies — the stand ages out');
+  k._kahiAge=maxAge+1; k.growth=1; k.alive=true; k._senescent=false; k._matured=true;
+  k.update(season,5,0);
+  chk(k._toppling===true && k.growth===1 && k.alive, 'an over-age kahikatea FALLS OVER (topple armed) at full size, not shrinking in place');
+  k.update(season,5,1);                                       // a warp mid-fall must not stand it back up
+  chk(k._toppling===true, 'a falling kahikatea is committed — a warp mid-fall does not freeze it half-fallen');
+  k.goDormant(); k.dormant=false;
+  chk(k.growth===1, 'a falling tree cannot be shrunk by dormancy mid-fall');
+  chk(k.consume()===0 && k.growth===1, 'a falling tree cannot be browsed smaller mid-fall');
+  const fallMs=(M&&M.forestDiebackFallMs)||800;
+  for(let i=0;i<Math.ceil(fallMs/16)+2 && k.alive;i++){ _t+=16; k.update(season,5,0); }
+  chk(k._senescent===true && k.alive===false && k._toppling===false, 'an over-age kahikatea senesces and dies once its fall plays out — the stand ages out');
   const g0=k.growth; k.update(season,5,0);
   chk(k.growth===g0, 'a senesced kahikatea is inert — it never regrows');
 
@@ -694,8 +725,8 @@ try{
   for (const key of ['stout_legged_moa','mantells_moa','heavy_footed_moa','south_island_giant_moa']){
     const s=REG.getSpecies(key); chk(s && s.config.openCountry===true, `${key} is open-country`);
   }
-  const forest=REG.getSpecies('upland_moa');
-  chk(forest && !forest.config.openCountry, 'a forest moa (upland) is NOT open-country');
+  const forest=REG.getSpecies('north_island_giant_moa');
+  chk(forest && !forest.config.openCountry, 'a forest moa (NI giant) is NOT open-country');
 
   // mōho / NI takahē — the same moa-guild pattern, a territorial rail. NOT the SI takahē.
   const Takahe=vm.runInContext('Takahe',ctx);
@@ -841,8 +872,8 @@ try{
   chk(CA.ofPlantType('nonesuch')==='neutral','an unknown plant type tags neutral (no throw)');
 
   // FAUNA: interglacial vs fullGlacial hungerRate (lower = thrives).
-  const upl=REG.getSpecies('upland_moa'), lbm=REG.getSpecies('little_bush_moa');
-  chk(upl && CA.ofSpeciesConfig(upl.config)==='cold', 'upland moa (easier in the cold) tags cold');
+  const upl=REG.getSpecies('stout_legged_moa'), lbm=REG.getSpecies('little_bush_moa');
+  chk(upl && CA.ofSpeciesConfig(upl.config)==='cold', 'stout-legged moa (easier in the cold) tags cold');
   chk(lbm && CA.ofSpeciesConfig(lbm.config)==='warm', 'little bush moa (easier in the warm) tags warm');
   chk(CA.ofSpeciesConfig({})==='neutral', 'a species with no seasonalModifiers tags neutral');
 
@@ -884,49 +915,163 @@ try{
 // is EXPECTED; a runaway count (every species crashing every delay) is the regression
 // this bounds. See the scaffold ECOLOGY FEEDBACK block + TeManawa_eagle.js hunt /
 // TeManawa_simulation.js _updateRefounding.
+//
+// It sweeps TWO lands: the boot land (1 Ma) and 300 ka. The 1 Ma opening is the most
+// water-rich land the wall shows (~43% land); most of the run stands on far more, and more
+// connected, land (300 ka ≈ 70%). A boot-only sweep hid a refound overshoot there.
+// Then it stages the cause of that overshoot directly: a grazer held off its plant by a
+// herd-mate must give the plant up (Moa._forageStalled), not starve beside it (MISTAKES.md).
 try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), REG=vm.runInContext('REGISTRY',ctx);
-  const sim=G.simulation, season=G.seasonManager;
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
-
-  const grazers=(sim.activeSpecies.moa||[]).slice();
-  const flyers=Object.keys(sim.otherEntities).filter(t=>sim.otherEntities[t][0]&&sim.otherEntities[t][0].isFlyer);
-  const all=grazers.concat(flyers);
-  const cnt=k=>sim.getSpeciesCount(k);
-
-  // a warm (interglacial) and a cold (fullGlacial) year inside the window
-  let warmY=null, coldY=null;
-  for(let y=30000;y<=980000;y+=20000){ DT.seekTo(y); season.update(1);
-    if(!warmY&&season.currentKey==='interglacial')warmY=y; if(season.currentKey==='fullGlacial')coldY=y; }
-  warmY=warmY||105000; coldY=coldY||450000;
-
-  const mn={}, mx={}; for(const k of all){mn[k]=Infinity;mx[k]=0;}
-  const refound0=sim.stats.refounds;
+  const HAWK=vm.runInContext('EylesHarrier',ctx);
   const HC=4000, N=4*HC;   // two warm↔cold cycles
-  for(let t=0;t<N;t++){
-    const ph=(t%(2*HC))/HC, frac=ph<=1?ph:2-ph;   // triangular sweep 0..1..0
-    if(t%40===0){ DT.seekTo(warmY+(coldY-warmY)*frac); season.update(1); }
-    ctx.frameCount++; sim.update(1,1); sim._advanceFades();
-    if(t%250===0){ for(const k of all){ const c=cnt(k); if(c<mn[k])mn[k]=c; if(c>mx[k])mx[k]=c; } }
-  }
-  for(const k of all){ const c=cnt(k); if(c<mn[k])mn[k]=c; if(c>mx[k])mx[k]=c; }
 
-  for(const k of all) chk(mn[k]>=1, `${k} never goes extinct (min ${mn[k]})`);
-  for(const k of flyers){
-    const cap=((REG.getSpecies(k)&&REG.getSpecies(k).config&&REG.getSpecies(k).config.maxPopulation)||20)+2;
-    chk(mx[k]<=cap, `${k} stays under its cap (max ${mx[k]} <= ${cap})`);   // breeding halts at maxPopulation
-  }
-  const adds=sim.stats.refounds-refound0;
-  // Bounded, not near-zero: refoundBelow trickles the small species back toward a
-  // visible group, so a handful of adds over this harsh 16k-tick sweep is expected.
-  // The regression this catches is a RUNAWAY — every species collapsing each delay
-  // (~11 species × ~6 fires ≈ 60+); well clear of the ~1-per-species top-up seen here.
-  chk(adds<=20, `refound (add-a-bird) stays bounded, not runaway (${adds} adds in ${N} ticks)`);
+  // One unattended sweep on whatever land is standing; checks tagged with `label`.
+  const sweep=(label)=>{
+    const sim=G.simulation, season=G.seasonManager;
+    const grazers=(sim.activeSpecies.moa||[]).slice();
+    const flyers=Object.keys(sim.otherEntities).filter(t=>sim.otherEntities[t][0]&&sim.otherEntities[t][0].isFlyer);
+    const all=grazers.concat(flyers);
+    const cnt=k=>sim.getSpeciesCount(k);
 
-  DT.reset(); G.resetEcosystem();   // restore a fresh world for the sections that follow
+    // a warm (interglacial) and a cold (fullGlacial) year inside the window
+    let warmY=null, coldY=null;
+    for(let y=30000;y<=980000;y+=20000){ DT.seekTo(y); season.update(1);
+      if(!warmY&&season.currentKey==='interglacial')warmY=y; if(season.currentKey==='fullGlacial')coldY=y; }
+    warmY=warmY||105000; coldY=coldY||450000;
+
+    const mn={}, mx={}; for(const k of all){mn[k]=Infinity;mx[k]=0;}
+    const refound0=sim.stats.refounds;
+    // Count every harrier catch, and any adult over its 40 kg prey ceiling (see "harrier prey ceiling").
+    let catches=0, overCeiling=0;
+    sim.handleEagleCatch=function(e,p){ catches++; if(!HAWK.withinPreyCeiling(p,e.maxPreyKg)) overCeiling++;
+      return Object.getPrototypeOf(sim).handleEagleCatch.call(this,e,p); };
+    for(let t=0;t<N;t++){
+      const ph=(t%(2*HC))/HC, frac=ph<=1?ph:2-ph;   // triangular sweep 0..1..0
+      if(t%40===0){ DT.seekTo(warmY+(coldY-warmY)*frac); season.update(1); }
+      ctx.frameCount++; sim.update(1,1); sim._advanceFades();
+      if(t%250===0){ for(const k of all){ const c=cnt(k); if(c<mn[k])mn[k]=c; if(c>mx[k])mx[k]=c; } }
+    }
+    delete sim.handleEagleCatch;
+    for(const k of all){ const c=cnt(k); if(c<mn[k])mn[k]=c; if(c>mx[k])mx[k]=c; }
+    chk(overCeiling===0, `${label}: the harrier never takes an adult over its 40 kg ceiling (${overCeiling} of ${catches} catches)`);
+
+    for(const k of all) chk(mn[k]>=1, `${label}: ${k} never goes extinct (min ${mn[k]})`);
+    for(const k of flyers){
+      const cap=((REG.getSpecies(k)&&REG.getSpecies(k).config&&REG.getSpecies(k).config.maxPopulation)||20)+2;
+      chk(mx[k]<=cap, `${label}: ${k} stays under its cap (max ${mx[k]} <= ${cap})`);   // breeding halts at maxPopulation
+    }
+    const adds=sim.stats.refounds-refound0;
+    // Bounded, not near-zero: refoundBelow trickles the small species back toward a
+    // visible group, so a handful of adds over this harsh 16k-tick sweep is expected.
+    // The regression this catches is a RUNAWAY — every species collapsing each delay
+    // (~11 species × ~6 fires ≈ 60+); well clear of the ~1-per-species top-up seen here
+    // (5–14 at either land with the forage give-up; 13–23 without it).
+    chk(adds<=20, `${label}: refound (add-a-bird) stays bounded, not runaway (${adds} adds in ${N} ticks)`);
+    DT.reset(); G.resetEcosystem();   // a fresh world for whatever runs next
+    return `${label} ${adds} adds/${catches} catches`;
+  };
+
+  const rBoot=sweep('1 Ma');
+  G.terrain.morphTo(300000, 1); G.resetEcosystem();          // a land-rich year (≈70% land)
+  const rRich=sweep('300 ka');
+  DT.reset(); G.terrain.morphTo(DT.yearsStart, 1); G.resetEcosystem();   // back to the boot land
+
+  // Forage give-up, staged: a plain grazer 40 px from an edible plant, a herd-mate standing ON
+  // the plant. Its separation out-pushes the forage seek, so the bird can never close in. It
+  // must drop the plant within forageGiveUpFrames and not re-pick it; and with the herd-mate
+  // gone, the same approach must reach the plant and feed (the watch never fires on progress).
+  {
+    const sim=G.simulation, T=G.terrain, MoaC=vm.runInContext('Moa',ctx);
+    const limit=(vm.runInContext('LEVEL_MECHANICS',ctx).forageGiveUpFrames)||180;
+    const plain=sim.moas.filter(m=>m.alive && m.applySeparation===MoaC.prototype.applySeparation);
+    const W=T.mapWidth, H=T.mapHeight;
+    const clear=(x0,y0,x1,y1)=>{ for(let i=0;i<=8;i++){ const x=x0+(x1-x0)*i/8, y=y0+(y1-y0)*i/8; if(!T.isWalkable(x,y)) return false; } return true; };
+    const p=sim.plants.find(q=>q.alive && !q._consumed && !q.dormant && q.growth>=0.9
+      && q.pos.x>W*0.35 && q.pos.x<W*0.65 && q.pos.y>H*0.35 && q.pos.y<H*0.65 && clear(q.pos.x-40,q.pos.y,q.pos.x,q.pos.y));
+    chk(plain.length>=2 && !!p, `forage give-up: found a plain grazer pair and a reachable plant (${plain.length}, ${!!p})`);
+    if(plain.length>=2 && p){
+      const m=plain[0], blocker=plain[1];
+      const stage=()=>{ m.pos.set(p.pos.x-40,p.pos.y); m.vel.set(0,0); m.acc.set(0,0); m._walking=false;
+        m.targetPlant=p; m._tpTrack=null; m._tpSkip.fill(null); m._eatHoldUntil=0; m.maxSpeed=m.baseSpeed; };
+      const step=(nb)=>{ m.hunger=60; m.maxSpeed=m.baseSpeed; m.forage(sim); m.applySeparation(nb); m.update(1); };
+      // (a) held off by a herd-mate on the plant
+      stage(); blocker.pos.set(p.pos.x,p.pos.y);
+      let gaveUp=-1, ate=false;
+      for(let f=0; f<limit+120 && gaveUp<0; f++){ step([blocker]); if(m.hunger<60) ate=true; if(m.targetPlant!==p) gaveUp=f; }
+      let repick=false; for(let f=0; f<60; f++){ step([blocker]); if(m.targetPlant===p) repick=true; }
+      chk(!ate, 'forage give-up: the herd-mate on the plant really does hold the forager off (no bite)');
+      chk(gaveUp>=0 && gaveUp<=limit+30, `forage give-up: the held-off grazer drops the plant within forageGiveUpFrames (${gaveUp} frames, limit ${limit})`);
+      chk(!repick, 'forage give-up: the given-up plant is not re-picked straight away');
+      // (b) the same approach unobstructed reaches the plant and feeds
+      stage(); blocker.pos.set(p.pos.x+400,p.pos.y);
+      let fed=-1;
+      for(let f=0; f<4000 && fed<0; f++){ step([]); if(m.hunger<60) fed=f; if(m.targetPlant!==p && fed<0) break; }
+      chk(fed>=0, `forage give-up: an unobstructed grazer keeps its plant and feeds (fed at frame ${fed})`);
+    }
+    DT.reset(); G.resetEcosystem();   // restore a fresh world for the sections that follow
+  }
+
   console.log(fail? `fauna stability: ${fail} FAILURES`
-    : `fauna stability: no extinction over ${N} ticks (warm↔cold, no visitor); flyers under cap; refound top-up bounded (${adds})`);
+    : `fauna stability: no extinction over ${N} ticks at 1 Ma and at 300 ka (warm↔cold, no visitor); flyers under cap; refound top-up bounded (${rBoot}; ${rRich}); none over the 40 kg ceiling; a held-off grazer gives its plant up`);
 }catch(e){ console.log('FAUNA STABILITY FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- harrier prey ceiling: no adult moa over ~40 kg -----------------------------
+// North Island kērangi could take moa only up to ~40 kg (NZ Birds Online), so adult giant
+// moa were never prey. EylesHarrier.withinPreyCeiling gates the hunt scan on each bird's own
+// mass (a size percentile drawn once × its sex's adultMassKg range); chicks and juveniles
+// always pass. The second half drives the REAL hunt scan with one candidate in range and
+// `random` pinned, so it is deterministic. Mutation check: delete the withinPreyCeiling line
+// in the hunt scan and the adult-female giant and stout-legged cases fail here. (The fauna-
+// stability catch count is a second guard on the strike itself; the locked-target re-check
+// in hunt() is what keeps it at zero when a chick outgrows the ceiling mid-chase.)
+try{
+  const G=vm.runInContext('game',ctx), REG=vm.runInContext('REGISTRY',ctx), H=vm.runInContext('EylesHarrier',ctx);
+  const sim=G.simulation;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const hawk=sim.eagles[0];
+  chk(hawk && hawk.maxPreyKg===40, `the harrier reads its 40 kg ceiling from EAGLE_SPECIES (got ${hawk&&hawk.maxPreyKg})`);
+  chk(REG.getSpecies('eyles_harrier').config.preferredPreySize===undefined, "the dead Haast's-model prey-size fields are gone");
+  const cfg=k=>REG.getSpecies(k).config;
+  const bird=(k,female,juv,pct)=>({ alive:true, speciesKey:k, speciesConfig:cfg(k), isFemale:female, isJuvenile:()=>juv,
+    _sizePct:pct, eagleResistance:0, camouflage:0, inShelter:false, pos:{x:0,y:0}, vel:{x:0,y:0} });
+  const W=(b)=>H.withinPreyCeiling(b,40);
+  chk(!W(bird('north_island_giant_moa',true,false,0)), 'an adult female giant moa (76–242 kg) is never prey, even the smallest');
+  chk(!W(bird('north_island_giant_moa',false,false,0.5)), 'a mid-sized adult male giant moa (~60 kg) is not prey');
+  chk(W(bird('north_island_giant_moa',false,false,0)), 'the smallest adult male giant moa (34 kg) is prey');
+  chk(W(bird('north_island_giant_moa',true,true,1)), 'a juvenile giant moa is prey');
+  chk(W(bird('stout_legged_moa',false,false,1)) && !W(bird('stout_legged_moa',true,false,0)),
+    'stout-legged moa: every adult male is prey, no adult female is (reverse dimorphism)');
+  chk(W(bird('mantells_moa',true,false,1)), "every adult Mantell's moa (17–36 kg) is prey");
+  chk(W(bird('little_bush_moa',false,false,0)) && !W(bird('little_bush_moa',false,false,1)),
+    'little bush moa (26–64 kg) straddles the ceiling');
+  chk(W(bird('giant_goose',false,false,1)) && W({alive:true}), 'birds with no adultMassKg (goose, every flyer) are prey');
+  const one=bird('north_island_giant_moa',false,false,undefined); W(one); const p0=one._sizePct; W(one);
+  chk(p0!==undefined && one._sizePct===p0, 'a bird draws its size percentile once and keeps it');
+  one._sizePct=0; one.isFemale=true;
+  chk(!W(one), "a sex reassignment is read live: the same small bird as a female is not prey");
+
+  // The real hunt scan: one candidate 60 px off (inside huntRadius, outside catchRadius).
+  const save={x:hawk.pos.x,y:hawk.pos.y,pcx:hawk.patrolCenter.x,pcy:hawk.patrolCenter.y,
+    target:hawk.target,hunting:hawk.hunting,state:hawk.state,timer:hawk.huntSearchTimer};
+  const rnd=ctx.random;
+  ctx.random=(a,b)=>a===undefined?0.99:(b===undefined?a*0.99:a+(b-a)*0.99);   // resistance/camo rolls never skip
+  const fake=Object.create(sim); let list=[];
+  fake.getHuntablePrey=()=>list; fake.isPreyProtected=()=>false; fake.handleEagleCatch=()=>{};
+  const takes=(c)=>{ c.pos={x:hawk.pos.x+60,y:hawk.pos.y}; list=[c]; hawk.target=null; hawk.hunting=false;
+    hawk.hunt(fake,1); return hawk.target===c; };
+  chk(!takes(bird('north_island_giant_moa',true,false,0)), 'the hunt scan passes over an adult female giant moa alone in range');
+  chk(takes(bird('north_island_giant_moa',true,true,0)), 'the hunt scan takes a juvenile giant moa');
+  chk(takes(bird('stout_legged_moa',false,false,0.5)), 'the hunt scan takes an adult male stout-legged moa');
+  chk(!takes(bird('stout_legged_moa',true,false,0.5)), 'the hunt scan passes over an adult female stout-legged moa');
+  ctx.random=rnd;
+  hawk.pos.x=save.x; hawk.pos.y=save.y; hawk.patrolCenter.x=save.pcx; hawk.patrolCenter.y=save.pcy;
+  hawk.target=save.target; hawk.hunting=save.hunting; hawk.state=save.state; hawk.huntSearchTimer=save.timer;
+
+  console.log(fail? `harrier prey ceiling: ${fail} FAILURES`
+    : 'harrier prey ceiling: no adult over 40 kg (adult giant moa never; stout-legged males only; juveniles always); the real hunt scan obeys it');
+}catch(e){ console.log('HARRIER PREY CEILING FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- storm overuse: the STORM cost (plan §4) ----------------------------------
 // Each STORM press adds decaying pressure; above the overuse line the kererū stay grounded
@@ -1018,6 +1163,25 @@ try{
   chk(d('kowhai',1.0,FOREST,1) === 0, 'a non-emergent inland plant above the coastal zone is untouched by the storm');
   // wind scales everything; damage stays bounded.
   chk(d('fern',1.0,COAST,1) > d('fern',1.0,COAST,0.35) && d('fern',1.0,COAST,1) <= 1, 'coastal damage scales with wind and stays within 0..1');
+  // (C) a windthrow FALLS OVER downwind and fades (Plant.fall), then dies and regrows from bare —
+  //     never a one-frame vanish.
+  const G=vm.runInContext('game',ctx), Plant_=vm.runInContext('Plant',ctx), Mx=vm.runInContext('LEVEL_MECHANICS',ctx);
+  const sim=G.simulation, season=G.seasonManager;
+  const tt=new Plant_(300,300,'Totara',sim.terrain,'podocarp'); tt.alive=true; tt.growth=1; tt._matured=true;
+  // Seat it INSIDE the live forest band: this tests windthrow, not habitat. A fixed spot's elevation
+  // follows the deep-time terrain, so outside the band the regrow step below was silently a band
+  // die-back instead (it broke when the ~1 Ma land changed — the tree landed above the band).
+  const _fb=season.getForestBand&&season.getForestBand(); if(_fb) tt.elevation=(_fb.min+_fb.max)/2;
+  const savedHits=G._stormHits; G._stormHits=[{ p:tt, at:ctx.millis()-1, kind:'throw', mul:1 }];
+  G._stormStepPlants(1);
+  chk(tt._toppling===true && tt.alive===true && tt.growth===1, 'a windthrown tree falls over at full size instead of vanishing');
+  chk(tt._toppleDir===1, 'a windthrown tree falls downwind (W→E)');
+  const fms=(Mx&&Mx.forestDiebackFallMs)||800;
+  for(let i=0;i<Math.ceil(fms/16)+2 && tt.alive;i++){ _t+=16; tt.update(season,1,0); }
+  chk(tt.alive===false && tt.growth===0 && !tt._senescent && tt._toppling===false, 'once the fall plays out the windthrown tree dies to bare ground (and is not senescent)');
+  tt.regrowthTimer=1e9; tt.update(season,1,0);
+  chk(tt.alive===true && tt._toppling===false, 'a windthrown tree regrows upright from bare ground');
+  G._stormHits=savedHits;
   console.log(fail? `storm effects: ${fail} FAILURES`
     : 'storm effects: snaps inland emergents, salt-burns/buries the seaward margin, asymmetric by species, harder in a glacial');
 }catch(e){ console.log('STORM-EFFECTS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
@@ -1042,10 +1206,18 @@ try{
   for(let i=0;i<40 && DT.yearsBP>899980;i++){ ctx.__tick(); G.update(1); }
   chk(fired().has(900000),'crossing 900 ka auto-fires Kaukatea');
 
-  // attract returns to the LAST eruption (900 ka), not the 1 Ma start
-  DT.seekTo(500000); const rc=K.resetCount; K.resetToAttract(G,'idle',{reseed:false});
-  chk(Math.round(DT.yearsBP)===900000,'attract returns to the previous eruption (900 ka), not 1 Ma');
-  chk(K.resetCount===rc+1,'attract still counts as a reset');
+  // the attract loop replays a RANDOM eruption checkpoint (Math.random pinned to pick each one)
+  const CM=vm.runInContext('Math',ctx), MR=CM.random, tg=DT.skipTargets();
+  for(let k=0;k<tg.length;k++){
+    CM.random=()=>(k+0.5)/tg.length;
+    DT.seekTo(500000); const rc=K.resetCount; K.resetToAttract(G,'idle',{reseed:false});
+    chk(Math.round(DT.yearsBP)===tg[k],`attract can land on the ${tg[k]/1000} ka eruption (got ${Math.round(DT.yearsBP)})`);
+    chk(K.resetCount===rc+1,'attract still counts as a reset');
+  }
+  CM.random=MR;
+  // the timeline running out (end-of-window) restarts at 1 Ma, NOT the last eruption (349 ka)
+  DT.seekTo(DT.yearsEnd); K.resetToAttract(G,'end-of-window',{reseed:false});
+  chk(Math.round(DT.yearsBP)===1000000,`end-of-window resets to 1 Ma (got ${Math.round(DT.yearsBP)})`);
 
   // a jump to 349 ka must NOT spuriously re-fire the older events behind the playhead
   DT.seekTo(500000); G.applyEruptionAt(349000, DT.eruptionByYear(349000));
@@ -1055,7 +1227,7 @@ try{
 
   DT.reset(); G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   console.log(fail? `auto-eruptions: ${fail} FAILURES`
-    : 'auto-eruptions: no forced opening; fire once on checkpoint crossing; attract returns to the last eruption; jumps do not re-fire');
+    : 'auto-eruptions: no forced opening; fire once on checkpoint crossing; attract replays a random eruption; end-of-window restarts at 1 Ma; jumps do not re-fire');
 }catch(e){ console.log('AUTOERUPT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 try{
@@ -1113,6 +1285,27 @@ const g=vm.runInContext('game',ctx);
   chk(CL.at(950000).glacialIndex>0.45 && CL.at(950000).glacialIndex<0.72,'MIS 24 (950ka) pre-MPT glacial (damped amplitude)');
   chk(Math.abs(CL.at(800000).glacialIndex-CL.at(600000).glacialIndex)>0.3,'1 Ma → 350 ka must vary (no flat 0.85 hold)');
 
+  // eustatic SEA LEVEL (Climate.SEA_ANCHORS, md/TEMANAWA_COAST_PLAN.md): its own curve, not a
+  // linear map of the glacial index. The old map put MIS 3 at −80 m (a near-LGM coast for 30 kyr);
+  // the field evidence (Pico et al. 2017, Sloss et al.) says −40 to −60 m, and the deep lowstands
+  // are short. A typo in an anchor shows up as a cliff, hence the rate bound.
+  const SL=y=>CL.seaLevelAt(y);
+  chk(SL(45000)>-60 && SL(45000)<-30, `MIS 3 (45ka) sea is −30…−60 m, not near-LGM (${SL(45000).toFixed(0)} m)`);
+  chk(SL(21000)<-115, `LGM (21ka) sea is below −115 m (${SL(21000).toFixed(0)} m)`);
+  chk(SL(140000)<-110, `MIS 6 (140ka) sea is below −110 m (${SL(140000).toFixed(0)} m)`);
+  chk(SL(122000)>0 && SL(410000)>0, `MIS 5e and MIS 11 stand above today's sea (${SL(122000).toFixed(0)}, ${SL(410000).toFixed(0)} m)`);
+  chk(CL.at(45000).seaLevel===SL(45000), 'Climate.at().seaLevel reads the anchored curve');
+  {
+    let run=0, longest=0, lastRun=0, rate=0, prev=SL(DT.yearsStart);
+    for (let y=DT.yearsStart-250; y>=18000; y-=250) {
+      const s=SL(y); rate=Math.max(rate, Math.abs(s-prev)/0.25); prev=s;
+      if (s<-100) { run+=250; if (run>longest) longest=run; lastRun=run; } else run=0;
+    }
+    chk(longest<=25000, `no lowstand below −100 m lasts over 25 kyr (longest ${longest/1000} kyr)`);
+    chk(lastRun<=15000, `the LGM lowstand below −100 m is short (${lastRun/1000} kyr)`);
+    chk(rate<25, `sea level never moves faster than 25 m/kyr between anchors (max ${rate.toFixed(1)})`);
+  }
+
   // regime-boundary finder (§7.1): the next interglacial↔glacial crossing forward in play. Pure;
   // the second-screen goal readout and the boost's timelapse target both read it.
   const b1=CL.nextRegimeBoundary(135000, DT.yearsEnd);   // mid MIS6 glacial → Termination II interglacial
@@ -1122,6 +1315,18 @@ const g=vm.runInContext('game',ctx);
   chk(b2 && b2.stageName==='glacial' && b2.yearsBP<90000 && b2.yearsBP>60000,
       `nextRegimeBoundary from an interglacial finds the next glacial (${b2?Math.round(b2.yearsBP):'null'} ${b2?b2.stageName:''})`);
   chk(CL.nextRegimeBoundary(27000, DT.yearsEnd)===null,'no regime crossing before the window end returns null');
+  // Chained the way back-to-back boosts chain them (each starts where the last stopped): every stop
+  // must already sit in its NEW regime, so no boost ends on the old side and no next boost is a no-op.
+  {
+    let y=DT.yearsStart, n=0, bad=[], short=[];
+    for (let b=CL.nextRegimeBoundary(y, DT.yearsEnd); b && n<80; b=CL.nextRegimeBoundary(y, DT.yearsEnd), n++) {
+      if ((CL.glacialIndexAt(b.yearsBP) >= CL.regimeThreshold) !== (b.stageName==='glacial')) bad.push(b.yearsBP);
+      if (y-b.yearsBP < 5000) short.push(y-b.yearsBP);
+      y=b.yearsBP;
+    }
+    chk(bad.length===0, `every chained regime stop already sits in its new regime (${n} stops; wrong side at ${bad.join(', ')||'none'})`);
+    chk(short.length===0, `no chained boost is a near no-op (gaps under 5 kyr: ${short.join(', ')||'none'})`);
+  }
 
   // the clock is PAUSED BY DEFAULT now (the second screen drives it, md/TEMANAWA_SECOND_SCREEN.md §0):
   // idle update() holds yearsBP (and the terrain, which keys off it) but still returns a 1× LIFE scale,
@@ -1175,6 +1380,98 @@ const g=vm.runInContext('game',ctx);
     + ` (window ${(DT.windowSeconds()/60).toFixed(1)} min, press covers ${Math.round(covered/1000)} ky)`);
 }
 
+// ---- time dial: the macro pad's standing fast-forward (DeepTime.dial*) ---------
+// Detent 0 = geology paused (real time); the top detent = dialMaxRate (5,000 yr/s), the whole window
+// in ~3¼ min. The played rate EASES (never snaps — photosensitivity), a boost timelapse never runs
+// slower than the dial, the detent survives soft resets, and both windows' keys (+ the bus) reach it.
+try{
+  const DT=vm.runInContext('DeepTime',ctx), G=vm.runInContext('game',ctx),
+        TB=vm.runInContext('TMBus',ctx), FT=vm.runInContext('FaunaTrail',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const run=(frames)=>{ let sc=1; for(let i=0;i<frames;i++){ ctx.__tick(); sc=DT.update(1); } return sc; };
+
+  DT.reset(); DT.dialReset(); run(120);
+  const y0=DT.yearsBP; const sc0=run(60);
+  chk(DT.yearsBP===y0 && sc0===1 && DT.geoRate===0,'detent 0 = paused geology, 1× life (real time)');
+  chk(!DT.isMoving(),'isMoving() is false with the dial at 0 and nothing else running');
+
+  // the curve: monotone, fine at the low end, exactly dialMaxRate at the top
+  let mono=true; for(let s=1;s<=DT.dialSteps;s++) if(DT.dialTargetRate(s)<=DT.dialTargetRate(s-1)) mono=false;
+  chk(mono,'every detent is faster than the one below it');
+  chk(DT.dialTargetRate(1)<10,`detent 1 is fine-grained (${DT.dialTargetRate(1).toFixed(1)} yr/s)`);
+  chk(Math.abs(DT.dialTargetRate(DT.dialSteps)-5000)<1e-6,'the top detent is 5,000 yr/s');
+
+  // clamped, keyed, wheeled
+  DT.dialSet(DT.dialSteps); DT.dialTurn(5); chk(DT.dialStep===DT.dialSteps,'the dial clamps at the top');
+  DT.dialReset(); DT.dialTurn(-3); chk(DT.dialStep===0,'the dial clamps at 0');
+  chk(DT.dialKey(']') && DT.dialStep===1,"']' turns the dial up");
+  chk(DT.dialKey('[') && DT.dialStep===0,"'[' turns it down");
+  DT.dialSet(7); chk(DT.dialKey('\\') && DT.dialStep===0,"'\\' (the push) resets it to 0");
+  chk(!DT.dialKey('1') && !DT.dialKey('d'),'other keys are not dial keys');
+  DT._wheelAcc=0; DT.dialWheel(-100); chk(DT.dialStep===1,'one wheel notch up = one detent faster');
+  DT.dialWheel(-40); DT.dialWheel(-40); chk(DT.dialStep===1,'small wheel deltas accumulate (no detent yet)');
+  DT.dialWheel(-40); chk(DT.dialStep===2,'...and carry over into the next detent');
+  DT.dialReset(); DT._wheelAcc=0;
+  G.handleKey(']'); chk(DT.dialStep===1,"Game.handleKey(']') reaches the dial");
+  G.handleKey('\\'); chk(DT.dialStep===0,"Game.handleKey('\\\\') resets it");
+  if(TB && typeof TB.dispatch==='function'){
+    TB.dispatch({ type:'dial', delta:3 }); chk(DT.dialStep===3,'a console {type:dial, delta} turns the sim dial');
+    TB.dispatch({ type:'dial', reset:true }); chk(DT.dialStep===0,'a console {type:dial, reset} resets it');
+  } else chk(false,'TMBus.dispatch present for the dial relay test');
+
+  // easing: no snap on a full spin, reaches the rate, and the top detent plays the window in ~3¼ min
+  DT.reset(); DT.dialSet(DT.dialSteps); run(1);
+  chk(DT.geoRate<DT.dialMaxRate*0.1,`a full spin eases in, never snaps (first frame ${Math.round(DT.geoRate)} yr/s)`);
+  const life=run(Math.ceil(DT.dialEaseSeconds*60*8));
+  chk(Math.abs(DT.geoRate-DT.dialMaxRate)<DT.dialMaxRate*0.01,`the dial settles on its rate (${Math.round(DT.geoRate)} yr/s)`);
+  chk(Math.abs(life-DT.dialMaxRate/DT.yrPerSec)<0.05,`life keeps pace at the top detent (x${life.toFixed(2)})`);
+  chk(DT.isMoving() && FT.active(),'the top detent counts as moving + fast-forward (river working, fauna trails)');
+  DT.reset(); let frames=0; while(!DT.hasEnded() && frames<60*600){ ctx.__tick(); DT.update(1); frames++; }
+  const secs=frames/60;
+  chk(DT.hasEnded() && secs>185 && secs<205,`the top detent plays 1 Ma → 25.5 ka in ~3¼ min (${secs.toFixed(0)} s)`);
+  // a slow detent moves the land but does not speed up life or draw trails
+  DT.reset(); DT.dialSet(3); run(600);
+  chk(DT.geoRate>40 && DT.geoRate<60 && DT.timeScale===1,`detent 3 ≈ 50 yr/s with life at 1× (${Math.round(DT.geoRate)} yr/s, x${DT.timeScale})`);
+  chk(DT.isMoving() && !FT.active(),'a slow detent moves the river but draws no fast-forward trails');
+
+  // a timelapse under the dial is never slower than it; the dial carries on after the target
+  DT.reset(); DT.dialSet(DT.dialSteps); run(600);
+  DT.beginTimelapse(DT.yearsBP-30000); run(1);
+  chk(DT.geoRate>=DT.dialMaxRate*0.99,`a timelapse under a full dial runs at ≥ the dial (${Math.round(DT.geoRate)} yr/s)`);
+  let guard=0; while(DT.isTimelapsing() && guard++<20000) run(1);
+  run(1); chk(!DT.isTimelapsing() && DT.geoRate>DT.dialMaxRate*0.99,'after the timelapse lands the dial keeps playing');
+
+  // the detent is a control setting: it survives a soft reset and a seek; the push eases to a dead stop
+  DT.dialSet(12); DT.reset(); chk(DT.dialStep===12,'the detent survives DeepTime.reset()');
+  DT.seekTo(500000); chk(DT.dialStep===12,'the detent survives a seek');
+  run(600); DT.dialReset(); run(1); chk(DT.geoRate>0,'turning back to 0 eases down (not an instant stop)');
+  run(600); const yS=DT.yearsBP; run(30);
+  chk(DT.geoRate===0 && DT.yearsBP===yS,'...and comes to a dead stop (geology paused again)');
+
+  // the HUD readout draws through both timelines without throwing
+  const HUD=vm.runInContext('InstallHUD',ctx);
+  let threw=null;
+  try{ for(const s of [0,1,15,DT.dialSteps]){ DT.dialSet(s); HUD.renderVisitorTimeline(G,1080,1920); HUD.renderTimeline(G.ui,G,1080,1920); } }
+  catch(e){ threw=e.message; }
+  chk(!threw,'the dial readout renders on both timelines'+(threw?` (${threw})`:''));
+  chk(HUD._dialLabel(5000)==='>> 5,000 yrs/s' && HUD._dialLabel(DT.dialTargetRate(1))==='>> 6 yrs/s','the readout names the detent rate, rounded');
+
+  // the console page's key + wheel bindings emit the dial actions (secondscreen/input.js, own context)
+  try{
+    const lis={}, sctx=vm.createContext({ window:{ addEventListener:(t,f)=>{ lis[t]=f; } }, setTimeout, clearTimeout, console });
+    vm.runInContext(fs.readFileSync(path.join(dir,'secondscreen','input.js'),'utf8')+';this.TMInput=TMInput;', sctx);
+    const got=[]; sctx.TMInput.on((a,p)=>got.push(a+(p!==undefined?':'+p:''))); sctx.TMInput.start();
+    const ev=(k,rep)=>({ key:k, repeat:!!rep, preventDefault(){} });
+    lis.keydown(ev(']')); lis.keydown(ev('[')); lis.keydown(ev('\\')); lis.keydown(ev(']',true));
+    lis.wheel({ deltaY:-100, preventDefault(){} });
+    chk(got.join(',')==='dialTurn:1,dialTurn:-1,dialReset,dialTurn:1,dialTurn:1',`console dial keys/wheel → actions (${got.join(',')})`);
+  }catch(e){ chk(false,'secondscreen/input.js dial bindings: threw '+e.message); }
+
+  DT.dialReset(); DT._dialRate=0; DT._dialAt=0; DT.reset();
+  console.log(fail? `time dial: ${fail} FAILURES`
+    : `time dial: 0 → 5,000 yr/s over ${DT.dialSteps} detents, eased, window in ${secs.toFixed(0)} s at the top; keys/wheel/bus reach it`);
+}catch(e){ console.log('time dial: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
+
 // ---- fauna time-lapse trail (ghost afterimages) ----------------------
 // FaunaTrail leaves short SPRITE-ONLY afterimages behind a moving animal, but ONLY while a
 // fast-forward runs. Contract: inert at 1x (no sampling, no draw); on during a timelapse; the
@@ -1225,6 +1522,53 @@ try{
   DT.endTimelapse(); DT.reset();
   console.log(fail? `fauna trail: ${fail} FAILURES` : 'fauna trail: sprite-only afterimages, on only in fast-forward, ring reused (no per-frame alloc)');
 }catch(e){ console.log('fauna trail: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
+
+// ---- over-canopy reveal (PLANT_GHOST.reveal) --------------------------
+// A canopy plant in front of a ground bird still fades (maxReduce), and the bird is ALSO
+// re-stamped over the canopy after the ground pass. Contract: the ghost test marks EVERY
+// animal under the plant (no early break), each once per frame; the re-stamp replays the
+// bird's own render() sprite-only (_ghosting) at reduced alpha scaled by its cover; flag and
+// globalAlpha are restored; reveal: 0 marks nothing.
+try{
+  const PG=vm.runInContext('PLANT_GHOST',ctx), FT=vm.runInContext('FaunaTrail',ctx);
+  const G=vm.runInContext('game',ctx), sim=G.simulation;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  chk(PG && PG.reveal>0 && PG.reveal<1 && PG.maxReduce>0,'PLANT_GHOST.reveal is on and partial, tree fade kept');
+  chk(typeof sim._renderReveal==='function','Simulation._renderReveal exists');
+  const ms=sim.moas.filter(x=>x.alive).slice(0,2);
+  chk(ms.length===2,'two live moas to cover');
+  if(ms.length===2){
+    const [m1,m2]=ms, saved=ms.map(m=>({x:m.pos.x,y:m.pos.y}));
+    m1.pos.x=500; m1.pos.y=500; m2.pos.x=504; m2.pos.y=490;          // m1 dead-centre, m2 further back + off-centre
+    const plant={pos:{x:500,y:520}, size:60, growth:1};
+    const list=[m2,m1,plant];                                          // depth-sorted (pos.y ascending)
+    sim._revealList=[]; sim._revealStamp=7;
+    const ga=sim._plantGhostAlpha(plant,list,2,PG);
+    chk(ga<1,`the covering plant still fades (alpha ${ga.toFixed(2)})`);
+    chk(sim._revealList.length===2,`every animal under the plant is marked, not just the first full cover (${sim._revealList.length})`);
+    sim._plantGhostAlpha(plant,list,2,PG);                            // a second plant over the same birds
+    chk(sim._revealList.length===2,'an animal joins the reveal list once per frame');
+    chk(m1._occ>m2._occ && m2._occ>0,'cover strength is kept per animal (centre-line, depth falloff)');
+    const spy=[]; for(const m of ms) m.render=function(){ spy.push({a:+ctx.drawingContext.globalAlpha, g:FT._ghosting, m:this}); };
+    ctx.drawingContext.globalAlpha=1;
+    sim._renderReveal(sim._revealList, PG.reveal);
+    for(const m of ms) delete m.render;
+    chk(spy.length===2,'each marked bird is re-stamped once');
+    chk(spy.every(s=>s.g),'the re-stamp is sprite-only (_ghosting set)');
+    chk(spy.every(s=>s.a>0 && s.a<=PG.reveal+1e-6),'the re-stamp is partial, at most reveal');
+    const s1=spy.find(s=>s.m===m1), s2=spy.find(s=>s.m===m2);
+    chk(s1 && s2 && s1.a>s2.a,'a more-covered bird is revealed more strongly');
+    chk(FT._ghosting===false && ctx.drawingContext.globalAlpha===1,'_ghosting and globalAlpha are restored');
+    let threw=null; try{ sim._renderReveal(sim._revealList, PG.reveal); }catch(e){ threw=e.message; }
+    chk(!threw,'the real render path re-stamps without throwing'+(threw?` (${threw})`:''));
+    const r0=PG.reveal; PG.reveal=0; sim._revealList=[]; sim._revealStamp++;
+    sim._plantGhostAlpha(plant,list,2,PG);
+    chk(sim._revealList.length===0,'reveal: 0 marks nothing (off switch)');
+    PG.reveal=r0; sim._revealList.length=0;
+    ms.forEach((m,i)=>{ m.pos.x=saved[i].x; m.pos.y=saved[i].y; });
+  }
+  console.log(fail? `canopy reveal: ${fail} FAILURES` : 'canopy reveal: covered birds re-stamped over the canopy, sprite-only, scaled by cover');
+}catch(e){ console.log('canopy reveal: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
 
 // ---- per-species boost seeding (§7.3) --------------------------------
 // Simulation.seedSpecies plants the ONE named type into any biome whose palette lists it.
@@ -1292,6 +1636,593 @@ try{
   DT.reset(); G._boostHi=null; G.resetEcosystem();
   console.log(fail? `bus boost: ${fail} FAILURES` : 'bus boost: gate → per-species seed → ramped timelapse + outline highlight; console intents reset idle');
 }catch(e){ console.log('BUS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- plant homeostasis: habitats hold steady, correct boosts lift them, a wrong one resets ----
+// Each plant-bearing habitat is held at a target (spawn density × area). With no input the counts
+// must not drift or churn; correct boosts lift the habitats they serve (capped); a wrong-for-the-
+// climate boost (bus or button) drops every habitat back to its floor, and the surplus fades out
+// — sparing the young — then leaves the plant list.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx),
+        TB=vm.runInContext('TMBus',ctx), M=vm.runInContext('LEVEL_MECHANICS',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const sim=G.simulation;
+  const step=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(1); sim.update(1,1); } };
+  const census=()=>{ const c={}; for(const p of sim.plants){ if(p._senescent||p._fallKind==='thin') continue; c[p.biomeKey]=(c[p.biomeKey]||0)+1; } return c; };
+  chk(typeof sim.liftHabitats==='function' && typeof sim.resetHabitatLift==='function' &&
+      typeof sim.homeoTarget==='function' && sim._homeo, 'the homeostasis API is present');
+  const keys=Object.keys(sim._homeo.dens).filter(k=>sim.homeoTarget(k)>=10);
+  const near=(c)=>keys.every(k=>Math.abs((c[k]||0)-sim.homeoTarget(k)) <= sim._homeoDeadband(sim.homeoTarget(k))+1);
+
+  // 1. Idle: nothing drifts.
+  step(600);
+  const c1=census();
+  chk(near(c1), `with no input each habitat holds its target (${keys.map(k=>k+' '+(c1[k]||0)+'/'+Math.round(sim.homeoTarget(k))).join(', ')})`);
+  let thinnedIdle=0; for(const p of sim.plants) if(p._fallKind==='thin') thinnedIdle++;
+  chk(thinnedIdle===0, `an untouched world does not churn (${thinnedIdle} thinned)`);
+
+  // 2. A correct boost lifts only the habitats that grow it; repeats accumulate up to the cap.
+  const base={}; for(const k of keys) base[k]=sim.homeoTarget(k);
+  sim.liftHabitats(['tawa']);
+  chk(sim.homeoTarget('podocarp')>base.podocarp && sim.homeoTarget('montane')>base.montane, 'a correct tawa boost lifts the forest habitats');
+  chk(sim.homeoTarget('grassland')===base.grassland, 'it leaves the lowland, which grows no tawa');
+  sim.liftHabitats(['tawa']); sim.liftHabitats(['tawa']);
+  step(1200);
+  const c2=census(), gain=sim.homeoTarget('podocarp')-base.podocarp;
+  chk((c2.podocarp||0)-(c1.podocarp||0) >= gain*0.6, `three correct boosts fill the forest toward its lifted target (+${(c2.podocarp||0)-(c1.podocarp||0)} of +${Math.round(gain)} in 20 s)`);
+  for(let i=0;i<10;i++) sim.liftHabitats(['tawa']);
+  chk(sim._homeo.lift.podocarp===M.homeoLiftMaxSteps, 'the lift is capped at homeoLiftMaxSteps');
+  chk(sim.plants.length <= M.maxLivePlants, `the lifted world stays under the live-plant cap (${sim.plants.length})`);
+
+  // 3. A wrong guess: back to the floor. The surplus fades (the young spared), then leaves the list.
+  step(1200);
+  const surplus=(census().podocarp||0)-base.podocarp;
+  sim.resetHabitatLift();
+  chk(sim.homeoTarget('podocarp')===base.podocarp, 'a reset drops the target back to the original floor');
+  step(240);
+  const now=vm.runInContext('millis()',ctx);
+  let fading=0, youngHit=0;
+  for(const p of sim.plants) if(p._fallKind==='thin'){ fading++; if(now-p._bornMs < M.homeoGraceMs - 4000) youngHit++; }
+  chk(fading>0, `the surplus starts to fade out (${fading} fading of +${surplus})`);
+  chk(youngHit===0, `plants younger than homeoGraceMs are never thinned (${youngHit})`);
+  step(4800);
+  const c3=census();
+  chk(near(c3), `after a wrong guess the habitats settle back to the floor (${keys.map(k=>k+' '+(c3[k]||0)+'/'+Math.round(sim.homeoTarget(k))).join(', ')})`);
+  chk(!sim.plants.some(p=>p._senescent && !p.alive && !p._toppling), 'thinned plants leave the plant list once faded');
+
+  // 4. The two seams: the bus boost and the FOREST/TUSSOCK buttons.
+  DT.seekTo(122000); G.seasonManager.update(1);                   // an interglacial
+  TB.boost({ plantKey:'tawa' }); DT.endTimelapse();
+  chk((sim._homeo.lift.podocarp||0)>=1, 'a matched bus boost lifts its habitats');
+  TB.boost({ plantKey:'tussock' }); DT.endTimelapse();             // cold species in the interglacial
+  chk(Object.keys(sim._homeo.lift).length===0, 'a wrong-for-the-climate bus boost resets every habitat');
+  G.handleKey('2');                                                // FOREST, matched
+  chk((sim._homeo.lift.podocarp||0)>=1 && !sim._homeo.lift.grassland, 'a matched FOREST press lifts the forest habitats only');
+  G.handleKey('3');                                                // TUSSOCK in the interglacial: wrong
+  chk(Object.keys(sim._homeo.lift).length===0, 'a wrong TUSSOCK press resets every habitat');
+
+  // 5. Storm: the lightning cloud fades in and out — no blink.
+  const HUD=vm.runInContext('InstallHUD',ctx), TT=vm.runInContext('TM_TIME',ctx);
+  chk(TT.stormBoltFadeIn>=30 && TT.stormBoltFadeOut>=30, 'lightning fades ramp over ≥500 ms (photosensitivity)');
+  G._tmStormUntil=vm.runInContext('millis()',ctx)+20000;
+  HUD.initStormCells(G);
+  const b=G._tmBolt; b.timer=0;
+  let maxJump=0, prev=0, peak=0, follows=true, frames=0;
+  HUD.updateStormCells(G,1);
+  while(b.active && frames<400){
+    const a=HUD.boltAlpha(b.age), c=G._tmStormCells[b.cell];
+    maxJump=Math.max(maxJump, Math.abs(a-prev)); prev=a; peak=Math.max(peak,a);
+    if(c && (b.x!==c.x || b.y!==c.y+10)) follows=false;
+    HUD.updateStormCells(G,1); frames++;
+  }
+  chk(peak>0.99 && prev<0.05, `a strike reaches full and fades back out (peak ${peak.toFixed(2)}, last ${prev.toFixed(2)})`);
+  chk(maxJump<0.08, `no frame-to-frame blink (max step ${maxJump.toFixed(3)})`);
+  chk(follows, 'the lightning cloud rides the thunderhead it struck from');
+  G._tmStormUntil=0;
+
+  DT.reset(); G._boostHi=null; G.resetEcosystem();
+  console.log(fail? `plant homeostasis: ${fail} FAILURES`
+    : 'plant homeostasis: habitats hold steady unattended; correct boosts lift (capped), a wrong one fades back to the floor; lightning fades');
+}catch(e){ console.log('HOMEOSTASIS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- encyclopedia roster: every touchscreen card fits its screen's era ---------
+// The second screen (secondscreen/encyclopedia.js) puts two WARM (interglacial) habitats above the
+// centre rest and two COLD (glacial) below. The sim's boost gate grades a plant only by coldTolerance,
+// so a card the sim calls warm-only on a glacial screen (black beech at 0.6, before the encyclopedia
+// review) FAILS exactly when the visitor picks the right screen: grey pulse, desaturated scene. Assert
+// every card passes the gate in its own era and resolves to a real plant, sprite, palette and species.
+// md/TEMANAWA_ENCYCLOPEDIA_FLORA.md §3.
+try{
+  const PT=vm.runInContext('PLANT_TYPES',ctx), TG=vm.runInContext('TM_GROW',ctx),
+        R=vm.runInContext('REGISTRY',ctx), G=vm.runInContext('game',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const sdir=path.join(dir,'secondscreen');
+  const ectx={console:{log(){},warn(){},error(){}}}; vm.createContext(ectx);   // its own page: own globals
+  vm.runInContext(fs.readFileSync(path.join(sdir,'encyclopedia.js'),'utf8'),ectx);
+  const ORDER=vm.runInContext('TM_SCREEN_ORDER',ectx), HAB=vm.runInContext('TM_HABITATS',ectx),
+        FAUNA=vm.runInContext('TM_FAUNA',ectx), SPR=vm.runInContext('TM_PLANT_SPRITE',ectx);
+  const mid=ORDER.indexOf('select');
+  chk(ORDER.length===5 && mid===2,'the switch has five positions with Select at the centre');
+  chk(ORDER[mid-1]==='forest' && ORDER[mid+1]==='alpine','forest and alpine sit one detent from the centre');
+  ORDER.forEach((k,i)=>{ if(k==='select') return; const h=HAB[k];
+    chk(!!h,`switch position '${k}' has a habitat`);
+    if(h) chk(h.era===(i<mid?'interglacial':'glacial'),`${k}: warm habitats above the centre, cold below (era ${h.era})`); });
+  const pal=new Set();   // every type some biome palette lists: a boost seeds only there (seedSpecies)
+  for(const b of Object.values(G.currentLevel.biomes)) for(const t of (b.plantTypes||[])) pal.add(t);
+  let cards=0;
+  for(const [hk,h] of Object.entries(HAB)){
+    for(const p of h.plants){
+      cards++;
+      const d=PT[p.key], tag=`${hk}/${p.name}`;
+      chk(!!d,`${tag}: plant key '${p.key}' exists in PLANT_TYPES`);
+      if(d){
+        // mirrors TMBus onBoost: warm (ct<=warmMax) matches only an interglacial, cold (ct>=coldMin) only a glacial
+        const ct=d.coldTolerance;
+        const ok = h.era==='interglacial' ? !(ct>=TG.coldMin) : !(ct<=TG.warmMax);
+        chk(ok,`${tag}: a boost passes the gate in its ${h.era} (coldTolerance ${ct})`);
+      }
+      chk(pal.has(p.key),`${tag}: '${p.key}' is in a biome palette, so a boost seeds somewhere`);
+      const s=SPR[p.key];
+      chk(!!s && fs.existsSync(path.join(sdir,s)),`${tag}: sticker sprite exists (${s})`);
+      // its highlight: the outlined copy app.js swaps in (re-run `node tools/outline_plants.js` after new art)
+      chk(!!s && fs.existsSync(path.join(sdir,'assets','plants_outlined',path.basename(s))),
+          `${tag}: outlined highlight sprite baked (tools/outline_plants.js)`);
+      // Card copy: `desc` (the plant: a string or paragraphs) and optional `birdDesc` (paragraphs under the
+      // generated "Boosting … helps:" heading, so only on a card that has a bird).
+      const paras=[].concat(p.desc||[]), birdParas=[].concat(p.birdDesc||[]);
+      chk(paras.length>0 && paras.every(t=>typeof t==='string' && t.length>0) && paras.join(' ').length>40 &&
+          !/lorem|TODO/i.test(paras.join(' ')),`${tag}: has authored card copy`);
+      chk(birdParas.every(t=>typeof t==='string' && t.length>0) && (birdParas.length===0 || (p.fauna||[]).length>0),
+          `${tag}: its bird copy is paragraphs, on a card that has a bird`);
+      // Te reo in the card copy carries its macrons (the same list the plant goals are held to).
+      const CARD_MACRONS={ totara:'tōtara', kereru:'kererū', kokako:'kōkako', nikau:'nīkau', kowhai:'kōwhai', tui:'tūī',
+        manuka:'mānuka', okatia:'Ōkatia', apiti:'Āpiti', manawatu:'Manawatū', rangitane:'Rangitāne', takahe:'takahē',
+        moho:'mōho', purei:'pūrei', kahu:'kāhu', kouka:'kōuka', raupo:'raupō', pohuehue:'pōhuehue', kaka:'kākā' };
+      for(const t of paras.concat(birdParas)) for(const [bare,good] of Object.entries(CARD_MACRONS))
+        chk(!new RegExp('\\b'+bare+'\\b','i').test(t), `${tag}: card copy spells ${good} with its macrons`);
+      for(const fk of (p.fauna||[])){
+        const f=FAUNA[fk];
+        chk(!!f,`${tag}: fauna '${fk}' is defined`);
+        if(!f) continue;
+        for(const k of [f.key].concat(f.alsoKeys||[])) chk(!!R.getSpecies(k),`${tag}: fauna sim key '${k}' is a registered species`);
+        for(const src of f.sprites) chk(fs.existsSync(path.join(sdir,src)),`${tag}: fauna sprite exists (${src})`);
+      }
+      // A hand-staged scene (birdStage) only re-poses the card's own birds, with real art.
+      for(const s of (p.birdStage||[])){
+        chk((p.fauna||[]).indexOf(s.fauna)>=0,`${tag}: staged bird '${s.fauna}' is one of the card's fauna`);
+        chk(!!s.sprite && fs.existsSync(path.join(sdir,s.sprite)),`${tag}: staged bird sprite exists (${s.sprite})`);
+      }
+    }
+  }
+  // THE BIRD POLICY, and only birds the sim actually founds. The cast = the level's grazer guild +
+  // raptor + the flighted forest birds. It must be NORTH ISLAND species (upland and heavy-footed moa
+  // etc. are South Island; TEMANAWA_FAUNA.md). Then:
+  //   · ONE BIRD PER PLANT: every plant key adds exactly one bird species to the sim (a plant on two
+  //     screens carries the same bird on both; the copy may MENTION other birds, it just doesn't send them);
+  //   · FULL REPRESENTATION: every cast bird is on at least one plant;
+  //   · NO HOGGING: a bird may sit on several plants, but on no more than MAX_PLANTS_PER_BIRD.
+  // And the sim's faunaLinks fallback must agree.
+  const LV=G.currentLevel, cast=new Set([...(LV.species.moa||[]), ...(LV.species.eagle||[]),
+    ...Object.keys(LV.initialEntityCounts||{}).filter(k=>k!=='moa' && k!=='eagle')]);
+  const SOUTH_ONLY=['upland_moa','heavy_footed_moa','south_island_giant_moa','eastern_moa','crested_moa'];
+  for(const k of SOUTH_ONLY) chk(!cast.has(k),`the founder cast has no South Island-only species (${k})`);
+  const MAX_PLANTS_PER_BIRD=2;
+  const birdPlants={}, plantBirds={};
+  for(const h of Object.values(HAB)) for(const p of h.plants){
+    const set=plantBirds[p.key]||(plantBirds[p.key]=new Set());
+    for(const fk of (p.fauna||[])){ const f=FAUNA[fk]; if(!f) continue;
+      chk(cast.has(f.key),`${p.name}: card bird '${f.key}' is in the founder cast`);
+      set.add(f.key); (birdPlants[f.key]||(birdPlants[f.key]=new Set())).add(p.key); }
+  }
+  for(const [pk,birds] of Object.entries(plantBirds))
+    chk(birds.size===1,`plant '${pk}' adds exactly one bird (found ${birds.size}: ${[...birds].join(', ')||'none'})`);
+  for(const b of cast){ const n=birdPlants[b]?birdPlants[b].size:0;
+    chk(n>=1 && n<=MAX_PLANTS_PER_BIRD,
+        `cast bird '${b}' is on 1–${MAX_PLANTS_PER_BIRD} plants (found ${n}: ${birdPlants[b]?[...birdPlants[b]].join(', '):'none'})`); }
+  const TBC=vm.runInContext('TM_BOOST',ctx);
+  for(const [pk,birds] of Object.entries(plantBirds)){
+    const fb=new Set((TBC.faunaLinks[pk]||[]).filter(k=>k.indexOf('young_')!==0));
+    chk(fb.size===birds.size && [...birds].every(b=>fb.has(b)),`TM_BOOST.faunaLinks['${pk}'] matches its cards (${[...birds].join(',')||'none'})`);
+  }
+
+  // The art-sharing types draw with their source's frames, and a scale override stays on the alias.
+  const PS=vm.runInContext('plantSprites',ctx);
+  for(const k of ['sedge','wharariki']) chk(PS[k] && PS[k].variants && PS[k].variants.length>0,`'${k}' draws with shared art`);
+  chk(PS.wharariki && PS.flax && PS.wharariki.meta!==PS.flax.meta && PS.flax.meta.scale===1,
+      'an alias scale override does not leak onto its source set');
+  // Beech is the glacial tree: its stage modifier rises into the cold while the podocarps sink.
+  const GP=vm.runInContext('GLACIAL_PHASES',ctx);
+  chk(GP.fullGlacial.plantTypeModifiers.beech > GP.interglacial.plantTypeModifiers.beech &&
+      GP.fullGlacial.plantTypeModifiers.Totara < GP.interglacial.plantTypeModifiers.Totara,
+      'beech gains in the cold while Totara sinks (glacial-stage type modifiers)');
+  console.log(fail? `encyclopedia roster: ${fail} FAILURES`
+    : `encyclopedia roster: ${cards} cards fit their screen's era and resolve to real plants, sprites, palettes and species; ` +
+      `one bird per plant; ${cast.size} North Island cast birds, each on 1–${MAX_PLANTS_PER_BIRD} plants`);
+}catch(e){ console.log('ENCYCLOPEDIA FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- boost follow-through: a matched boost's plants and birds survive their own time-lapse ----
+// The encyclopedia trials (md/TEMANAWA_ENCYCLOPEDIA_CARDS.md, "Sim gaps") boosted every card and played
+// the time-lapse out headless. Five things broke the card's promise that the birds answer the plant:
+// a thin-habitat plant barely seeded (seedSpecies sampled the WHOLE map, so a species of one small biome
+// found almost no site), a boosted kahikatea stand aged out inside the time-lapse while the river was
+// visibly moving, tūī never fed at the flowers their card names, huia never in beech, and every
+// time-lapse starved the grazer guild to its floor (hunger on the life clock, food-finding on the real
+// one; MISTAKES.md). Each is asserted here; reading the code had passed all five.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), PT=vm.runInContext('PLANT_TYPES',ctx);
+  const Plant_=vm.runInContext('Plant',ctx), KST=vm.runInContext('KERERU_STATE',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  // Seat the land at the test year first. The deep-time morph is sliced across frames and the boot sits
+  // at 1 Ma, before the ranges rise: no subalpine belt, so a Dracophyllum or wharariki boost would
+  // correctly find nowhere to go. Run the same morph job the frame loop runs, to completion.
+  const CFG=vm.runInContext('CONFIG',ctx);
+  DT.endTimelapse(); DT.seekTo(122000);
+  G.terrain.morphBegin(122000, CFG.morphBakeScale);
+  for(let n=0; n<1000 && !G.terrain.morphStep(1e9); n++){}
+  G._bakedYearsBP=122000; G._onMorphComplete(); G.resetEcosystem(); DT.seekTo(122000);   // the rebuild resets the clock
+  let sim=G.simulation; const season=G.seasonManager, terrain=sim.terrain; season.update(1);
+  chk(terrain.biomeArray.some((b,i)=>b.key==='subalpine' && terrain.biomeIndexMap.indexOf(i)>=0),
+      'the land is seated at 122 ka (the risen ranges carry a subalpine belt)');
+
+  // 1. Thin habitats seed a full boost: the sample is drawn from the species' own biome cells.
+  for(const key of ['sedge','dracophyllum','wharariki','kahikatea']){
+    const n=sim.seedSpecies(key,12);
+    chk(n>=9, `a ${key} boost finds sites in its own (thin) habitat (${n}/12 seeded)`);
+  }
+  // …and a kahikatea boost lands only on river wetland, as fresh alluvium (age 0 + a flood disturbance).
+  sim._disturbances=[]; sim._disturbActive=false;
+  const prior=new Set(sim.plants), nk=sim.seedSpecies('kahikatea',6);
+  const kc=sim.plants.filter(p=>!prior.has(p));
+  chk(nk>0 && kc.length===nk && kc.every(p=>p.type==='kahikatea' && p.biomeKey==='wetland' && p._kahiAge===0),
+      `a kahikatea boost seeds young stands on wetland only (${kc.length})`);
+  chk((sim._disturbances||[]).length>=nk, 'each boosted kahikatea stands on a fresh flood (disturb), so it starts young');
+
+  // 2. The river clock: a wetland kahikatea does not age while deep time is moving; at rest, or off the
+  //    wetland, it still ages out. The batch loop passes the flag while a time-lapse plays.
+  const kw=new Plant_(300,300,'kahikatea',terrain,'wetland'); kw.alive=true; kw.growth=1; kw._kahiAge=0;
+  for(let i=0;i<10;i++) kw.update(season,5,0,1,true);
+  chk(kw._kahiAge===0, 'a wetland kahikatea does not age while the river is working (a time-lapse)');
+  for(let i=0;i<10;i++) kw.update(season,5,0,1,false);
+  chk(kw._kahiAge>0, 'at rest the same stand ages (it needs a storm flood to stay young)');
+  const kl=new Plant_(300,300,'kahikatea',terrain,'lowland'); kl.alive=true; kl.growth=1; kl._kahiAge=0;
+  for(let i=0;i<10;i++) kl.update(season,5,0,1,true);
+  chk(kl._kahiAge>0, 'off the wetland a kahikatea ages even in a time-lapse');
+  let seen=null; const orig=kw.update;
+  kw.update=function(){ seen=arguments[4]; return orig.apply(this,arguments); };
+  sim.plants.unshift(kw); sim._plantBatchIndex=0;
+  DT.beginTimelapse(DT.yearsBP-20000); sim.updatePlantsBatched(1);
+  chk(seen===true, 'updatePlantsBatched tells plants the river is working while a time-lapse plays');
+  DT.endTimelapse(); seen=null; sim._plantBatchIndex=0; sim.updatePlantsBatched(1);
+  chk(seen===false, '…and that it is static at rest');
+  sim.plants.shift();
+
+  // 3. Flyer forage: tūī feed at the flowers on their card (kōwhai, harakeke, wharariki) and huia work
+  //    beech, without carrying seed; the kererū still takes only warm, large-fruited trees.
+  const one=(bird,type)=>({ alive:true, _consumed:false, dormant:false, growth:1, type,
+                            coldTolerance:PT[type].coldTolerance, pos:{ x:bird.pos.x+5, y:bird.pos.y } });
+  const only=(p)=>({ getNearbyPlants:()=>[p] });
+  const tu=(sim.otherEntities.tui||[]).find(x=>x.alive), ke=(sim.otherEntities.kereru||[]).find(x=>x.alive);
+  const hu=(sim.otherEntities.huia||[]).find(x=>x.alive && x.isFemale);
+  chk(!!tu && !!ke && !!hu, 'a tūī, a kererū and a female huia exist for the forage checks');
+  if(tu && ke && hu){
+    for(const t of ['kowhai','flax','wharariki']){ const p=one(tu,t); chk(tu._findFruitTree(only(p))===p, `a tūī feeds at ${t}`); }
+    { const p=one(ke,'kowhai'); chk(ke._findFruitTree(only(p))===null, 'a kererū does not take kōwhai (not a warm fruit tree)'); }
+    { const p=one(ke,'tawa');   chk(ke._findFruitTree(only(p))===p,   'a kererū still feeds at tawa'); }
+    { const p=one(hu,'beech');  chk(hu._findFruitTree(only(p))===p,   'a huia works beech (huhu grubs in dead wood)'); }
+    { const p=one(ke,'beech');  chk(ke._findFruitTree(only(p))===null, 'a kererū does not feed in beech'); }
+    // A seedless crop (nectar, grubs) moves no seed; a fruit crop still does.
+    const feedThenDisperse=(bird,type)=>{
+      const p=one(bird,type); bird._targetTree=p; bird._feedTimer=0.01; bird.state=KST.FEEDING; bird._relocating=false;
+      bird._feeding(sim,1);
+      let planted=0; const stub={ disperseSeed:()=>{ planted++; } };
+      const dc=bird._disperseChance; bird._disperseChance=1; bird.crop=1; bird.state=KST.FLYING;
+      bird._target.set(bird.pos.x,bird.pos.y); bird._flying(stub,1); bird._disperseChance=dc;
+      return planted;
+    };
+    chk(feedThenDisperse(tu,'kowhai')===0 && tu._cropSeedless===true, 'a tūī nectar feed at kōwhai plants no seed');
+    chk(feedThenDisperse(tu,'tawa')===1 && tu._cropSeedless===false, 'a tūī fruit feed at tawa still disperses');
+  }
+
+  // 4. Metabolism runs on the REAL clock: one real frame costs the same hunger at 1× and at 10× life
+  //    speed, while ageing still runs on the life clock. Every behave() takes only the life dt.
+  sim.update(10,1); chk(sim.lifeScale===10, `sim.update(10, 1) records the life clock's lead (lifeScale ${sim.lifeScale})`);
+  sim.update(1,1);  chk(sim.lifeScale===1, 'at rest lifeScale is 1');
+  const m=sim.moas.find(x=>x.alive);
+  if(m){
+    const tick=(ls)=>{ m.hunger=0; m.canMate=false; m.mateCooldown=1e9; m.isPregnant=false; sim.lifeScale=ls;
+                       const a=m.age; m.behave(sim,season,ls); return [m.hunger, m.age-a]; };
+    const [h1]=tick(1), [h10,aged]=tick(10);
+    chk(h1>0 && Math.abs(h10-h1)<1e-9, `a moa burns the same hunger per real frame at 10× life speed (${h1.toFixed(4)} vs ${h10.toFixed(4)})`);
+    chk(Math.abs(aged-10)<1e-6, 'and still ages by the life dt');
+  }
+  if(ke){
+    const savedStorm=G._tmStormUntil, savedOver=G._stormOveruse; G._tmStormUntil=0; G._stormOveruse=false;
+    const tick=(ls)=>{ ke.hunger=0; ke.state=KST.PERCHED; ke._restTimer=1e9; sim.lifeScale=ls; ke.behave(sim,season,ls); return ke.hunger; };
+    const h1=tick(1), h10=tick(10);
+    chk(h1>0 && Math.abs(h10-h1)<1e-9, `a kererū burns the same hunger per real frame at 10× life speed (${h1.toFixed(4)} vs ${h10.toFixed(4)})`);
+    G._tmStormUntil=savedStorm; G._stormOveruse=savedOver;
+  }
+  const e=sim.eagles.find(x=>x.alive);
+  if(e){
+    const tick=(ls)=>{ e.hunger=0; e.hunting=false; e.target=null; sim.lifeScale=ls; e.behave(sim,ls); return e.hunger; };
+    const h1=tick(1), h10=tick(10);
+    chk(h1>0 && Math.abs(h10-h1)<1e-9, `a harrier burns the same hunger per real frame at 10× life speed (${h1.toFixed(4)} vs ${h10.toFixed(4)})`);
+  }
+  sim.lifeScale=1;
+
+  // 5. End to end: a fast life clock alone (a fixed year, so no climate swing) must not thin the guild.
+  //    With hunger on the life clock this fell 29 → 21 inside ~400 frames; now it holds or breeds up.
+  G.resetEcosystem(); DT.endTimelapse(); DT.seekTo(122000); for(let i=0;i<30;i++) FRAME(ctx.draw);
+  sim=G.simulation;
+  const keys=(sim.activeSpecies && sim.activeSpecies.moa) || [];
+  const total=()=>keys.reduce((a,k)=>a+sim.getSpeciesCount(k),0);
+  const t0=total(); let tmin=t0;
+  for(let i=0;i<480;i++){ ctx.frameCount++; sim.update(8,1); if(i%40===0){ const t=total(); if(t<tmin) tmin=t; } }
+  chk(t0>0 && tmin>=t0-2, `an 8× life clock does not starve the grazer guild (${t0} → min ${tmin} → ${total()} over 480 frames)`);
+
+  DT.reset(); G._boostHi=null; G.resetEcosystem();
+  console.log(fail? `boost follow-through: ${fail} FAILURES`
+    : 'boost follow-through: thin habitats seed full boosts, kahikatea stays young while the river works, '+
+      'tūī/huia feed at their card plants (seedless), metabolism runs on the real clock so a time-lapse feeds the guild');
+}catch(e){ console.log('FOLLOW-THROUGH FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- plant goals: the visitor objective is a question a plant answers ----------------------
+// TeManawa_goals.js. The line above the timeline asks a question a plant answers ("Boost a plant
+// that was rarer in ancient times than today" → harakeke). Each boost is judged against it
+// (TMGoals.judge, from TeManawa_bus.js onBoost): the ANSWER gets its verdict in the climate colour, a
+// bigger boost and a white outline easing to green/blue, and a new goal is drawn once the time-lapse is
+// over; another plant in the right climate gets the "but is not" line; a wrong-climate plant the grey
+// line. A goal is live only while an answer fits the climate and has habitat on the land, inside any
+// date window and with its `requires` met. Among the live goals one is DRAWN, leaning on the bird
+// sequence (moa → harrier → lowland → forest), skipping recent ones. md/TEMANAWA_GOALS.md.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), TB=vm.runInContext('TMBus',ctx);
+  const TG=vm.runInContext('TMGoals',ctx), TGL=vm.runInContext('TM_GOALS',ctx), TBO=vm.runInContext('TM_BOOST',ctx);
+  const PT=vm.runInContext('PLANT_TYPES',ctx), CFG=vm.runInContext('CONFIG',ctx), ES=vm.runInContext('EntitySprites',ctx);
+  const IH=vm.runInContext('InstallHUD',ctx), D=vm.runInContext('Debug',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  // Seat the land at a year (the morph job the frame loop runs, to completion), then a fresh cast.
+  const seat=(yr)=>{ DT.endTimelapse(); DT.seekTo(yr); G.terrain.morphBegin(yr, CFG.morphBakeScale);
+    for(let n=0; n<1000 && !G.terrain.morphStep(1e9); n++){}
+    G._bakedYearsBP=yr; G._onMorphComplete(); G.resetEcosystem(); DT.seekTo(yr); };   // the rebuild resets the clock: re-seek
+  const tick=()=>TG.update(G,_t);           // the per-frame hook (InstallHUD.update calls it), driven directly
+  const boost=(m)=>{ TB.boost(m); DT.endTimelapse(); };   // judge + seed, without playing the time-lapse
+  const solve=(key)=>{ boost({ plantKey:key }); _t+=TGL.holdMs+1; tick(); };   // boost, then let the verdict release
+  const realBook=TGL.list, realRand=TG._rand;
+  TG._rand=()=>0;                           // deterministic draws: always the stage pick, always the first
+  const gHara=realBook.find(gl=>gl.id==='harakeke-rarer');
+  try{
+
+  // 1. The book is well formed, and every answer is a real plant a visitor can boost from a card.
+  const ectx={console:{log(){},warn(){},error(){}}}; vm.createContext(ectx);
+  vm.runInContext(fs.readFileSync(path.join(dir,'secondscreen','encyclopedia.js'),'utf8'),ectx);
+  const onCard=new Set(), cardName={};
+  for(const h of Object.values(vm.runInContext('TM_HABITATS',ectx))) for(const p of h.plants){ onCard.add(p.key); cardName[p.key]=p.name; }
+  const sim0=G.simulation;
+  const knownBirds=new Set([...(sim0.activeSpecies.moa||[]), 'eyles_harrier', ...Object.keys(sim0.otherEntities||{})]);
+  const ids=new Set();
+  chk(!!gHara, 'the book still has the harakeke goal');
+  for(const gl of realBook){
+    chk(!!gl.id && !ids.has(gl.id), `goal ids are unique (${gl.id})`); ids.add(gl.id);
+    chk(TGL.sequence.includes(gl.group), `${gl.id}: its group '${gl.group}' is in the bird sequence`);
+    chk(typeof gl.prompt==='string' && gl.prompt.length>0 && gl.prompt.length<=80 && typeof gl.cond==='string' && gl.cond.length>0,
+        `${gl.id}: has a prompt (≤ 80 characters, ${gl.prompt && gl.prompt.length}) and a condition`);
+    chk(Array.isArray(gl.answer) && gl.answer.length>0, `${gl.id}: has an answer`);
+    for(const k of (gl.answer||[])){
+      chk(!!PT[k], `${gl.id}: answer '${k}' is a real plant`);
+      chk(onCard.has(k), `${gl.id}: answer '${k}' is on a touchscreen card (a visitor can boost it)`);
+    }
+    for(const [kind,line] of Object.entries(gl.text||{}))   // a goal's own verdict lines
+      chk(['answer','matched','wrong','answerWrongClimate'].includes(kind) && typeof line==='string' && line.indexOf('{plant}')>=0,
+          `${gl.id}: its own '${kind}' line is a known verdict and names the plant`);
+    const R=gl.requires||{};
+    for(const k of Object.keys(R.plants||{})) chk(!!PT[k], `${gl.id}: requires.plants '${k}' is a real plant`);
+    for(const k of Object.keys(R.birds||{})) chk(knownBirds.has(k), `${gl.id}: requires.birds '${k}' is a bird in the cast`);
+    // Every verdict line this goal can produce fits the HUD (≤ 3 wrapped lines): the longest card name.
+    const longest=Object.keys(cardName).reduce((a,k)=>{ const n=(TGL.verdictNames[k]||cardName[k]); return n.length>a.length?n:a; },'');
+    for(const kind of ['answer','matched','wrong','answerWrongClimate']){
+      const tpl=(gl.text&&gl.text[kind])||TGL.text[kind];
+      const L=TG.format(tpl,longest,'interglacial',gl.cond).length;
+      chk(L<=130, `${gl.id}: its '${kind}' line fits the HUD (${L} ≤ 130 characters)`);
+    }
+  }
+  // Te reo in every visitor-facing string carries its macrons.
+  const MACRONS={ totara:'tōtara', kereru:'kererū', kokako:'kōkako', nikau:'nīkau', kowhai:'kōwhai', tui:'tūī', manuka:'mānuka',
+    okatia:'Ōkatia', apiti:'Āpiti', manawatu:'Manawatū', rangitane:'Rangitāne', takahe:'takahē', moho:'mōho', purei:'pūrei',
+    kahu:'kāhu', kouka:'kōuka' };
+  const visible=[...Object.values(TGL.text), ...Object.values(TGL.names), ...Object.values(TGL.verdictNames)];
+  for(const gl of realBook) visible.push(gl.prompt, gl.cond, ...Object.values(gl.text||{}));
+  for(const s of visible) for(const [bare,good] of Object.entries(MACRONS))
+    chk(!new RegExp('\\b'+bare+'\\b','i').test(s), `"${s}" spells ${good} with its macrons`);
+  // The both-worlds goal answers with EXACTLY the card plants the boost gate matches in either climate,
+  // so a coldTolerance retune can't leave it answering the wrong set.
+  const gBoth=realBook.find(gl=>gl.id==='both-worlds');
+  if(gBoth){
+    const neutral=[...onCard].filter(k=>TG.fitOf(k)==='neutral').sort().join(',');
+    chk([...gBoth.answer].sort().join(',')===neutral, `both-worlds answers are the both-worlds card plants (${neutral})`);
+  }
+  for(const k of ['answer','matched','wrong','answerWrongClimate'])
+    chk(typeof TGL.text[k]==='string' && TGL.text[k].indexOf('{plant}')>=0 && TGL.text[k].indexOf('{cond}')>=0,
+        `verdict line '${k}' names the plant and the condition`);
+  chk(TG.fitOf('flax')==='neutral' && TG.fitOf('tawa')==='warm' && TG.fitOf('beech')==='cold',
+      'TMGoals.fitOf (shared with the boost gate): harakeke neutral, tawa warm, beech cold');
+  chk(TG.format('{a} {regime}','X','interglacial','')==='an interglacial' && TG.format('{a} {regime}','X','glacial','')==='a glacial',
+      'the verdict says "an interglacial" / "a glacial"');
+
+  // 2. Staging, on the 1 Ma land: the ranges have not risen, so there are no subalpine tops.
+  seat(1000000);
+  chk(G.simulation.hasHabitat('flax',TGL.minHabitatCells) && !G.simulation.hasHabitat('dracophyllum',TGL.minHabitatCells),
+      'at 1 Ma harakeke has habitat and Dracophyllum has none to speak of (no subalpine tops yet)');
+  const gDraco={ id:'t-draco', group:'forest', prompt:'P-draco', cond:'c', answer:['dracophyllum'] };
+  const gLate ={ id:'t-late',  group:'moa', prompt:'P-late',  cond:'c', answer:['flax'], fromYearsBP:500000 };
+  TGL.list=[gLate, gHara]; TG.reset(); tick();
+  chk(TG.live()===gHara, `a fromYearsBP goal waits for its opening (live: ${TG.live()&&TG.live().id})`);
+  // Isolate the habitat gate: a GLACIAL clock over the unrisen 1 Ma land (seeking does not morph the land
+  // until frames run). Dracophyllum fits the climate, so only its missing habitat can keep it dark.
+  DT.seekTo(30000); TGL.list=[gDraco, gHara]; TG.reset(); tick();
+  chk(TG.glacialNow() && TG.live()===gHara,
+      `the habitat gate alone keeps a Dracophyllum goal dark before the ranges rise (live: ${TG.live()&&TG.live().id})`);
+
+  // 3. At 30 ka (a glacial) the ranges carry subalpine tops: the Dracophyllum goal (a cold plant) opens
+  //    by itself, as does the window.
+  seat(30000);
+  chk(G.simulation.hasHabitat('dracophyllum',TGL.minHabitatCells) && !G.simulation.hasHabitat('dracophyllum',1e9),
+      'hasHabitat counts cells against its threshold (enough subalpine at 30 ka, but not a billion cells)');
+  TGL.list=[gDraco]; TG.reset(); tick();
+  chk(TG.live()===gDraco, `the Dracophyllum goal goes live once the ranges carry subalpine tops (live: ${TG.live()&&TG.live().id})`);
+  TGL.list=[gLate]; TG.reset(); tick();
+  chk(TG.live()===gLate, `a fromYearsBP goal is live once the clock is younger than its opening (live: ${TG.live()&&TG.live().id})`);
+  const gWarm={ id:'t-warm', group:'forest', prompt:'P-warm', cond:'c', answer:['tawa'] };
+  TGL.list=[gWarm]; TG.reset(); DT.seekTo(122000); tick();
+  chk(TG.live()===gWarm, 'a warm-answer goal is live in an interglacial');
+  DT.seekTo(150000); tick();
+  chk(TG.live()===null && TG.text()===null, 'and dark in a glacial, where it could not be met (the regime objective shows)');
+  // A goal with a warm AND a cold answer is live in either climate; its warm answer boosted in a glacial
+  // is the right plant in the wrong climate: grey, and nothing grows.
+  const gMixed={ id:'t-mixed', group:'forest', prompt:'P-mixed', cond:'c', answer:['tawa','beech'] };
+  TGL.list=[gMixed]; TG.reset(); tick();
+  boost({ plantKey:'tawa', plantName:'Tawa' });
+  chk(TG.verdict() && TG.verdict().kind==='answerWrongClimate' && TG.color()===TGL.colWrong,
+      'the right plant in the wrong climate gets its own grey line');
+  DT.seekTo(122000); G.resetEcosystem(); DT.seekTo(122000); TG.reset(); tick();
+
+  // 4. The `requires` gate: grown plants, birds alive, an eruption this session; and drafts never show.
+  const counts=TG._plantCounts(G.simulation), nK=G.simulation.getSpeciesCount('kereru');
+  const tot=counts.Totara||0;
+  const req=(r)=>({ id:'t-req', group:'moa', prompt:'P-req', cond:'c', answer:['flax'], requires:r });
+  const liveWith=(gl)=>{ TGL.list=[gl]; TG.reset(); tick(); return TG.live()===gl; };
+  chk(liveWith(req({ plants:{ Totara: tot } })) && !liveWith(req({ plants:{ Totara: tot+1 } })),
+      `requires.plants counts the GROWN plants on the land (tōtara ${tot})`);
+  chk(liveWith(req({ birds:{ kereru: nK } })) && !liveWith(req({ birds:{ kereru: nK+1 } })),
+      `requires.birds counts the birds alive (kererū ${nK})`);
+  const fired=G._firedEruptions; G._firedEruptions=new Set();
+  chk(!liveWith(req({ eruption:true })), 'requires.eruption waits for an eruption this session');
+  G._firedEruptions.add(349000);
+  chk(liveWith(req({ eruption:true })), '…and opens once one has happened');
+  G._firedEruptions=fired;
+  chk(!liveWith({ id:'t-off', group:'moa', prompt:'P', cond:'c', answer:['flax'], off:true }), 'a draft (off: true) is never delivered');
+
+  // 5. The real book through the climates: every live goal can be met, and the glacials have goals too.
+  TGL.list=realBook;
+  for(const yr of [122000, 30000]){
+    DT.seekTo(yr); const gla=TG.glacialNow(); const live=TG.liveGoals(G, gla, yr);
+    chk(live.length>0, `the real book has live goals in a${gla?' glacial':'n interglacial'} (${live.map(x=>x.id).join(', ')})`);
+    for(const gl of live) chk(gl.answer.some(k=>TG.fits(k,gla)), `${gl.id}: live in a${gla?' glacial':'n interglacial'} only with an answer that fits it`);
+  }
+  DT.seekTo(122000);
+
+  // 6. The verdicts, on a one-goal book (harakeke).
+  TGL.list=[gHara]; TG.reset(); tick();
+  chk(TG.live()===gHara && TG.text()===gHara.prompt, 'the harakeke goal is live, and its prompt is the line');
+  const cond=gHara.cond;
+  // (a) another plant in the right climate: the normal matched boost, the "but is not" line.
+  boost({ plantKey:'tawa', plantName:'Tawa' });
+  chk(TG.verdict() && TG.verdict().kind==='matched' &&
+      TG.text()===TG.format(TGL.text.matched,'Tawa','interglacial',cond) && TG.color()===TGL.colPrompt,
+      `another plant in the right climate: "${TG.text()}"`);
+  // (b) the wrong climate: grey, nothing seeded.
+  DT.seekTo(150000); tick();
+  chk(TG.live()===gHara, 'harakeke (both worlds) keeps its goal live in a glacial');
+  const sim=G.simulation, count=(k)=>sim.plants.filter(p=>p.alive && p.type===k).length;
+  const t0=count('tawa');
+  boost({ plantKey:'tawa', plantName:'Tawa' });
+  chk(TG.verdict() && TG.verdict().kind==='wrong' &&
+      TG.text()===TG.format(TGL.text.wrong,'Tawa','glacial',cond) && TG.color()===TGL.colWrong && count('tawa')===t0,
+      `the wrong climate: "${TG.text()}" (grey, nothing grows)`);
+  // (c) the answer: the verdict in the climate colour, a bigger boost, a white outline easing to colour.
+  DT.seekTo(122000); tick();
+  const f0=count('flax'), b0=sim.getSpeciesCount('mantells_moa');
+  TB.boost({ plantKey:'flax', plantName:'Harakeke', fauna:['mantells_moa'] });
+  chk(TG.verdict() && TG.verdict().kind==='answer' && TG.text()===TG.format(TGL.text.answer,'Harakeke','interglacial',cond),
+      `the answer: "${TG.text()}"`);
+  chk(TG.color()===TBO.outlineInterglacial, 'the answer verdict takes the interglacial boost colour (green)');
+  chk(count('flax')-f0 > TBO.matchedSeed, `the answer gets a bigger boost than a normal one (${count('flax')-f0} > ${TBO.matchedSeed} harakeke)`);
+  chk(sim.getSpeciesCount('mantells_moa')-b0 > TBO.faunaRecruit,
+      `…and more of its bird (Mantell's moa ${b0} → ${sim.getSpeciesCount('mantells_moa')})`);
+  const hi=G._boostHi;
+  chk(!!(hi && hi.from) && ES.outlineStyle(hi, hi.t0).join(',')==='255,255,255' && ES._olAlpha===1,
+      'the answer outline starts solid white');
+  chk(ES.outlineStyle(hi, hi.t0+hi.fadeMs)===TBO.outlineInterglacial, '…and eases to the climate colour (green)');
+  // The HUD shows the verdict, every word wrapped in.
+  const dm=D.mode; D.mode='off'; D.applyVisibility(); FRAME(ctx.draw);
+  chk(IH._goalFade && IH._goalFade.cur.text===TG.text() && IH._goalFade.cur.col===TG.color(),
+      'the line above the timeline shows the verdict, in its colour');
+  chk(IH._goalFade.cur.lines && IH._goalFade.cur.lines.join(' ')===TG.text(), 'wrapping keeps every word');
+  D.mode=dm; D.applyVisibility();
+  // (d) the verdict holds through its time-lapse, then a goal comes back (a one-goal book: itself).
+  chk(DT.isTimelapsing(), 'the answer boost runs its time-lapse');
+  _t+=TGL.holdMs+1; tick();
+  chk(TG.verdict() && TG.verdict().kind==='answer', 'the verdict holds while the time-lapse plays');
+  DT.endTimelapse(); tick();
+  chk(!TG.verdict() && TG.live()===gHara && TG.text()===gHara.prompt, 'then the line returns to a goal');
+  // A goal's own success line: the both-worlds goal answers in glacial/interglacial terms, and its
+  // other lines fall back to the book's.
+  if(gBoth){
+    TGL.list=[gBoth]; TG.reset(); tick();
+    boost({ plantKey:'manuka', plantName:'Mānuka' });
+    chk(TG.verdict() && TG.verdict().kind==='answer' && TG.text()==='Mānuka was suited to both glacial and interglacial habitats!',
+        `a goal can word its own success line: "${TG.text()}"`);
+    boost({ plantKey:'tawa', plantName:'Tawa' });
+    chk(TG.text()===TG.format(TGL.text.matched,'Tawa','interglacial',gBoth.cond), '…and the lines it leaves out use the book defaults');
+    _t+=TGL.holdMs+1; tick();
+  }
+  // A verdict name can beat the card's own (the "Mamaku & Ponga" card reads "The tree fern" in a sentence).
+  TGL.list=[{ id:'t-fern', group:'forest', prompt:'P', cond:'c', answer:['fern'] }]; TG.reset(); tick();
+  boost({ plantKey:'fern', plantName:'Mamaku & Ponga' });
+  chk(TG.text().indexOf(TGL.verdictNames.fern)===0, `a verdict name beats the card name ("${TG.text()}")`);
+  _t+=TGL.holdMs+1; tick();
+
+  // 7. The draw: the bird sequence, its variance, the recent memory, and holding a goal across a flip.
+  const mk=(id,group)=>({ id, group, prompt:'P-'+id, cond:'c', answer:['flax'] });
+  const gMoa=mk('t-moa','moa'), gHar=mk('t-har','harrier'), gLow=mk('t-low','lowland'), gFor=mk('t-for','forest');
+  TGL.list=[gFor, gLow, gHar, gMoa]; TG.reset(); tick();
+  const order=[TG.live().id];
+  for(let i=0;i<3;i++){ solve('flax'); order.push(TG.live().id); }
+  chk(order.join(',')==='t-moa,t-har,t-low,t-for', `solving moves the draw along the bird sequence (${order.join(' → ')})`);
+  TGL.list=[gMoa, gHar, gLow, gFor]; TG._rand=()=>0.99; TG.reset(); tick();   // stage = moa, but the draw ≥ bias
+  chk(TG.live()===gFor, `the variance draw can take a live goal outside the current stage (got ${TG.live().id})`);
+  TG._rand=()=>0;
+  const gMoa2=mk('t-moa2','moa');
+  TGL.list=[gMoa, gMoa2]; TG.reset(); tick();
+  const first=TG.live(); solve('flax');
+  chk(TG.live()!==first, 'the recent memory skips the goal just shown while there is another choice');
+  const held=TG.live(); DT.seekTo(150000); tick();
+  chk(TG.glacialNow() && TG.live()===held, 'a goal that is still live is held across a climate flip');
+  DT.seekTo(122000); tick();
+  // A miss leaves the goal up; a soft reset (a new visitor) clears any verdict and restarts the sequence.
+  boost({ plantKey:'tawa' }); _t+=TGL.holdMs+1; tick();
+  chk(TG.live()===held, 'a miss leaves the same goal up');
+  boost({ plantKey:'tawa' });
+  G.resetEcosystem(); DT.seekTo(122000); tick();
+  chk(!TG.verdict() && TG._stage===0 && TG._recent.length===1, 'a soft reset clears the verdict and restarts the sequence');
+
+  // 8. The climate line under the year: "The climate is INTERGLACIAL / GLACIAL", the state in green / blue.
+  const drawn=[]; const bt=IH._blitText;
+  IH._blitText=function(s,f,t,sz,ah,av,x,y,col){ drawn.push([s,col]); return bt.apply(this,arguments); };
+  const lineAt=(yr)=>{ DT.seekTo(yr); drawn.length=0; IH.renderVisitorYear(G,1920,1080); return drawn; };
+  let d=lineAt(122000);
+  chk(d.some(([s])=>s===IH.CLIMATE_PREFIX) && d.some(([s,c])=>s==='INTERGLACIAL' && c===TBO.outlineInterglacial),
+      'under the year: "The climate is INTERGLACIAL", the state in green');
+  d=lineAt(30000);
+  chk(d.some(([s,c])=>s==='GLACIAL' && c===TBO.outlineGlacial), '…and "GLACIAL" in blue in a glacial');
+  // 9. The tally under the climate line: right-for-the-climate boosts count, wrong ones do not, and a
+  //    restarted timeline (DeepTime.reset, on every soft reset) starts it again at 0.
+  const coldKey=['tussock','snow_tussock','dracophyllum','coprosma','hebe'].find(k=>TG.fitOf(k)==='cold');
+  DT.reset(); DT.seekTo(122000);
+  boost({ plantKey:'tawa' }); boost({ plantKey:'tawa' });
+  if(coldKey) boost({ plantKey:coldKey });                  // a cold plant in an interglacial: wrong, not counted
+  drawn.length=0; IH.renderVisitorYear(G,1920,1080);
+  chk(DT.boostsOk===2 && drawn.some(([s])=>s===IH.BOOSTS_PREFIX+'2'),
+      `under the climate line: "Successful boosts: 2" after two right boosts${coldKey?' and one wrong':''} (counted ${DT.boostsOk})`);
+  G.resetEcosystem(); drawn.length=0; IH.renderVisitorYear(G,1920,1080);
+  chk(DT.boostsOk===0 && drawn.some(([s])=>s===IH.BOOSTS_PREFIX+'0'), '…and a soft reset (timeline restart) zeroes it');
+  IH._blitText=bt;
+
+  } finally { TGL.list=realBook; TG._rand=realRand; TG.reset(); DT.reset(); G._boostHi=null; G.resetEcosystem(); }
+  console.log(fail? `plant goals: ${fail} FAILURES`
+    : 'plant goals: verdicts (answer / right climate / wrong climate) with a bigger answer boost; goals gated by climate, habitat, '+
+      'window and requires; drawn along the bird sequence with variance; macrons + line lengths; the climate line under the year');
+}catch(e){ console.log('GOALS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- biomes: one table, and the bands actually reachable --------------
 // There were two biome tables: levelDef.biomes (which renders) and a BIOMES
@@ -1804,6 +2735,93 @@ try{
     : `sprite atlas: ${SA.frameCount} frames in ${SA.pages.length} page(s) at ${SA.scale}x, refs rebound + image() wrapped`);
 }
 
+// ---- live fauna outline (prototype): the baked sticker border, recoloured per frame ----------
+// TeManawa_outline.js. The harness has no pixels (no masks get built) and no GL (draw() is a no-op),
+// so it guards the parts that can silently go wrong: the extraction on a synthetic sticker sprite
+// (border taken, ink + cream INSIDE the ink left alone, a gap in the ink can't leak far), the colour
+// rules, the atlas packing each mask beside its sprite, and the 2D fallback keeping the baked border.
+try{
+  const FO=vm.runInContext('FaunaOutline',ctx), FOC=vm.runInContext('FAUNA_OUTLINE',ctx);
+  const SA=vm.runInContext('SpriteAtlas',ctx), ES=vm.runInContext('EntitySprites',ctx), TBO=vm.runInContext('TM_BOOST',ctx);
+  const G=vm.runInContext('game',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+
+  // 1. A 40×40 sticker: transparent margin, a 4 px off-white border, a 2 px ink line, then the body:
+  //    its left half the SAME cream as the border (moa legs, the kererū's breast), its right half brown.
+  const W=40, H=40, px=new Uint8ClampedArray(W*H*4);
+  const ring=(x,y)=>Math.min(x, y, W-1-x, H-1-y);              // distance in from the frame edge
+  const CREAM=[235,229,213], INK=[30,22,18], BROWN=[120,80,60];
+  const paint=(gap)=>{
+    for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+      const d=ring(x,y), i=(y*W+x)*4;
+      let c=null;
+      if(d>=4 && d<8) c=CREAM;                                      // the sticker border
+      else if(d>=8 && d<10) c=(gap && x>=8 && x<10 && y>=18 && y<22) ? CREAM : INK;   // ink, optionally gapped
+      else if(d>=10) c=(x<20) ? CREAM : BROWN;                      // the body
+      if(c){ px[i]=c[0]; px[i+1]=c[1]; px[i+2]=c[2]; px[i+3]=255; } else { px[i]=px[i+1]=px[i+2]=px[i+3]=0; }
+    }
+  };
+  const at=(r,x,y)=>r.alpha[y*W+x];
+  paint(false);
+  let r=FO.extract(px,W,H,8);
+  chk(r && Math.abs(r.base[0]-235)<2 && Math.abs(r.base[2]-213)<2, 'the border colour is read off the sticker edge');
+  chk(r && at(r,5,20)===255 && at(r,20,6)===255, 'the sticker border is taken (fully)');
+  chk(r && at(r,8,20)===0 && at(r,20,9)===0, 'the ink line is left alone');
+  chk(r && at(r,14,20)===0 && at(r,12,30)===0, 'cream INSIDE the ink is left alone (moa legs, the kererū breast)');
+  chk(r && at(r,26,20)===0, 'the body is left alone');
+  // A gap in the ink: the leak through it is capped by the depth limit, so the body stays clear.
+  paint(true);
+  r=FO.extract(px,W,H,8);
+  chk(r && at(r,9,20)===255, 'a gap in the ink is followed a little way…');
+  chk(r && at(r,14,30)===0 && at(r,16,12)===0, '…but the depth cap keeps the leak off the body');
+
+  // 2. Colour: identical to the baked border at rest with no climate lean (no quad drawn); the climate
+  //    lean follows the edge band; a boost highlight takes the boost colour, a goal answer starts white.
+  const base=[235,229,213], ent={ speciesKey:'little_bush_moa' }, now=1000;
+  const saved={ mix:FOC.climateMix, hi:G._boostHi, r:G._edgeR, g:G._edgeG, b:G._edgeB };
+  G._boostHi=null; FOC.climateMix=0;
+  chk(FO.colorFor(ent,base,now)===null, 'no climate lean and no boost: no outline quad at all (the baked border shows)');
+  FOC.climateMix=0.5; G._edgeR=150; G._edgeG=205; G._edgeB=236;
+  const c=FO.colorFor(ent,base,now);
+  chk(c && Math.abs(c[0]-192.5)<0.01 && Math.abs(c[2]-224.5)<0.01, 'the resting outline leans climateMix of the way to the edge band');
+  G._boostHi={ keys:new Set(['little_bush_moa']), color:TBO.outlineInterglacial, until:now+5000, t0:now };
+  chk(FO.colorFor(ent,base,now)===TBO.outlineInterglacial, 'a boost highlight recolours the border in the boost colour');
+  chk(FO.colorFor({ speciesKey:'kereru' },base,now)!==TBO.outlineInterglacial, '…only for the highlighted species');
+  G._boostHi={ keys:new Set(['little_bush_moa']), color:TBO.outlineInterglacial, until:now+5000, t0:now,
+               from:[255,255,255], fadeMs:6000, _col:[255,255,255] };
+  const w=FO.colorFor(ent,base,now);
+  chk(w && w[0]===255 && w[1]===255 && w[2]===255, 'a goal answer starts the border white');
+  // Fade-out: the last outlineFadeOutMs ease the highlight out instead of cutting it off.
+  const fo=TBO.outlineFadeOutMs||0;
+  chk(fo>0, 'the boost outline has a fade-out window (TM_BOOST.outlineFadeOutMs)');
+  FOC.climateMix=0;
+  G._boostHi={ keys:new Set(['little_bush_moa']), color:TBO.outlineInterglacial, until:now+fo*0.5, t0:now-20000 };
+  ES.outlineStyle(G._boostHi, now);
+  chk(ES._olAlpha!=null && ES._olAlpha<0.9 && ES._olAlpha>0 && ES._olFade>0 && ES._olFade<1, 'mid fade-out the plant ring alpha is eased down, not cut');
+  const fm=FO.colorFor(ent,base,now), ig=TBO.outlineInterglacial;
+  chk(fm && fm!==ig && fm[0]>Math.min(base[0],ig[0])-0.01 && fm[0]<Math.max(base[0],ig[0])+0.01 && fm[0]!==ig[0],
+      'mid fade-out the live fauna border blends from the boost colour back to the baked one');
+  ES.outlineStyle(G._boostHi, now+fo*0.5);
+  chk(ES._olAlpha===0 && ES._olFade===0, 'the fade-out reaches zero exactly at the boost end');
+  FOC.climateMix=saved.mix; G._boostHi=saved.hi; G._edgeR=saved.r; G._edgeG=saved.g; G._edgeB=saved.b;
+
+  // 3. The atlas packs each mask beside its sprite: the pairs are collected FIRST, sprite then mask, and
+  //    the stable height sort keeps them together (one page, no texture switch). The tūī is packed now.
+  const fake={ sprite:{ width:8, height:8 }, mask:{ width:4, height:4, __nativeW:8, __nativeH:8 }, base };
+  const savedPairs=FO._pairs; FO._pairs=[fake];
+  const order=[]; SA._collectRoots((holder,key)=>order.push(holder[key]));
+  FO._pairs=savedPairs;
+  chk(order[0]===fake.sprite && order[1]===fake.mask, 'the atlas collects each outline pair first, sprite then mask');
+  const tu=ES.tui && ES.tui.flying && ES.tui.flying[0];
+  chk(!tu || SA.isFrame(tu), 'the tūī frames are packed into the atlas (they were missed, a GL texture switch per bird)');
+
+  // 4. No GL here: draw() is a no-op and covers() is false, so the 2D fallback shows the baked border
+  //    and keeps the boost ring.
+  chk(FO.covers({})===false, 'without GL nothing is covered (the 2D fallback keeps the baked border + boost ring)');
+  console.log(fail? `fauna outline: ${fail} FAILURES`
+    : 'fauna outline: the border mask takes the sticker and spares the ink + body, colours follow climate/boost/goal, masks pack beside their sprites');
+}catch(e){ console.log('OUTLINE FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
 // ---- glbatch: refuse a SOFTWARE WebGL renderer (kiosk GPU guard) -----------
 // The batch only wins on a real GPU. On Chrome's software rasterizer (SwiftShader)
 // getContext SUCCEEDS but every quad is CPU-shaded — slower than the 2D path, and with
@@ -1960,6 +2978,33 @@ try{
 }
 
 // ---- geography skeleton: river carves, ranges lift, deep-time factors --------
+// ---- svg2geo: what the editor shows is what the sim gets ------------------------
+// A path rotated in the editor carries `transform` + `transform-origin`; until 2026-10-20 the
+// converter dropped both, so the Ōroua reached the sim un-rotated. Converts a scratch SVG with a
+// rotated path (Boxy SVG's form), a translated <g>, and an `id` that holds the letter d.
+{
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+  const os = require('os'), cp = require('child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'svg2geo-'));
+  try {
+    const svgF = path.join(tmp, 't.svg'), outF = path.join(tmp, 't.geo.js');
+    fs.writeFileSync(svgF, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <polyline class="river" points="0,50 100,50"/>
+  <path id="trib-dd" data-name="rot" style="fill: none; transform-origin: 50px 50px;" d="M 10 50 L 40 50" transform="matrix(-1, 0, 0, -1, 0, 0)"/>
+  <g transform="translate(5 10)"><polyline class="tributary" data-name="grp" points="20,0 20,40"/></g>
+</svg>`);
+    cp.execFileSync(process.execPath, [path.join(dir, 'tools', 'svg2geo.js'), svgF, outF], { stdio: 'ignore' });
+    const s = fs.readFileSync(outF, 'utf8'), G2 = JSON.parse(s.slice(s.indexOf('{'), s.lastIndexOf('}') + 1));
+    const rot = G2.rivers.find(r => r.name === 'rot'), grp = G2.rivers.find(r => r.name === 'grp');
+    const near = (p, x, y) => p && Math.abs(p[0] - x) < 1e-3 && Math.abs(p[1] - y) < 1e-3;
+    chk(rot && near(rot.pts[0], 0.9, 0.5) && near(rot.pts[rot.pts.length - 1], 0.6, 0.5), `a path rotated 180° about its transform-origin lands rotated (${rot ? JSON.stringify(rot.pts) : 'missing'})`);
+    chk(grp && near(grp.pts[0], 0.25, 0.1) && near(grp.pts[grp.pts.length - 1], 0.25, 0.5), `a <g transform> moves the shapes inside it (${grp ? JSON.stringify(grp.pts) : 'missing'})`);
+    chk(rot && rot.type === 'tributary', 'an id containing "d" no longer hijacks the path data, and its class still tags it');
+  } catch (e) { chk(false, 'svg2geo ran: ' + e.message); }
+  finally { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (_) {} }
+  console.log(fail ? `svg2geo: ${fail} FAILURES` : 'svg2geo: transforms applied (rotation about transform-origin, <g> groups), names carried, no attribute cross-talk');
+}
+
 // SVG-authored skeleton (TE_MANAWA_GEO) reshapes the base noise: ranges lift the
 // land, the river incises a channel that rides the local ground (reaching sea level
 // only at the coast), both scaling with yearsBP.
@@ -2060,21 +3105,51 @@ try{
   // deep-time factors: keyed to ABSOLUTE dates (not window progress), so a given yearsBP
   // always maps to the same geological state — jump the clock or resize the window freely.
   const at = yr => TG.geoTimeFactors(yr);
-  chk(at(1000000).uplift < 0.02, 'at ~1 Ma the ranges are nascent (uplift ~0)');
+  // ~1 Ma (Trewick & Bland 2012; md/TEMANAWA_NATURAL_HISTORY.md §I): the Manawatū Strait across the
+  // axis had closed by ~1.6 Ma, the axis is a LOW EMERGENT FINGER of basement about to rise fast, the
+  // river has just turned west, and the basin (deepest off Levin–Foxton) emerges north-first.
+  const E0 = TG.GEO_EPOCHS;
+  chk(Math.abs(at(1000000).uplift - E0.upliftStart) < 1e-9 && E0.upliftStart > 0.05,
+      `at ~1 Ma the ranges are low basement hills, not a flat plain (uplift ${at(1000000).uplift})`);
   chk(at(25500).uplift > 0.98, 'by ~25 ka the ranges are mature (uplift ~1)');
-  chk(at(1000000).incision > at(1000000).uplift, 'incision leads uplift — the river outpaces the ranges');
-  chk(at(1500000).uplift === 0, 'before the onset date (older than ~1 Ma) uplift floors at 0');
+  let leads = true; for (let y = 1000000; y >= 25000; y -= 25000) if (at(y).incision < at(y).uplift - 1e-9) leads = false;
+  chk(leads, 'incision leads uplift across the whole window — the river outpaces the ranges');
+  chk(at(1500000).uplift === at(1000000).uplift, 'before the onset date uplift holds at its head start');
   chk(at(1000000).emergence < 0.02, 'at ~1 Ma the river has barely emerged (strait, not yet a river)');
   chk(at(500000).emergence > 0.98, 'the river is fully connected by its dated completion (~500 ka)');
   chk(at(100000).emergence > 0.98 && at(100000).uplift > 0.7, 'a near-present date reads near-modern regardless of the window');
+  // The river turned WEST c. 1 Ma: the flow is already seaward at the opening, the old east-flowing
+  // arm dried by ~0.6 Ma.
+  chk(at(1000000).mainArm > 0, 'the main stem already flows seaward (west) at the ~1 Ma opening');
+  chk(at(600000).mainArm > 0.99, 'the old east-flowing NE arm is abandoned by ~0.6 Ma');
 
-  // SOUTH-HALF STRAIT: a pulse — the southern half subsides 1 Ma → peak ~0.5 Ma → risen back ~0.3 Ma
-  chk(at(1000000).southSink < 0.02, 'at ~1 Ma the south half has not yet subsided (strait forming)');
-  chk(at(500000).southSink > 0.98, 'the south half is fully submerged at its ~0.5 Ma peak');
-  chk(at(300000).southSink < 0.02, 'the south half has risen back to normal land by ~0.3 Ma');
+  // SOUTH-HALF STRAIT: one-way — the south opens as sea (the basin depocentre off Levin–Foxton) and
+  // drains by ~0.5 Ma, emerging east-first. No later re-flooding pulse.
+  chk(at(1000000).southSink > 0.98, 'at the ~1 Ma opening the south half is sea');
+  chk(at(500000).southSink < 0.02, 'the south half has drained to land by ~0.5 Ma');
   chk(at(100000).southSink < 0.02, 'no southern strait near the present');
-  chk(at(1000000).southSink < at(500000).southSink && at(300000).southSink < at(500000).southSink,
-      'the strait is a pulse — a single peak at ~0.5 Ma, dry on both sides');
+  let mono = true; for (let y = 1000000; y > 500000; y -= 25000) if (at(y - 25000).southSink > at(y).southSink + 1e-9) mono = false;
+  chk(mono, 'the south drains one way — it never re-floods on the way to the present');
+
+  // GORGE PINCH: the wide early water never crosses the axis — an estuary arm west of the gap, the
+  // fault-ponded lake east of it, river-width in the gap itself.
+  const gU = (vm.runInContext('LOOK', ctx) || {}).straitGorgeU;
+  chk(TG._straitWide(gU, 1, 0, 0.08) === 0, 'at full strait the main stem is river-width in the range gap');
+  chk(TG._straitWide(0.30, 1, 0, 0.08) > 0.99, 'west of the gap the early water is wide (the estuary arm)');
+  chk(TG._straitWide(0.65, 1, 0, 0.08, 1) > 0.99, 'east of the gap the water is wide at the lake peak (the ponded lake)');
+  chk(TG._straitWide(0.65, 1, 0, 0.08, 0) === 0, 'the strait factor never widens the east of the gap — the lake has its own clock');
+  chk(TG._straitWide(0.90, 1, 0, 0.08, 1) === 0, 'the lake is confined near the gap; the far east stays land (T&B Fig. 4D)');
+  chk(TG._mainWidthMult(0.65, 1, 0, 0.08, 1) > 2 && TG._mainWidthMult(0.65, 0, 0, 0.08, 0) === 1, 'the main widens into the lake at its peak and is plain river once it has drained');
+  // WOODVILLE LAKE: ponds from ~1 Ma (uplift on the Wellington Fault), drains west through the gorge.
+  chk(at(1000000).lake > 0 && at(900000).lake > 0.98, 'the Woodville lake ponds from ~1 Ma and is full by ~0.9 Ma');
+  chk(at(600000).lake < 0.01 && at(100000).lake === 0, 'the lake has drained by ~0.6 Ma and never returns');
+  // TRIBUTARY FANS: open at 1 Ma, one channel by the present.
+  chk(at(1000000).tribSpread > 0.99 && at(300000).tribSpread < 0.01 && at(650000).tribSpread > 0 && at(650000).tribSpread < 1,
+      'the tributary fans are open at 1 Ma, drawing together mid-window and closed by ~0.3 Ma');
+  chk(at(1000000).mainArm > 0.99, 'the old east-flowing NE arm is already abandoned at the 1 Ma opening');
+  // RANGE PROTECTION helper (applied to the SW strait + patch; the south strait has its own)
+  chk(TG._rangeProtect(0.5, 1, 1) === 0 && TG._rangeProtect(0.5, 0, 1) === 0.5 && Math.abs(TG._rangeProtect(0.5, 0.5, 1) - 0.25) < 1e-12,
+      'range protection scales a marine term by (1 − k·rMask), floored at 0');
   // _southStrength: a south-ward latitude ramp (0 north of `lat` → 1 by `lat`+`feather`) × the pulse
   chk(TG._southStrength(0.2, 1, 0.45, 0.22) === 0, 'south-sink strength is 0 north of the shore latitude');
   chk(TG._southStrength(0.9, 1, 0.45, 0.22) > 0.98, 'south-sink strength is full in the deep south at peak');
@@ -2100,9 +3175,18 @@ try{
     T._geoT = { uplift: 1, incision: 1, emergence: 1 }; T._prepGeo();
     const poly = GEO.ranges && GEO.ranges[0] && GEO.ranges[0].poly;
     const river = GEO.rivers && GEO.rivers[0] && GEO.rivers[0].pts;
+    // The live _applyGeo path reads noise() per call, and the harness noise is Math.random, so one
+    // probe of a range cell is a dice roll (~1 run in 10 fell under 0.35 on ridge noise alone; real
+    // noise gives 0.56). Probe it 9 times and judge the median.
+    const med9 = (f) => { const v = []; for (let k = 0; k < 9; k++) v.push(f()); v.sort((a, b) => a - b); return v[4]; };
     if (poly) {
       let cx = 0, cy = 0; for (const p of poly) { cx += p[0]; cy += p[1]; } cx /= poly.length; cy /= poly.length;
-      const lifted = T._applyGeo(0.2, cx, cy, cx * T.mapWidth, cy * T.mapHeight);
+      // The range relief is a ridged fBm, and the harness noise is white (Math.random per call), whose
+      // ridged sum averages far below smooth noise's. Pin noise flat for this probe so it tests the
+      // lift itself, not the stub.
+      const nz = ctx.noise; ctx.noise = () => 0.5;
+      const lifted = med9(() => T._applyGeo(0.2, cx, cy, cx * T.mapWidth, cy * T.mapHeight));
+      ctx.noise = nz;
       chk(lifted > 0.35, `a range lifts the land well above the plains (got ${lifted.toFixed(2)})`);
     }
     // Range spine: the crest concentrates on the range's long (PCA) axis; flanks fall to foothills.
@@ -2126,42 +3210,55 @@ try{
       const carvedMouth = T._applyGeo(0.08, mouth[0], mouth[1], mouth[0] * T.mapWidth, mouth[1] * T.mapHeight);
       chk(carvedMouth < 0.1, `near the coast the river bed reaches the sea band (got ${carvedMouth.toFixed(2)})`);
     }
-    // Emergence: the MAIN stem is ANTECEDENT — authored once and carved throughout the window
-    // (TEMANAWA_PLAN_V3 §0: "the river is authored once, so antecedence falls out of the art for
-    // free"). What ASSEMBLES over deep time is the TRIBUTARY network: a tributary is absent at its
-    // emergence start (tribEmergence 0 → the land untouched, no source nub) and carves in as the
-    // front sweeps source→confluence (tribEmergence 1). The 0.5 rework made this per-cell — the main
-    // passes cellEmg 1.0 and no longer honours a channel-wide emergence scalar — so we probe a
-    // tributary here, not the main. (The seaward MARINE embayment at the window start is a separate
-    // mechanism — submergence / seaRise — asserted in the SOUTH-HALF STRAIT block below.)
+    // Antecedence: the MAIN stem is authored once and carved throughout the window (TEMANAWA_PLAN_V3
+    // §0). The TRIBUTARIES are there throughout too — the east-side catchment's flow is what cut the
+    // gorge (Trewick & Bland 2012) — but as a FAN of thin hill streams at 1 Ma that draws together
+    // into one channel as the ranges steepen (t.tribSpread 1 → 0, LOOK.tribFan*). Until 2026-10-19
+    // they were absent until 0.4 Ma and grew headward; these checks replaced that.
     if (river) {
-      // Antecedent main: its seaward mouth (already-low ground) carries water regardless of the
-      // tributary clock — the trunk is there for the whole window.
-      T._geoT.tribEmergence = 0; T._geoT.tribEmergenceEarly = 0;
+      // Antecedent main: its seaward mouth (already-low ground) carries water at any fan state.
+      T._geoT.tribSpread = 1;
       const mouth = river[0];
       const wetMouth = T._applyGeo(0.08, mouth[0], mouth[1], mouth[0] * T.mapWidth, mouth[1] * T.mapHeight);
       chk(wetMouth < 0.12, `the antecedent main stem carves its seaward reach throughout (got ${wetMouth.toFixed(2)})`);
 
-      // Tributary emergence front: find a plains tributary cell that genuinely carves once emerged
-      // AND is still land before it has — self-calibrating, so it does not depend on which authored
-      // tributary or vertex happens to sit over carvable plains (range-lifted, off-channel, or
-      // main-valley-dominated cells simply fail one half of the pair and are skipped).
-      const tribs = (GEO.rivers || []).filter(r => r.type === 'tributary');
-      let probed = false, emgWet = 0, preDry = 0;
+      // The stream geometry, pure: on the trunk line the trunk is water at any spread; a cell on a
+      // hill stream's line is water while the fan is open and dry once it has closed; and the fan
+      // closes downstream — near the confluence that stream has drawn in to the trunk.
+      const tr0 = T._geoTribs && T._geoTribs[0], th = tr0 && tr0.threads;
+      chk(th && th.length === Math.round(vm.runInContext('LOOK', ctx).tribFanStreams), 'each tributary carries LOOK.tribFanStreams streams, the trunk first');
+      if (th && th.length > 1) {
+        const sp = vm.runInContext('LOOK', ctx).tribFanSpread, k = 1, pMid = th[k].p0 + 0.1;
+        const tp = Math.max(0, Math.min(1, (th[k].pc - pMid) / vm.runInContext('LOOK', ctx).tribFanTaper)), tpS = tp * tp * (3 - 2 * tp);
+        const q = pMid * 64, q0 = q | 0, mz = th[k].mz[q0] + (th[k].mz[Math.min(64, q0 + 1)] - th[k].mz[q0]) * (q - q0);
+        const sOn = (th[k].off * sp + mz * vm.runInContext('LOOK', ctx).tribFanMeander * sp) * tpS;   // stream k's line at full spread
+        chk(TG._tribThreads(0, 0.5, th, 1, 0.01, 0.005, 0) > 0.99 && TG._tribThreads(0, 0.5, th, 0, 0.01, 0.005, 0) > 0.99,
+            'the trunk is water on its line whether the fan is open or closed');
+        chk(TG._tribThreads(sOn, pMid, th, 1, 0.01, 0.005, 0, 0.01) > 0.99, `a hill stream is water on its own line while the fan is open (s ${sOn.toFixed(3)})`);
+        chk(TG._tribThreads(sOn, pMid, th, 0, 0.01, 0.005, 0) === 0, 'that line is dry once the fan has closed into one channel');
+        chk(TG._tribThreads(th[k].off * sp, Math.min(1, th[k].pc + 0.01), th, 1, 0.01, 0.005, 0) === 0,
+            'below its merge point a hill stream has drawn in to the trunk (no stray parallel channel to the main)');
+        chk(TG._tribThreads(sOn, th[k].p0 - 0.02, th, 1, 0.01, 0.005, 0) === 0, 'a hill stream starts below the trunk source, not at the top edge');
+      }
+      const w2 = TG._tribWidths(0.016, 0, [0, 0]), w2b = TG._tribWidths(0.016, 1, [0, 0]);
+      chk(w2[0] < w2b[0] && Math.abs(w2b[0] - 0.016) < 1e-9 && w2[1] === w2b[1],
+          'a trunk is a thin stream at 1 Ma and grows to its full width as the fan closes; the hill streams stay thin');
+
+      // Live carve: a tributary trunk cell over plains carves at 1 Ma (fan open) AND at the present
+      // (fan closed) — nothing waits for 0.4 Ma. Self-calibrating over the authored vertices.
+      const tribs = T.getRivers().filter(r => r.type === 'tributary');
+      let probed = false, early = 0, late = 0;
       for (const tr of tribs) {
-        const pts = tr.pts;
-        for (let k = 1; k < pts.length - 1; k++) {
-          const p = pts[k], wx = p[0] * T.mapWidth, wy = p[1] * T.mapHeight;
-          T._geoT.tribEmergence = 1; T._geoT.tribEmergenceEarly = 1;
-          const wet = T._applyGeo(0.4, p[0], p[1], wx, wy);
-          T._geoT.tribEmergence = 0; T._geoT.tribEmergenceEarly = 0;
-          const dry = T._applyGeo(0.4, p[0], p[1], wx, wy);
-          if (wet < 0.38 && dry > 0.38) { probed = true; emgWet = wet; preDry = dry; break; }
+        for (let k = 1; k < tr.pts.length - 1 && !probed; k++) {
+          const p = tr.pts[k], wx = p[0] * T.mapWidth, wy = p[1] * T.mapHeight;
+          T._geoT.tribSpread = 1; const a = T._applyGeo(0.4, p[0], p[1], wx, wy);
+          T._geoT.tribSpread = 0; const b = T._applyGeo(0.4, p[0], p[1], wx, wy);
+          if (b < 0.38) { probed = true; early = a; late = b; }
         }
         if (probed) break;
       }
-      chk(probed, `a tributary carves in as it emerges but is land before (emerged ${emgWet.toFixed(2)} vs pre-emergence ${preDry.toFixed(2)})`);
-      T._geoT.tribEmergence = 1; T._geoT.tribEmergenceEarly = 1; T._geoT.emergence = 1;
+      chk(probed && early < 0.4, `a tributary trunk carves at 1 Ma as well as at the present (1 Ma ${early.toFixed(2)}, present ${late.toFixed(2)})`);
+      T._geoT.tribSpread = 0; T._geoT.emergence = 1;
     }
     // SOUTH-HALF STRAIT: at its ~0.5 Ma peak the southern lowlands drown to the sea band, but the
     // Tararua range footprint (GEO.ranges[0], the southern range) stays a dry peninsula — the land
@@ -2184,6 +3281,25 @@ try{
       // Assert the DROP rather than an absolute band: the west-south margin cell is seed/meander-
       // sensitive, but southSink must still submerge it markedly relative to its drained self.
       chk(drownedOn < returned - 0.15, `the western southern lowland drowns markedly at the strait peak (on ${drownedOn.toFixed(2)} vs drained ${returned.toFixed(2)})`);
+    }
+    // RANGE PROTECTION at the ~1 Ma flood: under the full SW strait + submergence + south sink the
+    // Tararua (GEO.ranges[0]) stands as land — the axis is a low emergent finger, the sea laps it.
+    // Without LOOK.seaRangeProtect the SW strait drowned it: "the sea where the ranges later form",
+    // which is the ~2.4 Ma Manawatū Strait, not 1 Ma (md/TEMANAWA_NATURAL_HISTORY.md §I).
+    if (poly && T._geoRanges && T._geoRanges[0]) {
+      const L = vm.runInContext('LOOK', ctx), kP = L.seaRangeProtect, r0 = T._geoRanges[0];
+      T._geoT = { uplift: TG.GEO_EPOCHS.upliftStart, incision: 0.2, emergence: 1, submergence: 1, southSink: 1 }; T._prepGeo();
+      const probe = () => med9(() => T._applyGeo(0.30, r0.cx, r0.cy, r0.cx * T.mapWidth, r0.cy * T.mapHeight));   // median: see med9
+      // The central patch is OFF by default since 2026-10-19 (the east was land at 1 Ma), so switch
+      // its old setting back on for the probe: the protection must still hold if it is re-enabled.
+      const pRX = L.patchSubRX; L.patchSubRX = 0.17;
+      const pSW = L.seaSWReach; L.seaSWReach = 1.60;   // the SW strait is retired too (relative sea level floods the west now)
+      L.seaRangeProtect = 1; const kept = probe();
+      L.seaRangeProtect = 0; const drowned = probe();
+      L.seaRangeProtect = kP; L.patchSubRX = pRX; L.seaSWReach = pSW;
+      chk(kP >= 0.9, `the ranges are protected from the SW strait and patch by default (LOOK.seaRangeProtect ${kP})`);
+      chk(kept > 0.2, `at the ~1 Ma flood the Tararua stands as land (got ${kept.toFixed(2)})`);
+      chk(kept > drowned + 0.1, `range protection is what keeps it dry (protected ${kept.toFixed(2)} vs unprotected ${drowned.toFixed(2)})`);
     }
     T._viewF = savedVF; T._geoT = savedT; T._prepGeo();
   }
@@ -2224,6 +3340,32 @@ try{
   // onto the tectonic emergence). Colder EXPOSES land (coast seaward); warmer FLOODS (coast inland).
   chk(TG.glacialSeaShift(140000) > TG.glacialSeaShift(122000), 'the glacial sea shift is larger (more exposure) in a glacial than an interglacial');
   chk(TG.glacialSeaShift(140000) > 0, 'a glacial LOWSTAND raises the coastal shelf — exposes land, the coast marches seaward');
+  // RELATIVE SEA LEVEL over the WHOLE window (2026-10-19): eustatic + a land offset that is the
+  // plain's uplift near the present and saturates further back (sediment kept the basin's surface at
+  // sea level). So every cycle sweeps the shore across the plain: highstands reach the range foot,
+  // lowstands bare the plain — the early ones too (T&B Fig. 4D's pale band; Rees et al. 2019's lowstand
+  // braid plains), and the later lowstands bare more. Two earlier versions failed this.
+  {
+    const U = TG.landOffsetM, R = TG.relativeSeaLevel;
+    let upMono = true; for (let y = 0; y < 1000000; y += 20000) if (U(y + 20000) < U(y) - 1e-9) upMono = false;
+    chk(U(0) === 0 && upMono, 'the land offset is 0 today and grows with age');
+    chk(U(1000000) < 100 && U(1000000) - U(500000) < 10, `the offset saturates (${U(500000).toFixed(0)} m at 500 ka, ${U(1000000).toFixed(0)} m at 1 Ma): the early plain sat near sea level`);
+    const earlyLows = [880000, 800000, 740000], earlyHighs = [918000, 834000, 786000];
+    chk(earlyLows.every(y => R(y) <= 0), `the early glacials bare the plain — the sea falls to or below today's (${earlyLows.map(y => R(y).toFixed(0)).join(', ')} m)`);
+    chk(earlyHighs.every(y => R(y) >= 35), `the early interglacials flood it to the range foot (${earlyHighs.map(y => R(y).toFixed(0)).join(', ')} m)`);
+    chk(R(122000) >= 35, `MIS 5e still reaches the Tokomaru bench (${R(122000).toFixed(0)} m)`);
+    chk(R(650000) > R(450000) && R(450000) > R(140000) && R(140000) > R(25500), `the glacial maxima bare more as the run plays: MIS 16, 12, 6, LGM (${[650000, 450000, 140000, 25500].map(y => R(y).toFixed(0)).join(', ')} m)`);
+    chk(R(25500) < -100, `the LGM is still a deep lowstand (${R(25500).toFixed(0)} m)`);
+    // _seaShift: a highstand floods by CONTOUR and flattens what it drowns; a lowstand lifts the shelf.
+    const S = TG._seaShift;
+    let mono = true; for (let e = 0; e < 1; e += 0.005) if (S(e + 0.005, -0.15, 0.3) < S(e, -0.15, 0.3) - 1e-9) mono = false;
+    chk(mono, 'the highstand shift keeps the ground in order (monotonic in elevation)');
+    chk(S(0.20, -0.15, 0.3) < 0.10 && S(0.24, -0.15, 0.3) < 0.10, 'a highstand drowns everything below its contour, not just the lowest strip');
+    chk(S(0.20, -0.15, 0.3) - S(0.05, -0.15, 0.3) < 0.07, 'drowned ground is flattened to a shallow floor (no ghost relief under the water)');
+    chk(S(0.60, -0.15, 0.3) === 0.60, 'ground well above the contour is untouched (the ranges never flood)');
+    chk(S(0.20, -0.15, 0.3) < 0.10 && S(0.20, -0.05, 0.3) >= 0.10, 'a higher sea floods ground a lower one leaves dry');
+    chk(S(0.15, 0.05, 0.3) > 0.15 && S(0.5, 0.05, 0.3) === 0.5, 'a lowstand lifts the low shelf and leaves the ranges alone');
+  }
   const cg = (e, gs) => TG._combineGeo(e, 0,0,0,0, 0,0, 1,1, 0.45,0.06,0.04, 0.5, 1, 0, 1, 2.6, 0.25, 0, 0, 0.04, 0, 1, 0, gs, 0.30);
   chk(cg(0.15, 0.08) > 0.15, 'a glacial lowstand (+shift) lifts a low coastal cell toward land');
   chk(cg(0.15, -0.08) < 0.15, 'an interglacial highstand (−shift) sinks a low coastal cell toward sea');
@@ -2241,10 +3383,185 @@ try{
     let hi = 0; const b = T.heightMap; for (let i = 0; i < b.length; i += 53) if (b[i] > 0.6) hi++;
     chk(hi > lo, `ranges rise with deep time — high-ground cells ${lo} -> ${hi}`);
     chk(!!T._geoCache, 'the geo field is cached (morph re-applies the deep-time factors only)');
+
+    // The early west breathes: count land cells west of the ranges (u < 0.45) at an early highstand,
+    // the lowstand after it, and MIS 5e. The lowstand bares far more; the early highstand drowns more
+    // than MIS 5e, because the plain stood lower (Waitapu c. 0.88 Ma: Feilding–Halcombe under shelf).
+    {
+      const seaE0 = T._waterBiome && T._waterBiome.maxElevation != null ? T._waterBiome.maxElevation : 0.10;
+      const westLand = (y) => {
+        T.morphTo(y, 1);
+        const a = T.heightMap, gc = T.gridCols, gr = T.gridRows; let n = 0;
+        for (let row = 0; row < gr; row += 2) for (let c = 0; c < gc * 0.45; c += 2) if (a[row * gc + c] >= seaE0) n++;
+        return n;
+      };
+      const hi = westLand(918000), lo = westLand(880000);
+      chk(lo > hi * 1.5, `the early west breathes: the MIS 22 lowstand bares far more land than the MIS 23 highstand (${lo} vs ${hi} cells)`);
+    }
+
+    // MEANDERS and TE ĀPITI (2026-10-19). Each channel's line is offset by a 1D fBm that drifts
+    // downstream with time: free on the low plain, pinned in the gorge and at every confluence, the same
+    // for the same date (so the sliced morph matches the synchronous one). The gorge saddle joins the
+    // two ranges across the gap so they slope down to meet the river.
+    {
+      const M = T._geoMain;
+      chk(!!M && !!M.mOff && !!M.mEnv, 'the main stem carries a meander envelope and offset table');
+      if (M && M.mOff) {
+        const lut = (y) => { T._geoT = TG.geoTimeFactors(y); T._meanderKey = null; T._meanderLUT(); return Float32Array.from(M.mOff); };
+        const a = lut(122000), b = lut(100000), a2 = lut(122000);
+        let maxA = 0, diff = 0, same = true;
+        for (let k = 0; k < a.length; k++) { if (Math.abs(a[k]) > maxA) maxA = Math.abs(a[k]); diff = Math.max(diff, Math.abs(a[k] - b[k])); if (a[k] !== a2[k]) same = false; }
+        chk(maxA > 0.005, `the lower Manawatū meanders (peak offset ${maxA.toFixed(3)} of the map)`);
+        chk(diff > 0.003, `the meanders migrate: 122 ka and 100 ka differ (by up to ${diff.toFixed(3)})`);
+        chk(same, 'the meanders are the same for the same date (deterministic, no p5 noise)');
+        // pinned in the gorge: the envelope is 0 where the main crosses the gap
+        let gorgeEnv = 1;
+        for (let k = 0; k <= 256; k++) {
+          const p = k / 256, L = M.pts, ext = M.extLen || 0;
+          let tot = 0; const cum = [0]; for (let i = 0; i + 1 < L.length; i++) { tot += Math.hypot(L[i + 1][0] - L[i][0], L[i + 1][1] - L[i][1]); cum.push(tot); }
+          let d = ext + p * (tot - ext), i = 0; while (i + 2 < L.length && cum[i + 1] < d) i++;
+          const t = (d - cum[i]) / ((cum[i + 1] - cum[i]) || 1), u = L[i][0] + (L[i + 1][0] - L[i][0]) * t;
+          if (Math.abs(u - vm.runInContext('LOOK', ctx).straitGorgeU) < 0.02) gorgeEnv = Math.min(gorgeEnv, M.mEnv[k]);
+        }
+        chk(gorgeEnv < 1e-6, `the main does not wander in the gorge (envelope ${gorgeEnv.toFixed(3)})`);
+        // THE NETWORK (redrawn 2026-10-20, geo/manawatu.svg): twelve named tributaries in the real
+        // confluence order (Wikipedia: Mangatewainui, Tīraumea, Mangatainoka, Mangahao, Pohangina,
+        // Ōroua, Tokomaru down the main; the Kiwitea into the Ōroua, the Mākākahi into the
+        // Mangatainoka, the Tamaki and Mangatoro into the upper Manawatū), each rising off the map or
+        // in a range, never on the plain.
+        const Tr = T._geoTribs || [], byName = (n) => Tr.find(t => t.name === n);
+        const want = ['Pohangina', 'Ōroua', 'Kiwitea', 'Tokomaru', 'upper Manawatū', 'Mangatewainui', 'Tamaki', 'Mangatoro', 'Tīraumea', 'Mangatainoka', 'Mākākahi', 'Mangahao'];
+        chk(want.every(n => byName(n)), `every tributary is drawn and named (${Tr.map(t => t.name).join(', ')})`);
+        const parentOf = (n) => { const t = byName(n); return t && t.parent ? (t.parent.name || 'main') : null; };
+        chk(parentOf('Kiwitea') === 'Ōroua' && parentOf('Mākākahi') === 'Mangatainoka' && ['Mangatewainui', 'Tamaki', 'Mangatoro', 'Tīraumea'].every(n => parentOf(n) === 'upper Manawatū')
+            && ['Pohangina', 'Ōroua', 'Tokomaru', 'Mangatainoka', 'Mangahao', 'upper Manawatū'].every(n => parentOf(n) === 'main'),
+            'each tributary joins the right river (the Kiwitea the Ōroua, the Mākākahi the Mangatainoka, four streams the upper Manawatū)');
+        const down = ['upper Manawatū', 'Mangatainoka', 'Mangahao', 'Pohangina', 'Ōroua', 'Tokomaru'].map(n => byName(n) ? byName(n).parentP : NaN);
+        chk(down.every((p, i) => i === 0 || p < down[i - 1]), `they join the main in the real order, upstream to the sea (main positions ${down.map(p => p.toFixed(2)).join(' > ')})`);
+        const up = ['Mangatewainui', 'Tamaki', 'Mangatoro', 'Tīraumea'].map(n => byName(n) ? byName(n).parentP : NaN);
+        chk(up.every((p, i) => i === 0 || p > up[i - 1]), `…and the upper Manawatū's, the Mangatewainui first and the Tīraumea last (${up.map(p => p.toFixed(2)).join(' < ')})`);
+        const rangeAt = (u, v) => { let m = 0; for (const R of T._geoRanges) m = Math.max(m, T._rangeMass(R, u, v)); return m; };
+        const lq = { u: 0, v: 0, nx: 0, ny: 0 };
+        const badSrc = Tr.filter(t => { T._lineAt(t, 0, lq); return lq.u >= 0 && lq.u < 1 && lq.v >= 0 && lq.v < 1 && rangeAt(lq.u, lq.v) < 0.5; });
+        chk(badSrc.length === 0, `every tributary rises off the map or in a range, never on the plain${badSrc.length ? ' (not: ' + badSrc.map(t => t.name).join(', ') + ')' : ''}`);
+        const sp = vm.runInContext('LOOK', ctx).tribFanSpread;
+        const badHead = [];
+        for (const t of Tr) for (const th of t.threads.slice(1)) {
+          T._lineAt(t, th.p0, lq);
+          const u = lq.u + lq.nx * th.off * sp, v = lq.v + lq.ny * th.off * sp;
+          if (u >= 0 && u < 1 && v >= 0 && v < 1 && rangeAt(u, v) < 0.5) badHead.push(t.name);
+        }
+        chk(badHead.length === 0, `no fan stream rises on the plain: every head is off the map or on range ground${badHead.length ? ' (not: ' + badHead.join(', ') + ')' : ''}`);
+        // JUNCTIONS: no channel is pinned at a confluence any more. A mouth slides with its parent and its
+        // line ends where it crosses the parent's moved line, so across the window every mouth sits on
+        // its parent's channel.
+        const Rv = T._geoRivers, VW = () => T.getRivers();
+        const ptAt = (rv, p) => { const P = rv.vP, pts = VW()[Rv.indexOf(rv)].pts; for (let i = 0; i + 1 < P.length; i++) if (P[i + 1] >= p) { const tt = (p - P[i]) / ((P[i + 1] - P[i]) || 1); return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * tt, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * tt]; } return pts[pts.length - 1]; };
+        const dLine = (rv, u, v) => { const pts = VW()[Rv.indexOf(rv)].pts; let m = 9; for (let i = 0; i + 1 < pts.length; i++) { const a = pts[i], b = pts[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy; let tt = l2 ? ((u - a[0]) * dx + (v - a[1]) * dy) / l2 : 0; tt = tt < 0 ? 0 : tt > 1 ? 1 : tt; m = Math.min(m, Math.hypot(u - a[0] - dx * tt, v - a[1] - dy * tt)); } return m; };
+        let gap = 0, gapAt = '', peakM = 0, peakT = 0, conf = 0;
+        const pinned = M.mEnv.reduce((a, e) => a + (e > 0.5 ? 1 : 0), 0);
+        for (let y = 1000000; y >= 25500; y -= 25000) {
+          T._geoT = TG.geoTimeFactors(y); T._meanderKey = null; T._meanderLUT();
+          Tr.forEach((t, j) => { const m = ptAt(t, T._tribEndJ[j]), d = dLine(t.parent, m[0], m[1]); if (d > gap) { gap = d; gapAt = t.name + ' @' + Math.round(y / 1000) + ' ka'; } });
+          for (let k = 0; k <= 256; k++) peakM = Math.max(peakM, Math.abs(M.mOff[k]));
+          for (const t of Tr) for (let k = 0; k <= 256; k++) peakT = Math.max(peakT, Math.abs(t.mOff[k]));
+          // CORRIDOR: off the gorge, the moved main never climbs into a range
+          for (let i = 0; i < M.vP.length; i += 4) {
+            const k = Math.round(M.vP[i] * 256); if (M.mEnv[k] < 0.2) continue;
+            const o = TG._meanderAt(M.mOff, M.vP[i]), u = M.vB[i * 2] + M.vN[i * 2] * o, v = M.vB[i * 2 + 1] + M.vN[i * 2 + 1] * o;
+            const lim = Math.min(0.95, Math.max(vm.runInContext('LOOK', ctx).corridorRangeT, rangeAt(M.vB[i * 2], M.vB[i * 2 + 1]) + 0.25));
+            if (rangeAt(u, v) > lim + 0.05) conf++;
+          }
+        }
+        chk(gap < 0.012, `every tributary's mouth sits on its parent's moved channel across the window (worst gap ${gap.toFixed(4)} of the map, ${gapAt})`);
+        chk(pinned > 150, `the main is free over most of its course, no longer pinned at the confluences (${pinned}/257 samples)`);
+        chk(peakM >= 0.035 && peakT >= 0.03, `the courses swing across their plains (peak offset: main ${peakM.toFixed(3)}, tributaries ${peakT.toFixed(3)} of the map)`);
+        chk(conf === 0, `…inside their corridor: the moved main never climbs into a range off the gorge (${conf} samples did)`);
+        for (const t of Tr) chk(t.mEnv[256] < 1e-6, `${t.name}: no meander of its own at the mouth (it follows its parent there)`);
+        let inRange = 0;
+        for (const t of Tr) for (let k = 0; k <= 256; k += 4) { T._lineAt(t, k / 256, lq); if (rangeAt(lq.u, lq.v) >= 0.99 && t.mEnv[k] > 0.05) inRange++; }
+        chk(inRange === 0, `a tributary never wanders inside a range proper, where it is incised (${inRange} samples did)`);
+        // COURSE SHIFTS: the course is fixed within a glacial cycle and takes a new line after each
+        // termination (LOOK.meanderBelt*). Isolated by turning the bends off.
+        const LK = vm.runInContext('LOOK', ctx), terms = TG.terminations();
+        chk(terms.length >= 8, `the window holds the glacial terminations the course shifts key on (${terms.length})`);
+        if (terms.length >= 3) {
+          const keep = [LK.meanderAmp, LK.tribMeanderAmp]; LK.meanderAmp = 0; LK.tribMeanderAmp = 0;
+          const beltAt = (y) => { T._geoT = TG.geoTimeFactors(y); T._meanderKey = null; T._meanderLUT(); return Float32Array.from(M.mOff); };
+          const T1 = terms[1], T2 = terms[2], ease = LK.meanderBeltEase;
+          const a1 = beltAt(T1 - ease - 500), a2 = beltAt(T2 + 500), b = beltAt(T2 - ease - 500);
+          let same = 0, shift = 0; for (let k = 0; k <= 256; k++) { same = Math.max(same, Math.abs(a1[k] - a2[k])); shift = Math.max(shift, Math.abs(a1[k] - b[k])); }
+          LK.meanderAmp = keep[0]; LK.tribMeanderAmp = keep[1];
+          chk(same < 1e-6 && shift > 0.01, `the course holds through a glacial cycle and shifts at the next termination (within ${same.toExponential(1)}, across ${shift.toFixed(3)})`);
+        }
+        // the drawn lines follow the moved channels
+        const V = T.getRivers()[T._geoRivers.indexOf(M)];
+        chk(V && V.pts.length > M.pts.length * 3, `the drawn main line is resampled densely so it follows the bends (${V ? V.pts.length : 0} points)`);
+      }
+      const gu = vm.runInContext('LOOK', ctx).straitGorgeU, c2 = T._geoCache, gc2 = T.gridCols, gr2 = T.gridRows, col = Math.round(gu * gc2);
+      let row0 = 0, best = 1e9; for (let r = 0; r < gr2; r++) { const d = Math.abs(c2.wMS[r * gc2 + col]); if (d < best) { best = d; row0 = r; } }
+      chk(c2.rMask[row0 * gc2 + col] > 0.5, `Te Āpiti: the ranges meet at the river — range mass on the channel in the gap (${c2.rMask[row0 * gc2 + col].toFixed(2)})`);
+      chk(TG._gorgeValley(gu) < 0.6 && TG._gorgeChannel(gu) < 0.6 && TG._gorgeDepth(gu) > 2, 'the gorge has a narrower valley and channel and cuts deeper');
+      chk(TG._gorgeAlong(0.25) === 0 && TG._gorgeAlong(0.8) === 0, 'the gorge treatment is confined to the gap');
+    }
+
+    // THE SHELF (md/TEMANAWA_COAST_PLAN.md): the western coast sits where relative sea level puts
+    // it on the baked shelf profile. Measured as the median, over the middle rows, of the first
+    // column where 9 of the next 10 cells are land. The old noise sea floor sat in a thin band
+    // under the waterline, so the coast held still and then flipped all at once.
+    const seaE = T._waterBiome && T._waterBiome.maxElevation != null ? T._waterBiome.maxElevation : 0.10;
+    const coastAt = (y) => {
+      T.morphTo(y, 1);
+      const a = T.heightMap, gc = T.gridCols, gr = T.gridRows, cs = [];
+      for (let row = Math.round(gr * 0.3); row <= Math.round(gr * 0.8); row += 4) {
+        const ro = row * gc; let coast = gc;
+        for (let c = 0; c + 10 <= gc; c++) { let land = 0; for (let k = 0; k < 10; k++) if (a[ro + c + k] >= seaE) land++; if (land >= 9) { coast = c; break; } }
+        cs.push(coast / gc);
+      }
+      cs.sort((x, y2) => x - y2); return cs[cs.length >> 1];
+    };
+    const RSL = (y) => TG.relativeSeaLevel(y);
+    const dates = [25500, 140000, 45000, 122000, 410000];   // ascending relative sea level
+    let ascending = true;
+    for (let k = 0; k + 1 < dates.length; k++) if (!(RSL(dates[k]) < RSL(dates[k + 1]))) ascending = false;
+    chk(ascending, `relative sea level rises through 25.5 → 140 → 45 → 122 → 410 ka (${dates.map(y => RSL(y).toFixed(0)).join(', ')} m)`);
+    const cu = dates.map(coastAt);
+    let mono = true;
+    for (let k = 0; k + 1 < cu.length; k++) if (!(cu[k] < cu[k + 1])) mono = false;
+    chk(mono, `the coast moves inland as relative sea level rises (coast u ${cu.map(c => c.toFixed(3)).join(', ')})`);
+    chk(cu[0] < cu[2] - 0.05, `the LGM bares far more shelf than MIS 3 (coast u ${cu[0].toFixed(3)} vs ${cu[2].toFixed(3)})`);
+    const c450 = coastAt(450000);
+    chk(cu[1] < c450, `a later glacial bares more than an earlier one as the plain rises (MIS 6 ${cu[1].toFixed(3)} vs MIS 12 ${c450.toFixed(3)})`);
+    // The main river reaches the lowstand sea: its mouth is carried offshore (riverOffshoreU), so
+    // from the map edge up its lower course there is no dry gap between river and sea.
+    {
+      const W = T.mapWidth, H = T.mapHeight, rv = T.getRivers().find(r => r.type !== 'tributary');
+      const runAt = (y) => {
+        T.morphTo(y, 1);
+        const p = rv.pts, seg = []; let tot = 0;
+        for (let k = 0; k + 1 < p.length; k++) { const L = Math.hypot((p[k + 1][0] - p[k][0]) * W, (p[k + 1][1] - p[k][1]) * H); seg.push(L); tot += L; }
+        const s = [];
+        for (let j = 0; j <= 200; j++) {
+          let d = tot * 0.4 * j / 200, k = 0;
+          while (k < seg.length - 1 && d > seg[k]) { d -= seg[k]; k++; }
+          const t = Math.min(1, d / (seg[k] || 1));
+          const u = p[k][0] + (p[k + 1][0] - p[k][0]) * t, v = p[k][1] + (p[k + 1][1] - p[k][1]) * t;
+          if (u >= 0 && u < 1 && v >= 0 && v < 1) s.push(T.waterTypeAt(u * W, v * H));
+        }
+        return s;
+      };
+      if (rv) for (const y of [25500, 140000]) {
+        // The harness noise is Math.random per cell, so the channel's wobble leaves isolated dry
+        // specks on the centre line; a break is a RUN of dry samples (~2 px each).
+        const s = runAt(y);
+        let gap = 0, longest = 0; for (const x of s) { gap = x === 0 ? gap + 1 : 0; if (gap > longest) longest = gap; }
+        chk(s.length > 0 && s[0] !== 0 && longest <= 2, `at ${y / 1000} ka the main runs unbroken from the lowstand sea up its lower course (longest dry run ${longest} of ${s.length}: ${s.join('')})`);
+      }
+    }
   }
 
   console.log(fail ? `geography: ${fail} FAILURES`
-    : 'geography: river emerges coast→source & incises, ranges lift with a NE–SW spine over deep time (cached), morph driver gated');
+    : 'geography: river incises ahead of the ranges, tributary fans close 1 Ma → 0.3 Ma, the Woodville lake fills and drains, ranges lift with a NE–SW spine (cached), morph driver gated');
 }
 
 // ---- incremental morph: sliced job == synchronous bake ------------------
@@ -2526,6 +3843,162 @@ console.log('  playTime  ', g.playTime.toFixed(0));
   }
   for (let i = 0; i < 400; i++) w.update(1);
   chk(eelsAllWet(), 'eels never swim onto the dried NE arm at the window end');
+
+  // (b2) a MORPH never strands a running swimmer. In the live pipeline the eels and fish are
+  //      NOT re-seeded per morph (reconcile() leaves them running), so when the strait thins,
+  //      the estuary drains or the coast moves under one, the old bounce flipped it in place on
+  //      the bank forever: the "stuck eel". Seed once, then morph forward with reconcile() only,
+  //      exactly as the time-lapse does, and require every swimmer on water and still travelling.
+  const swimmers = () => w.eels.concat(w.fish);
+  T.morphTo(500000, 1); w.build(T, 500000);
+  for (const y of [420000, 330000, 250000, 160000, 122000, 60000, DT.yearsEnd]) {
+    T.morphTo(y, 1); w.reconcile(T, y);
+    for (let i = 0; i < 40; i++) w.update(1);
+  }
+  const strandedN = swimmers().filter(e => T.waterTypeAt(e._x, e._y) === 0).length;
+  chk(strandedN === 0, `no eel or fish is left on dry land across morphs (${strandedN} stranded)`);
+  const lo = swimmers().map(e => e.d), hi = lo.slice();
+  for (let i = 0; i < 240; i++) {
+    w.update(1);
+    swimmers().forEach((e, k) => { if (e.d < lo[k]) lo[k] = e.d; if (e.d > hi[k]) hi[k] = e.d; });
+  }
+  const pacing = swimmers().filter((e, k) => hi[k] - lo[k] < 20).length;   // 240 ticks at 0.3–0.4 px/tick ≈ 70–95 px when free
+  chk(pacing === 0, `every eel and fish keeps travelling, none paces a tiny pocket (${pacing} pacing)`);
+  //      Deterministic stranding: whether a given morph dries the water under a swimmer is seed
+  //      luck, so strand one on purpose. Put an eel on a dry point of its own path (the window end's
+  //      dried NE arm), exactly as a morph that dried the water under it would leave it, then
+  //      require (1) the per-tick step and (2) the morph path (reconcile) each put it back on water.
+  if (w.eels.length) {
+    const e = w.eels[0], probe = { _x: 0, _y: 0, _angle: 0 };
+    let dryD = -1;
+    for (let s = 0; s <= 100 && dryD < 0; s++) { const d = e.path.len * s / 100; w._samplePath(e.path, d, probe); if (T.waterTypeAt(probe._x, probe._y) === 0) dryD = d; }
+    chk(dryD >= 0, 'the window-end main path has a dry stretch to strand an eel on');
+    if (dryD >= 0) {
+      e.d = dryD; w._samplePath(e.path, e.d, e);
+      for (let i = 0; i < 5; i++) w.update(1);
+      chk(T.waterTypeAt(e._x, e._y) !== 0, 'a stranded eel swims back onto water by itself (it used to flip in place on the bank)');
+      e.d = dryD; w._samplePath(e.path, e.d, e);
+      w.reconcile(T, DT.yearsEnd);
+      chk(T.waterTypeAt(e._x, e._y) !== 0, 'a morph moves any eel the new land covers back onto water');
+    }
+  }
+
+  // (b3) tributaries JOIN the river network at every stage. Sampled along each prepared
+  //      polyline (source → confluence) at paint resolution: the wet cells must form ONE run
+  //      that reaches the confluence end. The old source-first growth left a stub draining
+  //      into dry land until it arrived, and the full-width meander wobble pinched narrow
+  //      channels shut into pools; the eastern tributary also used to end in the dried NE arm.
+  //      "Joined" = no RIVER water (type 2) upstream of the water run that touches the
+  //      confluence; low sea-band hollows (type 1) in a valley the stream hasn't reached are
+  //      not channel and are allowed.
+  const tribDetached = (rv) => {
+    const p = rv.pts, N = 120, W = T.mapWidth, H = T.mapHeight, seg = [], s = [];
+    let tot = 0;
+    for (let k = 0; k + 1 < p.length; k++) { const L = Math.hypot((p[k + 1][0] - p[k][0]) * W, (p[k + 1][1] - p[k][1]) * H); seg.push(L); tot += L; }
+    // On the map only: a source drawn past the map edge reads as the clamped edge cell there.
+    for (let j = 0; j <= N; j++) {
+      let d = tot * j / N, k = 0;
+      while (k < seg.length - 1 && d > seg[k]) { d -= seg[k]; k++; }
+      const t = Math.min(1, d / (seg[k] || 1)), u = p[k][0] + (p[k + 1][0] - p[k][0]) * t, v = p[k][1] + (p[k + 1][1] - p[k][1]) * t;
+      if (u >= 0 && u < 1 && v >= 0 && v < 1) s.push(T.waterTypeAt(u * W, v * H));
+    }
+    if (s.length < 2) return 0;
+    const NN = s.length - 1;
+    // The water run ending at the confluence, bridging dry specks of up to 4 samples: the harness
+    // noise is Math.random per cell, so a thin 1 Ma stream's bank noise leaves isolated specks on its
+    // line (real noise is smooth). A stub cut off from the main is a gap far longer than that.
+    const wetNear = (i) => { for (let k = 1; k <= 5; k++) if (i - k >= 0 && s[i - k] > 0) return true; return false; };
+    let start = NN; while (start > 0 && wetNear(start)) start--;
+    // The growing HEAD is soft by design: its front feathers over 0.15 of the length (R_FEATHER)
+    // plus ±riverFrontJitter, and over bumpy ground a puddle can show inside that feather. So wet
+    // cells within a quarter of the polyline above the joined run are the stream's tip; anything
+    // farther up is a stub (the old source-first growth left one ~100/120 from the confluence).
+    let far = 0; for (let j = 0; j < start; j++) if (s[j] === 2) { const gap = start - j; if (gap > far) far = gap; }
+    if (far > 30) tribDetached.last = s.join('');
+    return far > 30 ? far : 0;
+  };
+  // FANS: across each tributary, part-way down, count the separate river-water runs on a transect
+  // perpendicular to the trunk. At 1 Ma the hill streams are spread, so some tributary shows more
+  // than one; by the window end the fan has closed and every tributary is one run.
+  // half: the transect's half-width. The window end looks only across the channel (0.025): with twelve
+  // tributaries a neighbour or a parent often runs within the full fan width.
+  const fanRuns = (rv, half = 0.08, f = 0.45) => {
+    const p = rv.pts, W = T.mapWidth, H = T.mapHeight;
+    let tot = 0; for (let k = 0; k + 1 < p.length; k++) tot += Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]);
+    let d = tot * f, k = 0;
+    while (k < p.length - 2 && d > Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1])) { d -= Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]); k++; }
+    const L = Math.hypot(p[k + 1][0] - p[k][0], p[k + 1][1] - p[k][1]) || 1, t = Math.min(1, d / L);
+    const cu = p[k][0] + (p[k + 1][0] - p[k][0]) * t, cv = p[k][1] + (p[k + 1][1] - p[k][1]) * t;
+    const nu = -(p[k + 1][1] - p[k][1]) / L, nv = (p[k + 1][0] - p[k][0]) / L;
+    // Runs separated by a dry gap of 8+ samples (~2.5 harness cells): one random-noise cell inside a
+    // channel spans ~3 samples and is not land; separate fan streams sit ~35 samples apart.
+    let runs = 0, gap = 99;
+    for (let j = -100; j <= 100; j++) {
+      const u = cu + nu * half * j / 100, v = cv + nv * half * j / 100;
+      const wet = u >= 0 && u < 1 && v >= 0 && v < 1 && T.waterTypeAt(u * W, v * H) === 2;
+      if (wet) { if (gap >= 8) runs++; gap = 0; } else gap++;
+    }
+    return runs;
+  };
+  for (const y of [1000000, 600000, 300000, DT.yearsEnd]) {
+    T.morphTo(y, 1);
+    const tribs = T.getRivers().filter(rv => rv.type === 'tributary');
+    // A tributary the sea has drowned to its source (its water ends in the first tenth) has no
+    // channel to be joined: the sea took its catchment. Counted, not walked.
+    const drowned = T._geoTribs.map((t, j) => T._tribEndW[j] < 0.1);
+    const det = tribs.map((rv, j) => drowned[j] ? 0 : tribDetached(rv));
+    const bad = det.filter(n => n > 0).length;
+    const why = det.map((n, j) => n > 0 ? `${T._geoTribs[j].name} end ${T._tribEndW[j].toFixed(2)}/${T._tribEndJ[j].toFixed(2)}` : null).filter(Boolean).join('; ');
+    chk(bad === 0, `at ${Math.round(y / 1000)} ka every tributary is joined to the main or the sea (farthest detached river cell above the joined run, in 1/120ths: ${det.join(', ')}; drowned to the source: ${drowned.filter(Boolean).length})${bad ? ' [' + why + '] ' + tribDetached.last : ''}`);
+    if (y === 1000000 || y === DT.yearsEnd) {
+      // At the end, the fewest runs over three points along it: a tight meander loop can cross one
+      // transect twice, a fan of parallel streams crosses all three.
+      const runs = tribs.map(rv => y === 1000000 ? fanRuns(rv) : Math.min(fanRuns(rv, 0.025, 0.35), fanRuns(rv, 0.025, 0.45), fanRuns(rv, 0.025, 0.55)));
+      if (y === 1000000) chk(Math.max(...runs) >= 2, `at 1 Ma the tributaries are fans of thin hill streams (water runs across each: ${runs.join(', ')})`);
+      else chk(Math.max(...runs) <= 1, `at the window end each tributary has drawn together into one channel (water runs across each: ${runs.join(', ')})`);
+    }
+  }
+
+  // THE SEA CUT + THE OPIKI CYCLE (2026-10-20). A tributary's water ends where the sea has drowned its
+  // course (the reach below is estuary or dry, never river rising from a beach). At a highstand the
+  // rising sea drowns the lower Manawatū and Ōroua valleys; once it stands still the estuary fills
+  // (swamp first, then a swamp + forest mosaic); at a lowstand there is no estuary and no fill.
+  {
+    const Tr = T._geoTribs || [], jO = Tr.findIndex(t => t.name === 'Ōroua');
+    const seaE = T._waterBiome.maxElevation;
+    const estCount = () => { let s1 = 0, s2 = 0; for (const v of T._estState) { if (v === 1) s1++; else if (v === 2) s2++; } return [s1, s2]; };
+    // the drowned lower Ōroua: cells within its valley on its lower reach that are sea or filled ground
+    const orouaDrowned = () => {
+      const c = T._geoCache; let n = 0;
+      for (let i = 0; i < c.tJ.length; i++) {
+        const hit = (c.tJ[i] === jO && c.tP[i] > 0.6 && c.tP[i] < 0.97 && Math.abs(c.tS[i]) < 0.03) || (c.tJ2[i] === jO && c.tP2[i] > 0.6 && c.tP2[i] < 0.97 && Math.abs(c.tS2[i]) < 0.03);
+        if (hit && (T.heightMap[i] < seaE || T._estState[i] > 0)) n++;
+      }
+      return n;
+    };
+    const seaCut = [];
+    for (const y of [410000, 335000, 122000]) { T.morphTo(y, 1); seaCut.push(Tr.filter((t, j) => T._tribEndW[j] < T._tribEndJ[j] - 0.01).length); }
+    T.morphTo(DT.yearsEnd, 1);
+    const cutEnd = Tr.filter((t, j) => T._tribEndW[j] < T._tribEndJ[j] - 0.01).map(t => t.name);
+    chk(Math.max(...seaCut) > 0 && cutEnd.length === 0, `the sea cuts tributaries at highstands (410 / 335 / 122 ka: ${seaCut.join(' / ')} cut), none at the LGM${cutEnd.length ? ' (cut: ' + cutEnd.join(', ') + ')' : ''}`);
+    const dEnd = orouaDrowned(), eEnd = estCount();
+    T.morphTo(135000, 1); const e135 = estCount();
+    T.morphTo(122000, 1); const e122 = estCount(), d122 = orouaDrowned();
+    T.morphTo(118000, 1); const e118 = estCount();
+    chk(jO >= 0 && d122 > 20 && dEnd === 0, `the MIS 5e sea drowns the lower Ōroua valley into the estuary (${d122} cells at 122 ka, ${dEnd} at the LGM)`);
+    chk(e135[0] + e135[1] === 0 && eEnd[0] + eEnd[1] === 0, `no estuary fill while the sea is still rising or low (135 ka ${e135}, LGM ${eEnd})`);
+    chk(e122[0] > 0, `at the MIS 5e peak the drowned valleys have begun to fill with swamp (swamp/forest cells ${e122})`);
+    chk(e118[0] + e118[1] > e122[0] + e122[1] && e118[1] > e122[1], `as the sea stands, the fill spreads and swamp forest takes part of it (122 ka ${e122} → 118 ka ${e118})`);
+    // the classify gives the fill its biomes
+    const fb = T._estForestBiome(), bi = T.biomeIndexMap, key = T.biomeIndexByKey;
+    let okF = 0, okW = 0, nF = 0, nW = 0;
+    for (let i = 0; i < T._estState.length; i++) {
+      if (bi[i] === key[T._waterBiome.key]) continue;   // the river channel runs on through the fill
+      if (T._estState[i] === 2) { nF++; if (fb && bi[i] === key[fb.key]) okF++; }
+      else if (T._estState[i] === 1) { nW++; if (bi[i] === key.wetland) okW++; }
+    }
+    chk(nF > 0 && okF / nF > 0.9 && okW / Math.max(1, nW) > 0.9, `the filled ground reads as swamp forest (${okF}/${nF}) and swamp (${okW}/${nW}) in the biome map`);
+  }
 
   // (c) plants are never left standing on painted WATER after a morph + cull. Spawn a fresh field
   //     on the window-start land, then morph forward and cull at each step exactly as the live

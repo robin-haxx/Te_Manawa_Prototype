@@ -209,7 +209,10 @@ Proposed `levelDef.geography` block, mirrored onto a `GEO` dev surface like
    trans-range eastern lowland or the ranges. The **dune shoreline tracks it** (`duneCoastTrack`) so
    the belt marches onto the bared shelf in a glacial (true Koputaroa mode). Breathes over the cycle
    via the morph re-bakes, crossfaded. Harness-locked; verified live (west land 0.41→0.47 glacial;
-   dune west edge 0.26→0.10 glacial). **Requires the plant-site reconcile** (`cullSubmergedPlants`
+   dune west edge 0.26→0.10 glacial). **Rebuilt 2026-10-19 (`TEMANAWA_COAST_PLAN.md` §5):** the
+   shift now reads RELATIVE sea level in metres (`Climate.SEA_ANCHORS` + the plain's uplift since),
+   not the glacial index, over a baked shelf profile (`_bakeShelf`), so the coast marches steadily
+   instead of holding and flipping; the main river's mouth reaches offshore to meet it. **Requires the plant-site reconcile** (`cullSubmergedPlants`
    now refreshes `elevation`/`biomeKey`) so cover tracks the moving coast — see `MISTAKES.md`.
 
    > **Habitat composition over the cycle (the payoff).** Land area and its makeup swing opposite
@@ -222,13 +225,98 @@ Proposed `levelDef.geography` block, mirrored onto a `GEO` dev surface like
 6. ✅ **Drowned-valley estuary — the interglacial highstand extreme (§8/§12-6).** The far pole of the
    glacial sea: at a warm interglacial the sea BACKS UP THE RIVER VALLEY as an estuary reaching inland
    (toward Shannon/Opiki), so the "coast" stops being an edge strip and fingers into the middle of the
-   map. `TerrainGenerator.estuaryStrength` (glacial-index-gated, `estuaryOnsetG` — fills in warm spells,
-   drains in the cold) → `_geoT.estuary`, applied in `_applyGeoToHeightMap`: positional up the cached
+   map. `TerrainGenerator.estuaryStrength` (relative-sea-level-gated since 2026-10-19: empty below +5 m,
+   full by +35 m, so it fills at highstands, more readily early in the run, and drains in the cold) → `_geoT.estuary`, applied in `_applyGeoToHeightMap`: positional up the cached
    MAIN stem (`wMDist`/`wMPos`, out to `estuaryReach × highstand`), spreading `estuaryWidth` off the
    channel, elevation-gated to the valley FLOOR (`estuaryCeil`) so terraces and ranges stay dry. Drowned
    cells classify as sea → the plant-reconcile clears their vegetation. Verified live: inland valley water
    2,818 → **7,483** cells at the highstand (~2.7×), drained in a glacial.
 7. ⬜ **Later:** coast curve to Whanganui; ranges' reduced snow; secondary events across the window.
+8. ✅ **Re-dated to the real ~1 Ma palaeogeography (2026-10-18).** The opening had shown the ~2.4 Ma
+   Manawatū Strait (a sea across a flat, drowned axis). The strait had closed by ~1.6 Ma, so now: the
+   SW strait and the central patch are range-protected (`_rangeProtect`, `LOOK.seaRangeProtect`); the
+   ranges start as low hills (`GEO_EPOCHS.upliftStart` 0.15); the wide early main stem is pinched to
+   river width in the range gap (`_gorgeOpen`, `LOOK.straitGorge*`), leaving an estuary arm west and the
+   Woodville lake east; the river flows west from the opening (`mainArmFrom` 1.02 Ma → `To` 0.6 Ma); and
+   the south drains one way, 1 → 0.5 Ma, instead of a pulse peaking at 0.5 Ma. Harness-locked
+   ("geography"). Step 6 then softened the opening water: `straitWidthMult` 6 → 3 and
+   `patchSubFeatherE` 3.0 → 1.2. Sources and before/after are in `TEMANAWA_NATURAL_HISTORY.md` §I.
+9. ✅ **The east is land at 1 Ma; tributaries are fans (2026-10-19).** Against Trewick & Bland Fig. 4D:
+   the central patch is off (`patchSubRX` 0), the Woodville lake is its own body east of the gap on
+   its own clock (`GEO_EPOCHS.lake*`, `LOOK.lake*`), the NE arm is dry at the opening (`mainArm*`
+   1.25 → 1.0 Ma), and the main narrows upstream (`LOOK.mainTaper`). Tributaries no longer emerge at
+   0.4 Ma: each is a trunk plus hill streams, thin and spread at 1 Ma, drawing together into one
+   channel by ~0.3 Ma (`GEO_EPOCHS.tribConverge*`, `LOOK.tribFan*`, `_makeThreads`/`_tribThreads`).
+   Authored tributary polylines are Chaikin-rounded at prep (`_chaikin`) so the offset streams do not
+   fold at sharp vertices. The river field is two unioned layers now (main, tributary fan). Details in
+   `TEMANAWA_NATURAL_HISTORY.md` §I step 8.
+10. ✅ **One sea-level rule for the whole window (2026-10-19).** Relative sea level counts the plain's
+   uplift from 800 ka (`TerrainGenerator.upliftSinceM`, `LOOK.plainUpliftOnset`), highstands flood by
+   contour (`_seaShift`), and `seaRise`/`seaSWReach` are retired; the south strait stays as the
+   Levin–Foxton depocentre (`LOOK.southSinkAmt`). The early coast now breathes: highstands reach the
+   range foot, lowstands bare the plain. `TEMANAWA_COAST_PLAN.md` §5b; frames in
+   `exports/terrain_geology_timeline/`.
+11. ✅ **Second-order detail: rugged ranges, migrating meanders, Te Āpiti (2026-10-19).**
+   - **Ranges.** The relief field is a ridged fBm (`TerrainGenerator._rangeFbm`, `LOOK.rangeFbm*`):
+     5 octaves, each ×2.03 in frequency, rotated 37° and halved in amplitude (gain G 0.5, Hurst H 1,
+     per Quilez's "fBM" article). Ridged octaves are weighted by the one before, so crests stay sharp
+     and valleys branch. A second fBm (`rangeCrestTex`) is added after the soft ceiling, which
+     otherwise squeezes every crest into one smooth cap.
+   - **Meanders.** Every channel's centre line is offset sideways by a 2-octave fBm along it
+     (`_meanderLUT`, `LOOK.meander*`, `tribMeanderAmp`). It drifts downstream one wavelength per
+     60 kyr and is straighter in glacials (gravel braid plain).
+     - The envelope (`_prepMeanders`): free on the low plain, zero in the gorge, damped east of it,
+       pinned at every confluence; tributaries move on their lower reaches only.
+     - The cache keeps signed distances (`wMS`, `tS0`) and `_applyMeanders` re-derives `wMDist`/`tS`
+       per morph, so the carve, classify, paint and estuary read the moved channels unchanged.
+     - `getRivers()` returns densely resampled moved lines, so the water decals, eels and fish follow
+       (`WaterLayer._repathSwimmers`).
+     - The main stem's static wobble is retired (`mainRiverWobble` 0), and its bank noise scales with
+       its width.
+   - **Te Āpiti.** A range saddle (`_gorgeSaddle`, `LOOK.gorge*`) joins the Ruahine and Tararua across
+     the gap, so they slope down to meet the river. The river cuts it with a narrower valley and
+     channel and an extra incision that deepens with the incision clock. It has shingle banks and no
+     swamp.
+   - The main stem also narrows upstream more strongly (`mainTaper` 0.55).
+   - Harness: the meanders are deterministic, migrate with time, and are pinned in the gorge and at
+     confluences; the drawn line is dense; the saddle puts range mass on the channel in the gap; the
+     gorge factors are confined to it. The range-lift probe pins noise flat, because the harness's
+     white-noise stub makes any ridged fBm average far lower than real noise.
+   - Frames at every glacial and interglacial peak are in `exports/terrain_geology_timeline/`.
+12. ✅ **The whole catchment; channels that move and meet; the Opiki cycle (2026-10-20).**
+   - **svg2geo applies transforms** (element `transform` about its `transform-origin`, and `<g>`
+     transforms) and carries `data-name`. It used to drop them, so the editor's rotated Ōroua reached the
+     sim un-rotated (`MISTAKES.md`). Its attribute lookup no longer matches `d=` inside `id=`.
+   - **Twelve named tributaries** in `geo/manawatu.svg`, drawn source → mouth, sources past the map edge
+     or in a range. Widths 0.013 (minor) to 0.018 (major), `LOOK.tribWidthMult` 0.7, each trunk widening
+     from `tribHeadWidth` (0.55) at the source to full at the mouth, floored at `tribMinCells` (3.2) sim
+     cells so a thin channel never beads. Fan of `tribFanStreams` 3; a fan stream's head moves up toward
+     the source until it lies off the map or on range ground (`_makeThreads`).
+   - **Junctions** (`_prepJunctions`): each tributary's parent is the river nearest its mouth (main or
+     tributary). Its line runs on past the mouth by `tribMouthStub`; its last `tribMouthBlend` slides
+     sideways with the parent's offset, and `_refineJunctionEnds` ends it where its moved line crosses
+     the parent's (`_tribEndJ`). No channel is pinned at a confluence.
+   - **Two tributary slots per cell** (`tJ`/`tJ2` …, unioned in the carve, classify and paint): with
+     channels moving, a cell nearest one trunk's authored line can hold another's water. A spatial
+     index (`_buildTribBins`) and a Douglas–Peucker pass over the rounded lines keep the cache build
+     cheaper than before.
+   - **Movement.** Bends `meanderAmp` 0.05 (was 0.034), `tribMeanderAmp` 0.035 (was 0.02), glacial
+     straightening 0.3; tributaries move wherever they are off a range proper. Course shifts
+     (`meanderBelt*`): a long-wavelength offset fresh for each glacial cycle, eased in after each
+     termination (`TerrainGenerator.terminations`, `beltPhase`). The corridor (`corridor*`) soft-clamps
+     every offset to where the ground climbs into a range.
+   - **Sea cut** (`_tribSeaCut`, `_tribEndW`): a tributary's water ends where its line and two bank
+     points are under the sea for two samples running; the drawn line (decals, eels) stops there too.
+   - **The Opiki cycle** (`LOOK.estuary*`, `_estState`): tributaries joining the main inside the drowned
+     reach drown their lower valleys (estuary branches). The fill clock is the stillstand age
+     (`TerrainGenerator.stillstandAge`); the drowned floor fills from margins and heads toward the mouth,
+     up to `estuaryFillMax`; filled ground is swamp, then a swamp + forest mosaic. The region is the
+     episode's largest estuary (`estuaryMax`, `estuaryMemoryYears`), so the filled plain outlasts the
+     sea's fall. The classify and paint give it the wetland and `estuaryForestBiome` biomes.
+   - Harness: svg2geo transforms; the named network and its confluence order; sources and fan heads off
+     the plain; every mouth on its parent's moved channel; swings, corridor and course shifts; the sea
+     cut; the drowned lower Ōroua; the fill's clock and biomes; every tributary joined to the main or
+     the sea. Frames in `exports/terrain_rivers_opiki/`.
 
 ---
 

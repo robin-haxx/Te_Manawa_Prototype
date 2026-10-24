@@ -37,8 +37,8 @@ A longlist to cut down from, scored against the four criteria you set. Companion
 | Species | Known | Wonder | Local | Span | Notes |
 |---|:-:|:-:|:-:|:-:|---|
 | **North Island giant moa** *Dinornis novaezealandiae* | 5 | 5 | 5 | 5 | Wet, high-rainfall forest. The silhouette everyone comes for. |
-| **Mantell's moa** *Pachyornis geranoides* | 1 | 4 | 5 | 5 | Throughout the NI, in **drier forest and shrubland** — the downland and dune moa. aDNA: populations held the same location for hundreds of thousands of years. |
-| **Coastal / stout-legged moa** *Euryapteryx curtus* (*gravis*) | 2 | 4 | 5 | 5 | *E. gravis* known **only from coastal sites in the southern half of the North Island** — literally this patch. Taxonomy contested; *gravis* is often merged into *curtus*. |
+| **Mantell's moa** *Pachyornis geranoides* | 1 | 4 | 5 | 5 | Throughout the NI, in **drier forest and shrubland** — the downland and dune moa. aDNA: populations held the same location for hundreds of thousands of years. ***Pachyornis* is in the Te Ahu a Tūranga assemblage.** |
+| **Coastal / stout-legged moa** *Euryapteryx curtus* (*gravis*) | 2 | 4 | 5 | 5 | *E. gravis* known **only from coastal sites in the southern half of the North Island** — literally this patch. Taxonomy contested; *gravis* is often merged into *curtus*. ***Euryapteryx* (both sexes) is in the Te Ahu a Tūranga assemblage.** |
 | **Little bush moa** *Anomalopteryx didiformis* | 2 | 4 | 4 | 5 | Wet forest, small, dense understorey — the one that disappears into the bush. |
 
 `[BUILD]` These four partition the map cleanly: **two wet-forest moa (one huge, one
@@ -59,8 +59,8 @@ distribution you get for free from the terrain, not from scripting.
 
 | Species | Known | Wonder | Local | Span | Notes |
 |---|:-:|:-:|:-:|:-:|---|
-| **North Island goose** *Cnemiornis gracilis* | 1 | 4 | **5** | 5 | Large flightless grazer. **Present in the Te Ahu a Tūranga assemblage held at Te Manawa** — the strongest possible local hook after the moa themselves. |
-| **Adzebill** *Aptornis otidiformis* | 1 | 5 | 3 | 5 | Flightless, massive-billed forest-floor omnivore/predator. Genuinely strange-looking. |
+| **North Island goose** *Cnemiornis gracilis* | 1 | 4 | **5** | 5 | Large flightless grazer. **Present in the Te Ahu a Tūranga assemblage** — the strongest possible local hook after the moa themselves. The bones were studied at Te Manawa, then returned to the Ruahine maunga; Te Manawa and Te Papa hold replicas. |
+| **Adzebill** *Aptornis otidiformis* | 1 | 5 | **5** | 5 | Flightless, massive-billed forest-floor omnivore/predator. Genuinely strange-looking. **It is the "extinct predator" in the Te Ahu a Tūranga assemblage** (Holdaway 2022), so Local rises from 3 to 5 to match the goose (2026-10-18). |
 | **Finsch's duck** *Chenonetta finschi* | 1 | 4 | 3 | 5 | Near-flightless grazing duck; **one of the most abundant birds in pre-human New Zealand**, in open and shrubland country. Ideal glacial-phase filler. |
 | **Mōho / NI takahē** *Porphyrio mantelli* | 3 | 4 | 2 | 4 | Borrows recognition from the living SI takahē. |
 | **Poūwa / NZ swan** *Cygnus sumnerensis* | 2 | 3 | 3 | 4 | Wetlands. Today's black swan is an 1860s Australian introduction, not this bird. |
@@ -186,7 +186,8 @@ Ordered by build priority. Scores in brackets as **Known / Wonder / Local / Span
 
 5. **Kererū** — 5/1/4/5 — large-fruit dispersal
 6. **North Island goose** *Cnemiornis gracilis* — 1/4/5/5 — open-ground grazer, and
-   **it is in the Te Ahu a Tūranga bones downstairs**
+   **it is in the Te Ahu a Tūranga bones** (replicas at Te Manawa; the originals are back on
+   the Ruahine)
 7. **Finsch's duck** — 1/4/3/5 — open/shrubland grazer; abundant in cold phases
 
 **Recognition and local resonance**
@@ -213,6 +214,11 @@ high but the Manawatū link is weak and it won't read at screen scale); long-tai
 flightless birds for the same visual slot); small forest birds (**one flock asset, not
 five entities**).
 
+> **Note (2026-10-18).** The adzebill turns out to be in the Te Ahu a Tūranga bones, which
+> lifts it to 1/5/5/5 and reopens its case. Mōho has since entered the built cast (as the NI
+> takahē); the adzebill has not. Of the assemblage's four birds, the sim now founds three:
+> stout-legged moa, Mantell's moa and the goose. See `TEMANAWA_NATURAL_HISTORY.md` §III.3.
+
 ---
 
 ## 4. To verify before committing assets
@@ -220,10 +226,11 @@ five entities**).
 1. **Euryapteryx taxonomy** — *gravis* vs *curtus* is unsettled; the coastal
    southern-NI distribution is attached to *gravis*, which some authors sink into
    *curtus*. Check current NZ Birds Online / Checklist Committee treatment.
-2. **The "extinct predator" in the Te Ahu a Tūranga assemblage** — `TEMANAWA_RESEARCH.md`
-   records the assemblage as two moa genera, an extinct predator and the extinct NI
-   goose. Confirming *which* predator would either lock in Eyles' harrier from local
-   bone or open a second option. Worth asking Te Manawa directly.
+2. ~~**The "extinct predator" in the Te Ahu a Tūranga assemblage**~~ ✅ **Answered
+   (2026-10-18): the North Island adzebill.** Holdaway's 2022 Birds New Zealand conference
+   abstract lists *Euryapteryx*, *Pachyornis*, the adzebill, the North Island goose and a moa
+   hatchling, and no raptor. Eyles' harrier is not locked in from local bone. The adzebill is
+   the "second option", and it is now the one with the local claim.
 3. **Species-level persistence at 345 ka** — the aDNA result on long-term population
    structure is encouraging but was established on late-Quaternary material. Check how
    far back it actually reaches before claiming these exact species on a 345 ka label.
@@ -243,4 +250,5 @@ five entities**).
 - Dune invertebrates: [DOC — Conservation status of the New Zealand red katipō spider](https://www.doc.govt.nz/documents/science-and-technical/sfc194c.pdf); [Population structure and habitat use by *Latrodectus katipo* along the Manawatū–Whanganui coastline](https://www.researchgate.net/publication/233110271_Population_structure_and_habitat_use_by_the_spider_Latrodectus_katipo_along_the_Manawatu-Wanganui_coastline); [Te Ara — Sand dunes](https://teara.govt.nz/en/coastal-shoreline/page-5)
 - *Powelliphanta*: [*Powelliphanta traversi* — Wikipedia](https://en.wikipedia.org/wiki/Powelliphanta_traversi); [DOC — Powelliphanta snails](https://www.doc.govt.nz/nature/native-animals/invertebrates/powelliphanta-snails/); [NZ Mollusca](http://www.mollusca.co.nz/speciesdetail.php?taxa=4057)
 - Bats: [New Miocene mystacinid bat fossils from New Zealand](https://www.tandfonline.com/doi/full/10.1080/03115518.2026.2614525); [A new, large-bodied omnivorous bat reveals lost diversity since the Miocene, *Scientific Reports*](https://www.nature.com/articles/s41598-017-18403-w); [NZ long-tailed bat — Wikipedia](https://en.wikipedia.org/wiki/New_Zealand_long-tailed_bat)
+- Te Ahu a Tūranga assemblage: [Holdaway 2022, Birds New Zealand conference abstract](https://www.birdsnz.org.nz/?p=21593) (*Euryapteryx*, *Pachyornis*, NI adzebill, NI goose, a moa hatchling); [RNZ](https://www.rnz.co.nz/news/national/464677/unearthed-moa-bones-at-least-180-000-years-old) (returned to the Ruahine; replicas at Te Papa and Te Manawa)
 - Recent self-introductions: [RNZ — What is a native bird?](https://www.rnz.co.nz/national/programmes/afternoons/audio/201838128/what-is-a-native-bird); [Welcome swallow — Wikipedia](https://en.wikipedia.org/wiki/Welcome_swallow)

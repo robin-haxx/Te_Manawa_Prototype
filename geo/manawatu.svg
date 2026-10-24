@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <!-- Te Manawa geography skeleton. Run `node tools/svg2geo.js` after any edit (md/TEMANAWA_GEOGRAPHY.md).
+       Tributaries are drawn SOURCE → MOUTH and named (data-name). Sources sit well past the map edge
+       (y −150 / x 1850 / y 1040: the map ends at about y −53, x 1695, y 953, and a fan stream
+       beside a source must start off the map too) or inside a range, never on the plain.
+       Confluence order down the Manawatū (Wikipedia): Mangatewainui, Tīraumea, Mangatainoka,
+       Mangahao, Pohangina, Ōroua, Tokomaru; plus the Tamaki and Mangatoro (upper river), the
+       Kiwitea (into the Ōroua) and the Mākākahi (into the Mangatainoka). Redrawn 2026-10-20. -->
   <rect x="2" y="2" width="1596" height="896" fill="none" stroke="#ccc" stroke-width="2"/>
   <polygon class="range" data-height="0.90" data-spread="0.18" points="404.63 486.535 748.222 541.535 824.574 696.535 766.037 881.535 608.24 996.539 442.806 956.539 379.179 766.535 419.9 586.535" style=""/>
   <polygon class="range" data-height="0.91" data-spread="0.16" points="809.545 -53.829 1055.28 -14.225 1144.86 223.397 1091.09 425.376 922.171 457.059 783.952 282.803 771.153 76.863" style=""/>
   <polyline class="river" data-width="0.05" data-depth="1.0" fill="none" points="150,470 300,525 430,562 560,540 660,470 765,432 845,470 945,545 1055,548 1140,472 1226,360 1306,250 1366,176"/>
-  <path style="fill: none; stroke: rgb(0, 0, 0);" d="M 1083.65 40.852 C 1083.65 55.075 1096.56 66.606 1099.21 76.225 C 1109.38 113.199 1143.88 196.676 1124.5 243.656 C 1087.73 332.808 1081.7 471.776 1083.65 546.627"/>
-  <path style="fill: none; stroke: rgb(0, 0, 0);" d="M 911.003 848.145 C 906.341 848.145 937.919 830.957 944.073 824.802 C 964.028 804.846 1010.79 774 996.596 731.428 C 976.257 670.413 931.582 664.468 889.604 622.492 C 863.445 596.332 856.534 552.639 856.534 505.775"/>
-  <path style="fill: none; stroke: rgb(0, 0, 0); stroke-width: 1px; transform-origin: 597.812px 232.462px 0px;" d="M 567.518 478.542 C 559.152 478.542 615.82 453.835 626.864 444.987 C 662.674 416.301 746.592 371.957 721.119 310.76 C 684.619 223.05 604.449 214.505 529.117 154.164 C 482.173 116.56 440.591 -35.015 440.591 -35.015" transform="matrix(-1, 0, 0, -1, 0, 0)"/>
+
+  <!-- WEST of the ranges: the Manawatū plain -->
+  <polyline class="tributary" data-name="Pohangina" data-width="0.016" fill="none" stroke="#2a6" points="827,-150 800,-70 770,20 735,110 700,200 678,290 676,370 690,430 705,454"/>
+  <polyline class="tributary" data-name="Ōroua" data-width="0.018" fill="none" stroke="#2a6" points="595,-150 585,-70 575,10 552,90 522,175 500,255 488,335 470,410 446,480 425,530 408,556"/>
+  <polyline class="tributary" data-name="Kiwitea" data-width="0.013" fill="none" stroke="#2a6" points="706,-150 690,-70 672,20 640,105 600,180 560,240 498,272"/>
+  <polyline class="tributary" data-name="Tokomaru" data-width="0.013" fill="none" stroke="#2a6" points="560,800 520,720 470,650 410,590 365,550 350,539"/>
+
+  <!-- EAST of the ranges: the upper Manawatū and the Tararua-side rivers -->
+  <polyline class="tributary" data-name="upper Manawatū" data-width="0.018" fill="none" stroke="#26a" points="1128,-150 1150,-70 1175,20 1205,95 1195,175 1165,260 1135,350 1105,440 1088,500 1084,547"/>
+  <polyline class="tributary" data-name="Mangatewainui" data-width="0.013" fill="none" stroke="#26a" points="1466,-150 1420,-70 1380,0 1320,50 1260,85 1205,100"/>
+  <polyline class="tributary" data-name="Tamaki" data-width="0.013" fill="none" stroke="#26a" points="1000,140 1050,180 1110,212 1176,230"/>
+  <polyline class="tributary" data-name="Mangatoro" data-width="0.013" fill="none" stroke="#26a" points="1850,225 1710,250 1600,270 1480,300 1360,320 1260,320 1150,305"/>
+  <polyline class="tributary" data-name="Tīraumea" data-width="0.018" fill="none" stroke="#26a" points="1850,870 1710,800 1590,740 1470,670 1350,590 1240,520 1160,470 1104,445"/>
+  <polyline class="tributary" data-name="Mangatainoka" data-width="0.018" fill="none" stroke="#26a" points="972,1040 980,970 990,880 1010,800 1005,720 990,650 985,590 985,546"/>
+  <polyline class="tributary" data-name="Mākākahi" data-width="0.013" fill="none" stroke="#26a" points="1148,1040 1130,970 1110,890 1080,820 1040,760 1005,724"/>
+  <polyline class="tributary" data-name="Mangahao" data-width="0.015" fill="none" stroke="#26a" points="700,900 760,820 820,740 870,660 900,590 905,515"/>
 </svg>

@@ -23,7 +23,9 @@ kiosk screen). Turn it on with `…/secondscreen/?debug=1`, or toggle it live wi
 
 ## The three stations
 
-1. **Habitat switch** (left) — top→bottom: Forest, Wetland, *(Select)*, Lowland, Alpine.
+1. **Habitat switch** (left) — top→bottom: Wetland, Forest, *(Select)*, Alpine, Lowland. The two
+   warm (interglacial) habitats sit above the centre rest and the two cold (glacial) ones below,
+   with Forest and Alpine one detent from the centre.
 2. **Encyclopedia / boost-select** (centre) — highlight a plant to see its card and the fauna
    it supports; the **storm** button lives here.
 3. **Activate** (right) — **boost** the highlighted species (runs the timelapse to the next
@@ -40,6 +42,7 @@ kiosk screen). Turn it on with `…/secondscreen/?debug=1`, or toggle it live wi
 | `bus.js` | `BroadcastChannel` wrapper + the message vocabulary |
 | `app.js` | the state machine and renderer |
 | `assets/` | per-habitat 1080p backgrounds + optional highlight loops — **artist-supplied** |
+| `assets/plants_outlined/` | **generated** — each plant sprite with the birds' off-white border (soft falloff), swapped in while the plant is highlighted. Re-run `node tools/outline_plants.js` after adding or changing plant art; bootcheck fails if one is missing |
 
 ## Input bindings (edit `input.js`)
 
@@ -52,11 +55,16 @@ Default (dev): `ArrowUp`/`ArrowDown` = habitat switch; `←`/`→` = plant prev/
 - **Backgrounds** — `assets/Background_Base.png` is the shared background shown on every screen.
   For per-habitat art, drop e.g. `assets/bg_alpine.png` and point that habitat's `bg` at it in
   `encyclopedia.js` (it overrides the shared base).
-- **Hand-touch glyph** — the "Select a Habitat" / "Select a Plant" cards show `assets/hand.png`
-  (the `.hand` element). Drop the final art there; it's hidden until the file exists (no broken
-  icon). A different name/format just needs the two `<img class="hand" src=…>` in `index.html`
-  repointed. It replaced the old drawn SVG glyph.
-- **Encyclopedia copy** — the four card species (Tōtara, Mānuka, Tī kōuka, Red beech) are
-  real; every other plant's `desc`/`fauna` is a marked `TODO`. See `TEMANAWA_SECOND_SCREEN.md` §8.
-- **Highlight loops** — optional alpha WebM per plant (`TM_PLANT_HIGHLIGHT`); stills are used
-  until then.
+- **Hand-touch glyph** — the "Tap a Plant!" card shows `assets/hand.png` (the `.hand` element),
+  because that card is the touch prompt. Drop the final art there; it's hidden until the file
+  exists (no broken icon). A different name/format just needs the `<img class="hand" src=…>` in
+  `index.html` repointed. It replaced the old drawn SVG glyph.
+- **Logo** — the "Habitat Explorer" landing card shows the Te Manawa mark,
+  `../sprites/UI/Logo/Logo_Ink_00.svg` (white on transparent; the `.logo` element), not the hand:
+  the landing card is not a touch target.
+- **Encyclopedia copy** — every card now carries researched draft copy and fauna links
+  (`../md/TEMANAWA_ENCYCLOPEDIA_FLORA.md` §4). It is draft museum copy: names, narration and which
+  stories are told are for co-design with mana whenua. `node tools/bootcheck.js` ("encyclopedia
+  roster") checks each card fits its screen's era and resolves to real plants, sprites and species.
+- **Highlight loops** — optional alpha WebM per plant (`TM_PLANT_HIGHLIGHT`); until then the
+  highlight is the outlined still from `assets/plants_outlined/`.

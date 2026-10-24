@@ -126,6 +126,9 @@ const MOA_SPECIES = {
     rarity: 'uncommon',
     
     size: { min: 11, max: 14 },
+    // Adult body mass by sex (NZ Birds Online). Read only by the harrier's 40 kg prey ceiling
+    // (EylesHarrier.withinPreyCeiling): no adult female and few adult males are small enough.
+    adultMassKg: { male: [34, 85], female: [76, 242] },
     bodyColor: { r: [95, 115], g: [70, 85], b: [40, 55] },
     
     baseSpeed: 0.14,
@@ -137,7 +140,9 @@ const MOA_SPECIES = {
     hungerThreshold: 40,
     criticalHunger: 95,
     
-    preferredElevation: { min: 0.18, max: 0.45 },
+    // Coast to subalpine (NZ Birds Online: dunes, shrubland, forest, subalpine herbfield), so it
+    // reaches up into the forest band the South Island upland moa used to hold in the founder mix.
+    preferredElevation: { min: 0.20, max: 0.60 },
     temperatureTolerance: { cold: 0.5, heat: 0.6 },
     
     flockTendency: 0.6,
@@ -213,6 +218,7 @@ const MOA_SPECIES = {
     rarity: 'common',
     
     size: { min: 7, max: 10 },
+    adultMassKg: { male: [12, 34], female: [49, 109] },   // NZ Birds Online; reverse-dimorphic, so only males are harrier prey
     bodyColor: { r: [88, 108], g: [58, 73], b: [32, 45] },
     
     baseSpeed: 0.18,
@@ -344,6 +350,7 @@ const MOA_SPECIES = {
     rarity: 'uncommon',
     
     size: { min: 9, max: 11 },
+    adultMassKg: [17, 36],   // NZ Birds Online (no sex split given) — all under the harrier's 40 kg ceiling
     bodyColor: { r: [98, 118], g: [72, 87], b: [42, 57] },
     
     baseSpeed: 0.19,
@@ -386,6 +393,7 @@ const MOA_SPECIES = {
     rarity: 'common',
     
     size: { min: 5, max: 7 },
+    adultMassKg: [26, 64],   // md/TEMANAWA_ECOLOGY_FAUNA.md §3.1 — straddles the harrier's 40 kg ceiling
     bodyColor: { r: [82, 100], g: [55, 68], b: [25, 38] },
     
     baseSpeed: 0.15,       // Fastest moa
@@ -430,19 +438,22 @@ const MOA_SPECIES = {
 // RAPTOR SPECIES: Eyles' harrier / kērangi
 // ------------------------------------------------------------
 // The North Island apex avian predator in this window is the giant Eyles'
-// harrier (kērangi), NOT Haast's eagle: Haast's was South-Island-only and a
-// soaring ambush hunter, whereas the kērangi quartered low over open country
-// and forest edge. The internal base type stays 'eagle' (a mechanical list
-// name, not visitor-facing); only the identity is the harrier's. Behaviour
-// tuning (low quartering flight vs the inherited soaring approach) is a
-// separate follow-up; see md/TEMANAWA_PLAN_V3.md §14.1 and the memory
-// raptor-identity-conflation.
+// harrier (kērangi), NOT Haast's eagle (South-Island-only). The kērangi had a
+// goshawk build — compact wings, long powerful legs — and hunted flighted birds
+// in dry forest and shrubland with fast dashes, not by soaring over open country.
+// The internal base type stays 'eagle' (a mechanical list name, not
+// visitor-facing); only the identity is the harrier's. See
+// md/TEMANAWA_NATURAL_HISTORY.md §II and md/TEMANAWA_SPECIES_KERANGI.md.
+//
+// `maxPreyKg` is the one hunting field the harrier reads from here: North Island
+// birds could take moa only up to ~40 kg (NZ Birds Online), enforced against each
+// moa's adultMassKg by EylesHarrier.withinPreyCeiling.
 // ==========================================
 const EAGLE_SPECIES = {
   eyles_harrier: {
     displayName: "Eyles' Harrier",
     scientificName: "Circus teauteensis",
-    description: "Kērangi, the largest harrier known; hunted birds low over open country and forest edge",
+    description: "Kērangi, the largest harrier known; a fast, compact-winged hunter of birds in dry forest and shrubland",
     rarity: 'common',
     
     wingspan: { min: 10, max: 14 },
@@ -460,10 +471,8 @@ const EAGLE_SPECIES = {
     
     patrolRadius: { min: 70, max: 100 },
     
-    // Hunting preferences
-    preferredPreySize: { min: 5, max: 12 },  // Optimal moa size
-    largePenalty: 0.7,  // Multiplier for attacking larger moa
-    
+    maxPreyKg: 40,      // the prey ceiling: no adult moa heavier than this is taken (chicks/juveniles always can be)
+
     restDuration: 180
   },
   
@@ -489,9 +498,8 @@ const EAGLE_SPECIES = {
     
     patrolRadius: { min: 50, max: 70 },
     
-    preferredPreySize: { min: 5, max: 9 },
-    largePenalty: 0.5,
-    
+    maxPreyKg: 40,     // same ceiling as the adult
+
     restDuration: 120  // Recovers faster
   }
 };

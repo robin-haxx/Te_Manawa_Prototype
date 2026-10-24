@@ -21,12 +21,15 @@ const PLANT_TYPE_ID = {
   nikau: 14,
   tawa: 15,
   manuka: 16,
-  cabbagetree: 17
+  cabbagetree: 17,
+  sedge: 18,
+  wharariki: 19
 };
 
 // Plants that use sprite rendering
 const SPRITE_PLANTS = new Set(['tussock', 'flax', 'fern', 'Totara', 'beech', 'patotara', 'lancewood',
-  'kowhai', 'kahikatea', 'nikau', 'tawa', 'manuka', 'cabbagetree', 'coprosma', 'dracophyllum']);
+  'kowhai', 'kahikatea', 'nikau', 'tawa', 'manuka', 'cabbagetree', 'coprosma', 'dracophyllum',
+  'sedge', 'wharariki']);
 
 // Forest canopy trees subject to seasonal forest-band contraction. Kahikatea and
 // tawa are canopy trees that retreat with the glacial forest; mānuka (open-ground
@@ -34,7 +37,7 @@ const SPRITE_PLANTS = new Set(['tussock', 'flax', 'fern', 'Totara', 'beech', 'pa
 // tree (open wetland margin) are deliberately NOT here.
 const FOREST_TREES = new Set(['beech', 'Totara', 'fern', 'kahikatea', 'tawa']);
 
-// Cold-refuge canopy: black beech (Fuscospora), the GLACIAL REFUGIUM tree. It dominates LGM
+// Cold-refuge canopy: beech (Fuscospora; mountain beech on the card), the GLACIAL REFUGIUM tree. It dominates LGM
 // tree pollen and holds in sheltered pockets while the warm podocarp-broadleaf forest retreats
 // (TEMANAWA_ECOLOGY.md §3.3; memory beech-glacial-refuge). It stays a FOREST_TREE (canopy
 // die-back still applies where it genuinely can't live) but the glacial forest-CONTRACTION does
@@ -57,8 +60,26 @@ const COLD_REFUGE = new Set(['beech']);
 // footprint, while the sim growth still drives its nutrition and its wilting/dormant STATE.
 // The latch clears only on a genuine die-back to rootstock (growth 0), so a toppled forest
 // tree still regrows honestly from a sapling. See _getSpriteState / render / _renderSprite.
-const WOODY_TREES = new Set(['Totara', 'beech', 'kahikatea', 'tawa', 'kowhai', 'manuka', 'cabbagetree', 'nikau']);
-const MATURE_DISPLAY_FLOOR = 0.7;   // a matured tree's footprint never drops below this fraction of full
+//
+// TREES NEVER UN-GROW. The latch alone still let a matured tree shrink (it floored the footprint
+// at 70%, so a browse bite or dormancy visibly took it from 100% to ~80%), and a GROWING tree
+// stepped back to an earlier sapling frame on every bite. So a tree's DISPLAYED growth is a
+// ratchet (_dg / _gShown): it only ever rises, whatever the sim growth does underneath, and resets
+// only when the tree really dies (alive=false, or die-back to rootstock at growth 0), which is
+// shown as a fall, not a shrink (fall()). Dormancy no longer shrinks a tree's footprint either.
+// 'fern' is the tree fern (mamaku/ponga, trunked art), so it is a tree here. Shrubs and grasses
+// are NOT in this set: for them a bite visibly cropping the clump is the point.
+const WOODY_TREES = new Set(['Totara', 'beech', 'kahikatea', 'tawa', 'kowhai', 'manuka', 'cabbagetree', 'nikau', 'fern']);
+
+// TREE FALL shape (die-back, windthrow, kahikatea senescence; duration = LEVEL_MECHANICS.forestDiebackFallMs).
+// The angle follows smoothstep², so the fall starts with zero speed AND zero acceleration (a slow
+// lean, ~4° by 30% through) and settles softly at the end instead of slamming flat. The tree's own
+// sway eases out over the first `swayOut` of the fall, so it never snaps upright as it starts.
+const TOPPLE = {
+  maxAngle:  1.45,   // radians it ends at (~83°, onto its side)
+  swayOut:   0.35,   // fraction of the fall over which the live sway eases out
+  fadeStart: 0.6     // fraction of the fall after which it fades (smoothstep to 0 at the end)
+};
 
 // Sprite reference, initialized from TeManawa_sketch.js
 let PLANT_SPRITES = null;
@@ -266,6 +287,7 @@ class Plant {
     // they begin ALREADY matured (the established starting forest); a recruited seedling
     // (growth set to ~0.06 after construction) starts un-matured and grows up honestly.
     this._tree = WOODY_TREES.has(type);
+    this._gShown = -1;             // tree display-growth ratchet (see _dg); -1 = take the growth on first read
     this._matured = this._tree && this.growth >= 1.0;
     this.seasonalModifier = 1.0;
     this.plantTypeModifier = 1.0;
@@ -285,7 +307,9 @@ class Plant {
     this._toppling = false;
     this._toppleStart = 0;
     this._toppleDir = 1;
-    
+    this._fallKind = null;         // set by fall(): the topple ends in death ('throw' | 'senesce' | 'thin'), not rootstock
+    this._bornMs = (typeof millis === 'function') ? millis() : 0;   // real-clock birth; homeostasis spares the young (homeoGraceMs)
+
     // Pre-calculate visual variation
     this.visualOffset = random(-1, 1);
     this.swayPhase = random(TWO_PI);
@@ -298,8 +322,25 @@ class Plant {
     this._lastSpriteState = 'mature';
   }
   
-  update(seasonManager, dt = 1, warp = 0, kahiBoost = 1) {
-    if (this._senescent) return;                 // an aged-out kahikatea is inert until the next morph cull removes it
+  update(seasonManager, dt = 1, warp = 0, kahiBoost = 1, riverWorking = false) {
+    if (!this.alive || this.growth <= 0) this._gShown = -1;   // really died (or rootstock): the tree's display ratchet restarts
+    if (this._senescent) return;                // an aged-out kahikatea is inert until the next morph cull removes it
+    // A tree on a FATAL fall (fall(): windthrow or kahikatea senescence) is committed: no warp,
+    // dormancy, boost or returning habitat stands it back up (a half-played fall would otherwise
+    // freeze as an invisible live tree). When the real-clock fall has played out it dies.
+    if (this._fallKind && this._toppling) {
+      const now = (typeof millis === 'function') ? millis() : 0;
+      const fallMs = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.forestDiebackFallMs) ?? 800;
+      if (now - this._toppleStart >= fallMs) {
+        this._toppling = false;
+        this.alive = false; this._matured = false;
+        if (this._fallKind === 'senesce' || this._fallKind === 'thin') this._senescent = true;   // aged out / thinned: never regrows
+        else { this.growth = 0; this.regrowthTimer = 0; }                    // windthrown: regrows from bare
+        this._fallKind = null;
+      }
+      this.nutrition = 0;
+      return;
+    }
     // FOREST-boost lifecycle accelerator, kahikatea only (set by Simulation.updatePlantsBatched from
     // the held FOREST button). >1 speeds up whatever this kahikatea is DOING (growing, aging toward
     // senescence, or senescing/shrinking) instead of the button force-growing it (the button skips
@@ -406,13 +447,24 @@ class Plant {
     // and, past the wilt, dies WITHOUT regrowing (culled next morph). This couples the swamp forest to
     // the moving river: disturb the river and kahikatea colonises; leave it static and the stand fades.
     if (this._kahikatea) {
-      if (warp > 0) {
+      // A warp is a local river disturbance; `riverWorking` (deep time moving) means the river is
+      // reworking the whole floodplain, so a stand ON the river wetland stays young too.
+      if (warp > 0 || (riverWorking && this.biomeKey === 'wetland')) {
         this._kahiAge = 0;
       } else {
         const KM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
         this._kahiAge += dt * accel;                               // FOREST boost ages the stand faster toward senescence
         if (this._kahiAge > ((KM && KM.kahiMaxAge) || 900)) {
-          this.growth -= ((KM && KM.kahiSenesceRate) || 0.02) * accel;   // senescing: boost wilts it back FASTER, not slower
+          // Senescing: the tree FALLS OVER and fades (the same real-clock topple as the forest
+          // die-back, drawn in _renderSprite) instead of shrinking in place, which read as the tree
+          // un-growing. It keeps its size through the fall, then dies without regrowing (culled next
+          // morph). Legacy shrink: forestDiebackFall:false (rate kahiSenesceRate, ×accel).
+          if (!KM || KM.forestDiebackFall !== false) {
+            this.fall('senesce');
+            this.nutrition = 0;
+            return;                                                 // the fall plays out at the top of update()
+          }
+          this.growth -= ((KM && KM.kahiSenesceRate) || 0.02) * accel;   // legacy: boost wilts it back FASTER
           if (this.growth <= 0.05) { this.alive = false; this._senescent = true; this.nutrition = 0; }
           else this.nutrition = this.maxNutrition * this.growth * 0.5;
           return;                                                   // skip normal growth while senescing
@@ -446,7 +498,42 @@ class Plant {
     }
   }
   
+  // The growth a plant is DRAWN at. Shrubs/grasses: the sim growth, so browsing visibly crops
+  // them. Trees: a ratchet that only rises (browsing, dormancy and storm knock-backs lower the sim
+  // growth, never the tree you see); update() restarts it when the tree really dies. See WOODY_TREES.
+  _dg() {
+    if (!this._tree) return this.growth;
+    if (this.growth > this._gShown) this._gShown = this.growth;
+    return this._gShown;
+  }
+
+  // Fall angle (radians, unsigned) and opacity at fall progress t (0..1). See TOPPLE.
+  static toppleAngle(t) {
+    const s = t <= 0 ? 0 : (t >= 1 ? 1 : t * t * (3 - 2 * t));
+    return TOPPLE.maxAngle * s * s;
+  }
+  static toppleAlpha(t) {
+    if (t <= TOPPLE.fadeStart) return 1;
+    const u = t >= 1 ? 1 : (t - TOPPLE.fadeStart) / (1 - TOPPLE.fadeStart);
+    return 1 - u * u * (3 - 2 * u);
+  }
+
+  // A FATAL fall: the tree topples over and fades at full size (drawn in _renderSprite off the real
+  // clock), then dies when the fall has played out (top of update()). kind 'throw' = storm windthrow,
+  // regrows from bare ground; 'senesce' = an aged-out kahikatea, never regrows; 'thin' = plant
+  // homeostasis trimming a habitat back to its target (Simulation._updateHomeostasis): it fades in
+  // place without toppling, and never regrows. dir defaults to a random side. No-op if already falling.
+  fall(kind, dir) {
+    if (this._toppling || !this.alive) return false;
+    this._toppling = true;
+    this._toppleStart = (typeof millis === 'function') ? millis() : 0;
+    this._toppleDir = dir || (random() < 0.5 ? -1 : 1);
+    this._fallKind = kind;
+    return true;
+  }
+
   goDormant() {
+    if (this._toppling) return;            // a falling tree keeps its size until the fall plays out
     this.dormant = true;
     this.dormantTimer = 0;
     this.growth = this.growth * 0.3;
@@ -520,7 +607,7 @@ class Plant {
   // Two visibly different fates teach the two ideas: herbivory crops the bush, the
   // climate and ground decide where the forest can live. Knobs: browseBite/browseFloor.
   consume() {
-    if (this.dormant || !this.alive || this.growth <= 0) return 0;
+    if (this.dormant || !this.alive || this.growth <= 0 || this._toppling) return 0;   // nothing to browse on a falling tree
 
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
     const biteMax = (M && M.browseBite  != null) ? M.browseBite  : 0.3;
@@ -549,16 +636,23 @@ class Plant {
     // its sim growth (see WOODY_TREES). Grass and shrubs are not latched, so grazers still
     // visibly crop them down.
     const latched = this._tree && this._matured;
+    const g = this._dg();          // trees: the ratcheted display growth (never goes backwards)
 
     // Size-only plants (tōtara) have no seasonal state art: they never switch to a
     // Dormant/Wilting/Thriving/Mature frame. They play their growth sequence while
     // immature, then hold their assigned size variant (via the 'mature' path in
     // _renderSprite). No sprite-switching on dormancy, wilt, thrive or suppression.
     if (sprites && sprites.meta && sprites.meta.sizeOnly) {
-      if (!latched && this.growth < 1.0 && sprites.growing && sprites.growing.length) {
+      if (!latched && g < 1.0 && sprites.growing && sprites.growing.length) {
         return 'growing';
       }
       return 'mature';
+    }
+
+    // A growing TREE stays on its sapling sequence through dormancy/wilt: swapping to the adult
+    // Dormant/Wilting art and back read as the tree jumping between growth stages.
+    if (this._tree && !latched && g < 1.0 && sprites && sprites.growing && sprites.growing.length) {
+      return 'growing';
     }
 
     // Trees suppressed by forest contraction show as wilted
@@ -583,11 +677,11 @@ class Plant {
     // Immature plants play their growth sequence, where one exists. Checked
     // after the distress states so wilting/dormancy still reads through. A matured
     // tree is exempt (latched): a growth dip keeps its adult frame, never a sapling.
-    if (!latched && this.growth < 1.0 && sprites && sprites.growing && sprites.growing.length) {
+    if (!latched && g < 1.0 && sprites && sprites.growing && sprites.growing.length) {
       return 'growing';
     }
 
-    if (eff > 1.1 && this.growth > 0.7) {
+    if (eff > 1.1 && g > 0.7) {
       return 'thriving';
     }
 
@@ -597,7 +691,7 @@ class Plant {
   // Picks the growth frame for the current progress. growth runs 0..1, so with
   // four frames each covers a quarter of the plant's development.
   _getGrowingFrame(frames) {
-    const i = Math.floor(this.growth * frames.length);
+    const i = Math.floor(this._dg() * frames.length);
     const clamped = i < 0 ? 0 : (i >= frames.length ? frames.length - 1 : i);
     return frames[clamped];
   }
@@ -637,12 +731,10 @@ class Plant {
     // base-anchored trees up on the lifted ground, undistorted (§5).
     const py = Projection.groundY(this.pos.y, this.elevation);
     const dormant = this.dormant;
-    // Matured trees keep an adult footprint: the sim growth still varies with vigour, but
-    // the DISPLAYED size never collapses toward a sapling (see WOODY_TREES). A dormant tree
-    // wilts (its dormant frame) and shrinks only a little, not down to a seedling.
-    const latched = this._tree && this._matured;
-    const dg = latched ? (MATURE_DISPLAY_FLOOR + (1 - MATURE_DISPLAY_FLOOR) * this.growth) : this.growth;
-    const dormantMult = dormant ? (latched ? 0.85 : 0.5) : 1;
+    // Trees never un-grow: the DISPLAYED growth is a ratchet (see WOODY_TREES), and a dormant tree
+    // keeps its footprint (its dormant frame shows the dormancy). Other plants shrink with growth.
+    const dg = this._dg();
+    const dormantMult = (dormant && !this._tree) ? 0.5 : 1;
     const displaySize = this.size * dg * dormantMult;
 
     if (displaySize < 2) return;
@@ -709,7 +801,7 @@ class Plant {
     // Shadow - draw directly without transform. It stays flat on the ground and fades out
     // with the falling tree (a felled trunk casts less and less shadow as it goes over).
     if (CONFIG.drawShadows) {
-      const shA = (dormant ? 10 : 20) * (tprog >= 0 ? (1 - tprog) : 1);
+      const shA = (dormant ? 10 : 20) * (tprog >= 0 ? Plant.toppleAlpha(tprog) : 1);
       if (shA > 0.5) {
         noStroke();
         fill(0, 0, 0, shA);
@@ -722,18 +814,20 @@ class Plant {
     // shrinks saplings to a few pixels, so ease over a narrower range instead.
     let spriteSize;
     const latched = this._tree && this._matured;
+    const g = this._dg();
+    const dormShrink = (dormant && !this._tree) ? 0.5 : 1;   // trees keep their footprint while dormant
     if (spriteState === 'growing' && meta && meta.fixedGrowthSize) {
       // Fixed-footprint growth (nīkau): the Grow frames' ARTWORK carries the size
       // progression, so hold the footprint at adult width the whole way, no scale-up.
-      spriteSize = this.size * (dormant ? 0.5 : 1);
+      spriteSize = this.size * dormShrink;
     } else if (spriteState === 'growing') {
-      spriteSize = this.size * (0.55 + 0.45 * this.growth) * (dormant ? 0.5 : 1);
+      spriteSize = this.size * (0.55 + 0.45 * g) * dormShrink;
     } else if (latched) {
-      // Matured tree: the footprint IS the floored display size (render() already applied
-      // the mature floor); do not compound the sub-0.5 sapling shrink below.
+      // Matured tree: the footprint IS the display size; do not compound the sub-0.5
+      // sapling shrink below.
       spriteSize = displaySize;
-    } else if (this.growth < 0.5) {
-      spriteSize = displaySize * (0.5 + this.growth);
+    } else if (g < 0.5) {
+      spriteSize = displaySize * (0.5 + g);
     } else {
       spriteSize = displaySize;
     }
@@ -759,13 +853,31 @@ class Plant {
     // and fades out near the end. Fade via drawingContext.globalAlpha (NOT per-frame tint, which
     // rebakes the tint cache each frame and stutters; see memory per-frame-tint-stutter); push()
     // saved the alpha and pop() restores it. Drawn instead of the normal sway/direct path.
+    // GENTLE START: the tree first sways on as it was (no snap from its sway angle to upright),
+    // the sway easing out over the opening while it eases into a lean, then it goes over on an
+    // ease-in-out curve and settles softly rather than slamming flat. See Plant.toppleAngle.
+    if (tprog >= 0 && this._fallKind === 'thin') {
+      // Homeostasis thinning: a soft fade where it stands, no topple (a fading tussock reads as the
+      // habitat easing back; a falling one would read as a storm). Same globalAlpha rule as below.
+      const a = 1 - tprog * tprog * (3 - 2 * tprog);
+      if (a <= 0.01) return;
+      push();
+      drawingContext.globalAlpha = a;
+      image(sprite, px - halfW, py + offsetY, drawW, drawH);
+      pop();
+      return;
+    }
     if (tprog >= 0) {
-      const ease = tprog * tprog * Math.sqrt(tprog);          // ~tprog^2.5, slow start, accelerating fall
-      const angle = this._toppleDir * 1.45 * ease;            // upright → ~83° over onto its side
+      let angle = this._toppleDir * Plant.toppleAngle(tprog);
+      const swayMod = this._swayMod();
+      if (!dormant && swayMod > 0.1 && tprog < TOPPLE.swayOut) {
+        const u = tprog / TOPPLE.swayOut;
+        angle += PlantStatics.getSway(frameCount, this.swayPhase, swayMod) * (1 - u * u * (3 - 2 * u));
+      }
       push();
       translate(px, py);
       rotate(angle);
-      drawingContext.globalAlpha = Math.max(0, 1 - tprog * tprog * tprog);   // opaque through the fall, fades at the end
+      drawingContext.globalAlpha = Plant.toppleAlpha(tprog);   // opaque through the fall, fades as it settles
       image(sprite, -halfW, offsetY, drawW, drawH);
       pop();
       return;
