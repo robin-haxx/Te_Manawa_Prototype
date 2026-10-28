@@ -308,6 +308,18 @@ const LOOK = {
   duneBlowoutOnset: 0.25,    // sand SURGE above which blow-outs begin to open (a stable belt below this has none)
   duneWaterTable:   0.12,    // the deflation FLOOR — dry sand blows away down to the moist water-table plane (just above the sea band ~0.10, so a scoured hollow reads as a bare-sand / wet-slack bowl, not open lagoon). Raise it if the land re-tune sits the belt higher; lower it toward the sea band for deeper, wetter hollows
 
+  // ---- COLD-PHASE COVER (forest → glacial shrub–grassland) -----------------------
+  // Above each glacial stage's treeline (LEVEL_MECHANICS.forestBandByStage[stage].max, the band
+  // the live trees contract against) a forest biome's ground blends toward its authored
+  // `coldCover` colours (levelDef.biomes), so the painted hills open up with the plants instead
+  // of staying forest-green under the frost wash. Lee slopes (facing away from the fixed NW
+  // wind) hold dark beech instead. Per stage in the season bake; tune live (press B).
+  coldCover:          true,  // master toggle
+  coldCoverFade:      0.05,  // elevation over which the ground goes from forest at the treeline to fully open above it
+  coldCoverJitter:    0.03,  // how far (elevation units) the facet field wanders the treeline so it reads ragged, not contour-straight
+  coldCoverLeeGain:   300,   // shelter from the SE-facing gradient (per world unit): higher = more slopes count as sheltered beech refuge. 300 shelters ~1 in 5 open-slope cells to half or more, near the ~15% tree pollen of the LGM (TEMANAWA_ECOLOGY_OPEN.md §4.1)
+  coldCoverLeeSpan:   2,     // world units the lee gradient is measured over: wide enough that a one-cell elevation step or crest texture can't draw a line of beech
+
   // ---- EAST→WEST STRAIT RETREAT (deep time) ------------------------------------
   // The wide main-stem "strait" (straitWidthMult) closes two ways at once as the ranges rise:
   //   1. it THINS uniformly over time — the old behaviour — over GEO_EPOCHS.straitClose* dates
@@ -477,6 +489,7 @@ class TerrainGenerator {
     this._initBiomeIndex();
     this._colorCache = new Map();
     this._snowColorsRGB = null;
+    this._coldCoverByIdx = null;   // per-biome cold-cover table (_initColdCover)
   }
 
   // ============================================
@@ -601,6 +614,34 @@ class TerrainGenerator {
       const c = this._getCachedColor(hex);
       return [red(c), green(c), blue(c)];
     });
+  }
+
+  // Per-biome-index COLD COVER table for the season bake: null for a biome without a
+  // `coldCover` entry, else its open ramp as flat RGB triples plus the refuge colour and the
+  // two blend amounts. Resolved here, once per generate/morph, so the per-pixel bake only
+  // indexes numbers (no colour parsing on the hot path).
+  _initColdCover() {
+    const arr = this.biomeArray || [];
+    let any = false;
+    const out = new Array(arr.length);
+    for (let i = 0; i < arr.length; i++) {
+      const cc = arr[i].coldCover;
+      if (!cc || !Array.isArray(cc.colors) || cc.colors.length < 1) { out[i] = null; continue; }
+      const open = new Float32Array(cc.colors.length * 3);
+      for (let k = 0; k < cc.colors.length; k++) {
+        const c = this._getCachedColor(cc.colors[k]);
+        open[k * 3] = red(c); open[k * 3 + 1] = green(c); open[k * 3 + 2] = blue(c);
+      }
+      const rc = this._getCachedColor(cc.refuge || cc.colors[0]);
+      out[i] = {
+        open, n: cc.colors.length,
+        refR: red(rc), refG: green(rc), refB: blue(rc),
+        amt: (cc.amount != null) ? cc.amount : 0.85,
+        refAmt: (cc.refugeAmount != null) ? cc.refugeAmount : 0.6
+      };
+      any = true;
+    }
+    this._coldCoverByIdx = any ? out : null;
   }
   
   getSnowLineElevation() {
@@ -1235,9 +1276,10 @@ class TerrainGenerator {
     this._buildGeoCache();
     this._applyGeoToHeightMap();
     this._rebuildBiomeMap();
-    
+
     this._initSnowColors();
-    
+    this._initColdCover();
+
     // Build the high-resolution PAINT grid: the continuous elevation sampled at
     // LOOK.bakeScale× the sim grid, with biome, colour, water and edge per fine
     // cell. This is what the season bakes render from, decoupling PAINT resolution
@@ -2097,6 +2139,37 @@ class TerrainGenerator {
     let s = surge; if (s < 0) s = 0;
     let a = baseAmt * (1 + s * boost);
     return a > 1 ? 1 : a < 0 ? 0 : a;
+  }
+
+  // The treeline (upper limit of the forest band) for a glacial stage, read from the SAME
+  // LEVEL_MECHANICS.forestBandByStage the live trees contract against (SeasonManager.
+  // getForestBand), so the painted ground and the plants agree. null when the level has no
+  // forest contraction, which turns the cold cover off.
+  static _stageTreeline(stageKey) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const bands = M && M.forestContraction && (M.forestBandByStage || M.forestBandBySeason);
+    if (!bands) return null;
+    const b = bands[stageKey] || M.forestBand;
+    return (b && b.max != null) ? b.max : null;
+  }
+
+  // COLD COVER fraction (0..1) for a forest paint cell at elevation e: 0 at or below the stage
+  // treeline, easing to 1 one `fade` above it. `jit` (elevation units, from the facet field)
+  // wanders the line so it reads ragged rather than contour-straight. Pure.
+  static _coldCoverT(e, treeline, fade, jit) {
+    const f = fade > 1e-4 ? fade : 1e-4;
+    let t = (e - (treeline + jit)) / f;
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    return t * t * (3 - 2 * t);
+  }
+
+  // LEE SHELTER (0..1) from `lee`, the per-world-unit fall from a cell's north and west
+  // neighbours down to it: positive on a slope facing SE, away from the fixed NW wind
+  // (TEMANAWA_ECOLOGY_COAST.md §1), where glacial beech held on. Pure.
+  static _leeShelter(lee, gain) {
+    const s = lee * gain;
+    return s <= 0 ? 0 : s >= 1 ? 1 : s;
   }
 
   // MAIN NE-ARM RECESSION presence multiplier (0..1) for a main-stem cell at downstream position
@@ -3753,6 +3826,7 @@ class TerrainGenerator {
         this._applyGeoToHeightMap();
         this._rebuildBiomeMap();
         this._initSnowColors();
+        this._initColdCover();
         job.phase = 1;
       } else if (job.phase === 1) {
         this._bakeScaleOverride = job.bakeScale;
@@ -4246,6 +4320,11 @@ class TerrainGenerator {
     const duneTrack = (LOOK.duneCoastTrack != null) ? LOOK.duneCoastTrack : 0;
     const duneCoastX = ((LOOK.coastInland != null) ? LOOK.coastInland : 0.02) + duneCoastShift * duneTrack;
 
+    // COLD-PHASE COVER: this stage's treeline (the live forest band's upper limit). Above it the
+    // forest biomes open into their authored shrub–grassland, with beech holding in the lee.
+    const coldTreeline = TerrainGenerator._stageTreeline(seasonKey);
+    const coldOn = !!LOOK.coldCover && !!this._coldCoverByIdx && coldTreeline != null;
+
     return {
       seasonKey, buf, px: buf.pixels,
       K, LIFT, S, PW, PH,
@@ -4276,7 +4355,13 @@ class TerrainGenerator {
       duneELo: (LOOK.duneElevLo != null) ? LOOK.duneElevLo : 0.16,
       duneEHi: (LOOK.duneElevHi != null) ? LOOK.duneElevHi : 0.42,
       duneCoastX,
-      duneCoastXS: (LOOK.coastInlandSouth != null) ? LOOK.coastInlandSouth : 0
+      duneCoastXS: (LOOK.coastInlandSouth != null) ? LOOK.coastInlandSouth : 0,
+      // COLD-PHASE COVER (forest → shrub–grassland above the stage treeline; beech in the lee)
+      coldOn, coldCov: this._coldCoverByIdx, coldTreeline: coldOn ? coldTreeline : 1,
+      coldFade: (LOOK.coldCoverFade != null) ? LOOK.coldCoverFade : 0.05,
+      coldJit: (LOOK.coldCoverJitter != null) ? LOOK.coldCoverJitter : 0,
+      coldLeeGain: (LOOK.coldCoverLeeGain != null) ? LOOK.coldCoverLeeGain : 0,
+      coldLeeK: Math.max(1, Math.round(S * ((LOOK.coldCoverLeeSpan != null) ? LOOK.coldCoverLeeSpan : 2)))   // paint cells
     };
   }
 
@@ -4305,7 +4390,12 @@ class TerrainGenerator {
             invS, SHADE, STEPS, SHLO, SHHI, TOPBAND, CLIFF,
             reliefEdgeOn, reR, reG, reB, EDGEW, jit, facetA, facetAmp,
             duneOn, duneAmt, duneR, duneG, duneB, duneReach, duneOff, duneELo, duneEHi,
-            duneCoastX, duneCoastXS } = st;
+            duneCoastX, duneCoastXS,
+            coldOn, coldCov, coldTreeline, coldFade, coldJit, coldLeeGain, coldLeeK } = st;
+    // The open ramp spans from the treeline up to the snow line (never thinner than one fade).
+    const coldSpan = Math.max(coldFade, snowLine - coldTreeline);
+    const coldInvSpan = coldSpan > 0 ? 1 / coldSpan : 0;
+    const coldLeeScale = 0.5 * S / coldLeeK;   // per-world-unit fall over the lee stencil
 
     const invPW = 1 / PW, invPH = 1 / PH;
     // A wetland cell (river mouth / estuary / back-swamp) must not take the wind-blown dune
@@ -4336,6 +4426,8 @@ class TerrainGenerator {
 
         // ---- season colour for this paint cell ----
         let cr = colR[i], cg = colG[i], cb = colB[i];
+        const eN = (pr > 0) ? elevA[i - PW] : e;   // north (far) and west neighbours, for the
+        const eW = (pc > 0) ? elevA[i - 1] : e;    // slope shading below
 
         // COASTAL DUNE sand tint: blend toward the sand colour on the western coastal plain,
         // thinning inland to 0 at this phase's reach (the Koputaroa surge grows with cold).
@@ -4346,6 +4438,36 @@ class TerrainGenerator {
           if (di > 0) {
             const a = di * duneAmt;
             cr = cr + (duneR - cr) * a; cg = cg + (duneG - cg) * a; cb = cb + (duneB - cb) * a;
+          }
+        }
+
+        // COLD-PHASE COVER: above this stage's treeline a forest biome opens into its glacial
+        // shrub–grassland ramp (grey scrub → tawny tussock toward the snow line), except where the
+        // slope faces SE out of the NW wind, which blends to dark beech instead. Before snow, so
+        // the snow caps the open tops; land only (a river riding the hills keeps its water).
+        if (coldOn && waterA[i] === 0) {
+          const cv = coldCov[biomeA[i]];
+          if (cv) {
+            const t = TerrainGenerator._coldCoverT(e, coldTreeline, coldFade, facetA ? facetA[i] * coldJit : 0);
+            if (t > 0) {
+              // Lee: the fall from the cells coldLeeK to the north and west (a wide stencil, so
+              // crest texture and one-cell elevation steps don't read as lines of beech).
+              const eNk = (pr >= coldLeeK) ? elevA[i - coldLeeK * PW] : e;
+              const eWk = (pc >= coldLeeK) ? elevA[i - coldLeeK] : e;
+              const shl = TerrainGenerator._leeShelter(((eNk - e) + (eWk - e)) * coldLeeScale, coldLeeGain);
+              // Open-ramp colour by height above the treeline (lerped between ramp stops).
+              let rp = (e - coldTreeline) * coldInvSpan;
+              if (rp < 0) rp = 0; else if (rp > 1) rp = 1;
+              const fk = rp * (cv.n - 1), k0 = fk | 0, k1 = k0 < cv.n - 1 ? k0 + 1 : k0, kt = fk - k0;
+              const o = cv.open;
+              const oR = o[k0 * 3] + (o[k1 * 3] - o[k0 * 3]) * kt;
+              const oG = o[k0 * 3 + 1] + (o[k1 * 3 + 1] - o[k0 * 3 + 1]) * kt;
+              const oB = o[k0 * 3 + 2] + (o[k1 * 3 + 2] - o[k0 * 3 + 2]) * kt;
+              // One blend toward the open/refuge mix, weighted by the shelter.
+              const tR = oR + (cv.refR - oR) * shl, tG = oG + (cv.refG - oG) * shl, tB = oB + (cv.refB - oB) * shl;
+              const a = t * (cv.amt + (cv.refAmt - cv.amt) * shl);
+              cr = cr + (tR - cr) * a; cg = cg + (tG - cg) * a; cb = cb + (tB - cb) * a;
+            }
           }
         }
 
@@ -4379,9 +4501,7 @@ class TerrainGenerator {
         // few flat bands so the ground shades in light/mid/shadow STEPS like the
         // tree sprites — not a smooth gradient. Light from the NW (the fixed wind
         // and sprite light axis, SPRITE_BRIEF §1.1). Per world-unit slope (× S) so
-        // it is bakeScale-independent.
-        const eN = (pr > 0) ? elevA[i - PW] : e;
-        const eW = (pc > 0) ? elevA[i - 1] : e;
+        // it is bakeScale-independent. (eN / eW are read at the top of the cell.)
         let sh = 1 - ((e - eN) + (e - eW)) * 0.5 * S * SHADE;
         if (sh < SHLO) sh = SHLO; else if (sh > SHHI) sh = SHHI;
         if (STEPS >= 2) {

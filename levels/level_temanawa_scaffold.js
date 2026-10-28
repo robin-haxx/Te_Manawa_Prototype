@@ -19,7 +19,12 @@ podocarp: ['#2d5a3d','#346644','#3b724b'],
 montane: ['#4a7c59','#528764','#5a926f'],
 subalpine:['#809a59','#a4b56d','#85a15c'],
 alpine: ['#8b8b8b','#9a9a9a','#a9a9a9'],
-snow: ['#e8e8e8','#f0f0f0','#ffffff']
+snow: ['#e8e8e8','#f0f0f0','#ffffff'],
+// Glacial shrub–grassland that replaces forest above the stage treeline (biome `coldCover`):
+// grey scrub just above the line → olive tussock-scrub → tawny tussock toward the snow.
+glacialOpen: ['#7f8d66','#9da57a','#b3aa7f'],
+// Dark beech stands holding in the lee of the NW wind above the treeline (the glacial refuge tree).
+beechRefuge: ['#2c4a3b']
 };
 // const habitatCols = {
 //   sea : ['#3d625a','#3f7972','#44938a'],
@@ -107,6 +112,17 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   //   walkable / canHavePlants / canPlace / plantTypes
   //       Simulation, not look. plantTypes must exist in PLANT_TYPES.
   //
+  //   coldCover: { colors, refuge, amount, refugeAmount }   (forest bands only)
+  //       What this band's ground turns into ABOVE the glacial treeline. The treeline is
+  //       LEVEL_MECHANICS.forestBandByStage[stage].max, the same band the live trees
+  //       contract against, so the painted ground and the plants agree. Above it the
+  //       ground blends toward the `colors` ramp (low → high above the line, up to the
+  //       snow line) by `amount`, except on slopes in the lee of the NW wind, which
+  //       blend toward the dark `refuge` beech colour by `refugeAmount` instead. Baked
+  //       per glacial stage; the interglacial treeline sits above every forest band, so
+  //       the warm ground is unchanged. LOOK.coldCover* tunes the edge and the shelter.
+  //       Research: TEMANAWA_ECOLOGY_OPEN.md §4 (two-thirds open, beech in shelter).
+  //
   // Two colours here are NOT authored per biome:
   //   · Snow blends over any band above the season's snow line, from the snow
   //     biome's ramp — TerrainGenerator.seasonSnowLines (summer 0.92, autumn
@@ -157,6 +173,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  walkable:true,  canHavePlants:true, plantDensityMult:3.8, plantTypes:['flax','sedge','cabbagetree','kahikatea','tussock','manuka','flax','nikau','coprosma'], canPlace:true },
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#ffffff',
+                 coldCover:{ colors:habitatCols.glacialOpen, refuge:habitatCols.beechRefuge[0], amount:0.85, refugeAmount:0.6 },
                  walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
     // MONTANE — podocarp-broadleaf, NOT beech forest. Black beech is famously ABSENT from the
     // Manawatū (the "beech gap": tawa is in every forest type EXCEPT beech; the only beech in
@@ -166,6 +183,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // modifier that rises into the cold, so it holds where the warm podocarps retreat).
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#ffffff',
+                 coldCover:{ colors:habitatCols.glacialOpen, refuge:habitatCols.beechRefuge[0], amount:0.85, refugeAmount:0.6 },
                  walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'], canPlace:true },
     // SUBALPINE — the glacial-mosaic tops: tussock, grey scrub, Dracophyllum, mānuka heath, and
     // wharariki (mountain flax, art shared with harakeke; Esler records it on the Arawaru summit).

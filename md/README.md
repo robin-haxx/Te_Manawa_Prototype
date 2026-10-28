@@ -65,6 +65,7 @@ reaches the screen — which is deliberately not much.
 | `TEMANAWA_RESEARCH.md` | 86 | Sources and reading notes. Points at `research/*.pdf` |
 | `TEMANAWA_GOALS.md` | — | **The plant-goal book**: how goals are chosen (live gates, the moa → harrier → lowland → forest bird sequence, random draw), every goal and when it appears, the encyclopedia entries fact-checked with macrons, sim gaps, and words to explain for 8–14-year-olds |
 | `TEMANAWA_ENCYCLOPEDIA_CARDS.md` | — | **Draft three-part cards** (fun facts · role in the Manawatū · what a boost does + its bird) for every plant, with measured boost trials and the five sim gaps they exposed (all fixed 2026-10-14). Draft, not yet on screen |
+| `TEMANAWA_HABITATS.md` | — | **Quick reference for the four sim habitats.** Per habitat: plants on screen and in the sim, linked birds, goals (tagged by climate), and the real plant communities; then which goals are live along the timeline |
 | `TEMANAWA_ENCYCLOPEDIA_FLORA.md` | — | **The second-screen plant roster, checked.** Interglacial/glacial verdict on each habitat's five plants, the boost-gate conflicts, and a per-plant write-up (Esler + deep-time studies + card copy) for `secondscreen/encyclopedia.js` |
 
 Primary sources are the five PDFs in `research/`.

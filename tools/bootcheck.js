@@ -3564,6 +3564,72 @@ try{
     : 'geography: river incises ahead of the ranges, tributary fans close 1 Ma → 0.3 Ma, the Woodville lake fills and drains, ranges lift with a NE–SW spine (cached), morph driver gated');
 }
 
+// ---- cold cover: the painted hills open up with the glacial treeline ----------
+// Above each stage's treeline (LEVEL_MECHANICS.forestBandByStage[stage].max, the band the live
+// trees contract against) the forest biomes blend toward their authored glacial shrub–grassland
+// (levelDef.biomes[*].coldCover), with beech held in the lee of the NW wind. Assert the pure
+// pieces, the authoring, and the bake end to end: the full-glacial ground loses green, the
+// interglacial ground is byte-identical with the cover on or off.
+try {
+  const TG = vm.runInContext('TerrainGenerator', ctx);
+  const G = vm.runInContext('game', ctx);
+  const L = vm.runInContext('LOOK', ctx);
+  const M = vm.runInContext("typeof LEVEL_MECHANICS!=='undefined'?LEVEL_MECHANICS:null", ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+
+  // Pure: the cover fraction steps up across the treeline, the shelter only on lee slopes.
+  chk(TG._coldCoverT(0.30, 0.34, 0.05, 0) === 0 && TG._coldCoverT(0.34, 0.34, 0.05, 0) === 0, 'no cover at or below the treeline');
+  chk(TG._coldCoverT(0.39, 0.34, 0.05, 0) === 1, 'full cover one fade above the treeline');
+  const c1 = TG._coldCoverT(0.355, 0.34, 0.05, 0), c2 = TG._coldCoverT(0.37, 0.34, 0.05, 0);
+  chk(c1 > 0 && c1 < c2 && c2 < 1, 'the cover eases in across the fade');
+  chk(TG._coldCoverT(0.36, 0.34, 0.05, 0.03) < TG._coldCoverT(0.36, 0.34, 0.05, 0), 'facet jitter wanders the treeline');
+  chk(TG._leeShelter(-0.01, 300) === 0 && TG._leeShelter(0, 300) === 0, 'windward and flat ground get no shelter');
+  chk(TG._leeShelter(0.01, 300) === 1 && Math.abs(TG._leeShelter(0.001, 300) - 0.3) < 1e-9, 'lee slopes shelter in proportion to the fall, capped at 1');
+
+  // Authoring: the treeline comes from the same band the plants use, and falls with the cold.
+  const stages = ['interglacial', 'cooling', 'glacial', 'fullGlacial'];
+  const tl = stages.map(s => TG._stageTreeline(s));
+  chk(M && M.forestContraction && tl.every((t, k) => t === M.forestBandByStage[stages[k]].max), 'the treeline is LEVEL_MECHANICS.forestBandByStage[stage].max');
+  chk(tl[0] > tl[1] && tl[1] > tl[2] && tl[2] > tl[3], 'the treeline falls monotonically into the full glacial');
+  const T = G.terrain, bl = T.biomeArray, cov = T._coldCoverByIdx;
+  const covered = bl.filter(b => b.coldCover).map(b => b.key);
+  chk(covered.length >= 1 && covered.every(k => k === 'podocarp' || k === 'montane'), `coldCover is authored on the forest bands only (${covered.join(', ')})`);
+  chk(bl.every(b => !b.coldCover || (b.coldCover.colors.length >= 2 && b.coldCover.amount > 0 && b.coldCover.amount <= 1
+    && b.coldCover.refugeAmount >= 0 && b.coldCover.refugeAmount <= 1)), 'each coldCover has a 2+ stop ramp and 0..1 amounts');
+  chk(!!cov && bl.every((b, k) => !!cov[k] === !!b.coldCover), 'the terrain resolved a cover entry for exactly the authored biomes');
+  const topForest = Math.max(...bl.filter(b => b.coldCover).map(b => b.maxElevation));
+  chk(tl[0] - (L.coldCoverJitter || 0) > topForest, 'the interglacial treeline clears every covered band, so the warm ground is untouched');
+  // The harness stubs red()/green()/blue() to 0, so judge the colours from the authored hex.
+  const rgb = (h) => [1, 3, 5].map(k => parseInt(h.slice(k, k + 2), 16));
+  const gr = (h) => { const c = rgb(h); return c[1] - c[0]; };
+  const lum = (h) => { const c = rgb(h); return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]; };
+  for (const b of bl.filter(b => b.coldCover)) {
+    const forestG = Math.min(...b.colors.map(gr)), openG = Math.max(...b.coldCover.colors.map(gr));
+    chk(openG < forestG, `${b.key}: the open ramp reads less green than the forest it replaces (G−R ${openG} < ${forestG})`);
+    chk(lum(b.coldCover.refuge) < Math.min(...b.coldCover.colors.map(lum)), `${b.key}: the beech refuge reads darker than the open ground around it`);
+  }
+
+  // End to end: bake a stage with the cover on and off, compare the pixels.
+  const bake = (stage, on) => {
+    const was = L.coldCover; L.coldCover = on;
+    const buf = T._bakeSeasonBuffer(stage);
+    const px = buf.pixels.slice();
+    T._releaseBakeBuffer(buf); L.coldCover = was;
+    return px;
+  };
+  const diff = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) n++; return n; };
+  const igOn = bake('interglacial', true), igOff = bake('interglacial', false);
+  chk(diff(igOn, igOff) === 0, 'the interglacial ground is byte-identical with the cover on or off');
+  const fgOn = bake('fullGlacial', true), fgOff = bake('fullGlacial', false);
+  const gOn = bake('glacial', true), gOff = bake('glacial', false);
+  const nFg = diff(fgOn, fgOff), nG = diff(gOn, gOff);
+  chk(nFg > 0, `the full-glacial ground changes with the cover (${nFg} px)`);
+  chk(nFg > nG, `a lower treeline opens more ground (full glacial ${nFg} px > glacial ${nG} px)`);
+
+  console.log(fail ? `cold cover: ${fail} FAILURES`
+    : `cold cover: forest opens above the stage treeline (${tl.join(' → ')}), beech in the lee, interglacial ground untouched`);
+} catch (e) { console.log('cold cover: FAILURES (threw)', e.message, '\n  ', (e.stack || '').split('\n')[1]); }
+
 // ---- incremental morph: sliced job == synchronous bake ------------------
 // morphTo() used to pay the whole re-bake in one frame — the on-wall hitch.
 // morphBegin()/morphStep(budget) slice the same work across frames into back

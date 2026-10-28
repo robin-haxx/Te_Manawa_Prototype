@@ -134,8 +134,12 @@ numbers (stage, MIS, sea level) are **debug-only by design**; the visitor reads 
 as it eases, tree ferns pushed dormant on the way down. Frost haze, snow line, plant dormancy and the
 ambient audio phase-shift all move with it. **Cold is a *different* world, not an empty one** — the
 intended read (§5.3 of v2.1) is a busier assemblage of open-country grazers, which waits on the cast
-turning on (§5). *Deferred: a per-phase baked treeline in the painted ground; today the ground colour
-still reads the static elevation bands while the live cast follows the moving band.*
+turning on (§5). **The painted ground now follows the band too (cold cover, 2026-10-28):** each
+glacial stage's bake opens the forest biomes above that stage's treeline (`forestBandByStage[stage].max`)
+into an authored shrub–grassland ramp (`levelDef.biomes[*].coldCover`), with dark beech held on slopes
+in the lee of the NW wind — about two-thirds open at full glacial, as the LGM pollen has it
+(`TEMANAWA_ECOLOGY_OPEN.md` §4). The interglacial treeline clears every forest band, so the warm ground
+is unchanged. Knobs: `LOOK.coldCover*`; harness section "cold cover"; frames in `exports/cold_cover/`.
 
 ---
 
