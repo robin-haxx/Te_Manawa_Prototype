@@ -81,6 +81,7 @@ TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored
 TeManawa_time.js           DeepTime — yearsBP is the authoritative clock
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) — pure, p5-free
 TeManawa_hud.js            InstallHUD: timeline, four buttons, storm/ash FX
+TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
 TeManawa_UI.js             thin host; delegates to InstallHUD
 TeManawa_level_format.js   level schema + resolution

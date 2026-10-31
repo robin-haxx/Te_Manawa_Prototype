@@ -15,7 +15,7 @@ const gfx=(w=1,h=1)=>{const o={width:w,height:h,pixels:new Uint8Array(Math.max(4
     createImageData:(a,b)=>({data:new Uint8ClampedArray(Math.max(4,(a|0)*(b|0)*4)),width:a|0,height:b|0}),
     putImageData(){},getImageData:(x,y,a,b)=>({data:new Uint8ClampedArray(Math.max(4,(a|0)*(b|0)*4))})};
   o.noSmooth=()=>o; o.smooth=()=>o; return o;};
-const DRAW=['background','fill','noFill','stroke','noStroke','strokeWeight','rect','ellipse','circle','line','triangle','quad','text','textAlign','textSize','textFont','push','pop','translate','rotate','scale','image','imageMode','rectMode','tint','noTint','beginShape','endShape','vertex','curveVertex','arc','point','noSmooth','smooth','blendMode','strokeCap','textLeading','textStyle','clear','erase','noErase','curveTightness','bezier','bezierVertex','quadraticVertex','curve','shearX','shearY','resetMatrix','applyMatrix','angleMode','ambientLight','noStroke2','noLoop','loop','cursor','noCursor','filter'];
+const DRAW=['background','fill','noFill','stroke','noStroke','strokeWeight','rect','ellipse','circle','line','triangle','quad','text','textAlign','textSize','textFont','push','pop','translate','rotate','scale','image','imageMode','rectMode','tint','noTint','beginShape','endShape','vertex','curveVertex','arc','point','noSmooth','smooth','blendMode','strokeCap','strokeJoin','textLeading','textStyle','clear','erase','noErase','curveTightness','bezier','bezierVertex','quadraticVertex','curve','shearX','shearY','resetMatrix','applyMatrix','angleMode','ambientLight','noStroke2','noLoop','loop','cursor','noCursor','filter'];
 
 let _errors=[];
 const ctx={console:{log(){},warn(){},error(...a){_errors.push('console.error: '+a.join(' '))}},
@@ -4095,5 +4095,152 @@ console.log('  playTime  ', g.playTime.toFixed(0));
     : `land/water discipline: moa ejected off water, eels stay wet & gated <=500 ka, no plant on painted water `
       + `(${pathLand}/51 of the end-state path dried to land)`);
 }
+
+// ---- river names: atlas lettering along the channels (TeManawa_rivernames.js) ----------------------
+// White capitals along each named river, centred on its PAINTED water (the relief bake's lift and its
+// ceiling test, not groundY), reading left to right (bottom to top when steep), clear of every piece of
+// the HUD and of each other. Laid out only when the water is re-stamped, sliced over frames, drawn from
+// a glyph cache. (a) placement on synthetic land, where the answer is known; (b) the real land at four
+// dates; (c) the live path: no per-frame layout, a re-stamp re-letters once, the draw is two sprites a letter.
+try{
+  const G=vm.runInContext('game',ctx), RN=vm.runInContext('RiverNames',ctx), C=vm.runInContext('TM_RIVER_NAMES',ctx),
+        HUD=vm.runInContext('InstallHUD',ctx), CF=vm.runInContext('CONFIG',ctx), DT=vm.runInContext('DeepTime',ctx),
+        PJ=vm.runInContext('Projection',ctx), DBG=vm.runInContext('Debug',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const W=CF.canvasWidth, H=CF.canvasHeight, ko=RN.keepOut(W,H);
+  const inRect=(x,y,r,m)=>x>r[0]-m && x<r[2]+m && y>r[1]-m && y<r[3]+m;
+
+  // (0) the keep-out covers what the visitor HUD draws, and the debug layout swaps in its strips
+  const ay=HUD._visAxisY(H), goalCy=ay-HUD.VIS_GOAL_GAP, lh=HUD.VIS_GOAL_SIZE*HUD.GOAL_LINE_H;
+  const hudPts=[[W/2,goalCy-lh-HUD.VIS_GOAL_SIZE*0.6,'goal (2nd line up)'],[W/2,goalCy,'goal'],[W*0.12,ay-HUD.TL_MARKER_H-10,'eruption pin label'],
+                [W*0.5,ay,'timeline axis'],[W/2,ay+HUD.VIS_YEAR_BELOW,'year'],[W/2-HUD.VIS_CLIMATE_SIZE*6,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW,'climate line'],
+                [W/2,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW+HUD.VIS_BOOSTS_BELOW,'boost count']];
+  for(const [x,y,what] of hudPts) chk(ko.rects.some(r=>inRect(x,y,r,0)),`the visitor keep-out covers the ${what} at (${x|0},${y|0})`);
+  chk(ko.top>=HUD.TOP_H,'the top strip is kept clear in visitor mode too');
+  const mode0=DBG.mode; DBG.mode='off'; const sigV=HUD.labelSig(); DBG.mode='compact'; const kd=RN.keepOut(W,H), sigD=HUD.labelSig(); DBG.mode=mode0;
+  chk(kd.top>=HUD.TOP_H && kd.bottom<=H-HUD.BOT_H && sigD!==sigV,'debug: its top strip and button bar are kept clear, and the switch changes labelSig (a re-layout)');
+
+  // (a) synthetic land: a 600×400 world at zoom 2, rivers as polylines, water within 2 px of a line
+  const vx0=CF.viewX, vy0=CF.viewY, vz0=CF.viewZoom; CF.viewX=0; CF.viewY=0; CF.viewZoom=2;
+  const distSeg=(px,py,ax,ay2,bx,by)=>{const dx=bx-ax,dy=by-ay2,l2=dx*dx+dy*dy;let t=l2?((px-ax)*dx+(py-ay2)*dy)/l2:0;t=t<0?0:t>1?1:t;return Math.hypot(px-ax-dx*t,py-ay2-dy*t);};
+  const mkLand=(rivers,paint)=>{
+    const mw=600,mh=400, R=rivers.map(r=>({type:r.type||'tributary',width:0.02,pts:r.pts,src:{name:r.name||null,arcLen:1},dry:r.dry,gap:r.gap}));
+    const wet=(x,y)=>R.some(r=>!r.dry && !(r.gap && x>=r.gap[0] && x<=r.gap[1]) && r.pts.some((p,i)=>i>0 && distSeg(x,y,r.pts[i-1][0]*mw,r.pts[i-1][1]*mh,p[0]*mw,p[1]*mh)<2));
+    const T={mapWidth:mw,mapHeight:mh,getRivers:()=>R,getElevationAt:()=>0.5,waterTypeAt:(x,y)=>wet(x,y)?2:0};
+    if(paint){ T._paintScale=1; T._paintW=mw; T._paintH=mh; T._paintElev=new Float32Array(mw*mh); T._paintWater=new Uint8Array(mw*mh);
+      for(let r=0;r<mh;r++) for(let c=0;c<mw;c++){ const i=r*mw+c; T._paintWater[i]=wet(c,r)?2:0; T._paintElev[i]=paint(c,r); } }
+    return T;
+  };
+  const one=(T,k)=>RN.layout(T,W,H,k||{top:0,bottom:H,rects:[]},null);
+  const horiz=[[0.1,0.5],[0.9,0.5]], wy=0.5*400;
+  let L=one(mkLand([{type:'main',pts:horiz}]));
+  const yOn=2*PJ.groundY(wy,0.5);
+  chk(L.length===1 && L[0].text==='MANAWATŪ','an unnamed main stem is lettered MANAWATŪ (block capitals, macron kept)');
+  if(L[0]){ const g=L[0]; let on=true, flat=true, ltr=true;
+    for(let j=0;j<g.n;j++){ if(Math.abs(g.y[j]-yOn)>1.5) on=false; if(Math.abs(g.a[j])>0.05) flat=false; if(j && g.x[j]<=g.x[j-1]) ltr=false; }
+    chk(on,'each letter is centred on the channel (inside the river)'); chk(flat && ltr,'a level river reads left to right, unrotated'); }
+  L=one(mkLand([{type:'main',pts:horiz.slice().reverse()}]));
+  chk(L[0] && L[0].x[L[0].n-1]>L[0].x[0] && Math.abs(L[0].a[0])<0.05,'a river drawn right-to-left still reads left to right (never upside down)');
+  L=one(mkLand([{name:'Pohangina',pts:[[0.5,0.1],[0.5,0.9]]}]));
+  chk(L[0] && L[0].text==='POHANGINA' && Math.abs(L[0].a[0]+Math.PI/2)<0.05 && L[0].y[L[0].n-1]<L[0].y[0],'a north–south river reads bottom to top');
+  chk(one(mkLand([{type:'main',pts:horiz,dry:true}])).length===0,'a dry river (no river water on its line) is not named');
+  chk(one(mkLand([{type:'main',pts:horiz}]),{top:0,bottom:H,rects:[[0,yOn-40,W,yOn+40]]}).length===0,'a river under a HUD piece is not named');
+  L=one(mkLand([{type:'main',pts:horiz}]),{top:0,bottom:H,rects:[[0,yOn-40,W*0.5,yOn+40]]});
+  chk(L.length===1 && Array.from(L[0].x).every(x=>x>W*0.5),'… and one half under it is named on its clear half');
+  const two=one(mkLand([{type:'main',pts:horiz},{name:'Ōroua',pts:[[0.1,0.512],[0.9,0.512]]}]));
+  let near=Infinity; if(two.length===2) for(let j=0;j<two[0].n;j++) for(let k=0;k<two[1].n;k++) near=Math.min(near,Math.hypot(two[0].x[j]-two[1].x[k],two[0].y[j]-two[1].y[k]));
+  chk(two.length<2 || near>=0.9*C.tribSize,`two names never overlap (nearest letters ${near===Infinity?'n/a':near.toFixed(1)} px apart)`);
+  // the relief bake: a river behind a nearer ridge is hidden; on the low plain the bake eases the lift flat
+  const ridge=mkLand([{type:'main',pts:horiz}],(c,r)=>(r>wy+4 && r<wy+16)?0.9:0.3), open=mkLand([{type:'main',pts:horiz}],()=>0.3);
+  chk(one(ridge).length===0 && one(open).length===1,'a river hidden behind a nearer ridge in the 3/4 view is not named; in the open it is');
+  const knoll=mkLand([{type:'main',pts:horiz}],(c,r)=>(r>wy+4 && r<wy+16 && c>=296 && c<=302)?0.9:0.3);
+  chk(one(knoll).length===1,'a knoll hiding a few px of the channel is bridged, like a pinch');
+  // HYSTERESIS: a name on screen bridges a gap (2× gapHop) that a new one may not, so it does not blink out
+  const span=[[0.415,0.5],[0.575,0.5]], gapX=[300-(C.gapHop*1.5)/2,300+(C.gapHop*1.5)/2];
+  const gappy=mkLand([{type:'main',pts:span,gap:gapX}]), held=new Map([['0|MANAWATŪ',{cx:600,cy:yOn,rev:false}]]);
+  chk(one(gappy).length===0 && RN.layout(gappy,W,H,{top:0,bottom:H,rects:[]},held).length===1,
+      'a dry gap 1.5× gapHop keeps a new name off a short river, but a name already shown holds across it');
+  const low=mkLand([{type:'main',pts:horiz}],()=>0.15); L=one(low);
+  const bakeY=2*(wy*PJ.K-0.15*(0.05/0.15)*PJ.LIFT+PJ.LIFT), gY=2*PJ.groundY(wy,0.15);
+  chk(L[0] && Array.from(L[0].y).every(y=>Math.abs(y-bakeY)<1.5) && Math.abs(gY-bakeY)>3,`on the low plain a name sits on the PAINTED water (bake ${bakeY.toFixed(1)}, not groundY ${gY.toFixed(1)})`);
+  CF.viewX=vx0; CF.viewY=vy0; CF.viewZoom=vz0;
+
+  // (b) the real land at four dates: inside the canvas, clear of the HUD and of each other, real names
+  const T=G.terrain, allowed=new Set(T.getRivers().map(rv=>RN._name(rv)).filter(Boolean).map(n=>n.normalize('NFC').toUpperCase()));
+  const counts=[];
+  for(const y of [DT.yearsStart,420000,125000,DT.yearsEnd]){
+    T.morphTo(y,1);
+    const labs=RN.layout(T,W,H,ko,null); counts.push((y/1000)+' ka '+labs.length);
+    let inside=true, clear=true, real=true, apart=true;
+    for(const g of labs){
+      if(!allowed.has(g.text)) real=false;
+      for(let j=0;j<g.n;j++){ const x=g.x[j], yy=g.y[j];
+        if(x<C.marginX || x>W-C.marginX || yy<ko.top || yy>ko.bottom) inside=false;
+        if(ko.rects.some(r=>inRect(x,yy,r,g.size*0.4))) clear=false; }
+    }
+    for(let a=0;a<labs.length;a++) for(let b=a+1;b<labs.length;b++)
+      for(let j=0;j<labs[a].n;j++) for(let k=0;k<labs[b].n;k++)
+        if(Math.hypot(labs[a].x[j]-labs[b].x[k],labs[a].y[j]-labs[b].y[k])<0.6*Math.min(labs[a].size,labs[b].size)) apart=false;
+    chk(real,`${y/1000} ka: only the authored names (and MANAWATŪ), in capitals`);
+    chk(inside && clear,`${y/1000} ka: every letter is on the canvas and clear of the HUD`);
+    chk(apart,`${y/1000} ka: no two names overlap`);
+  }
+
+  // (c) the live path. No layout per frame; a re-stamp lands exactly one, a river or so a frame. Driven
+  // through RiverNames.render alone, so the sim (an eruption, a new goal line) cannot re-letter mid-check.
+  const frame=()=>{ ctx.__tick(); RN.render(G,W,H); };
+  chk(RN.layouts>=1,`the live draw has lettered the land (${RN.layouts} layouts so far)`);
+  frame(); for(let i=0;i<60 && RN._job;i++) frame();      // pick up any pending change, let its layout land
+  const n0=RN.layouts; for(let i=0;i<30;i++) frame();
+  chk(RN.layouts===n0 && !RN._job,`no re-layout while the water stands still (${RN.layouts-n0} in 30 frames)`);
+  const rev0=G.water.rev; G.water.reconcile(T,DT.yearsBP); chk(G.water.rev===rev0+1,'WaterLayer.reconcile bumps rev (the re-layout trigger)');
+  let fr=0; frame(); fr++; while(RN._job && fr<60){ frame(); fr++; }
+  chk(RN.layouts===n0+1 && !RN._job,`a re-stamp lands exactly one re-layout (${RN.layouts-n0}, over ${fr} frames)`);
+  // a name the next layout misses holds for holdLayouts layouts, then fades (no one-layout blink)
+  const live0=RN._live; CF.viewX=0; CF.viewY=0; CF.viewZoom=2;
+  const solo=one(mkLand([{type:'main',pts:horiz}])); CF.viewX=vx0; CF.viewY=vy0; CF.viewZoom=vz0;
+  RN._live=[]; RN._apply(solo); RN._apply([]);
+  const held1=RN._live.find(g=>g.key===solo[0].key), out1=!!(held1 && held1.out); RN._apply([]); const held2=RN._live.find(g=>g.key===solo[0].key);
+  chk(C.holdLayouts===1 && held1 && !out1 && held2 && held2.out,'a name one layout misses is held in place, and fades at the second miss');
+  RN._live=live0;
+  const job=RN._layoutBegin(T,W,H,ko,null); RN._layoutStep(job,0);
+  chk(job.order.length<2 || job.k===1,'a zero-budget step names one river and yields (sliced, like morphStep)');
+  // the draw: two sprites (halo, fill) per letter, spaces skipped, all halos before any fill
+  for(const g of RN._live){ g.inAt=-1e9; g.t0=-1e9; if(g.out) g.outAt=-1e9; }
+  let calls=[]; const dc={globalAlpha:1,save(){},restore(){},translate(){},rotate(){},drawImage(img){calls.push(img);}};
+  RN._draw(dc,ctx.millis());
+  let letters=0, halosFirst=true; for(const g of RN._live) if(!g.out) for(const gl of g.gs) if(gl.halo) letters++;
+  const firstFill=calls.findIndex(c=>RN._live.some(g=>g.gs.some(gl=>gl.fill===c)));
+  for(let i=firstFill;i>=0 && i<calls.length;i++) if(RN._live.some(g=>g.gs.some(gl=>gl.halo===calls[i]))) halosFirst=false;
+  chk(calls.length===2*letters && halosFirst,`the draw is a halo then a fill sprite per letter (${calls.length} for ${letters})`);
+  const still=RN.drawStill(Object.assign(gfx(W,H),{drawingContext:dc}),T,W,H);
+  chk(Array.isArray(still) && still.every(s=>allowed.has(s)),'drawStill (the exporter) letters a still frame and returns its names');
+
+  console.log(fail ? `river names: ${fail} FAILURES (${counts.join(', ')})`
+    : `river names: lettered on the painted channels, left-to-right, clear of the HUD and each other; re-laid only on a re-stamp, sliced (${counts.join(', ')})`);
+}catch(e){ console.log('river names: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
+
+// ---- water on the painted bed: decals and swimmers ride the bake's lift, not the raw elevation ----
+// The relief bake eases low ground flat toward the coast (TerrainGenerator.bakeLift), so groundY of the
+// raw elevation floats a river decal, eel or fish off a plain stream (16 px on average, measured). One
+// rule, read by the bake itself, terrain.paintLiftAt, the water layer and the river names.
+try{
+  const G=vm.runInContext('game',ctx), TG=vm.runInContext('TerrainGenerator',ctx), T=G.terrain, WL=G.water;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  chk(TG.bakeLift(0.6,1)===0 && TG.bakeLift(0.05,2)===0 && Math.abs(TG.bakeLift(0.175,0)-0.0875)<1e-9 && TG.bakeLift(0.3,2)===0.3,
+      'bakeLift: sea flat, below 0.10 flat, eased to 0.25, full relief above');
+  const lift0=TG.bakeLift; let calls=0; TG.bakeLift=function(e,w){ calls++; return lift0(e,w); };
+  const buf=T._bakeSeasonBuffer('interglacial'); TG.bakeLift=lift0; T._releaseBakeBuffer(buf);
+  chk(calls>=T._paintW,`the season bake takes its lift from bakeLift (${calls} cells), so nothing can drift from it`);
+  let river=0, off=0;
+  for(const d of WL.decals){ if(T.waterTypeAt(d.x,d.y)!==2) continue; river++; if(Math.abs(d.elev-T.paintLiftAt(d.x,d.y))>1e-9) off++; }
+  chk(off===0,`every river decal rides the painted lift (${off} of ${river} off)`);
+  const pla=T.paintLiftAt; let reads=0; T.paintLiftAt=function(x,y){ reads++; return pla.call(this,x,y); };
+  WL.renderSwimmers(); T.paintLiftAt=pla;
+  const wet=[...WL.eels,...WL.fish].filter(e=>T.waterTypeAt(e._x,e._y)!==0).length;
+  chk(reads===wet,`the eels and fish are drawn on the painted lift (${reads} reads for ${wet} swimmers on water)`);
+  console.log(fail ? `water on the painted bed: ${fail} FAILURES`
+    : `water on the painted bed: decals, eels and fish ride bakeLift, the bake's own rule (${river} river decals, ${wet} swimmers)`);
+}catch(e){ console.log('water on the painted bed: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
 
 if(_errors.length){ console.log('--- console.error during run ---'); _errors.slice(0,10).forEach(e=>console.log('  ',e)); }

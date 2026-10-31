@@ -14,10 +14,11 @@
 // WHERE the water is, and WHICH WAY it flows, is already in the terrain data:
 //   terrain.waterTypeAt(x,y)  0 land · 1 sea (flat) · 2 river (rides terrain)
 //   terrain.getRivers()       the authored river polylines, normalised 0..1
-// A decal sits on the water surface via the SAME projection every entity uses
-// (Projection.groundY(y, elev)) so it lines up with the baked ground for free.
-// Sea is drawn flat (elev 0, matching the bake's liftE=0 for sea); river decals
-// and eels ride the terrain elevation like the moa do.
+// A decal sits on the water surface via Projection.groundY(y, lift), with the lift
+// the relief bake PAINTED that spot at (terrain.paintLiftAt), not the raw elevation
+// the land sprites use: the bake eases the low plain flat toward the coast, so the
+// raw elevation floats a decal up to ~20 screen px off a plain stream. Sea is flat
+// (lift 0, as the bake draws it); river decals, eels and fish ride the painted bed.
 //
 // Lifecycle: build() does a FULL (re)stamp on a hard scene change: init, look re-bake,
 // eruption. Each deep-time morph re-bake instead calls reconcile() (Game._onMorphComplete),
@@ -45,6 +46,7 @@ class WaterLayer {
     this._slots = null;
     this._slotsKey = '';
     this._flowRev = false;    // last-seen main-stem flow direction (seaward from the ~1 Ma opening); drives eel re-orient
+    this.rev = 0;             // bumped by every build()/reconcile(): the land's water has been re-read (RiverNames re-letters on it)
 
     // Tuning; held on the INSTANCE, never written back to CONFIG (same rule as
     // TerrainGenerator.noiseScale / Projection.K). All world-pixel units.
@@ -118,6 +120,7 @@ class WaterLayer {
     this._buildFish(terrain);         // always present (every river)
     this._flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
     this._meanderRev = terrain._meanderRev || 0;
+    this.rev++;
     if (this._capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals}, some water left un-stamped`);
   }
 
@@ -171,7 +174,7 @@ class WaterLayer {
       if (keep) {
         if (s.needs === 2) {
           keep.x = s.x; keep.y = s.y;                                       // a meandering channel moves its slots
-          keep.elev = terrain.getElevationAt(s.x, s.y);                     // ride the (slowly deepening) bed; sea stays flat
+          keep.elev = terrain.paintLiftAt(s.x, s.y);                        // ride the (slowly deepening) painted bed; sea stays flat
         }
         next.push(keep);                                                   // survivor: same x/y, same animTime, no jump
       } else {
@@ -180,6 +183,7 @@ class WaterLayer {
     }
     this.decals = next;
     this._capped = capped;
+    this.rev++;
     if (capped) console.warn(`[water] hit maxDecals ${this.cfg.maxDecals}, some water left un-stamped`);
   }
 
@@ -329,7 +333,7 @@ class WaterLayer {
     for (let i = 0; i < E.length; i++) {
       const e = E[i];
       if (t.waterTypeAt(e._x, e._y) === 0) continue;
-      const elev = t.getElevationAt(e._x, e._y);
+      const elev = t.paintLiftAt(e._x, e._y);
       const fr = Math.floor(e.animTime * animSpeed);
       dc.globalAlpha = e.alpha;
       R.push();
@@ -347,7 +351,7 @@ class WaterLayer {
   // A live decal for a slot. Position/size/look come from the (stable) slot; only the animation
   // phase is randomised, and only at creation; a survivor keeps the object it was born with.
   _mkDecal(s) {
-    const elev = (s.needs === 2 && this.terrain) ? this.terrain.getElevationAt(s.x, s.y) : 0;   // river rides the bed; sea is flat
+    const elev = (s.needs === 2 && this.terrain) ? this.terrain.paintLiftAt(s.x, s.y) : 0;   // river rides the painted bed; sea is flat
     return { slot: s.id, strip: s.strip, x: s.x, y: s.y, elev, angle: s.angle,
              size: s.size, alpha: s.alpha, animSpeed: s.animSpeed,
              animTime: random(1000), phase: random(100) };

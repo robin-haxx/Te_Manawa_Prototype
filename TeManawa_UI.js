@@ -61,6 +61,10 @@ class GameUI {
     // than being washed out by it.
     InstallHUD.renderEdgeGlow(g, W, H);
 
+    // River names: over the whole world (ground, water, cast, weather, the edge band) and under the
+    // HUD, clear of the HUD's pieces (TeManawa_rivernames.js).
+    if (typeof RiverNames !== 'undefined') RiverNames.render(g, W, H);
+
     // The on-screen buttons are a DEBUG twin of the wall's physical buttons, so they only
     // show with the overlay. Visitors get the clean layout: the deep-time axis on a thin
     // strip at the bottom (where the buttons used to be) and the year floated large and

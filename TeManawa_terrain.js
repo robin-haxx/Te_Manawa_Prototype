@@ -1099,6 +1099,33 @@ class TerrainGenerator {
     return W[pr * PW + pc];
   }
 
+  // The lift (0–1) the relief bake paints a cell at, from its elevation `e` and water class: true sea
+  // (1) is flat; river (2) and land ride the terrain, except that the relief is tapered toward zero near
+  // the coast so the ceiling painter doesn't render blocky cliff faces at the water's edge: below 0.10
+  // no lift (flat like sea), from 0.25 full relief, linear between. Paint-only — terrain shape and
+  // biomes are unchanged. Pure; _bakeSeasonColumns, paintLiftAt and RiverNames all read it here.
+  static bakeLift(e, water) {
+    if (water === 1) return 0;
+    if (e > 0 && e < 0.25) { const ct = (e - 0.10) / 0.15; return e * (ct < 0 ? 0 : ct > 1 ? 1 : ct); }
+    return e;
+  }
+
+  // Where the ground at world point (x, y) is PAINTED: Projection.groundY(y, paintLiftAt(x, y)). The
+  // bake's lift of the paint cell under it (bakeLift of _paintElev / _paintWater). groundY(y,
+  // getElevationAt(x, y)) leaves out the coastal taper, so on the low plain it sits up to ~5 world px
+  // (~20 screen px) above the painted ground: fine for a sprite standing on land, visibly off for
+  // anything drawn on a stream (the water decals, eels and fish ride this instead). Before the first
+  // bake, the raw elevation.
+  paintLiftAt(x, y) {
+    const E = this._paintElev, W = this._paintWater;
+    if (!E || !W) return this.getElevationAt(x, y);
+    const S = this._paintScale, PW = this._paintW, PH = this._paintH;
+    let pc = Math.round(x * S); if (pc < 0) pc = 0; else if (pc >= PW) pc = PW - 1;
+    let pr = Math.round(y * S); if (pr < 0) pr = 0; else if (pr >= PH) pr = PH - 1;
+    const i = pr * PW + pc;
+    return TerrainGenerator.bakeLift(E[i], W[i]);
+  }
+
   // The authored river polylines (normalised 0..1 in the geo viewBox), each
   // { type, width, depth, pts }. The overlay maps pts to world via mapWidth/Height.
   getRivers() { return this._riverViews || this._geoRivers || []; }   // the channels as drawn at this date (meanders applied)
@@ -4410,15 +4437,7 @@ class TerrainGenerator {
       for (let pr = PH - 1; pr >= 0; pr--) {             // near → far
         const i = pr * PW + pc;
         const e = elevA[i];
-        let liftE = (waterA[i] === 1) ? 0 : e;   // only true sea is flat; river (2) rides the terrain so entities sit on it
-        // Taper relief toward zero near the coast so the ceiling painter doesn't
-        // render blocky cliff faces at the water's edge. Cells below COAST_LO get
-        // no lift (flat like sea); cells above COAST_HI get full relief; between
-        // them it ramps linearly. Paint-only — terrain shape / biomes unchanged.
-        if (liftE > 0 && liftE < 0.25) {
-          const ct = (liftE - 0.10) / 0.15;   // 0 at sea threshold, 1 at grassland
-          liftE *= ct < 0 ? 0 : ct > 1 ? 1 : ct;
-        }
+        const liftE = TerrainGenerator.bakeLift(e, waterA[i]);   // sea flat, the coast eased flat (paintLiftAt reads the same)
 
         let yTop = ((pr * invS) * K - liftE * LIFT + LIFT) * S | 0;   // physical buffer px
         if (yTop < 0) yTop = 0;

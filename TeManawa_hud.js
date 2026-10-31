@@ -1111,6 +1111,35 @@ const InstallHUD = {
     pop();
   },
 
+  // Where the HUD stands over the world, for overlays lettered over it (RiverNames) to keep clear of:
+  // { top, bottom, rects: [[x0, y0, x1, y1], …] } in 1080-space px. The top strip's height is kept
+  // clear in both modes. Visitor: the goal (held at LABEL_GOAL_LINES lines, or more while a longer one
+  // shows) and the timeline with its pins as one full-width band, the year, climate line and boost
+  // count as a centred block, and the dial / fast-forward badge; the map shows round the block, below
+  // the timeline. Debug: its top strip and button bar. Allocates, so call it when labelSig() changes,
+  // not per frame.
+  LABEL_GOAL_LINES: 2,
+  LABEL_YEAR_HALF_W: 270,     // half the widest of the year / climate / boost lines ("~1,000,000 years ago")
+  _labelGoalLines() {
+    const F = this._goalFade, cur = (F && F.cur.lines) ? F.cur.lines.length : 0;
+    return Math.max(this.LABEL_GOAL_LINES, cur);
+  },
+  _labelDebug() { return typeof Debug !== 'undefined' && !!Debug.enabled; },
+  labelSig() { return this._labelGoalLines() * 2 + (this._labelDebug() ? 1 : 0); },   // changes ⇒ labelKeepOut changed
+  labelKeepOut(W, H) {
+    if (this._labelDebug()) return { top: this.TOP_H, bottom: H - this.BOT_H, rects: [] };
+    const ay = this._visAxisY(H), lines = this._labelGoalLines();
+    const goalTop = ay - this.VIS_GOAL_GAP - (lines - 1) * this.VIS_GOAL_SIZE * this.GOAL_LINE_H
+                  - this.VIS_GOAL_SIZE * 0.7;          // the top line's upper half (_blitText's box is 1.35 em)
+    const yearBot = ay + this.VIS_YEAR_BELOW + this.VIS_CLIMATE_BELOW + this.VIS_BOOSTS_BELOW + this.VIS_BOOSTS_SIZE * 0.7;
+    const xEnd = W - Math.round(W * this.VIS_INSET), badgeY = H - this.VIS_STRIP_H + 16;
+    return { top: this.TOP_H, bottom: H, rects: [
+      [0, goalTop, W, ay + this.TL_PLAYHEAD_H / 2],                              // goal + timeline + pins
+      [W / 2 - this.LABEL_YEAR_HALF_W, ay, W / 2 + this.LABEL_YEAR_HALF_W, yearBot],   // year, climate, boosts
+      [xEnd - 240, badgeY - 24, xEnd, badgeY]                                    // the dial / fast-forward badge
+    ] };
+  },
+
   _goalPromptCol() {
     return (typeof TM_GOALS !== 'undefined' && TM_GOALS.colPrompt) || this._GOAL_COL;
   },
