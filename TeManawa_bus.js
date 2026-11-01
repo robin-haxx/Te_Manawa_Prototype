@@ -108,6 +108,11 @@ const TMBus = (function () {
     // is correct — the console posts only on a user action or on load, never on a timer.
     if (typeof Kiosk !== 'undefined' && typeof Kiosk.noteInput === 'function') Kiosk.noteInput();
 
+    // THE LAND BEFORE THE WINDOW: while the attract sequence runs, a console intent would act on the
+    // parked old world and be thrown away at the landing. It is presence instead — the sequence skips
+    // to the landing — and the console's `hello` still gets its clock and goal.
+    if (typeof Palaeo !== 'undefined' && Palaeo.active && m.type !== 'hello') { Palaeo.skip(); return; }
+
     switch (m.type) {
       case 'hello':
         emitClock(); emitGoal(); break;
@@ -312,7 +317,10 @@ const TMBus = (function () {
     const y = DeepTime.yearsBP;
     const g = Climate.glacialIndexAt(y);
     reply({ type: 'clock', yearsBP: y, glacialIndex: g,
-            stage: Climate.stageOf(g), stageName: Climate.stageNameOf(g), mis: Climate.misAt(y) });
+            stage: Climate.stageOf(g), stageName: Climate.stageNameOf(g), mis: Climate.misAt(y),
+            // the attract sequence's own clock while it runs ({ active, yearsBP, state, label }); DeepTime
+            // is parked meanwhile, so the console shows the sequence's date instead
+            palaeo: (typeof Palaeo !== 'undefined' && Palaeo.telemetry) ? Palaeo.telemetry() : { active: false } });
   }
 
   function emitGoal() {

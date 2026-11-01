@@ -94,6 +94,15 @@ const RiverNames = {
     this._draw(drawingContext, millis());
   },
 
+  // Drop every live name and any layout in progress, so the next render lays out fresh with no
+  // hysteresis (holdLayouts) carrying a name over. For a hard scene change under a cover — the attract
+  // sequence's dips (TeManawa_palaeo.js) — never on the visitor's open screen, where a name should glide.
+  clear() {
+    this._live.length = 0;
+    this._job = null;
+    this._seen.rev = -1;
+  },
+
   // A still frame (tools/export_frames.js): a layout of `T` as it stands, drawn at full strength into
   // graphics `buf`, with no glide or fade. `prev` (key → label, e.g. the frame before's layout()) stands
   // in for the live memory; null lays it out fresh. Returns the names drawn.
@@ -134,7 +143,9 @@ const RiverNames = {
   },
 
   _layoutRiver(job, i) {
-    const C = TM_RIVER_NAMES, rv = job.rivers[i], text = this._name(rv).normalize('NFC').toUpperCase(), chars = Array.from(text);
+    const C = TM_RIVER_NAMES, rv = job.rivers[i], nm = this._name(rv);
+    if (!nm) return;   // the name set can change between a job's slices (the attract sequence starting or landing): an unnamed river is skipped, never a crash
+    const text = nm.normalize('NFC').toUpperCase(), chars = Array.from(text);
     const key = i + '|' + text, pl = job.prev ? job.prev.get(key) : null;
     const size0 = (rv.type !== 'tributary') ? C.mainSize : C.tribSize;
     const runs = this._runs(job.T, rv, job.W, job.ko, size0, !!pl);
@@ -156,6 +167,9 @@ const RiverNames = {
   },
 
   _name(rv) {
+    // THE LAND BEFORE THE WINDOW: while the attract sequence runs the names are the time's (no
+    // tributary names; the main 'proto-Manawatū' while its arm still flows east). TeManawa_palaeo.js.
+    if (typeof Palaeo !== 'undefined' && Palaeo.active && Palaeo.riverName) return Palaeo.riverName(rv);
     const C = TM_RIVER_NAMES, n = (rv && rv.src && rv.src.name) || (rv && rv.name);
     if (n) return (C.rename && C.rename[n]) || n;
     return (rv && rv.type !== 'tributary') ? C.mainName : null;

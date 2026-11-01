@@ -129,6 +129,13 @@
          InstallHUD.labelKeepOut (so after hud.js); drawn from TeManawa_UI.js. -->
     <script src="TeManawa_rivernames.js"></script>
 
+    <!-- The land before the window: the palaeogeography attract sequence (4 Ma → 1 Ma, land only,
+         the names of the time). Drives the terrain's own morph at pre-window dates; its own clock.
+         After rivernames.js (it letters through RiverNames' glyph cache and name hook) and hud.js
+         (the caption uses InstallHUD._blitText); before sketch.js, which branches on Palaeo.active.
+         See md/TEMANAWA_PALAEO_ATTRACT.md. -->
+    <script src="TeManawa_palaeo.js"></script>
+
     <!-- Debug overlay (press D) -->
     <script src="TeManawa_debug.js"></script>
 

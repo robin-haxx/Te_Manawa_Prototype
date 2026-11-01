@@ -384,9 +384,14 @@ tree inside the forest band; it had been inheriting whatever the terrain was at 
   300 ka and stages the standoff. Verified across four full runs: 9–11 adds at 1 Ma and 10–13 at
   300 ka. See MISTAKES.md.
 
-**Not recommended now:** opening the run at ~2.4 Ma to *show* the strait. It is the only way to put
-the real seaway on screen. It needs climate anchors back to 2.4 Ma (~35 more 41-kyr cycles), the
-1.6–1 Ma Mangakino eruptions, a rescaled timeline, and new second-screen and goal windows.
+**Not recommended:** opening the run at ~2.4 Ma to *show* the strait — it needs climate anchors
+back to 2.4 Ma (~35 more 41-kyr cycles), the 1.6–1 Ma Mangakino eruptions, a rescaled timeline, and
+new second-screen and goal windows. **Done instead (2026-11-01):** the real seaway is on screen as
+**the land before the window** — the idle / end-of-window attract sequence replays 4 Ma → 1 Ma, land
+only, through the terrain's own morph at pre-window dates (the basin, the basement finger, the
+Manawatū Strait narrow at 3 Ma and widest at 2.4 Ma, closed from 1.63 Ma, the Ruataniwha shelf, then
+the ranges), with the climate held at the window's first anchor and the names of the time on the map.
+The window itself is unchanged. `md/TEMANAWA_PALAEO_ATTRACT.md`.
 
 **Also:**
 - **Step 8: the east at 1 Ma and the tributary fans (2026-10-19).** Read against Trewick & Bland

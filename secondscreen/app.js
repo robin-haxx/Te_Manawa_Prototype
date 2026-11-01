@@ -342,6 +342,13 @@
       stagePill.textContent = '—';
       stagePill.className = 'pill';
       goalLabel.textContent = '';
+    } else if (c.palaeo && c.palaeo.active) {
+      // The land before the window (TeManawa_palaeo.js): the diorama is replaying 4 Ma → 1 Ma with
+      // nothing alive; its own clock rides the clock message. Any touch here skips it to the landing.
+      clockLabel.textContent = fmtYears(c.palaeo.yearsBP) + '  ·  the land before the river';
+      stagePill.textContent = 'Before the window';
+      stagePill.className = 'pill';
+      goalLabel.textContent = 'Watch the land form. Touch anything to begin.';
     } else {
       clockLabel.textContent = fmtYears(c.yearsBP) + (c.mis ? '  ·  ' + c.mis : '');
       stagePill.textContent = cap(c.stageName || '');

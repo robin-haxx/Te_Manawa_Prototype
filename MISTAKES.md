@@ -10,6 +10,30 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## The first attract sequence showed its dated maps for no time at all, under the wrong names
+
+- **What happened.** The land-before-the-window sequence (`TeManawa_palaeo.js`) ran green in the
+  harness's state machine but, driven in the real build, the 4 Ma opening carried Pohangina, Kiwitea
+  and Tamaki along its streams, and in the harness the 2.4, 1.6 and 1 Ma holds were never baked while
+  the clock sat on them.
+- **Root cause.** Two hysteresis rules, each right on its own screen. `RiverNames` keeps a name a
+  re-layout cannot place for one more layout (`holdLayouts`), so a name does not blink; across a cover,
+  that carried the living world's names through the first keyframe of another era. And a hold was
+  counted from the clock's *arrival* at a keyframe, while the keyframe's re-bake is sliced over frames,
+  so on a slow bake the hold was spent still morphing. A third, caught by the same probe: a
+  crest-weighted "finger" drowned the gorge saddle, which lies between the two range polygons and has a
+  low crest factor by construction, cutting the finger where the source says there was no seaway.
+- **Consequence.** The one thing the sequence exists to show — a dated map, named for its time, held
+  long enough to read — was the thing it did not do, and the harness did not notice because it measured
+  the clock, not what was on screen.
+- **Rule.** A hold on a dated map is counted from when the map is on screen (the re-bake landed), never
+  from when the clock got there. A hysteresis that keeps a thing on screen for continuity is cleared
+  explicitly under any cover that changes era (`RiverNames.clear()` under both dips). A "finger" of
+  land is the range footprints plus the saddle between them, not a crest strip. And the harness
+  asserts what shows: each keyframe baked while the clock sat on it, the gap's class at every dated
+  map, the names' surface under their anchors. Drive it in the real build at least once (headless
+  Chromium: `exports/palaeo_attract/`) before calling it done (2026-11-01).
+
 ## The Ōroua was not where it was drawn
 
 - **What happened.** The Ōroua in `geo/manawatu.svg` had been rotated 180° in the editor. The sim drew

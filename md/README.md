@@ -5,7 +5,9 @@ research to draw on rather than build from.
 
 **Where documents disagree, the order below is the order of precedence.**
 
-**Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka).
+**Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka);
+the idle attract and every end-of-window reset first replay **the land before the window** — a
+land-only sequence from 4 Ma (`TEMANAWA_PALAEO_ATTRACT.md`) — and land on a fresh 1 Ma world.
 The land morph, the glacial-cycle climate, five buttons, habitat health and the kererū dispersal
 loop are all running, as is the **second-screen overhaul** — a 1080p touchscreen console over a
 `BroadcastChannel` bus, with the sim side built (paused geology, per-species boost, ramped
@@ -80,6 +82,7 @@ Primary sources are the five PDFs in `research/`.
 | `TEMANAWA_GEOGRAPHY.md` | **The SVG geography skeleton** — ranges and river authored as vectors, elevation built around them, with the deep-time uplift/incision morph. Revives `TERRAIN_PLAN.md` §3–5. Static integration and the morph are built |
 | `TEMANAWA_DEVTOOLS.md` | **The console dev workflow.** `LOOK` (paint) and `GEN` (landform) live-editable globals, the `B` / `G` / `N` keys, and how to extend them. Read this before tuning the look |
 | `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` | **The deep-time ecology build.** Season→glacial rebind, the climate table to 1 Ma, forest contraction, emergence sea level, and the four-eruption clear/regen + button seek/revert. **Implemented and harness-green** (see its §4) |
+| `TEMANAWA_PALAEO_ATTRACT.md` | **The land before the window.** The idle / end-of-window attract sequence: 4 Ma → 1 Ma, land only, driven through the terrain's own morph at pre-window dates (Trewick & Bland 2012 Fig. 4A–D — the Wanganui Basin, the basement finger, the Manawatū Strait opening narrow at 3 Ma, widest at 2.4 Ma, closed by 1.63 Ma, the Ruataniwha shelf, then the ranges), lettered with the names of the time. Its §5 lists every conflict with the existing systems and the resolution. **Built and harness-green** (`TeManawa_palaeo.js`) |
 | `TEMANAWA_COAST_PLAN.md` | **The breathing coast, made accurate.** Why the popular LGM maps show one brief moment as typical; Trewick & Bland's two-layer reading (slow uplift, fast sea-level swing); the sim's measured coast positions; and a build plan: a real sea-level curve separate from the cold index, a calibrated shelf profile, a continuous tectonic staircase, and the river following the sea. **Built 2026-10-19** (§5 as built; copy still to write) |
 | `TEMANAWA_ERUPTION_AFTERMATH_PLAN.md` | **Post-eruption regrowth, made accurate.** Research-grounded plan (tephra thickness, defoliation, succession, survivor legacies, kiwi bottleneck) for a staged ~1-minute aftermath on its own clock. Step 0 fixes the ash never clearing while geology is paused. **Plan, not built** |
 | `TEMANAWA_INTERACTION_HEALTH_PLAN.md` | **Interaction plan.** Split Growth into glacial/interglacial buttons, a derived habitat-health scalar surfaced as scene saturation, and a kererū seed-dispersal loop coupled to Storm overuse. Builds on `DEEPTIME_ECOLOGY_PLAN.md`. **Steps 1–3 built and harness-green** (health/saturation readout, five-button split FOREST/TUSSOCK growth, kererū seed dispersal); step 4 (Storm-overuse coupling) and step 5 (tuning) still to come |

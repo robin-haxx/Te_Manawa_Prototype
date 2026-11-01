@@ -82,6 +82,7 @@ TeManawa_time.js           DeepTime — yearsBP is the authoritative clock
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) — pure, p5-free
 TeManawa_hud.js            InstallHUD: timeline, four buttons, storm/ash FX
 TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
+TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only attract sequence (idle + end-of-window), its own clock, the names of the time — see TEMANAWA_PALAEO_ATTRACT.md
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
 TeManawa_UI.js             thin host; delegates to InstallHUD
 TeManawa_level_format.js   level schema + resolution
@@ -202,6 +203,17 @@ heavy) because it regenerates terrain noise over every cell and bakes four seaso
 `resetEcosystem()` keeps the terrain and replaces only the living world. Every 12th reset reseeds the land via `init()` so it varies across a
 day. **Nothing on the visitor path may call `init()`.**
 
+**The attract itself is a sequence, not a swap** (`TeManawa_palaeo.js`, `md/TEMANAWA_PALAEO_ATTRACT.md`).
+Idle and end-of-window call `Palaeo.begin()`: a ≥ 500 ms dip to dark, the land re-baked to 4 Ma under it
+(the every-12th `init()` reseed happens here, under the dark, with the heartbeat stamped), then ~70 s of
+the land alone — the Wanganui Basin, the basement finger, the Manawatū Strait opening and closing, the
+ranges — through the terrain's own sliced morph at pre-window dates, paced so no swap ever lands under a
+live crossfade (`terrain._morphCuts` must stay 0), and a second dip into `Kiosk.landAttract()` →
+`resetEcosystem()` on the 1 Ma land. DeepTime stays parked throughout (it cannot represent 4 Ma); the
+sequence keeps its own clock and replaces the HUD with one caption. Any input, local or over the bus,
+skips to the landing. The **error-recovery path never runs it**: a recovery is the synchronous
+`resetToAttract()`. `TM_PALAEO.enabled = false` restores the older eruption-staged attract.
+
 ---
 
 ## Authoring keys
@@ -214,6 +226,7 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 | `]` / `[` / `\` | **Time dial** (macro-pad encoder: CW / CCW / push) — a standing fast-forward over 30 detents, 0 (geology paused) → 5,000 yr/s (the whole window in ~3¼ min), power-curve so the low end is fine. The rate eases (0.6 s), a boost timelapse never runs slower than it, and the detent survives soft resets. The mouse wheel turns it too. Works in the sim window and the console (relayed over the bus as `{type:'dial'}`). Keys in `DeepTime.DIAL_KEYS` + `secondscreen/input.js` |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` — **debug overlay on only** (a full synchronous rebuild) |
+| `P` | Play the attract sequence now (the land before the window, 4 Ma → 1 Ma) — **debug overlay on only**; any key while it runs skips to the landing. On the wall it comes from the idle timer and the end of the window |
 | `B` / `G` / `N` | Dev tools **(debug overlay on only)**: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. Each is a ~5 s synchronous terrain bake, so they are gated behind `Debug.enabled` — a stray `B` no longer freezes the sim (and no longer collides with the second screen's `b`=boost). See `md/TEMANAWA_DEVTOOLS.md` |
 | `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
@@ -241,3 +254,8 @@ gently heals the forest floor where it forages, closing the forest loop with the
 plant adds one bird, and every founded bird is on one or two plants — `md/TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6), the
 **flora art** (~113 assets — all fauna run on placeholder art), the **disturbance clocks** (`disturb()`
 + `warp`, not yet built), and the **interaction tuning**. `CONFIG.mapGrid` is still 512 (can now drop).
+Newest (2026-11-01): **the land before the window** — the idle / end-of-window attract is now a
+land-only sequence from 4 Ma to the 1 Ma opening, driven through the terrain's dated geology extended
+before the window (`GEO_EPOCHS.palaeo*`), with the names of the time (`md/TEMANAWA_PALAEO_ATTRACT.md`).
+Its tunables (`TM_PALAEO`: pacing, holds, notes, the basin's spelling) and the look of the pre-window
+land (`LOOK.palaeo*`) are the open co-design items.

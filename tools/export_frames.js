@@ -9,6 +9,9 @@
 //   TM_EXPORT.scanNames()   then   TM_EXPORT.runNames('terrain_river_names/names')
 //                           // the river names as the wall letters them, one frame per change in which
 //                           // names are on screen (see scanNames); run(list, prefix, { names: true }) for any list
+//   TM_EXPORT.run(TM_EXPORT.palaeo(), 'palaeo_attract/palaeo', { palaeo: true })
+//                           // the land before the window (TeManawa_palaeo.js): 4 Ma → 1 Ma at the attract
+//                           // sequence's keyframes and the strait's turns, lettered with the names of the time
 //
 // node tools/serve.js 8093 --export   (or the temanawa-export launch config) accepts the POSTs.
 // Frames are the GROUND layer only (terrain, water, frost, haze; plus the river names with { names: true },
@@ -39,11 +42,25 @@
       const g = game, T = g.terrain;
       X._seat(y);
       const projH = (typeof Projection !== 'undefined') ? Projection.projectedWorldHeight() : T.mapHeight;
-      if (!X._buf) { X._buf = createGraphics(width, height); X._buf.pixelDensity(1); }
+      // The 1080-space frame (CONFIG.canvasWidth × canvasHeight): the ground tier composes in 1080 space,
+      // whatever the backing canvas's sprite supersample (width/height are the backing size).
+      if (!X._buf) { X._buf = createGraphics(CONFIG.canvasWidth, CONFIG.canvasHeight); X._buf.pixelDensity(1); }
       const b = X._buf;
       g._composeTerrainLayer(b, projH);
       X.lastNames = (opts && opts.names && typeof RiverNames !== 'undefined')
         ? RiverNames.drawStill(b, T, CONFIG.canvasWidth, CONFIG.canvasHeight, opts.prevOf ? opts.prevOf.get(y) : null) : null;
+      // The land before the window: the river names as the sequence letters them (through RiverNames'
+      // Palaeo hook, so the sequence must read as active while they lay out) and the region names +
+      // caption of the date (Palaeo.drawStill).
+      if (opts && opts.palaeo && typeof Palaeo !== 'undefined' && Palaeo.drawStill) {
+        if (typeof RiverNames !== 'undefined') {
+          const keep = { active: Palaeo.active, yearsBP: Palaeo.yearsBP };
+          Palaeo.active = true; Palaeo.yearsBP = y;
+          try { X.lastNames = RiverNames.drawStill(b, T, CONFIG.canvasWidth, CONFIG.canvasHeight, null); }
+          finally { Palaeo.active = keep.active; Palaeo.yearsBP = keep.yearsBP; }
+        }
+        X.lastRegions = Palaeo.drawStill(b, T, CONFIG.canvasWidth, CONFIG.canvasHeight, y);
+      }
       if (label) {
         const c = Climate.at(y), eu = Climate.seaLevelAt(y), rsl = TerrainGenerator.relativeSeaLevel(y), f = TerrainGenerator.geoTimeFactors(y);
         const ka = (y / 1000).toFixed(y % 1000 ? 1 : 0);
@@ -91,6 +108,24 @@
       for (const e of ex) out.push([e.y, (Climate.at(e.y).mis || '') + (e.hi ? ' interglacial peak' : ' glacial peak')]);
       out.push([to, 'window end; LGM']);
       return out;
+    },
+
+    // The land before the window: the attract sequence's keyframes (TM_PALAEO.keyframes) and the
+    // strait's turns (md/TEMANAWA_PALAEO_ATTRACT.md §1), oldest first. Export with { palaeo: true }.
+    palaeo() {
+      return [
+        [4000000, 'deep marine Wanganui Basin; the basement finger; no seaway at the gorge (T&B 4A)'],
+        [3300000, 'the first marine breach across the gorge area (late Waipipian)'],
+        [3000000, 'a narrow seaway: the Manawatū Strait; the Ruahine a finger of low land and shoals (T&B 4B)'],
+        [2750000, 'the strait closed: the gorge area land, planed (Mangapanian)'],
+        [2400000, 'the Manawatū Strait at its most extensive; the Ruahine under the ocean (T&B 4C)'],
+        [2000000, 'the strait still open; the northern Tararua under the sea'],
+        [1630000, 'the strait closes for good (Castlecliffian)'],
+        [1500000, 'Mount Bruce uplift closes the Ruataniwha Strait; the basin shelf to marginal marine'],
+        [1300000, 'the east is land; the west still marginal; some uplift under way'],
+        [1150000, 'the river turning west; the plain emerging'],
+        [1000000, 'the window opens: rapid uplift begins (T&B 4D)']
+      ];
     },
 
     // Export a list in the background. Items are [y, path, label] or, with `prefix`, [y, label]

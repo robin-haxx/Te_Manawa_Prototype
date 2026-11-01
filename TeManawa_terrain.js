@@ -244,6 +244,29 @@ const LOOK = {
   southSinkEastU:      0.60,  // EAST→WEST FILL: fade the south strait out toward the east — full west of the taper, 0 by this screen-X fraction — so the eastern/SE ground (and the axial Tararua block) emerges FIRST and the southern land fills westward as the pulse drains, instead of a uniform latitude band whose north shore lifts all at once (the jarring "rising bank" in the SE). 0 = off (the old full-width band). Tune live (press B/G/N).
   southSinkEastFeather: 0.30,  // width (in screen-X) of that east taper, west of southSinkEastU. WIDE = the south strait thins gradually into the eastern land; narrow = a crisper east edge. Tune live (press B/G/N).
 
+  // ---- BEFORE THE WINDOW: the palaeogeography attract sequence (md/TEMANAWA_PALAEO_ATTRACT.md) ----
+  // The land from 4 Ma to 1 Ma, as the attract loop replays it: the Wanganui Basin's shelf over the
+  // whole plain, a low finger of basement where the axis stands, the Manawatū Strait opening across the
+  // gap (narrow at 3 Ma, widest at 2.4 Ma, closed by 1.63 Ma) with the Ruahine broken into shoals north
+  // of it, the Ruataniwha shelf in the east closing with the Mount Bruce uplift. TIMING is dated in
+  // GEO_EPOCHS.palaeo* (Trewick & Bland 2012, Fig. 4A–D); these are the SHAPES. Every term is exactly 0
+  // at any date inside the window (≤ 1 Ma), so the sim's land is untouched — the harness asserts it.
+  palaeoAxisCore:      0.6,   // the basin flood keeps off the axis CORE: range mass below this drowns fully, 1 (inside the footprint polygons, and the gorge saddle between them) stays dry, smoothstep between — "an emergent finger of basement" (4 Ma) that is continuous across the gorge area. 0.6 keeps the footprints and lets their spread margin shelve under over a gentle slope; lower = a wider finger, higher = a steeper shore. Tune live (press B/G/N).
+  palaeoAxisLow:       0.75,  // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by this much × (1 − uplift/upliftStart), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma)
+  palaeoAxisLowE:      0.22,  // … the level it is cut toward (lowland)
+  palaeoAxisFloorE:    0.19,  // "emergent": inside the axis core the pre-window land stands at least this high (± the wobble), so the finger is land even where its footprint lies on today's coastal shelf (the southern Tararua, whose base is sea without the range uplift). Fades with the basin, 0 at the opening
+  palaeoBasinEastU:    0.62,  // the EAST shelf (the Ruataniwha Strait's south-west end) lies east of this screen-X fraction; it closes earlier than the west (GEO_EPOCHS.palaeoBasinE*)
+  palaeoBasinEastFeather: 0.12, // width (in screen-X) of the blend from the west basin's clock to the east's
+  palaeoStraitHalfW:   0.085, // the Manawatū Strait's HALF-width across the gap (screen-X fraction) at full strength: "< 20 km wide" (T&B p. 170) ≈ 0.17 of LOOK.frameKm. The width scales with the dated curve, so the 3 Ma seaway is a thread and the 2.4 Ma one the full strip
+  palaeoStraitFeather: 0.06,  // softness of the strait's shores (screen-X fraction): wide, so the drop to the shelf floor is a slope the relief bake paints as a beach, not a dark wall
+  palaeoStraitWobble:  0.05,  // meander the strait's shores off the straight column with the cached wobble (screen-X fraction), as the south strait's shore is meandered
+  palaeoStraitFloor:   0.06,  // the strait's shelf floor (elevation; the sea band is < 0.10): "shallow shelf depths"
+  palaeoShoal:         0.85,  // how far the RUAHINE footprint (north of the strait) is pulled toward the waterline while the strait is open — "low-lying shoals and islands" (1 = fully to the shoal level)
+  palaeoShoalV:        0.52,  // the shoals apply north of this screen-Y fraction (the Ruahine); the Tararua south of it stays a low peninsula
+  palaeoShoalFeather:  0.10,  // width (in screen-Y) of that north/south blend
+  palaeoShoalE:        0.075, // the shoal level (elevation) the Ruahine is pulled toward: a little under the 0.10 waterline …
+  palaeoShoalAmp:      0.05,  // … ± this much with the cached wobble, so its high parts stand as islets and sandbanks and the rest is sea, instead of one flat shoal
+
   // ---- NORTH UP-RAMP (the far/top edge) ---------------------------------------
   // Raise the top of the SCREEN so the far edge is genuinely-higher generated terrain instead of
   // a flat eased-plains smear. Pairs with the terrain's thinner TOP edge ease (config.geoTopMargin,
@@ -478,6 +501,11 @@ class TerrainGenerator {
     this._morphJob = null;
     this._morphFade = null;
     this._bufPool = [];
+    // Observability for the photosensitivity budget: a visible-buffer swap that lands while a crossfade
+    // is still running is a hard cut (see _swapSeasonBuffer). The attract sequence paces its re-bakes
+    // so this never moves; the harness asserts it across a whole sequence.
+    this._morphCuts = 0;
+    this._lastSwapMs = 0;
 
     // Time-INDEPENDENT wobble noise fields (biome-border wander). The wobble
     // depends only on seed / frequency / footprint, never on yearsBP, so the
@@ -1354,11 +1382,51 @@ class TerrainGenerator {
       //   From → Full   sink: 0 (normal land) → 1 (fully submerged)
       //   Full … Hold   plateau at full submergence
       //   Hold → To     drain: 1 → 0 (back to the normally-generated land)
-      // From sits just before the window so the run opens fully sunk; it drains 1 Ma → ~0.5 Ma, with
-      // the marine emergence (emergeTo). Was a pulse peaking at 0.5 Ma (dry at 1 Ma), which no
-      // source supports.
-      southSinkFrom: 1100000, southSinkFull: 1000000, southSinkHold: 1000000, southSinkTo: 500000
+      // The rise sits far before the window (it used to be 1.1 → 1.0 Ma, "so the run opens fully
+      // sunk", which read as LAND south before 1.1 Ma when the attract sequence played the land back
+      // to 4 Ma — the basin's depocentre does not vanish going back in time); inside the window the
+      // pulse is identical: full at 1 Ma, drained 1 Ma → ~0.5 Ma with the marine emergence (emergeTo).
+      // Was a pulse peaking at 0.5 Ma (dry at 1 Ma), which no source supports.
+      southSinkFrom: 4600000, southSinkFull: 4000000, southSinkHold: 1000000, southSinkTo: 500000,
+
+      // BEFORE THE WINDOW (md/TEMANAWA_PALAEO_ATTRACT.md §1–2; Trewick & Bland 2012 Fig. 4A–D and text;
+      // Rees, Palmer & Palmer 2017 for the 1.63 Ma closure). Read by geoTimeFactors().palaeo and the
+      // pre-window uplift ramp. Every one of these is exactly its window value at ≤ 1 Ma.
+      //   basin, west: the Wanganui Basin's shelf over the plain (deep marine at 4 Ma, shelf by 3 Ma,
+      //     "shelf to marginal-marine" at 1.5 Ma, "low-lying land and marginal marine estuaries" by 1 Ma)
+      palaeoBasinWFrom: 1650000, palaeoBasinWTo: 1000000,
+      //   basin, east: the Ruataniwha Strait's south-west end; closed by the Mount Bruce uplift ~1.5 Ma,
+      //     Hawke's Bay "largely land by 1 Ma"
+      palaeoBasinEFrom: 1650000, palaeoBasinETo: 1300000,
+      //   the Manawatū Strait across the axis, as [yearsBP, strength] anchors, smoothstepped between and
+      //   held outside: the first breach late in the Waipipian (~3.3 Ma), "a narrow seaway" at 3 Ma,
+      //   "probably land during the Mangapanian" (3.0–2.4 Ma), "at its most extensive" at 2.4 Ma (the
+      //   Ruahine "under the ocean… a narrow, shallow marine sill"), closed for good from ~1.63 Ma
+      palaeoAxisStrait: [[3350000, 0], [3200000, 0.45], [3000000, 0.45], [2900000, 0], [2550000, 0],
+                         [2400000, 1], [2100000, 1], [1630000, 0]],
+      //   the axis before the rapid uplift: "an emergent finger of basement rocks, albeit at low
+      //   elevation" (4 Ma); "some uplift… initiated by 1.5 Ma"; joins upliftStart at upliftFrom
+      palaeoUpliftPre:  [[4000000, 0.03], [1500000, 0.07]],
+      //   the oldest date the attract sequence shows (its terms hold their state at older dates)
+      palaeoFrom: 4000000
     };
+  }
+
+  // A dated curve: [yearsBP, value] anchors, oldest first, smoothstepped between and HELD outside
+  // (the same reading Climate's tables use). Pure/static, so the harness can probe it.
+  static _anchorCurve(anchors, yearsBP) {
+    if (!anchors || !anchors.length) return 0;
+    if (yearsBP >= anchors[0][0]) return anchors[0][1];
+    const last = anchors[anchors.length - 1];
+    if (yearsBP <= last[0]) return last[1];
+    for (let i = 0; i + 1 < anchors.length; i++) {
+      const a = anchors[i], b = anchors[i + 1];
+      if (yearsBP <= a[0] && yearsBP >= b[0]) {
+        const t = (a[0] - yearsBP) / ((a[0] - b[0]) || 1);
+        return a[1] + (b[1] - a[1]) * t * t * (3 - 2 * t);
+      }
+    }
+    return last[1];
   }
 
   // Deep-time SHAPE factors for an absolute yearsBP. All 0..1; yearsBP null → mature
@@ -1374,8 +1442,20 @@ class TerrainGenerator {
   //                seaward embayment (the strait closing over); the channel assembles from
   //                the coast inland, continuous by emergeTo.
   static geoTimeFactors(yearsBP) {
-    if (yearsBP == null) return { uplift: 1, incision: 1, emergence: 1, submergence: 0, southSink: 0, mainArm: 1, tribSpread: 0, lake: 0, age: 0 };
+    if (yearsBP == null) return { uplift: 1, incision: 1, emergence: 1, submergence: 0, southSink: 0, mainArm: 1, tribSpread: 0, lake: 0, age: 0, palaeo: TerrainGenerator.PALAEO_NONE };
     const E = TerrainGenerator.GEO_EPOCHS;
+    // BEFORE THE WINDOW (the attract sequence, md/TEMANAWA_PALAEO_ATTRACT.md §2): the basin's shelf
+    // over the plain (west and east on their own clocks) and the strait across the axis. All exactly
+    // 0 at ≤ 1 Ma, so the window's land is untouched; one shared frozen object there (no allocation).
+    const preWindow = yearsBP > E.upliftFrom;
+    const palaeo = preWindow ? {
+      basinW: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinWFrom, 0], [E.palaeoBasinWTo, 1]], yearsBP),
+      basinE: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinEFrom, 0], [E.palaeoBasinETo, 1]], yearsBP),
+      axis:   TerrainGenerator._anchorCurve(E.palaeoAxisStrait, yearsBP)
+    } : TerrainGenerator.PALAEO_NONE;
+    // The axis before the rapid uplift: the dated pre-window anchors, joining upliftStart at upliftFrom.
+    const upliftPre = preWindow
+      ? TerrainGenerator._anchorCurve(E.palaeoUpliftPre.concat([[E.upliftFrom, E.upliftStart]]), yearsBP) : null;
     const ramp = (from, to) => {                                    // 0 at/older than `from` → 1 at/younger than `to`
       const t = (from - yearsBP) / ((from - to) || 1);
       return t < 0 ? 0 : t > 1 ? 1 : t;
@@ -1395,7 +1475,10 @@ class TerrainGenerator {
     const ssUp = ssU * ssU * (3 - 2 * ssU);                     // smoothstep each leg so the shore eases, not jumps
     const ssDn = ssD * ssD * (3 - 2 * ssD);
     return {
-      uplift:    E.upliftStart + (1 - E.upliftStart) * Math.pow(up, 1.5),   // low basement hills at the onset, then a gentle ease-in: the axial ranges rise across ~the whole last 1 Ma, not a late-window jump
+      uplift:    upliftPre != null ? upliftPre
+               : E.upliftStart + (1 - E.upliftStart) * Math.pow(up, 1.5),   // low basement hills at the onset, then a gentle ease-in: the axial ranges rise across ~the whole last 1 Ma, not a late-window jump
+      // BEFORE THE WINDOW: { basinW, basinE, axis }, all 0 inside it (TerrainGenerator.PALAEO_NONE).
+      palaeo,
       incision:  Math.min(1, 0.2 + 0.8 * Math.pow(inc, 1.2)),       // leads uplift, accelerates late
       emergence: emg * emg * (3 - 2 * emg),                         // smoothstep connection front (coast → source)
       // MARINE EMERGENCE (Axis A): shallow-sea basin at 1 Ma → land by ~emergeTo. Smoothstep
@@ -1427,6 +1510,13 @@ class TerrainGenerator {
       // The date itself, for the processes that run on a clock rather than a ramp (river meanders).
       age: yearsBP
     };
+  }
+
+  // The pre-window terms inside the window: one frozen zero object, shared (geoTimeFactors runs per
+  // morph; nothing should allocate for a state that never changes).
+  static get PALAEO_NONE() {
+    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0 });
+    return TerrainGenerator._palaeoNone;
   }
 
   // RELATIVE SEA LEVEL (m) the western coast sees at yearsBP, measured against TODAY's land: the
@@ -1597,7 +1687,7 @@ class TerrainGenerator {
   // Combine the geo field for one cell with the deep-time factors. Pure/static so
   // the cached morph path and the direct _applyGeo share it (no divergence), and
   // tools/bootcheck.js can assert it.
-  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat, crest) {
+  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat, crest, basinSub, axisSub, axisFloor, shoalSub, shoalE, axisLow, axisLowE, fingerLift, fingerE) {
     let e0 = e;                                    // pre-range LOCAL ground — the level the river follows (the relative-sea shift moves it too)
     if (rMask > 0 && uplift > 0 && rH > 0) {
       // RANGES scale the EXISTING ground instead of replacing it with a crest template.
@@ -1617,6 +1707,14 @@ class TerrainGenerator {
       // one smooth cap. Scaled by mass and uplift, so it grows with the range.
       if (crest) lifted += crest * rMask * uplift;
       if (lifted > e) e = lifted;                  // ranges only ever lift, never dig below the base
+    }
+    // BEFORE THE WINDOW: the axis "at low elevation" (md/TEMANAWA_PALAEO_ATTRACT.md §2). The dated
+    // pre-window uplift (geoTimeFactors) is tiny, so the footprint's height is mostly its base noise;
+    // this cuts the range-masked ground's excess above axisLowE by axisLow (the caller scales it by how
+    // far the uplift still has to go, 0 at the opening). Omitted → no-op. Only ever lowers.
+    if (axisLow > 0 && rMask > 0) {
+      const lowE = (axisLowE != null) ? axisLowE : 0.22;
+      if (e > lowE) e -= (e - lowE) * axisLow * rMask;
     }
     // RELATIVE SEA (signed, in elevation units from metres — glacialSeaShift). Applied AFTER the range
     // lift (the gate's ceiling keeps ranges out anyway) and BEFORE the river carve, with the river's
@@ -1729,6 +1827,30 @@ class TerrainGenerator {
     // (harness/older paths) passes undefined → no-op.
     if (patchSub > 0) {
       if (e > sf) e += (sf - e) * patchSub;
+    }
+    // BEFORE THE WINDOW (the attract sequence, md/TEMANAWA_PALAEO_ATTRACT.md §2). Three positional
+    // terms the caller dates from GEO_EPOCHS.palaeo*; a caller that omits them (every window-era path,
+    // the harness's short calls) passes undefined → no-op. Only ever lower.
+    //   basinSub  the Wanganui Basin's shelf over the plain, to the same mottled floor as the straits
+    //   axisSub   the Manawatū Strait across the gap, to a shallow shelf floor (axisFloor)
+    //   shoalSub  the Ruahine pulled toward the waterline (shoalE, wobbled) → shoals and islets
+    if (basinSub > 0) {
+      if (e > sf) e += (sf - e) * basinSub;
+    }
+    if (axisSub > 0) {
+      const af = (axisFloor > 0) ? axisFloor : 0.06;
+      if (e > af) e += (af - e) * axisSub;
+    }
+    if (shoalSub > 0) {
+      if (e > shoalE) e += (shoalE - e) * shoalSub;
+    }
+    //   fingerLift the emergent finger: inside the axis core the land stands at least fingerE (the one
+    //              pre-window term that RAISES — the footprint on today's shelf was land then). The
+    //              caller fades it out continuously where the strait or the shoals take the cell, so
+    //              it never steps at a feather's edge; 0 inside the window.
+    if (fingerLift > 0) {
+      const fe = (fingerE > 0) ? fingerE : 0.19;
+      if (e < fe) e += (fe - e) * fingerLift;
     }
     // (The relative-sea shift is applied above, before the river carve.)
     return e < 0 ? 0 : e > 1 ? 1 : e;
@@ -3145,10 +3267,36 @@ class TerrainGenerator {
     const southWob = (typeof LOOK !== 'undefined' && LOOK.southSinkWobble != null) ? LOOK.southSinkWobble : 0.05;
     const southEastU = (typeof LOOK !== 'undefined' && LOOK.southSinkEastU != null) ? LOOK.southSinkEastU : 0;   // EAST→WEST fill taper
     const southEastF = (typeof LOOK !== 'undefined' && LOOK.southSinkEastFeather != null) ? LOOK.southSinkEastFeather : 0.3;
+    // BEFORE THE WINDOW (the attract sequence; md/TEMANAWA_PALAEO_ATTRACT.md §2). t.palaeo is the frozen
+    // all-zero object at any date ≤ 1 Ma, so inside the window every term below is 0 and the combine
+    // is untouched. The basin keeps off the axis CORE (a finger of basement); the strait across the gap
+    // is the one marine term that does NOT: Trewick & Bland put the Ruahine "under the ocean" at 2.4 Ma.
+    const PL = t.palaeo || TerrainGenerator.PALAEO_NONE, LKp = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const palaeoOn = PL.basinW > 0 || PL.basinE > 0 || PL.axis > 0;
+    const pAxisCore = (LKp.palaeoAxisCore != null) ? LKp.palaeoAxisCore : 0.6;
+    const pEastU = (LKp.palaeoBasinEastU != null) ? LKp.palaeoBasinEastU : 0.62;
+    const pEastF = (LKp.palaeoBasinEastFeather > 0) ? LKp.palaeoBasinEastFeather : 0.12;
+    const pStraitHW = ((LKp.palaeoStraitHalfW != null) ? LKp.palaeoStraitHalfW : 0.085) * PL.axis;   // the strait's width carries the dated curve
+    const pStraitF = (LKp.palaeoStraitFeather > 0) ? LKp.palaeoStraitFeather : 0.06;
+    const pStraitWob = (LKp.palaeoStraitWobble != null) ? LKp.palaeoStraitWobble : 0.05;
+    const pStraitFloor = (LKp.palaeoStraitFloor != null) ? LKp.palaeoStraitFloor : 0.06;
+    // The axis before the rapid uplift sits low: its height above pAxisLowE is cut by pAxisLow × how far
+    // the pre-window uplift still has to go (0 at the opening, where uplift = upliftStart).
+    const pUpStart = TerrainGenerator.GEO_EPOCHS.upliftStart;
+    const pAxisLow = (palaeoOn && pUpStart > 0 && up < pUpStart)
+      ? ((LKp.palaeoAxisLow != null) ? LKp.palaeoAxisLow : 0.75) * (1 - up / pUpStart) : 0;
+    const pAxisLowE = (LKp.palaeoAxisLowE != null) ? LKp.palaeoAxisLowE : 0.22;
+    const pAxisFloorE = (LKp.palaeoAxisFloorE != null) ? LKp.palaeoAxisFloorE : 0.19;
+    const pGorgeU = (LKp.straitGorgeU != null) ? LKp.straitGorgeU : 0.50;
+    const pShoal = ((LKp.palaeoShoal != null) ? LKp.palaeoShoal : 0.85) * PL.axis;
+    const pShoalV = (LKp.palaeoShoalV != null) ? LKp.palaeoShoalV : 0.52;
+    const pShoalF = (LKp.palaeoShoalFeather > 0) ? LKp.palaeoShoalFeather : 0.10;
+    const pShoalE = (LKp.palaeoShoalE != null) ? LKp.palaeoShoalE : 0.085;
+    const pShoalAmp = (LKp.palaeoShoalAmp != null) ? LKp.palaeoShoalAmp : 0.045;
     // Mottle the drowned SEA FLOOR and MEANDER the strait's north shore with the cached wobble field,
     // so the submergence reads as varied open water with a natural (not latitude-straight) coast —
     // not a flat square slab. Cached (deterministic) → the sliced morph stays identical to the sync one.
-    const seaWob = (southSink > 0 || sub > 0) ? this._simWobbleField() : null;
+    const seaWob = (southSink > 0 || sub > 0 || palaeoOn) ? this._simWobbleField() : null;
     const rMask = c.rMask, rH = c.rH, ridge = c.ridge, detail = c.detail, crestArr = c.crest;
     const wMDistArr = c.wMDist, wMBaseWArr = c.wMBaseW, wMDepthArr = c.wMDepth, wMPosArr = c.wMPos;   // the MAIN layer
     const tJArr = c.tJ, tSArr = c.tS, tPArr = c.tP, tEArr = c.tE;                                       // the TRIBUTARY layer
@@ -3310,7 +3458,43 @@ class TerrainGenerator {
           if (wg < 0) wg = 0;
           gSea = glacialSea * wg * wg * (3 - 2 * wg);
         }
-        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, 1, up, inc, relief, incise, sea, 1, 1, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat, crestArr ? crestArr[i] : 0);
+        // BEFORE THE WINDOW: the basin over everything but the axis core (west and east on their own
+        // clocks, blended across pEastU), the strait strip across the gap (unprotected), the Ruahine
+        // shoals north of it. All 0 inside the window (PL is the frozen zero object there).
+        let basinSub = 0, axisSub = 0, shoalSub = 0, shoalE = 0, fingerLift = 0;
+        if (palaeoOn) {
+          const east = TerrainGenerator._southStrength(u, 1, pEastU - pEastF, pEastF);          // 0 west → 1 east of pEastU
+          const basin = PL.basinW + (PL.basinE - PL.basinW) * east;
+          if (basin > 0) {
+            // The finger of basement stays dry: the range FOOTPRINTS (mass 1 inside the polygons, and
+            // the gorge saddle between them, so the finger is continuous — "no seaway across the
+            // gorge area" at 4 Ma), shelving under across the spread margin outside them. And it is
+            // EMERGENT: the core stands at least pAxisFloorE even where its footprint lies on today's
+            // shelf (the southern Tararua), fading with the basin so it is 0 at the opening.
+            let core = (rMask[i] - pAxisCore) / (1 - pAxisCore);
+            core = core < 0 ? 0 : core > 1 ? 1 : core * core * (3 - 2 * core);
+            basinSub = basin * (1 - core);
+            fingerLift = basin * core;
+          }
+          if (pStraitHW > 0) {
+            const d = Math.abs(u + wv * pStraitWob - pGorgeU) - pStraitHW;                         // ≤ 0 inside the strait; its shores meander
+            let sp = d <= 0 ? 1 : 1 - d / pStraitF;
+            axisSub = sp < 0 ? 0 : sp * sp * (3 - 2 * sp);
+          }
+          let shoaled = 0;                                                                         // how far this cell is given to the Ruahine shoals (0..1)
+          if (pShoal > 0 && rMask[i] > 0) {
+            const north = 1 - TerrainGenerator._southStrength(v, 1, pShoalV - pShoalF, pShoalF);   // 1 north of the strait (the Ruahine) → 0 south (the Tararua)
+            shoalSub = pShoal * rMask[i] * north;
+            shoalE = pShoalE + wv * pShoalAmp;                                                     // islets either side of the waterline
+            shoaled = PL.axis * north;
+          }
+          // The floor fades out CONTINUOUSLY where the strait or the shoals take the cell (never a
+          // step at a feather's edge: the relief bake paints a step as a tower of cliff).
+          if (fingerLift > 0) fingerLift *= 1 - Math.max(axisSub, shoaled);
+        }
+        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, 1, up, inc, relief, incise, sea, 1, 1, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat, crestArr ? crestArr[i] : 0,
+                                               basinSub, axisSub, pStraitFloor + wv * 0.02, shoalSub, shoalE, pAxisLow, pAxisLowE,
+                                               fingerLift, pAxisFloorE + wv * 0.02);
         // DROWNED-VALLEY ESTUARY: at a warm highstand the sea backs up the main-stem valley. Drown
         // the low valley floor near the main channel (wMDist/wMPos) toward the sea floor, elevation-
         // gated so terraces stay dry, reaching further inland as the highstand strengthens.
@@ -3938,7 +4122,13 @@ class TerrainGenerator {
         ms: Math.max(500, fadeMs)   // photosensitivity: large changes ramp >= 500 ms
       };
       this._releaseBakeBuffer(old);   // captured into the snapshot; recycle it
+      this._lastSwapMs = this._morphFade.t0;
     } else {
+      // The CURRENT (fully drawn) buffer replaced under a live fade is a cut: the live composite the
+      // fade eases in jumps mid-ramp. (The NEXT-phase buffer landing under the fade is the designed
+      // path — the frozen snapshot above already holds the old pair.) Counted, never hidden.
+      const isCurrent = sm ? seasonKey === sm.currentKey : seasonKey === 'interglacial';
+      if (isCurrent && this._morphFade) this._morphCuts++;
       this._releaseBakeBuffer(old);
     }
   }

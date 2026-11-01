@@ -267,11 +267,19 @@ const Debug = {
 
     // ---- KIOSK ---------------------------------------------
     if (typeof Kiosk !== 'undefined') {
+      const P = (typeof Palaeo !== 'undefined') ? Palaeo : null;
       s.kiosk = {
         resets: Kiosk.resetCount,
         lastResetMs: Kiosk.lastResetMs_duration || 0,
         idleIn: Kiosk.idleSecondsRemaining(),
-        errors: Kiosk.getErrorLog().length
+        errors: Kiosk.getErrorLog().length,
+        // the attract sequence (TeManawa_palaeo.js): its state and own clock, re-bakes landed this run,
+        // sequences played, and the terrain's crossfade cuts (must stay 0 — photosensitivity)
+        palaeo: P ? P.state : 'n/a',
+        palaeoYear: (P && P.state !== 'idle') ? Math.round(P.yearsBP) : 0,
+        palaeoBakes: P ? P.bakes : 0,
+        palaeoRuns: P ? P.runs : 0,
+        morphCuts: (t && t._morphCuts) || 0
       };
     }
 
@@ -506,6 +514,11 @@ const Debug = {
         ['last reset',   s.kiosk.lastResetMs.toFixed(1) + 'ms',
                          this._capColour(s.kiosk.lastResetMs, 25)],
         ['attract in',   s.kiosk.idleIn.toFixed(0) + 's'],
+        ['attract seq',  s.kiosk.palaeo + (s.kiosk.palaeoYear ? ' ' + Math.round(s.kiosk.palaeoYear / 1000) + ' ka' : ''),
+                         s.kiosk.palaeo === 'idle' || s.kiosk.palaeo === 'n/a' ? [225, 240, 232] : [255, 210, 120]],
+        ['seq bakes/runs', s.kiosk.palaeoBakes + ' / ' + s.kiosk.palaeoRuns],
+        ['fade cuts',    String(s.kiosk.morphCuts),
+                         s.kiosk.morphCuts ? [255, 120, 110] : [150, 230, 170]],
         ['errors logged', String(s.kiosk.errors),
                          s.kiosk.errors ? [255, 120, 110] : [150, 230, 170]]
       ]);

@@ -1693,6 +1693,15 @@ class Game {
   }
 
   update(dt = 1) {
+    // THE LAND BEFORE THE WINDOW (TeManawa_palaeo.js): while the attract sequence runs it owns the
+    // world — the land morphs through the pre-window dates and nothing lives, ages or fires, so the
+    // sim (and the HUD's clock) sit out the frame. tick() is cheap when idle; it also lifts the veil
+    // over the fresh world after the landing, when the sim is already running again.
+    if (typeof Palaeo !== 'undefined') {
+      Palaeo.tick(dt);
+      if (Palaeo.active) return;
+    }
+
     // The HUD owns the deep-time multiplier and the transient button effects,
     // and returns the timeScale this frame should run at.
     const scale = (typeof InstallHUD !== 'undefined') ? InstallHUD.update(this, dt) : 1;
@@ -1722,7 +1731,11 @@ class Game {
     // until somebody touches it, which unattended means most of the day.
     if (typeof DeepTime !== 'undefined' && DeepTime.hasEnded() &&
         typeof Kiosk !== 'undefined') {
-      Kiosk.resetToAttract(this, 'end-of-window');
+      // The land before the window plays first (4 Ma → 1 Ma) and lands on the fresh 1 Ma world; the
+      // bare reset only when the sequence is off or refuses (md/TEMANAWA_PALAEO_ATTRACT.md §3).
+      if (!(Kiosk._palaeoOn && Kiosk._palaeoOn() && Palaeo.begin(this, 'end-of-window'))) {
+        Kiosk.resetToAttract(this, 'end-of-window');
+      }
     }
   }
 
@@ -1849,15 +1862,23 @@ class Game {
     // calls inside simulation.render() enqueue GPU quads. It composites itself back
     // into this 2D context at the seam before the indicator over-pass (see
     // Simulation.render). The fallback below closes the span if that seam was missed.
+    // The span is opened even while the attract sequence runs with nothing to draw: in
+    // DOM-stack mode begin() is what CLEARS the GL layer, or the last cast frame would hang.
     if (typeof GLBatch !== 'undefined' && GLBatch.enabled) GLBatch.begin();
 
-    // River swimmers (eels + fish) ride the SUPERSAMPLED sprite layer, not the 1080 ground
-    // buffer their currents/shimmer sit in. Drawn HERE, inside the batch span and before the
-    // animals, so in GL mode the batch captures them at backing resolution (and the 2D path
-    // draws them straight onto the high-res canvas) — crisp like the cast, swimming under it.
-    if (this.water) this.water.renderSwimmers();
+    // THE LAND BEFORE THE WINDOW: while the attract sequence runs nothing alive is drawn —
+    // no swimmers (eels and fish are fauna), no cast. The ground tier above (terrain, water
+    // decals, washes) is all the world there is; Palaeo.renderOverlay letters it below.
+    const _palaeo = (typeof Palaeo !== 'undefined') && Palaeo.active;
+    if (!_palaeo) {
+      // River swimmers (eels + fish) ride the SUPERSAMPLED sprite layer, not the 1080 ground
+      // buffer their currents/shimmer sit in. Drawn HERE, inside the batch span and before the
+      // animals, so in GL mode the batch captures them at backing resolution (and the 2D path
+      // draws them straight onto the high-res canvas) — crisp like the cast, swimming under it.
+      if (this.water) this.water.renderSwimmers();
 
-    this.simulation.render();
+      this.simulation.render();
+    }
 
     // Safety: if the batch span is somehow still open (e.g. an early return before
     // the composite seam), flush it here so an open span can never swallow the
@@ -1871,7 +1892,10 @@ class Game {
     drawingContext.restore();
     pop();
 
-    this.ui.renderFullscreenOverlay();
+    // The attract sequence's overlay (the names of the time, the date caption) stands in for the
+    // HUD while it runs; the HUD's timeline cannot show a date before the window.
+    if (_palaeo) Palaeo.renderOverlay(this, CONFIG.canvasWidth, CONFIG.canvasHeight);
+    else this.ui.renderFullscreenOverlay();
   }
 
   // ---- split-resolution ground tier ---------------------------------------
@@ -2018,6 +2042,9 @@ class Game {
     // The plant gallery overlays the whole screen — let it claim the pointer (its
     // SAVE PNG button) before the sim UI sees the click.
     if (typeof PlantGallery !== 'undefined' && PlantGallery.handleClick(mx, my)) return;
+    // THE LAND BEFORE THE WINDOW: a touch during the attract sequence is presence — it skips to the
+    // landing — never an action on the parked old world.
+    if (typeof Palaeo !== 'undefined' && Palaeo.active) { Palaeo.skip(); return; }
     if (this.ui && this.ui.handleFullscreenClick(mx, my)) return;
   }
 
@@ -2038,6 +2065,12 @@ class Game {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
     // Swallow D so tap-vs-hold resolves on release/tick (see TeManawa_plant_debug.js).
     if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyDown(k)) return;
+    // THE LAND BEFORE THE WINDOW: while the attract sequence runs every key is presence (it skips to
+    // the landing), never a button on the parked old world. The debug overlay still cycles (authoring).
+    if (typeof Palaeo !== 'undefined' && Palaeo.active) {
+      if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
+      Palaeo.skip(); return;
+    }
     // The macro pad's TIME DIAL ([ / ] / \ by default — DeepTime.DIAL_KEYS): a standing 0–5,000 yr/s fast-forward.
     if (typeof DeepTime !== 'undefined' && DeepTime.dialKey && DeepTime.dialKey(k)) return;
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
@@ -2062,6 +2095,10 @@ class Game {
 
     // R toggles the range-authoring overlay (footprints + spine axes). Authoring only.
     if ((k === 'r' || k === 'R') && typeof GEO !== 'undefined') { GEO.toggle(); return; }
+
+    // P plays the attract sequence now (the land before the window, 4 Ma → 1 Ma). Authoring only:
+    // on the wall it comes from the idle timer and the end of the window. See md/TEMANAWA_PALAEO_ATTRACT.md.
+    if ((k === 'p' || k === 'P') && typeof Palaeo !== 'undefined') { if (authoring) Palaeo.begin(this, 'manual'); return; }
 
     // C toggles the climate-affinity tint on the cast (warm=amber, cold=blue). Authoring
     // only — the wall is locked to 1-5. Free while off; the baked tints warm up lazily on
@@ -2376,6 +2413,7 @@ function draw() {
   if (_ss !== 1) scale(_ss);
   game.render();
   if (typeof Kiosk !== 'undefined') Kiosk.renderCrossfade(CONFIG.canvasWidth, CONFIG.canvasHeight);
+  if (typeof Palaeo !== 'undefined') Palaeo.renderVeil(CONFIG.canvasWidth, CONFIG.canvasHeight);   // the attract sequence's dark dips
   pop();
 
   const _t2 = performance.now();
@@ -2406,6 +2444,11 @@ function keyReleased() { game.handleKeyUp(key); }
 function mouseWheel(e) {
   if (typeof PlantGallery !== 'undefined' && PlantGallery.active) {
     PlantGallery.scroll(e.deltaY);
+    return false;
+  }
+  if (typeof Palaeo !== 'undefined' && Palaeo.active) {   // presence during the attract sequence: skip, never turn the dial
+    if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
+    Palaeo.skip();
     return false;
   }
   if (typeof DeepTime !== 'undefined' && DeepTime.dialWheel) {

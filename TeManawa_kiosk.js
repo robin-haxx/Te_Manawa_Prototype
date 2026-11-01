@@ -165,16 +165,20 @@ const Kiosk = {
       return;
     }
 
-    // 2. Idle -> attract reset, STAGED AS A VOLCANIC EVENT. Rather than swapping the world
-    //    silently, arm the same charge the timeline/button eruptions use (rumble + ash-cloud
-    //    roll-down); InstallHUD.update() performs the actual reset at the crest, hidden under the
-    //    ash cover, then plays the reveal. The reset itself stays synchronous (resetToAttract is
-    //    untouched); only this idle TRIGGER pre-rolls. If a charge/ash window is already live the
-    //    arm is refused and we retry on the next tick (lastInputAt only advances once it takes).
+    // 2. Idle -> the attract. THE LAND BEFORE THE WINDOW (TeManawa_palaeo.js, md/TEMANAWA_PALAEO_ATTRACT.md):
+    //    the land-only sequence from 4 Ma plays, and lands on a fresh 1 Ma world (Palaeo.begin → … →
+    //    landAttract). It is refused while one is already running; begin() restarts the idle timer.
+    //    With TM_PALAEO.enabled false, the older staging: a VOLCANIC EVENT — the same charge the
+    //    timeline/button eruptions use (rumble + ash-cloud roll-down); InstallHUD.update() performs the
+    //    actual reset at the crest, hidden under the ash cover, then plays the reveal. The reset itself
+    //    stays synchronous (resetToAttract is untouched); only the idle TRIGGER pre-rolls. If a charge/ash
+    //    window is already live the arm is refused and we retry on the next tick (lastInputAt only
+    //    advances once it takes).
     if (now - this.lastInputAt > this.idleSeconds * 1000) {
       const g = this.game;
-      if (g && g.terrain && this.beginAttractEruption(g)) {
-        this.lastInputAt = now;
+      if (g && g.terrain) {
+        if (this._palaeoOn()) { if (Palaeo.begin(g, 'idle')) this.lastInputAt = now; }
+        else if (this.beginAttractEruption(g)) this.lastInputAt = now;
       }
     }
 
@@ -206,24 +210,62 @@ const Kiosk = {
   // path), so the land still varies across an unattended day. The Eruption button
   // overrides it: a tap passes reseed:false (cheap, terrain kept) and a long
   // press passes reseed:true (the deliberate reseed). See TeManawa_hud.js.
+  // The attract sequence (TeManawa_palaeo.js) is the idle/end-of-window path when it is on.
+  _palaeoOn() { return typeof Palaeo !== 'undefined' && typeof TM_PALAEO !== 'undefined' && !!TM_PALAEO.enabled; },
+
+  // Would the NEXT reset be the every-Nth reseed? Read by the attract sequence at its start (it does
+  // the reseed under its opening dark); the count itself advances at the landing.
+  takeReseed() { return (this.resetCount + 1) % this.reseedEvery === 0; },
+
+  // The run's transient state, cleared by every reset path (the button effects, a pending attract
+  // charge, the storm, the readouts). Shared by resetToAttract and landAttract so they cannot drift.
+  _clearRunState(g) {
+    g.playTime = 0;
+    g.timeScale = 1;
+    g._tmDeepUntil = g._tmGrowWarmUntil = g._tmGrowColdUntil = g._tmStormUntil = 0;
+    g._tmAttractErAt = 0;   // clear any pending attract-loop buildup (the completion clears it too)
+    g._regimeFit = 1; g._recruitment = 1;
+    g._stormPressure = 0; g._stormOveruse = false;
+    g._tmStormCells = null;
+    g._tmBolt = null;
+    if (g.notifications) g.notifications.length = 0;
+    if (g.ui && g.ui.messages) g.ui.messages.length = 0;
+  },
+
+  // THE LANDING of the attract sequence (Palaeo._land): the terrain already stands at the window's
+  // opening (the sequence morphed it there, all four buffers), so this is the bare living-world swap —
+  // resetEcosystem() (DeepTime.reset inside → 1 Ma) plus the reset bookkeeping. No morph, no seek, no
+  // reseed here (the sequence did that at its start, by takeReseed). Its own veil covers it, so no
+  // crossfade is armed. Never touches the network.
+  landAttract(g, reason = 'idle') {
+    if (!g || !g.currentLevel) return 0;
+    const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
+    try {
+      this._clearRunState(g);
+      g.resetEcosystem();
+      this.resetCount++;
+      this.lastResetMs = Date.now();
+      this.lastInputAt = Date.now();     // the idle timer counts from the landing, so the living world is seen before the next sequence
+    } catch (err) {
+      this.logError('reset', String(err && err.message || err));
+      this.hardReload('reset-failed');
+      return -1;
+    }
+    const ms = ((typeof performance !== 'undefined') ? performance.now() : 0) - t0;
+    this.lastResetMs_duration = ms;
+    console.log(`[Kiosk] attract landing (${reason}) in ${ms.toFixed(1)}ms, #${this.resetCount}`);
+    return ms;
+  },
+
   resetToAttract(g, reason = 'manual', opts = null) {
     if (!g || !g.currentLevel) return 0;
     const t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
     try {
-      g.playTime = 0;
-      g.timeScale = 1;
-      g._tmDeepUntil = g._tmGrowWarmUntil = g._tmGrowColdUntil = g._tmStormUntil = 0;
-      g._tmAttractErAt = 0;   // clear any pending attract-loop buildup (the completion clears it too)
-      g._regimeFit = 1; g._recruitment = 1;
-      g._stormPressure = 0; g._stormOveruse = false;
-      g._tmStormCells = null;
-      g._tmBolt = null;
-      if (g.notifications) g.notifications.length = 0;
-      if (g.ui && g.ui.messages) g.ui.messages.length = 0;
+      this._clearRunState(g);
 
       // Rebuild from memory: no loadImage, no loadSound, no network.
-      let reseed = (this.resetCount + 1) % this.reseedEvery === 0;
+      let reseed = this.takeReseed();
       if (opts && typeof opts.reseed === 'boolean') reseed = opts.reseed;
 
       // Where the reset lands (Game.applyEruptionAt replays an eruption checkpoint):

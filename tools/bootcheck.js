@@ -1237,6 +1237,148 @@ try{
   const a=Date.now(); K.game.init(); const full=Date.now()-a;
   console.log('full init() for comparison:', full+'ms  -> soft is ~'+(full/Math.max(1,t[t.length-1])).toFixed(0)+'x cheaper');
 }catch(e){ console.log('RESET FAIL:', e.message, e.stack.split('\n')[1]); process.exit(1); }
+
+// ---- the land before the window: the palaeogeography attract sequence (TeManawa_palaeo.js) ----
+// md/TEMANAWA_PALAEO_ATTRACT.md. (a) The dated pre-window factors are exactly their window values at
+// ≤ 1 Ma and read Trewick & Bland's maps older: (b) the land at the four dated maps — 4 Ma all sea but
+// the axis finger, 2.4 Ma a sea across the gap with the Ruahine shoaled and the Tararua standing,
+// 2.75 Ma and 1.6 Ma the gap closed; (c) the names of the time on their surfaces; (d) a whole sequence
+// (harness pacing) from mid-run: never a crossfade cut, swaps spaced by the fade, every keyframe
+// baked, the landing a fresh 1 Ma world with all four buffers; (e) a skip lands; (f) the paths: idle
+// starts it (and stages the eruption when it is off), error recovery never does, a console intent
+// skips, the river names are the time's. Restores the land to 1 Ma (the landing IS the opening).
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), K=vm.runInContext('Kiosk',ctx);
+  const TG=vm.runInContext('TerrainGenerator',ctx), P=vm.runInContext('Palaeo',ctx), TMP=vm.runInContext('TM_PALAEO',ctx);
+  const RN=vm.runInContext('RiverNames',ctx), CFG=vm.runInContext('CONFIG',ctx), LK=vm.runInContext('LOOK',ctx);
+  const BUS=vm.runInContext('TMBus',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const T=G.terrain, E=TG.GEO_EPOCHS, seaE=0.10;
+
+  // (a) the factors
+  const f=(y)=>TG.geoTimeFactors(y);
+  for (const y of [1000000, 900000, 500000, 25500]) {
+    const F=f(y);
+    chk(F.palaeo===TG.PALAEO_NONE, `palaeo terms are the frozen zero object at ${y} BP`);
+    chk(F.palaeo.basinW===0 && F.palaeo.basinE===0 && F.palaeo.axis===0, `no pre-window term inside the window (${y} BP)`);
+  }
+  chk(Math.abs(f(1000000).uplift-E.upliftStart)<1e-9, 'uplift at 1 Ma is upliftStart (the pre-window ramp joins it)');
+  chk(f(1000000).southSink===1 && f(500000).southSink===0, 'the south strait: full at 1 Ma, drained by 0.5 Ma (unchanged)');
+  chk(f(1200000).southSink===1 && f(4000000).southSink===1, 'the south strait is sea throughout the pre-roll (the rise moved back)');
+  chk(f(4000000).uplift<0.05 && f(1500000).uplift<f(1200000).uplift && f(1200000).uplift<f(1000000).uplift, 'the axis is a low finger at 4 Ma and rises monotonically to the opening');
+  chk(f(4000000).palaeo.basinW===1 && f(4000000).palaeo.basinE===1, 'the basin is full at 4 Ma');
+  chk(f(1650000).palaeo.basinW>0.99 && f(1300000).palaeo.basinE===0 && f(1300000).palaeo.basinW>0.3, 'the east closes (Mount Bruce) before the west');
+  chk(f(4000000).palaeo.axis===0 && f(3000000).palaeo.axis>0.4 && f(3000000).palaeo.axis<0.5, 'no strait at 4 Ma; a narrow seaway at 3 Ma');
+  chk(f(2750000).palaeo.axis===0 && f(2400000).palaeo.axis===1 && f(1630000).palaeo.axis===0, 'closed in the Mangapanian, widest at 2.4 Ma, closed for good from 1.63 Ma');
+  for (let y=1650000; y>=1000000; y-=25000) { if (f(y).palaeo.basinW > f(y+25000).palaeo.basinW + 1e-9) { chk(false, 'the west basin fade is monotone'); break; } }
+
+  // (b) the land at the dated maps (synchronous morphs at the harness's 1× bake)
+  const gc=T.gridCols, gr=T.gridRows, hm=()=>T.heightMap;
+  const frac=(u0,u1,v0,v1,sea)=>{ let n=0,k=0; const H=hm();
+    for (let r=Math.floor(v0*gr); r<Math.ceil(v1*gr); r++) for (let c=Math.floor(u0*gc); c<Math.ceil(u1*gc); c++) { n++; if ((H[r*gc+c]<seaE)===sea) k++; }
+    return n? k/n : 0; };
+  const gu=LK.straitGorgeU;
+  const gapSea=()=>frac(gu-0.03,gu+0.03,0.45,0.62,true);
+  // Probe boxes inside the range cores (rMask 1), clear of the strait strip. The harness's base is
+  // white noise, so the land under a core is what it is (the Tararua's is marginal here even at the
+  // sim's own 1 Ma opening); the finger is asserted RELATIVE to 1 Ma and against the plain beside it.
+  const tararuaLand=()=>frac(0.36,0.41,0.62,0.74,false), ruahineSea=()=>frac(0.56,0.64,0.22,0.34,true);
+  const plainLand=()=>frac(0.15,0.25,0.45,0.55,false), all=()=>frac(0,1,0,1,true);
+  const state={};
+  for (const y of [4000000, 3000000, 2750000, 2400000, 1600000, 1000000]) { T.morphTo(y,1); state[y]={ sea:all(), gap:gapSea(), tar:tararuaLand(), rua:ruahineSea(), plain:plainLand() }; }
+  const pc=(x)=>(x*100).toFixed(0)+'%';
+  chk(state[4000000].sea>0.6, `4 Ma: most of the frame is sea (${pc(state[4000000].sea)})`);
+  chk(state[4000000].plain<0.05 && state[4000000].tar>=0.8*state[1000000].tar && state[4000000].tar>state[4000000].plain+0.3,
+      `4 Ma: the plain is sea and the Tararua core stands as the basement finger (plain ${pc(state[4000000].plain)}, Tararua ${pc(state[4000000].tar)} vs ${pc(state[1000000].tar)} at 1 Ma)`);
+  chk(state[4000000].rua>=0 && frac(0.56,0.64,0.22,0.34,false)>=0.8*(1-state[1000000].rua), `4 Ma: the Ruahine core stands too (${pc(1-state[4000000].rua)} land)`);
+  chk(state[4000000].gap<0.5, `4 Ma: no seaway across the gorge area (${pc(state[4000000].gap)} sea)`);
+  chk(state[3000000].gap>0.6, `3 Ma: the narrow Manawatū Strait crosses the gap (${pc(state[3000000].gap)} sea)`);
+  chk(state[2750000].gap<0.5, `2.75 Ma: the gap is land in the Mangapanian (${pc(state[2750000].gap)} sea)`);
+  chk(state[2400000].gap>0.85, `2.4 Ma: the strait at its widest fills the gap (${pc(state[2400000].gap)} sea)`);
+  chk(state[2400000].rua>0.4, `2.4 Ma: the Ruahine is shoaled (${pc(state[2400000].rua)} water)`);
+  // (the probe box's north-east lies in the strait's feathered shore — "the northern Tararua under the sea" — so only part of it stands)
+  chk(state[2400000].tar>=0.3*state[1000000].tar && state[2400000].tar>state[2400000].plain+0.1, `2.4 Ma: the Tararua stands as the southern landmass (${pc(state[2400000].tar)} land, plain ${pc(state[2400000].plain)})`);
+  chk(state[1600000].gap<0.5 && state[1600000].rua<0.3, `1.6 Ma: the strait is closed and the Ruahine stands (${pc(state[1600000].gap)} / ${pc(state[1600000].rua)})`);
+  chk(state[1000000].sea<state[4000000].sea-0.15, `the land grows from 4 Ma to 1 Ma (${pc(state[4000000].sea)} → ${pc(state[1000000].sea)} sea)`);
+
+  // (c) the names of the time, on their surfaces (the paint classification)
+  const W=CFG.canvasWidth, H=CFG.canvasHeight;
+  const has=(y,t)=>P.labelsAt(y).some(s=>s.indexOf(t)===0);
+  chk(has(4000000,'Whanganui Basin') && has(4000000,'Ruataniwha Strait') && !has(4000000,'Manawatū Strait'), '4 Ma: the basin and the Ruataniwha Strait, no Manawatū Strait');
+  chk(has(3000000,'Manawatū Strait') && !has(2750000,'Manawatū Strait') && has(2400000,'Manawatū Strait') && !has(1600000,'Manawatū Strait'), 'the Manawatū Strait is named only while it is open');
+  chk(has(1300000,'proto-Ruahine Range') && has(1300000,'proto-Tararua Range') && !has(2400000,'proto-Ruahine Range'), 'the proto-ranges are named from 1.6 Ma');
+  chk(P.labelsAt(1000000).length===0, 'no region name at the landing (the sim takes over)');
+  TMP.spelling='Wanganui'; chk(has(4000000,'Wanganui Basin'), 'the basin spelling is tunable'); TMP.spelling='Whanganui';
+  const seat=(y)=>{ T.morphTo(y,1); P._anchorSig=''; P._buildLabels(); P._seatLabels(G,W,H); return Object.fromEntries(P._labels.map(L=>[L.text+'|'+L.def.from, L.ok])); };
+  const s24=seat(2400000), s13=seat(1300000);
+  chk(s24['MANAWATŪ STRAIT|2480000']===true, 'the strait name sits on sea at 2.4 Ma');
+  chk(s24['WHANGANUI BASIN|4000000']===true && s24['RUATANIWHA STRAIT|4000000']===true, 'the basin and Ruataniwha names sit on sea at 2.4 Ma');
+  chk(s13['PROTO-RUAHINE RANGE|1600000']===true, 'the proto-Ruahine name sits on land at 1.3 Ma');
+  // The surface check itself: a name's `ok` is exactly the painted class under its anchor (the Tararua's
+  // anchor is marginal land under the harness's white-noise base, so it is checked as a mechanism).
+  for (const L of P._labels) {
+    const D=L.def, wt=T.waterTypeAt(D.u*T.mapWidth, D.v*T.mapHeight);
+    chk(L.ok===((D.on==='sea')?wt===1:wt===0), `${L.text}: ok reads the painted surface (${D.on}, class ${wt})`);
+  }
+  P.active=true; P.yearsBP=1400000;
+  const main=T.getRivers().find(r=>r.type!=='tributary'), trib=T.getRivers().find(r=>r.type==='tributary');
+  chk(RN._name(main)==='proto-Manawatū' && RN._name(trib)===null, 'river names while it runs: proto-Manawatū, no tributary names (1.4 Ma)');
+  P.yearsBP=1100000; chk(RN._name(main)==='Manawatū', 'the main is Manawatū once its arm has turned west (1.1 Ma)');
+  P.active=false; P.yearsBP=0;
+  chk(RN._name(trib)===trib.src.name, 'off the sequence the authored names are back');
+
+  // (d) a whole sequence from mid-run, at the harness's pacing (the same machine, fewer re-bakes)
+  const pace={ kyr:TMP.kyrPerSec, kf:TMP.keyframes.map(k=>k.slice()) };
+  TMP.kyrPerSec=240; for (const k of TMP.keyframes) k[1]=1.2;
+  T.morphTo(500000,1); DT.seekTo(500000); G.resetEcosystem(); DT.seekTo(500000); G._bakedYearsBP=500000;
+  const cuts0=T._morphCuts, resets0=K.resetCount, sim0=G.simulation;
+  chk(P.begin(G,'idle'), 'begin() accepted from mid-run');
+  chk(!P.begin(G,'idle'), 'begin() refuses while one runs');
+  let frames=0, lastSwap=T._lastSwapMs, minGap=Infinity, swaps=0; const seen={}, states=new Set();
+  const baked=()=>P._bakedYear;
+  while (P.state!=='idle' && frames<30000) {
+    FRAME(ctx.draw); frames++; states.add(P.state);
+    if (T._lastSwapMs!==lastSwap) { if (swaps>0) minGap=Math.min(minGap, T._lastSwapMs-lastSwap); lastSwap=T._lastSwapMs; swaps++; }
+    if (P.state==='play' && baked()===P.yearsBP) seen[baked()]=true;
+  }
+  const bakes1=P.bakes;
+  chk(P.state==='idle' && frames<30000, `the sequence lands (${frames} frames, ${bakes1} re-bakes, ${swaps} visible swaps)`);
+  for (const k of TMP.keyframes) chk(seen[k[0]], `the ${k[0]/1e6} Ma keyframe was baked on its hold`);
+  chk(['dipIn','bake0','rise','play','dipOut','rise2'].every(s=>states.has(s)), 'every state was visited');
+  chk(T._morphCuts===cuts0, `no crossfade cut across the sequence (cuts ${T._morphCuts-cuts0})`);
+  chk(minGap>=Math.max(500,CFG.morphFadeMs), `visible swaps never closer than the fade (${minGap===Infinity?'n/a':minGap+' ms'})`);
+  chk(Math.round(DT.yearsBP)===1000000 && G._bakedYearsBP===1000000, `lands on 1 Ma with the land baked there (${Math.round(DT.yearsBP)} / ${G._bakedYearsBP})`);
+  chk(P._bakedYear===1000000 && P._bakedAll===true, 'the landing bake re-baked all four season buffers');
+  chk(G.simulation!==sim0 && G.simulation.plants.length>0 && G.simulation.moas.length>0, 'a fresh living world on the 1 Ma land');
+  chk(K.resetCount===resets0+1 && P.runs>=1, 'the landing counts as a reset');
+  chk(!DT.hasEnded() && !DT.isTimelapsing(), 'the clock is reset and parked');
+  chk(!T.morphInProgress && !T._morphFade, 'no job or fade left behind');
+
+  // (e) a skip lands quickly
+  const r1=P.runs; DT.seekTo(400000);
+  chk(P.begin(G,'end-of-window'), 'begin() accepted again (end-of-window)');
+  for (let i=0;i<60;i++) FRAME(ctx.draw);
+  chk(P.skip() && P._skipping, 'a key during the sequence skips');
+  let f2=0; while (P.state!=='idle' && f2<30000) { FRAME(ctx.draw); f2++; }
+  chk(P.state==='idle' && P.runs===r1+1 && f2<frames, `a skip lands sooner (${f2} vs ${frames} frames)`);
+  chk(Math.round(DT.yearsBP)===1000000 && T._morphCuts===cuts0, 'a skipped sequence still lands at 1 Ma with no cut');
+
+  // (f) the paths
+  K.lastInputAt=0; K.tick(); chk(P.state==='dipIn', 'the idle tick starts the sequence');
+  P._abort('harness'); G._palaeo=null;
+  TMP.enabled=false; K.lastInputAt=0; G._tmAttractErAt=0; K.tick(); chk(!!G._tmAttractErAt && P.state==='idle', 'with the sequence off, idle stages the eruption instead'); G._tmAttractErAt=0; TMP.enabled=true;
+  const rc=K.resetCount; K.recover(); chk(P.state==='idle' && K.resetCount===rc+1, 'error recovery is the synchronous reset, never the sequence');
+  chk(P.begin(G,'manual'), 'begin() for the bus check');
+  for (let i=0;i<50;i++) FRAME(ctx.draw);
+  BUS.dispatch({ type:'boost', plantKey:'tawa' });
+  chk(P._skipping && !DT.isTimelapsing(), 'a console intent during the sequence skips it and starts no time-lapse');
+  let f3=0; while (P.state!=='idle' && f3<30000) { FRAME(ctx.draw); f3++; }
+  chk(P.state==='idle', 'the bus-skipped sequence lands');
+  TMP.kyrPerSec=pace.kyr; TMP.keyframes=pace.kf;
+  console.log(fail? `palaeo attract: ${fail} FAILURES`
+    : `palaeo attract: 4 Ma sea + basement finger → the strait across the gap (3 / 2.4 Ma) → the ranges; names of the time on their surfaces; a sequence lands on a fresh 1 Ma world with no crossfade cut (${frames} frames, ${bakes1} re-bakes); skips land; idle/end-of-window start it, error recovery does not`);
+}catch(e){ console.log('palaeo attract: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,3).join('\n  ')); }
+
 const g=vm.runInContext('game',ctx);
 // ---- visitor-facing render must be clean -----------------------------
 {
@@ -1368,12 +1510,23 @@ const g=vm.runInContext('game',ctx);
   chk(tlPeak>wantPeak*0.9 && tlPeak<=wantPeak+0.01,`ramp peaks near ${DT.tlMaxRate} yr/s (life x${wantPeak.toFixed(1)}), got x${tlPeak.toFixed(1)}`);
   DT.endTimelapse();
 
-  // end of window hands off rather than stalling (a timelapse — or a deep burst — can reach it)
+  // end of window hands off rather than stalling (a timelapse — or a deep burst — can reach it).
+  // With the attract sequence on (TeManawa_palaeo.js) the hand-off is Palaeo.begin('end-of-window'),
+  // which lands on the reset ~a minute later (its own section runs one through); off, it is the
+  // bare resetToAttract. Both cues are asserted here; the sequence is aborted so the clock-only
+  // sections after this one see a live sim, not a parked one.
   DT.reset(); DT.yearsBP=DT.yearsEnd; DT.update(1);
   chk(DT.hasEnded(),'hasEnded() must fire at the end of the window');
+  const PAL=vm.runInContext('Palaeo',ctx), TMPAL=vm.runInContext('TM_PALAEO',ctx);
+  DT.yearsBP=DT.yearsEnd; G.update(1);
+  chk(PAL.active && PAL.reason==='end-of-window','end of window must begin the attract sequence (the land before the window)');
+  PAL._abort('harness'); DT.reset();
+  TMPAL.enabled=false;
+  DT.yearsBP=DT.yearsEnd; DT.update(1);
   const before=vm.runInContext('Kiosk',ctx).resetCount;
   DT.yearsBP=DT.yearsEnd; G.update(1);
-  chk(vm.runInContext('Kiosk',ctx).resetCount>before,'end of window must trigger the attract reset');
+  chk(vm.runInContext('Kiosk',ctx).resetCount>before,'with the sequence off, end of window must trigger the attract reset');
+  TMPAL.enabled=true;
   DT.reset();
 
   console.log(fail? `deep time: ${fail} FAILURES` : 'deep time: all checks pass'
@@ -3114,7 +3267,11 @@ try{
   chk(at(25500).uplift > 0.98, 'by ~25 ka the ranges are mature (uplift ~1)');
   let leads = true; for (let y = 1000000; y >= 25000; y -= 25000) if (at(y).incision < at(y).uplift - 1e-9) leads = false;
   chk(leads, 'incision leads uplift across the whole window — the river outpaces the ranges');
-  chk(at(1500000).uplift === at(1000000).uplift, 'before the onset date uplift holds at its head start');
+  // Before the onset date the ranges are the dated pre-window finger (GEO_EPOCHS.palaeoUpliftPre; the
+  // attract sequence's land): lower the further back, joining upliftStart continuously at the onset.
+  chk(at(1500000).uplift < at(1000000).uplift && at(4000000).uplift < at(1500000).uplift && at(4000000).uplift > 0 &&
+      Math.abs(at(1000000 + 1).uplift - at(1000000).uplift) < 1e-3,
+      `before the onset date uplift falls along the pre-window ramp to the low finger, continuous at the onset (${at(4000000).uplift.toFixed(3)} → ${at(1500000).uplift.toFixed(3)} → ${at(1000000).uplift.toFixed(3)})`);
   chk(at(1000000).emergence < 0.02, 'at ~1 Ma the river has barely emerged (strait, not yet a river)');
   chk(at(500000).emergence > 0.98, 'the river is fully connected by its dated completion (~500 ka)');
   chk(at(100000).emergence > 0.98 && at(100000).uplift > 0.7, 'a near-present date reads near-modern regardless of the window');
