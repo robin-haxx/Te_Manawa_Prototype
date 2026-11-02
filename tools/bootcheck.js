@@ -1294,6 +1294,22 @@ try{
   // (the gap probe box is wider than the early finger's river bridge across the saddle, so some of it is sea
   //  beside the bridge; "no seaway" is the bridge standing and the box being far less sea than once the strait opens)
   chk(state[4000000].gap<0.7 && state[3000000].gap>state[4000000].gap+0.3, `4 Ma: no seaway across the gorge area — a land bridge stands (${pc(state[4000000].gap)} sea, vs ${pc(state[3000000].gap)} at 3 Ma)`);
+  // no striped walls: inside the finger's core, off the strait, no one-cell step steeper than 0.1 at any
+  // pre-window date (a class boundary in the mass left 0.12/cell steps the relief bake painted as towers);
+  // and the far edge stays SEA where the basin drowned it (the two-way edge ease used to raise a false coast)
+  {
+    const C2=T._geoCache; let steep=0, topLand=0, topN=0;
+    for (const y of [4000000, 3000000, 2400000, 2000000]) {
+      T.morphTo(y,1); const H=T.heightMap;
+      for (let r=1;r<gr-1;r++) for (let col=1;col<gc-1;col++) {
+        const i=r*gc+col;
+        if (C2.rMask[i]>0.5 && C2.rMask[i+1]>0.5 && Math.abs(col/gc-gu)>0.2 && Math.max(Math.abs(H[i]-H[i+1]),Math.abs(H[i]-H[i+gc]))>0.1) steep++;
+        if (r<gr*0.05 && col<gc*0.3) { topN++; if (H[i]>=seaE) topLand++; }
+      }
+    }
+    chk(steep<=4, `no one-cell step > 0.1 inside the finger's core off the strait at 4, 3, 2.4 and 2 Ma (${steep}; a few under the harness's white-noise base — the class-boundary wall was hundreds)`);
+    chk(topLand/topN<0.3, `the far edge over the drowned basin stays sea (${pc(topLand/topN)} land in the top 5% of the north-west)`);
+  }
   // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
   const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
   { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
@@ -3207,9 +3223,13 @@ try{
   chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1) < 0.3, 'N/S edge falloff eases a high truncated range down to plains at the top edge');
   chk(TG._nsEdgeFalloff(0.9, 0.5, 0.1) === 0.9, 'N/S edge falloff leaves the mid-map untouched');
   chk(TG._nsEdgeFalloff(0.04, 1.0, 0.1) === 0.04, 'the front (bottom) edge never RAISES the carved river channel / coast');
-  // TOP edge is TWO-WAY: a LOW far row is eased UP to plains so it meets the relief crop (fills the
-  // empty-headroom smear gap the zoom-out opened); the front (bottom) stays one-way (down only).
-  chk(TG._nsEdgeFalloff(0.04, 0.0, 0.1) > 0.2, 'the far (top) edge eases a low far row UP to plains (no smear gap)');
+  // TOP edge is TWO-WAY for LAND: a low far row is eased UP to plains so it meets the relief crop (fills
+  // the empty-headroom smear gap the zoom-out opened); SEA stays sea (it paints flat whatever its depth,
+  // and raising it drew a false coast along the top of the attract sequence's drowned basin); a truncated
+  // range still eases DOWN. The front (bottom) stays one-way (down only).
+  chk(TG._nsEdgeFalloff(0.16, 0.0, 0.1) > 0.2, 'the far (top) edge eases a low far LAND row UP to plains (no smear gap)');
+  chk(TG._nsEdgeFalloff(0.04, 0.0, 0.1) === 0.04, 'the far (top) edge leaves a SEA row as sea (no false coast)');
+  chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1) < 0.3, 'the far (top) edge still eases a truncated range DOWN (no smear)');
   chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1, 0) === 0.9, 'a 0 top margin leaves the far edge as raw generated terrain');
   chk(TG._nsEdgeFalloff(0.9, 1.0, 0.1, 0) < 0.3, 'the bottom apron still eases even when the top margin is 0');
   chk(TG._nsEdgeFalloff(0.9, 0.0, 0.1, 0.1) === TG._nsEdgeFalloff(0.9, 0.0, 0.1), '3-arg (symmetric) edge falloff is unchanged (back-compat)');

@@ -2169,7 +2169,15 @@ class TerrainGenerator {
     // to raise here: no river reaches the north edge. This is what fills the far edge cleanly.
     if (tm > 0 && v < tm) {
       const f0 = 1 - v / tm, f = f0 * f0 * (3 - 2 * f0);
-      out += (0.22 - out) * f;
+      if (out >= 0.22) out += (0.22 - out) * f;              // a truncated range eases DOWN (no smear)
+      else {
+        // A low far row rises to meet the crop — but only LAND. Sea paints flat whatever its depth, so
+        // raising it filled nothing; it turned the drowned basin (the attract sequence, 4 → 1.65 Ma) into
+        // a strip of false land with a ruler-straight coast along the top. The raise fades in over the
+        // first 0.05 above the waterline, so the shore itself keeps its slope.
+        const w = (out - 0.10) / 0.05, ww = w <= 0 ? 0 : w >= 1 ? 1 : w * w * (3 - 2 * w);
+        out += (0.22 - out) * f * ww;
+      }
     }
     // NEAR (bottom/front) edge: ease DOWN only — never raise the carved river channel / coast here.
     if (bm > 0) {
@@ -2367,7 +2375,8 @@ class TerrainGenerator {
     const rMask = new Float32Array(n), rH = new Float32Array(n), ridge = new Float32Array(n),
           detail = new Float32Array(n), crest = new Float32Array(n),
           rSp = new Float32Array(n),   // spine closeness, 1 on a range's crest line → 0 at its flank (the saddle: 1)
-          rSad = new Uint8Array(n);    // 1 where the cell's mass is the gorge SADDLE's (between the polygons), not a range's
+          rSad = new Uint8Array(n),    // 1 where the cell's mass is the gorge SADDLE's (between the polygons), not a range's
+          rMaskR = new Float32Array(n); // the RANGE-only mass (the max over the polygons, before the saddle override)
     const rf = this._rangeFbmOut || (this._rangeFbmOut = { ridge: 0, detail: 0, crest: 0 });
     const fbmD = (typeof LOOK !== 'undefined' && LOOK.rangeFbmDetail != null) ? LOOK.rangeFbmDetail : 0.10;
     const fbmC = (typeof LOOK !== 'undefined' && LOOK.rangeCrestTex != null) ? LOOK.rangeCrestTex : 0.07;
@@ -2391,11 +2400,14 @@ class TerrainGenerator {
         const u = col * invc, wx = col * scale;
         let bm = 0, bh = 0, br = null;
         for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > bm) { bm = m; bh = R[i].height; br = R[i]; } }
+        rMaskR[idx] = bm;
         const mf = this._mainField(u, v);
         if (mf && gSad > 0) { const sm = TerrainGenerator._gorgeSaddle(u, Math.abs(mf.s)); if (sm > bm) { bm = sm; bh = gSadH; br = null; } }   // Te Āpiti: the ranges meet at the river
         rMask[idx] = bm;
         rH[idx] = (bm > 0 && br) ? bh * TerrainGenerator._spineHeight(br, u, v, spine) : bh;
         rSp[idx] = (bm > 0 && br) ? TerrainGenerator._spineHeight(br, u, v, 1) : (bm > 0 ? 1 : 0);
+        // The saddle cells' spine closeness is their nearest RANGE's (continuous across the class boundary).
+        if (bm > 0 && !br) { let bR = 0, brR = null; for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > bR) { bR = m; brR = R[i]; } } rSp[idx] = brR ? TerrainGenerator._spineHeight(brR, u, v, 1) : 0; }
         rSad[idx] = (bm > 0 && !br) ? 1 : 0;
         if (bm > 0) { this._rangeFbm(wx, wy, rf); ridge[idx] = rf.ridge; detail[idx] = rf.detail * fbmD; crest[idx] = rf.crest * fbmC; }
         if (mf) { wMDist[idx] = mf.d; wMBaseW[idx] = mf.w; wMPos[idx] = mf.p; wMDepth[idx] = mf.depth; wMS[idx] = mf.s; wME[idx] = mf.e; }
@@ -2406,7 +2418,7 @@ class TerrainGenerator {
         idx++;
       }
     }
-    this._geoCache = { rMask, rH, ridge, detail, crest, rSp, rSad, wMDist, wMBaseW, wMPos, wMDepth, wMS, wME, tJ, tS, tS0: tS.slice(), tP, tE,
+    this._geoCache = { rMask, rH, ridge, detail, crest, rSp, rSad, rMaskR, wMDist, wMBaseW, wMPos, wMDepth, wMS, wME, tJ, tS, tS0: tS.slice(), tP, tE,
                        tJ2, tS2, tS02: tS2.slice(), tP2, tE2 };
     this._meanderKey = null;   // a fresh cache holds the un-meandered lines: re-apply on the next combine
   }
@@ -3298,7 +3310,7 @@ class TerrainGenerator {
     const pAxisLowE = (LKp.palaeoAxisLowE != null) ? LKp.palaeoAxisLowE : 0.22;
     const pAxisFloorE = (LKp.palaeoAxisFloorE != null) ? LKp.palaeoAxisFloorE : 0.15;
     const pNarrow = ((LKp.palaeoFingerNarrow != null) ? LKp.palaeoFingerNarrow : 0.8) * (PL.narrow || 0);   // the dated thinning of the finger
-    const rSpArr = c.rSp, rSadArr = c.rSad;
+    const rSpArr = c.rSp, rMaskRArr = c.rMaskR;
     const pBridgeW = (LKp.palaeoBridgeW > 0) ? LKp.palaeoBridgeW : 0.06;   // the early land bridge across the saddle: half-width, map-width units (wMDist's)
     const pGorgeU = (LKp.straitGorgeU != null) ? LKp.straitGorgeU : 0.50;
     const pShoal = ((LKp.palaeoShoal != null) ? LKp.palaeoShoal : 0.85) * PL.axis;
@@ -3488,24 +3500,20 @@ class TerrainGenerator {
             // bridge across the saddle (T&B Fig. 4A); it broadens to the whole footprint as the
             // uplift starts (GEO_EPOCHS.palaeoFingerNarrow).
             let mass = rMask[i];
-            if (pNarrow > 0 && rSpArr) {
-              // The thinned range mass: a strip along each crest line. The saddle's own mass (between
-              // the polygons) counts as flank here — its crest profile falls off within a few cells of
-              // the river and would stand as a plateau with a sheer face.
-              const sp = (rSadArr && rSadArr[i]) ? 0 : rSpArr[i];
-              mass = mass * (1 - pNarrow * (1 - sp));
-              // The early land bridge across the gap: a WIDE isthmus along the main stem (pBridgeW of the
-              // map width either side, smoothstepped, inside the gorge window), fading as the finger broadens.
-              // Computed for EVERY cell near the gap and maxed with the range mass, so the mass is
-              // continuous across the saddle/range class boundary (a branch on the class left a 0.3
-              // step between neighbouring cells, which the relief bake painted as a striped wall).
-              const nw = PL.narrow || 0;
-              if (nw > 0 && wMDistArr) {
+            const nw = PL.narrow || 0;
+            if (nw > 0 && rSpArr && rMaskRArr) {
+              // THE THIN FINGER, built from CONTINUOUS fields only (every branch on which range or saddle
+              // "owns" a cell left a one-cell step at the class boundary that the relief bake painted as
+              // a striped wall — twice): the RANGE-only mass thinned to its crest lines, the land bridge
+              // along the main stem across the gap (pBridgeW of the map width either side, smoothstepped,
+              // inside the gorge window), and the whole footprint (ranges + saddle) fading in as the
+              // finger broadens. The max of the three; each is continuous, so the mass is.
+              const thin = rMaskRArr[i] * (1 - pNarrow * (1 - rSpArr[i]));
+              mass = mass * (1 - nw);
+              if (thin > mass) mass = thin;
+              if (wMDistArr) {
                 let bm = 1 - wMDistArr[i] / pBridgeW;
-                if (bm > 0) {
-                  bm = bm * bm * (3 - 2 * bm) * (1 - TerrainGenerator._gorgeOpen(u)) * nw;
-                  if (bm > mass) mass = bm;
-                }
+                if (bm > 0) { bm = bm * bm * (3 - 2 * bm) * (1 - TerrainGenerator._gorgeOpen(u)) * nw; if (bm > mass) mass = bm; }
               }
             }
             let core = (mass - pAxisCore) / (1 - pAxisCore);
