@@ -1409,6 +1409,10 @@ class TerrainGenerator {
       //   the axis before the rapid uplift: "an emergent finger of basement rocks, albeit at low
       //   elevation" (4 Ma); "some uplift… initiated by 1.5 Ma"; joins upliftStart at upliftFrom
       palaeoUpliftPre:  [[4000000, 0.03], [1500000, 0.07]],
+      //   the DRAINAGE: the Manawatū river system develops north of the Mount Bruce divide from ~1.5 Ma
+      //   (T&B p. 166). Before that the finger is low basement land with no defined river; the channels
+      //   (main + tributaries) and the drowned-valley estuary that backs up them fade in with this
+      palaeoRiver: [[1600000, 0], [1250000, 1]],
       //   how NARROW the finger is: 1 = a strip along the crest lines (T&B Fig. 4A's thin fingers of
       //   exposed basement), 0 = the whole footprint (the ranges' own shape, as the uplift starts)
       palaeoFingerNarrow: [[4000000, 1], [3000000, 1], [1650000, 0]],
@@ -1457,7 +1461,8 @@ class TerrainGenerator {
       basinW: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinWFrom, 0], [E.palaeoBasinWTo, 1]], yearsBP),
       basinE: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinEFrom, 0], [E.palaeoBasinETo, 1]], yearsBP),
       axis:   TerrainGenerator._anchorCurve(E.palaeoAxisStrait, yearsBP),
-      narrow: TerrainGenerator._anchorCurve(E.palaeoFingerNarrow, yearsBP)
+      narrow: TerrainGenerator._anchorCurve(E.palaeoFingerNarrow, yearsBP),
+      river:  TerrainGenerator._anchorCurve(E.palaeoRiver, yearsBP)
     } : TerrainGenerator.PALAEO_NONE;
     // The axis before the rapid uplift: the dated pre-window anchors, joining upliftStart at upliftFrom.
     const upliftPre = preWindow
@@ -1521,7 +1526,7 @@ class TerrainGenerator {
   // The pre-window terms inside the window: one frozen zero object, shared (geoTimeFactors runs per
   // morph; nothing should allocate for a state that never changes).
   static get PALAEO_NONE() {
-    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0, narrow: 0 });
+    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0, narrow: 0, river: 1 });
     return TerrainGenerator._palaeoNone;
   }
 
@@ -3295,6 +3300,9 @@ class TerrainGenerator {
     // is the one marine term that does NOT: Trewick & Bland put the Ruahine "under the ocean" at 2.4 Ma.
     const PL = t.palaeo || TerrainGenerator.PALAEO_NONE, LKp = (typeof LOOK !== 'undefined') ? LOOK : {};
     const palaeoOn = PL.basinW > 0 || PL.basinE > 0 || PL.axis > 0;
+    // THE DRAINAGE before the window (GEO_EPOCHS.palaeoRiver): 0 → no river channels and no estuary
+    // (which backs up the river valley, so cannot exist without one); 1 inside the window.
+    const rivP = (PL.river != null) ? PL.river : 1;
     const pAxisCore = (LKp.palaeoAxisCore != null) ? LKp.palaeoAxisCore : 0.4;
     const pEastU = (LKp.palaeoBasinEastU != null) ? LKp.palaeoBasinEastU : 0.62;
     const pEastF = (LKp.palaeoBasinEastFeather > 0) ? LKp.palaeoBasinEastFeather : 0.12;
@@ -3364,7 +3372,7 @@ class TerrainGenerator {
     const gSeaFullU = (typeof LOOK !== 'undefined' && LOOK.glacialSeaFullU != null) ? LOOK.glacialSeaFullU : 0.36;
     const gSeaOn = glacialSea !== 0 && gSeaEastU > 0;
     // DROWNED-VALLEY ESTUARY (highstand, positional up the main stem). Follows wMDist/wMPos.
-    const highstand = (t.estuary != null) ? t.estuary : 0;
+    const highstand = ((t.estuary != null) ? t.estuary : 0) * rivP;
     const estReach = (typeof LOOK !== 'undefined' && LOOK.estuaryReach != null) ? LOOK.estuaryReach : 0;
     const estWidth = (typeof LOOK !== 'undefined' && LOOK.estuaryWidth != null) ? LOOK.estuaryWidth : 0;
     const estCeil = (typeof LOOK !== 'undefined' && LOOK.estuaryCeil != null) ? LOOK.estuaryCeil : 0.24;
@@ -3378,7 +3386,7 @@ class TerrainGenerator {
     const estTR = (LK.estuaryTribReach > 0) ? LK.estuaryTribReach : 0.45;
     // The fill keeps a MEMORY: its region is the largest estuary of the last estuaryMemoryYears (hsMax), so
     // when the sea falls after the peak the filled plain stays swamp and forest instead of reverting.
-    const hsMax = Math.max(highstand, (t.estMax > 0) ? t.estMax : 0);
+    const hsMax = Math.max(highstand, ((t.estMax > 0) ? t.estMax : 0) * rivP);
     const estAny = hsMax > 0 && estReach > 0 && estWidth > 0 && !!wMDistArr && !!wMPosArr;
     const estGN = this._estGN || (this._estGN = new Float32Array(256)), estGM = this._estGM || (this._estGM = new Float32Array(256));
     let estBranch = false;
@@ -3466,6 +3474,7 @@ class TerrainGenerator {
           const m2 = TerrainGenerator._tribThreads(tS2Arr[i], tP2Arr[i], Tr[tj2].threads, tSpread, tWT[tj2] * valleyWiden, tWB[tj2] * valleyWiden, tE2Arr[i], Tr[tj2].width * valleyWiden, endJ[tj2], minWV);
           if (m2 > wMask) wMask = m2;
         }
+        if (rivP < 1) { wMaskM *= rivP; wMask *= rivP; }   // the drainage fades in before the window
         const wv = seaWob ? seaWob[i] : 0;
         const seaFloor = 0.02 + wv * 0.015;                   // mottled deep floor (~0.005–0.035, all sea)
         const swSub = TerrainGenerator._rangeProtect(TerrainGenerator._swStrength(u, v, sub, swReach, swFeather), rMask[i], seaProtect);   // the axis stays a low emergent finger
@@ -3902,6 +3911,7 @@ class TerrainGenerator {
     const wetElevMax = (typeof LOOK !== 'undefined' && LOOK.riverWetlandElevMax != null) ? LOOK.riverWetlandElevMax : 0.30;
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
+    const rivP = (_gt.palaeo && _gt.palaeo.river != null) ? _gt.palaeo.river : 1;   // the drainage before the window (matches the carve)
     // Main-stem width: the estuary arm west of the gap, the lake east of it (matches the carve).
     const straitRetreat = _gt.straitRetreat;
     const straitF = (_gt.straitFactor != null) ? _gt.straitFactor : 0;   // temporal thinning
@@ -3939,7 +3949,7 @@ class TerrainGenerator {
             const effWM = wMBaseWArr[idx] * TerrainGenerator._gorgeChannel(u) * TerrainGenerator._mainTaper(wMPosArr[idx]) * TerrainGenerator._mainWidthMult(u, straitF, straitRetreat, srFeather, lake);
             if (dM < effWM) {
               const tt = 1 - dM / effWM;
-              let mM = tt * tt * (3 - 2 * tt);
+              let mM = tt * tt * (3 - 2 * tt) * rivP;
               if (mainArm > 0) mM *= TerrainGenerator._mainArmPresence(wMPosArr[idx], mainArm, mArmKeep, mArmFeather);   // NE arm dries to land
               if (mM >= riverTeff) waterHit = true; else if (mM >= riverBankT) bedHit = true;
               if (wetLow && mM >= wetT) wetHit = true;   // low reaches: swamp margin, wider than the bank
@@ -3951,9 +3961,9 @@ class TerrainGenerator {
           for (let sl = 0; sl < 2 && !waterHit; sl++) {
             const tj = sl === 0 ? tJArr[idx] : (tJ2Arr ? tJ2Arr[idx] : 255);
             if (tj === 255) continue;
-            const mT = sl === 0
+            const mT = rivP * (sl === 0
               ? TerrainGenerator._tribThreads(tSArr[idx], tPArr[idx], Tr[tj].threads, tSpread, tWT[tj], tWB[tj], tEArr[idx], Tr[tj].width, endW ? endW[tj] : null, minW)
-              : TerrainGenerator._tribThreads(tS2Arr[idx], tP2Arr[idx], Tr[tj].threads, tSpread, tWT[tj], tWB[tj], tE2Arr[idx], Tr[tj].width, endW ? endW[tj] : null, minW);
+              : TerrainGenerator._tribThreads(tS2Arr[idx], tP2Arr[idx], Tr[tj].threads, tSpread, tWT[tj], tWB[tj], tE2Arr[idx], Tr[tj].width, endW ? endW[tj] : null, minW));
             if (mT > 0) {
               let wT = riverTeff, bT = riverBankT;
               if (thin > 0 && eClass > tribLo) {
@@ -4379,6 +4389,7 @@ class TerrainGenerator {
       ? this._wetlandBiome.minElevation + (this._wetlandBiome.maxElevation - this._wetlandBiome.minElevation) * 0.5 : 0.22;
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
+    const rivP = (_gt.palaeo && _gt.palaeo.river != null) ? _gt.palaeo.river : 1;   // the drainage before the window (matches the classify)
     // Main-stem width: the estuary arm west of the gap, the lake east of it (matches the carve/classify).
     const straitRetreat = _gt.straitRetreat;
     const straitF = (_gt.straitFactor != null) ? _gt.straitFactor : 0;
@@ -4438,7 +4449,7 @@ class TerrainGenerator {
             const effWM = C_wMBaseW[ni] * TerrainGenerator._gorgeChannel(wx * invGC) * TerrainGenerator._mainTaper(posM) * TerrainGenerator._mainWidthMult(wx * invGC, straitF, straitRetreat, srFeather, lake);
             if (dM < effWM) {
               const tt = 1 - dM / effWM;
-              let mM = tt * tt * (3 - 2 * tt);
+              let mM = tt * tt * (3 - 2 * tt) * rivP;
               if (mainArm > 0) mM *= TerrainGenerator._mainArmPresence(posM, mainArm, mArmKeep, mArmFeather);   // NE arm dries to land, ending cleanly at the eastern confluence
               if (mM >= riverTeff) wa = 2; else if (mM >= riverBankT) bedHit = true;
               if (wetLow && mM >= wetT) wetHit = true;
@@ -4460,7 +4471,7 @@ class TerrainGenerator {
             }
             const s = tq.s, p = tq.p, en = tq.e;
             {
-              const mT = TerrainGenerator._tribThreads(s, p, Tr[tj].threads, tSpread, tWT[tj], tWB[tj], en, Tr[tj].width, endW ? endW[tj] : null, minW);
+              const mT = rivP * TerrainGenerator._tribThreads(s, p, Tr[tj].threads, tSpread, tWT[tj], tWB[tj], en, Tr[tj].width, endW ? endW[tj] : null, minW);
               if (mT > 0) {
                 // Highland thinning — same rule as _rebuildBiomeMap.
                 let wT = riverTeff, bT = riverBankT;

@@ -1483,6 +1483,17 @@ try{
     chk(steep<=4, `no one-cell step > 0.1 inside the finger's core off the strait at 4, 3, 2.4 and 2 Ma (${steep}; a few under the harness's white-noise base — the class-boundary wall was hundreds)`);
     chk(topLand/topN<0.3, `the far edge over the drowned basin stays sea (${pc(topLand/topN)} land in the top 5% of the north-west)`);
   }
+  // the DRAINAGE develops with the land (GEO_EPOCHS.palaeoRiver; T&B p. 166: the Manawatū system grows
+  // north of the Mount Bruce divide from ~1.5 Ma): before it, no river channel and no drowned-valley
+  // estuary or its infill ride the authored river line across the finger; after it, both are there;
+  // inside the window the term is exactly 1
+  {
+    const drain=(y)=>{ T.morphTo(y,1); const W=T._paintWater, E=T._estState; let r=0, e=0;
+      for (let i=0;i<W.length;i++) if (W[i]===2) r++; for (let i=0;i<E.length;i++) if (E[i]) e++; return [r,e]; };
+    for (const y of [4000000, 3000000, 2400000]) { const [r,e]=drain(y); chk(r===0 && e===0, `${y/1e6} Ma: no river channel or estuary infill before the drainage develops (${r} river px, ${e} filled cells)`); }
+    const [r13]=drain(1300000); chk(r13>0, `1.3 Ma: the river system has developed (${r13} river px)`);
+    chk(TG.geoTimeFactors(1000000).palaeo.river===1 && TG.geoTimeFactors(25500).palaeo.river===1, 'the drainage term is 1 inside the window');
+  }
   // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
   const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
   { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
