@@ -16,13 +16,19 @@ for the sprite manifest see `TEMANAWA_BUILD_V3.md` §4 / `TEMANAWA_SPRITE_BRIEF.
 ## 1. The shared fauna contract
 
 Every animal is a subclass of **`Boid`** (`TeManawa_boid.js`) — steering, the smoothed
-facing/flip, the delta-time integrator, terrain avoidance, edges. Three classes exist:
+facing/flip, the delta-time integrator, terrain avoidance, edges. Three base classes, and
+seven subclasses on top of them:
 
 | Class | File | List it lives in | Spawned from |
 |---|---|---|---|
 | `Moa` | `TeManawa_moa.js` | `Simulation.moas` | `initialMoaCount` / `initialSpeciesDistribution` |
+| `Goose` · `Takahe` · `Kiwi` · `FinschDuck` (extend `Moa`) | `TeManawa_goose.js` · `_takahe.js` · `_kiwi.js` · `_finsch_duck.js` | `Simulation.moas` (the grazer guild) | `initialSpeciesDistribution` |
 | `EylesHarrier` | `TeManawa_eagle.js` | `Simulation.eagles` | `eagleCount` |
 | `Kereru` | `TeManawa_kereru.js` | `Simulation.otherEntities.kereru` | `initialEntityCounts.kereru` |
+| `Kokako` · `Huia` (extend `Kereru`) · `Tui` (extends `Kokako`) | `TeManawa_kokako.js` · `_huia.js` · `_tui.js` | `Simulation.otherEntities.<type>` | `initialEntityCounts` |
+
+This document covers the three base classes in depth (§2–§4). The subclasses are summarised in
+§4.1; their headers carry the detail.
 
 **The two-clock split (do not conflate — `CLAUDE.md`).** The update loop calls each
 animal twice per frame:
@@ -54,9 +60,10 @@ sex toward the flock minority so small populations keep both sexes.
 
 **Rendering** — every animal anchors on the 3/4 ground via
 `Projection.groundY(pos.y, elevationAt(pos))`, drops a shadow there, then lifts the body
-by an altitude (flyers) or draws at ground level (moa). All per-entity UI (bars, hearts,
-state glyphs) is **debug-only**, gated on `CONFIG.showEntityUI` — an ambient diorama does
-not narrate itself. **Never allocate in `behave`/`update`/`render`/resets.**
+by an altitude (flyers) or draws at ground level (moa). Per-entity UI (bars, rings, state
+glyphs) is **debug-only**, gated on `CONFIG.showEntityUI` — an ambient diorama does not
+narrate itself. The two exceptions are visitor-facing on purpose: the mating heart and the
+kōkako's song note (harness "visitor render"). **Never allocate in `behave`/`update`/`render`/resets.**
 
 **Population caps** live in `LEVEL_MECHANICS` (`levels/level_temanawa_scaffold.js`):
 
@@ -82,7 +89,10 @@ opt-in refinements live behind `LEVEL_MECHANICS` (habitat stress, forest competi
 soft breeding cap, focal vs non-focal diet breadth, vulnerable-founder highlight).
 
 **Nine species are defined** in `MOA_SPECIES` (`TeManawa_species_data.js`); the scaffold
-level currently spawns only `upland_moa`. Full pool:
+founds the four North Island ones — `north_island_giant_moa`, `little_bush_moa`,
+`mantells_moa` and `stout_legged_moa` — alongside the goose, mōho, kiwi and Finsch's duck
+(§6). The table below is the defined pool as it was first tabulated; the code is the
+authority for current values. Full pool:
 
 | key | Display | Species | size | baseSpeed | maxHunger | pref. elev. | Special |
 |---|---|---|:-:|:-:|:-:|:-:|---|
@@ -201,13 +211,29 @@ recruitment term keys off kererū being *alive*, not actively dispersing).
 | `maxHunger` | 100 | `eggCooldownSec` | 35 |
 | `starveSec` | 18 | `mateRadius` | 200 |
 
-**Render:** `sprites/kereru0.png` (`EntitySprites.getKereruSprite`) — a single
-placeholder frame that faces up-and-right, mirrored via the eased lateral flip for
-leftward travel; falls back to a drawn glyph (green-grey back, pale breast) if the image
-fails to load. Juveniles draw smaller, altitude eases so take-off/landing never pops.
-Drawn in the flyer layer (above the ground plane, with the eagles). Debug-only pips show
-carried fruit + sex/juvenile. The full 5-frame flight + perched set drops in later
-(`TEMANAWA_SPRITE_BRIEF.md`).
+**Render:** three cel cycles from `sprites/Flighted/Kereru/` — Flying (15 frames), Hopping
+(10) and Eating (8) — indexed by the bird's animation state (`FLYER_VARIANT_SETS` in
+`TeManawa_entity_sprites.js`), mirrored via the eased lateral flip for leftward travel.
+Juveniles draw smaller, altitude eases so take-off/landing never pops. Drawn in the flyer
+layer (above the ground plane, with the eagles). Debug-only pips show carried fruit +
+sex/juvenile. The kererū (with the bush moa) also carries the live outline prototype
+(`TeManawa_outline.js`).
+
+### 4.1 The rest of the cast
+
+| Bird | Class | What is different |
+|---|---|---|
+| North Island goose (*Cnemiornis*) | `Goose` → `Moa` | open-country grazer, gaggles; lifts on TUSSOCK in a glacial |
+| Mōho / North Island takahē (*Porphyrio mantelli*) | `Takahe` → `Moa` | territorial rail of grassland, scrub and forest margin (not the South Island takahē) |
+| North Island brown kiwi (*Apteryx mantelli*) | `Kiwi` → `Moa` | forest-floor prober, the warm-phase counterweight; **soil-turning** stamps a small regrowth warp where it forages |
+| Finsch's duck (*Chenonetta finschi*) | `FinschDuck` → `Moa` | abundant open-country grazing duck, loose flocks |
+| Kōkako | `Kokako` → `Kereru` | weak flier; sings and holds territory; disperses well under half the kererū's rate |
+| Huia | `Huia` → `Kereru` | forages in male–female pairs; sexed art (the bill dimorphism) |
+| Tūī (*Prosthemadera*) | `Tui` → `Kokako` | nectar feeder on the kōkako's song/territory machinery, but a strong, wide-ranging flier |
+
+The level sets `noSpeciation`, so every grazer breeds true, and the guild shares one cap. Each founded bird is
+linked to one or two second-screen plants (`TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6), and a matched
+boost recruits its linked birds (`TM_BOOST.faunaRecruit`).
 
 **Coupling to habitat health** (`Game._updateHabitatHealth`, `TeManawa_sketch.js`): in a
 non-glacial, **zero live kererū drains recruitment** → the scene desaturates; a storm
@@ -234,14 +260,15 @@ See `TEMANAWA_INTERACTION_HEALTH_PLAN.md` §3–4.
 
 ## 6. Open items
 
-- **Art.** All three still use placeholder/partial art; the Phase 5 manifest is
-  ~113 new assets (`TEMANAWA_BUILD_V3.md` §4 / `TEMANAWA_SPRITE_BRIEF.md`).
+- ~~**Art.**~~ ✅ Every founded bird runs on dedicated multi-state art (`sprites/Moa/`,
+  `sprites/Flighted/`, `sprites/EylesHarrier/`). Open: whether the live outline prototype
+  (bush moa + kererū) extends to the cast or is switched off (`TEMANAWA_PLAN_V3.md` §16.11).
 - ~~**Raptor identity**~~ — ✅ resolved to Eyles' harrier / kērangi (§3). ~~Flight *behaviour* still
   to retune.~~ ✅ **Flight retuned to quartering bursts** — `patrol()` now alternates a fast committed
   DASH with a slow glide COAST, sweeping back and forth low over the territory (a goshawk, not a
   soaring circle), and cruise altitude dropped (`wingspan × 1.05`) for the low-quartering read.
   Predation (hunt/catch/restraint) untouched — patrol only runs when the bird is calm.
-  `TeManawa_eagle.js`; `md/TEMANAWA_ECOLOGY_FAUNA.md` §5.
+  `TeManawa_eagle.js`; `md/ecology/TEMANAWA_ECOLOGY_FAUNA.md` §5.
 - **Moa roster** — **North Island only (2026-10-13).** The scaffold founds 4 moa:
   `north_island_giant_moa` (giant art), `little_bush_moa` (bush art), and `mantells_moa` with
   `stout_legged_moa`, which share the Pachyornis art. Then the goose, mōho/NI takahē, kiwi and

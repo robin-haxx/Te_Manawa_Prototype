@@ -1,109 +1,127 @@
 # Te Manawa — document index
 
-31 documents. This says which ones are live, which are superseded, and which are
-research to draw on rather than build from.
+Reorganised 2026-11-02 for final testing and handoff. **Live** documents sit in `md/`; the ecology
+research is in `md/ecology/`; plans that are built or superseded are in `md/archive/`. File names
+are unique, so a bare name in any document (`TEMANAWA_REORG.md`) still finds its file.
 
-**Where documents disagree, the order below is the order of precedence.**
+**Where documents disagree, the order of the spine below is the order of precedence**, and where a
+document describes the running build, the code wins.
 
-**Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka);
-the idle attract and every end-of-window reset first replay **the land before the window** — a
-land-only sequence from 4 Ma (`TEMANAWA_PALAEO_ATTRACT.md`) — and land on a fresh 1 Ma world.
-The land morph, the glacial-cycle climate, five buttons, habitat health and the kererū dispersal
-loop are all running, as is the **second-screen overhaul** — a 1080p touchscreen console over a
-`BroadcastChannel` bus, with the sim side built (paused geology, per-species boost, ramped
-timelapse to the next glacial/interglacial), harness-green (`TEMANAWA_SECOND_SCREEN.md`). The
-frontier now is the flora art, the disturbance clocks, and the tuning passes (interaction health;
-the second-screen boost feel — ramp, seeding, fauna coupling).
+**Current state:** the run opens ~1 Ma (as a marine embayment) and closes on Ōruanui (~25.5 ka). The
+idle attract and every end-of-window reset first replay **the land before the window**, a land-only
+sequence from 4 Ma, and land on a fresh 1 Ma world. A 1080p touchscreen console drives the 4K wall over
+`BroadcastChannel`: geology is paused until a visitor boosts a plant, which runs a ramped time-lapse to
+the next glacial or interglacial. Thirteen North Island birds are founded on dedicated art. What is left
+before opening is in `TEMANAWA_PLAN_V3.md` §14.
 
-**New here?** Read `TEMANAWA_PLAN_V3.md` (the spine — current design, honest phase status, and the
-road ahead), `TEMANAWA_PEDAGOGY.md` for the visitor's-eye view of *what the wall teaches today*, or
-`TEMANAWA_NATURAL_HISTORY.md` for the natural-history story the piece is built on.
-Then use the precedence order below for the build detail.
+**New here?** Read `TEMANAWA_PLAN_V3.md` (the spine: design, honest status, the road ahead). Installing
+or running it: `TEMANAWA_OPERATIONS.md`. The natural history the piece is built on:
+`TEMANAWA_NATURAL_HISTORY.md`.
 
 ---
 
 ## The spine — build from these
 
-| # | Document | Lines | Role |
-|--:|---|--:|---|
-| 1 | **`TEMANAWA_PLAN_V3.md`** | 472 | **The design spine.** Current design — five buttons, habitat health, the deep-time glacial ecology, the geography morph, the implemented fauna cast — plus an honest phase status and the road ahead. Anything that disagrees with this loses |
-| 1b | **`TEMANAWA_SECOND_SCREEN.md`** | — | **The interaction overhaul.** The 1080p touchscreen, the three-station model (habitat switch → per-species boost-select → activate), the paused-geology time model, the `BroadcastChannel` bus vocabulary, and the sim work it needs. Authoritative for the *interaction model* — where it disagrees with §6 of the spine on interaction, it wins |
-| 2 | **`TEMANAWA_BUILD_V3.md`** | 567 | Architecture, kiosk self-run, the **sprite manifest** (~160 core + ~19 stamps), performance and load budgets. The technical companion — it makes no design decisions, it costs the plan's |
-| 3 | **`TEMANAWA_TERRAIN_PLAN.md`** | 296 | Terrain background. Its keyframe pipeline was cut, then partly **revived by `TEMANAWA_GEOGRAPHY.md`** as the SVG skeleton. §1, §6 and §7 are still live |
-| 4 | **`TEMANAWA_REORG.md`** | — | Structural proposal: the asset pipeline, splitting `sketch.js`, economy residue, and the adaptive terrain mode as built. Ordered so each step is harness-verifiable |
+| # | Document | Role |
+|--:|---|---|
+| 1 | **`TEMANAWA_PLAN_V3.md`** | **The design spine.** Current design, honest phase status (§13), the road to installation (§14), open decisions (§16). Anything that disagrees with this loses, except on interaction |
+| 1b | **`TEMANAWA_SECOND_SCREEN.md`** | **The interaction model.** The touchscreen, the three stations, the paused-geology time model, the bus vocabulary, the boost. Wins over the spine on interaction |
+| 2 | **`TEMANAWA_BUILD_V3.md`** | Architecture, kiosk self-run, the asset manifest, performance and load budgets. The technical companion: it makes no design decisions |
+| 3 | **`TEMANAWA_GEOGRAPHY.md`** | The terrain: the SVG skeleton, elevation built around it, the deep-time morph, the rivers |
 
-Start at 1. If you are about to write code, read 2 §5 (the budgets) as well.
-
----
-
-## Species and art briefs — live
-
-| Document | Lines | |
-|---|--:|---|
-| `TEMANAWA_SPRITE_BRIEF.md` | 370 | **The art brief.** Footprint rules, tiers, states. The naming convention in `TEMANAWA_REORG.md` §3.2 belongs here and should be folded in |
-| `TEMANAWA_SPECIES_SUMMARY.md` | 155 | Quick reference across the cast |
-| `TEMANAWA_SPECIES_KERANGI.md` | 230 | Kērangi (Eyles' harrier) in depth. The only fauna with finished art |
-| `TEMANAWA_FAUNA_POOL.md` | 206 | The candidate pool and visual hooks. **`BUILD_V3.md` §4.2 leans on this** — but flags that its hooks are written from a field-guide viewpoint and need bird's-eye equivalents |
-| `TEMANAWA_FAUNA.md` | 246 | Broader fauna notes. Overlaps `FAUNA_POOL`; the pool is the one the manifest cites |
-| `TEMANAWA_FAUNA_IMPL.md` | 229 | **The implemented cast, in code.** What each animal (moa · eagle · kererū) *is*, how it behaves/breeds/draws, and where it's wired. Build reference, not research |
+If you are about to write code, read `BUILD_V3.md` §5 (the budgets) and `../CLAUDE.md` as well.
 
 ---
 
-## Ecology research — reference, not instruction
-
-2,700 lines of regional ecology. This is the evidence base the plan filters, not a
-specification. `TEMANAWA_PLAN_V3.md` §1 ("the filter") is what decides how much of it
-reaches the screen — which is deliberately not much.
-
-| Document | Lines | |
-|---|--:|---|
-| **`TEMANAWA_NATURAL_HISTORY.md`** | — | **The synthesis.** What makes the Manawatū's deep past unusual, in three parts: I. a river older than mountains (strait, uplift, coast, dunes, eruptions); II. the lost hunter (Eyles' harrier and its prey web); III. the shifting forest (the glacial/interglacial swing and its relationships). Each part maps the natural history onto the code and says where the build takes licence. Its first section lists five findings other docs should pick up, including that the Te Ahu a Tūranga "extinct predator" is the adzebill |
-| `TEMANAWA_ECOLOGY.md` | 536 | Overview. Overlaps the five regional files below |
-| `TEMANAWA_ECOLOGY_COAST.md` | 434 | Dunes, lagoons, pīngao and spinifex |
-| `TEMANAWA_ECOLOGY_LOWLAND.md` | 445 | Lowland forest |
-| `TEMANAWA_ECOLOGY_WETLAND.md` | 418 | Swamp, peat, drowned forest |
-| `TEMANAWA_ECOLOGY_OPEN.md` | 413 | Open country, downland, loess |
-| `TEMANAWA_ECOLOGY_FAUNA.md` | 326 | Fauna in ecological context |
-| `TEMANAWA_RESEARCH.md` | 86 | Sources and reading notes. Points at `research/*.pdf` |
-| `TEMANAWA_GOALS.md` | — | **The plant-goal book**: how goals are chosen (live gates, the moa → harrier → lowland → forest bird sequence, random draw), every goal and when it appears, the encyclopedia entries fact-checked with macrons, sim gaps, and words to explain for 8–14-year-olds |
-| `TEMANAWA_ENCYCLOPEDIA_CARDS.md` | — | **Draft three-part cards** (fun facts · role in the Manawatū · what a boost does + its bird) for every plant, with measured boost trials and the five sim gaps they exposed (all fixed 2026-10-14). Draft, not yet on screen |
-| `TEMANAWA_HABITATS.md` | — | **Quick reference for the four sim habitats.** Per habitat: plants on screen and in the sim, linked birds, goals (tagged by climate), and the real plant communities; then which goals are live along the timeline |
-| `TEMANAWA_ENCYCLOPEDIA_FLORA.md` | — | **The second-screen plant roster, checked.** Interglacial/glacial verdict on each habitat's five plants, the boost-gate conflicts, and a per-plant write-up (Esler + deep-time studies + card copy) for `secondscreen/encyclopedia.js` |
-
-Primary sources are the five PDFs in `research/`.
-
----
-
-## Process — the terrain restyle, the geography skeleton, the dev workflow
+## Running the install
 
 | Document | |
 |---|---|
-| `TEMANAWA_34VIEW_PLAN.md` | The plan-oblique 3/4 view + illustration restyle. Reshaped Phase 3. **Built** through the relief bake, entity y-sort and cel look |
-| `TEMANAWA_GEOGRAPHY.md` | **The SVG geography skeleton** — ranges and river authored as vectors, elevation built around them, with the deep-time uplift/incision morph. Revives `TERRAIN_PLAN.md` §3–5. Static integration and the morph are built |
-| `TEMANAWA_DEVTOOLS.md` | **The console dev workflow.** `LOOK` (paint) and `GEN` (landform) live-editable globals, the `B` / `G` / `N` keys, and how to extend them. Read this before tuning the look |
-| `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` | **The deep-time ecology build.** Season→glacial rebind, the climate table to 1 Ma, forest contraction, emergence sea level, and the four-eruption clear/regen + button seek/revert. **Implemented and harness-green** (see its §4) |
-| `TEMANAWA_PALAEO_ATTRACT.md` | **The land before the window.** The idle / end-of-window attract sequence: 4 Ma → 1 Ma, land only, driven through the terrain's own morph at pre-window dates (Trewick & Bland 2012 Fig. 4A–D — the Wanganui Basin, the basement finger, the Manawatū Strait opening narrow at 3 Ma, widest at 2.4 Ma, closed by 1.63 Ma, the Ruataniwha shelf, then the ranges), lettered with the names of the time. Its §5 lists every conflict with the existing systems and the resolution. **Built and harness-green** (`TeManawa_palaeo.js`) |
-| `TEMANAWA_COAST_PLAN.md` | **The breathing coast, made accurate.** Why the popular LGM maps show one brief moment as typical; Trewick & Bland's two-layer reading (slow uplift, fast sea-level swing); the sim's measured coast positions; and a build plan: a real sea-level curve separate from the cold index, a calibrated shelf profile, a continuous tectonic staircase, and the river following the sea. **Built 2026-10-19** (§5 as built; copy still to write) |
-| `TEMANAWA_ERUPTION_AFTERMATH_PLAN.md` | **Post-eruption regrowth, made accurate.** Research-grounded plan (tephra thickness, defoliation, succession, survivor legacies, kiwi bottleneck) for a staged ~1-minute aftermath on its own clock. Step 0 fixes the ash never clearing while geology is paused. **Plan, not built** |
-| `TEMANAWA_INTERACTION_HEALTH_PLAN.md` | **Interaction plan.** Split Growth into glacial/interglacial buttons, a derived habitat-health scalar surfaced as scene saturation, and a kererū seed-dispersal loop coupled to Storm overuse. Builds on `DEEPTIME_ECOLOGY_PLAN.md`. **Steps 1–3 built and harness-green** (health/saturation readout, five-button split FOREST/TUSSOCK growth, kererū seed dispersal); step 4 (Storm-overuse coupling) and step 5 (tuning) still to come |
-| `TEMANAWA_PEDAGOGY.md` | **What it teaches + the road to installation.** The visitor-facing pedagogy of the running build and the prioritised next steps |
+| **`TEMANAWA_OPERATIONS.md`** | **The operator guide.** What to deploy, the two windows, the browser flags, what the kiosk layer does on its own, how to recover and read the error log, and the known gaps before opening |
+| `TEMANAWA_DEVTOOLS.md` | The console dev workflow: `LOOK` (paint), `GEN` (landform), `GEO` (ranges), the `B` / `G` / `N` keys. Read before tuning the look |
+
+---
+
+## Systems — how the built pieces work
+
+| Document | |
+|---|---|
+| `TEMANAWA_COAST_PLAN.md` | **The sea.** Relative sea level in metres over a baked shelf; why the popular LGM maps mislead; the measured coast positions. Built 2026-10-19 (§5, §5b) |
+| `TEMANAWA_PALAEO_ATTRACT.md` | **The land before the window.** The 4 Ma → 1 Ma attract sequence (Trewick & Bland 2012, Fig. 4A–D), its conflicts with the other systems and how each was resolved (§5), the open co-design items (§8). Built 2026-11-01 |
+| `TEMANAWA_FAUNA_IMPL.md` | **The cast in code.** What each animal is, how it behaves, breeds and draws, and where it is wired |
+| `TEMANAWA_GOALS.md` | **The plant goals.** How a goal is chosen, every goal and when it appears, the encyclopedia entries fact-checked, the sim gaps, words to explain for 8–14-year-olds |
+| `TEMANAWA_HABITATS.md` | Quick reference for the four sim habitats: plants on screen and in the sim, linked birds, goals by climate |
+
+---
+
+## Plans not yet built
+
+| Document | |
+|---|---|
+| `TEMANAWA_ERUPTION_AFTERMATH_PLAN.md` | **Post-eruption regrowth.** A research-grounded staged aftermath. Step 0 is built (2026-11-02) as "the aftermath covers **one boost/goal cycle**" (`DeepTime.AFTERMATH`), so the wall no longer stays grey while geology is paused; the staged beats (steps 1–8) are not built |
+
+---
+
+## Content, interpretation and art
+
+| Document | |
+|---|---|
+| **`TEMANAWA_NATURAL_HISTORY.md`** | **The synthesis.** What makes the Manawatū's deep past unusual: a river older than mountains, the lost hunter, the shifting forest. Maps each onto the code and says where the build takes licence |
+| `TEMANAWA_ENCYCLOPEDIA_FLORA.md` | **The console's plant roster, checked.** The era verdict on each habitat's plants, the boost-gate conflicts, the plant–bird pairing (§2.6), and the write-ups behind `secondscreen/encyclopedia.js` |
+| `TEMANAWA_ENCYCLOPEDIA_CARDS.md` | **Draft three-part cards** (fun facts · role · what a boost does) for every plant, with measured boost trials. Longer than the cards on screen; needs a layout decision. Draft, not on screen |
+| `TEMANAWA_SPRITE_BRIEF.md` | **The art brief.** Footprint rules, tiers, states. Its asset count (132) predates the art that arrived; re-count before commissioning more (`PLAN_V3.md` §12) |
+| `blog/` | Blog drafts: `post1_land_draft.md` (the long version) and `post1_land_tidied.md` |
+
+All visitor copy is draft until the mana whenua co-design (`PLAN_V3.md` §16.10).
+
+---
+
+## `ecology/` — research, not instruction
+
+The evidence base the plan filters. `PLAN_V3.md` §1 ("the filter") decides how much of it reaches the
+screen, which is deliberately not much. Primary sources are the PDFs in `../research/`.
+
+| Document | |
+|---|---|
+| `ecology/TEMANAWA_ECOLOGY.md` | Overview. Overlaps the five regional files below |
+| `ecology/TEMANAWA_ECOLOGY_COAST.md` | Dunes, lagoons, pīngao and spinifex; the sand-flux model's source (§10) |
+| `ecology/TEMANAWA_ECOLOGY_LOWLAND.md` | Lowland forest |
+| `ecology/TEMANAWA_ECOLOGY_WETLAND.md` | Swamp, peat, drowned forest; the eruption sequence (§6) |
+| `ecology/TEMANAWA_ECOLOGY_OPEN.md` | Open country, downland, loess; the LGM cover the cold-cover bake follows (§4) |
+| `ecology/TEMANAWA_ECOLOGY_FAUNA.md` | Fauna in ecological context |
+| `ecology/TEMANAWA_FAUNA.md` | The scored native-fauna longlist |
+| `ecology/TEMANAWA_FAUNA_POOL.md` | The candidate pool and visual hooks, for the illustrator. Overlaps `FAUNA.md` |
+| `ecology/TEMANAWA_SPECIES_KERANGI.md` | Kērangi / Eyles' harrier in depth, and why it is not Haast's eagle |
+| `ecology/TEMANAWA_RESEARCH.md` | Sources and reading notes; cultural grounding |
+
+`ECOLOGY.md` against the regional files, and `FAUNA.md` against `FAUNA_POOL.md`, are genuine
+duplication. Consolidating research risks losing detail for tidiness, so **leave the text as it is.**
+
+---
+
+## `archive/` — built or superseded
+
+Kept as the design record. Each carries a banner saying what changed; the current state is
+`PLAN_V3.md` and the code.
+
+| Document | Why it is here |
+|---|---|
+| `archive/TEMANAWA_34VIEW_PLAN.md` | The 3/4 view and cel restyle — built |
+| `archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` | The glacial rebind, climate to 1 Ma, forest contraction, the four eruptions — built (its emergence and bloom notes are out of date) |
+| `archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md` | FOREST/TUSSOCK, habitat health, the kererū loop, storm overuse — built; the console now drives it |
+| `archive/TEMANAWA_TERRAIN_PLAN.md` | The raster-keyframe terrain plan — superseded by `GEOGRAPHY.md` |
+| `archive/TEMANAWA_REORG.md` | A structural proposal from August, mostly not acted on. §5 (the economy residue) is still accurate |
+| `archive/TEMANAWA_PEDAGOGY.md` | What the wall teaches and the road ahead, as of 2026-09-20 — before the console and the cast |
+| `archive/TEMANAWA_SPECIES_SUMMARY.md` | A planning summary of the intended cast; the built cast differs |
 
 ---
 
 ## Also in the repo
 
-- `../CLAUDE.md` — practical working notes: how to run and test, load-order constraints,
-  code conventions, the constraining numbers, authoring keys
+- `../CLAUDE.md` — practical working notes: running and testing, load order, conventions, the
+  constraining numbers, authoring keys
+- `../MISTAKES.md` — the incident log behind the rules (newest first)
+- `../secondscreen/README.md` — the console page: files, input bindings, content still to supply
+- `../exports/*/README.md` — how each terrain snapshot set was made
 - `../Avian_Age_TeManawa_Proposal.docx` — the proposal as sent
-- `../research/*.pdf` — primary sources (forests, grasslands and dunes, cultivated flora,
-  history and context)
-
----
-
-## Housekeeping
-
-`TEMANAWA_ECOLOGY.md` against the five `ECOLOGY_*` files, and `FAUNA.md` against
-`FAUNA_POOL.md`, are genuine duplication — but consolidating research documents risks
-losing detail for tidiness, and the plan's filter means most of it will never be built
-anyway. **Leave them and rely on this index.** If they are ever consolidated, do it by
-moving the regional files under an `md/ecology/` folder rather than by merging text.
+- `../research/*.pdf` — primary sources

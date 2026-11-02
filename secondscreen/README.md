@@ -14,7 +14,8 @@ node ../tools/serve.js        # from the repo root: node tools/serve.js
 
 Both are same-origin, so they talk over `BroadcastChannel('temanawa')` with no server, no
 polling, no network. On the install PC, open both in one Chrome instance, one per display
-(`--window-position` / `--kiosk`).
+(`--window-position` / `--kiosk`). The full install — flags, focus, what to deploy, recovery — is
+`../md/TEMANAWA_OPERATIONS.md`.
 
 **Debug mode** shows the "extra stuff" — the timeline/goal readout strip **and** the on-screen
 test buttons (for driving the page without the physical rig). It is **off by default** (a clean
@@ -39,6 +40,7 @@ kiosk screen). Turn it on with `…/secondscreen/?debug=1`, or toggle it live wi
 | `secondscreen.css` | styling — matches the mockups |
 | `encyclopedia.js` | **the content.** Habitats → plants → names, taxonomy, description, fauna links, positions. Edit this to add/rename/reposition; nothing in `app.js` changes |
 | `input.js` | maps the physical keys / touch to named actions. **Set the switch mode + key bindings here at install time** |
+| `kiosk.js` | loads first: an error ring buffer (`TMConsoleKiosk.getErrorLog()`), a reload on a burst of errors, the 03:00 reload |
 | `bus.js` | `BroadcastChannel` wrapper + the message vocabulary |
 | `app.js` | the state machine and renderer |
 | `assets/` | per-habitat 1080p backgrounds + optional highlight loops — **artist-supplied** |

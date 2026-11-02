@@ -1,5 +1,9 @@
 # Te Manawa — Species and Asset Summary
 
+> **Archived 2026-11-02 — a planning summary of the intended cast.** The cast that was built differs
+> (North Island moa only, plus goose, mōho, kiwi, Finsch's duck, kōkako, huia and tūī). For the
+> built cast read `TEMANAWA_FAUNA_IMPL.md`; for the plant–bird pairing, `TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6.
+
 **One page for the whole cast.** A join across `TEMANAWA_PLAN_V3.md` §2 and §5 (what's
 in) and `TEMANAWA_BUILD_V3.md` §4 (what it costs), with the **ecological role** column
 added — that's the one thing scattered across the five deep dives and consolidated

@@ -28,7 +28,7 @@ const DeepTime = {
   //             Whakamaru wraps to Kidnappers rather than landing on it.
   //   terminal  the run's closing ash beat; reached by the clock, never by a skip.
   // Ages: Kidnappers/Potaka ~1.0 Ma (Mangakino), Kaukatea ~0.9 Ma, Whakamaru/Rangitawa
-  // 349 ka, Kawakawa/Oruanui ~25.5 ka. See md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md.
+  // 349 ka, Kawakawa/Oruanui ~25.5 ka. See md/archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md.
   ERUPTIONS: [
     { yearsBP: 1000000, name: 'Kidnappers', tier: 'major',        skip: true  },
     { yearsBP:  900000, name: 'Kaukatea',   tier: 'minor',        skip: true  },
@@ -254,6 +254,43 @@ const DeepTime = {
     minor:        { clearFraction: 0.35, decayYears:  6000 },
     major:        { clearFraction: 0.75, decayYears: 18000 },
     catastrophic: { clearFraction: 0.95, decayYears: 35000 }
+  },
+
+  // THE AFTERMATH COVERS ONE BOOST/GOAL CYCLE (decided 2026-11-02; md/TEMANAWA_PLAN_V3.md §14.2).
+  // decayYears alone never clears while geology is paused, which is the default, so a visitor's
+  // eruption left the wall grey until somebody boosted (MISTAKES.md). The ash now also runs out over
+  // the real time one boost takes from the eruption year to the next glacial/interglacial (the cycle
+  // a visitor's next boost and its goal verdict would play), clamped to [minSeconds, maxSeconds]. A
+  // boost begun in the aftermath runs the rest of the cover out exactly as its time-lapse lands; the
+  // dial still clears it on decayYears if that is sooner. idleClears false: hold the ash until a boost
+  // lands instead (the idle attract still resets an unattended wall).
+  AFTERMATH: { minSeconds: 15, maxSeconds: 60, idleClears: true },
+
+  // Real seconds a boost time-lapse takes from fromYear to toYear (younger) on the tlStartRate →
+  // tlMaxRate ramp, ignoring the dial. Pure; integrates in 50 ms steps, allocation-free.
+  timelapseSecondsFor(fromYear, toYear) {
+    const dist = fromYear - toYear;
+    if (!(dist > 0)) return 0;
+    const ramp = this.tlRampSeconds, dt = 0.05;
+    let t = 0, covered = 0;
+    while (covered < dist && t < 600) {
+      const u = ramp > 0 ? Math.min(1, t / ramp) : 1;
+      covered += (this.tlStartRate + (this.tlMaxRate - this.tlStartRate) * u * u * (3 - 2 * u)) * dt;
+      t += dt;
+    }
+    return t;
+  },
+
+  // The aftermath's span (ms) for an eruption at fromYear: one boost/goal cycle from there, clamped.
+  aftermathMs(fromYear) {
+    const A = this.AFTERMATH;
+    let target = this.yearsEnd;
+    if (typeof Climate !== 'undefined' && typeof Climate.nextRegimeBoundary === 'function') {
+      const b = Climate.nextRegimeBoundary(fromYear, this.yearsEnd);   // { yearsBP, … } or null (none before the end)
+      if (b && isFinite(b.yearsBP)) target = b.yearsBP;
+    }
+    const s = this.timelapseSecondsFor(fromYear, target);
+    return 1000 * Math.max(A.minSeconds, Math.min(A.maxSeconds, s));
   },
 
   // ---- the Deep-time button --------------------------------

@@ -25,7 +25,7 @@
 // TerrainGenerator.noiseScale, where a per-run value must not mutate authored
 // config (it would compound across regenerations).
 //
-// The full 3/4 pipeline is built (md/TEMANAWA_34VIEW_PLAN.md §8): projY(y, elev)
+// The full 3/4 pipeline is built (md/archive/TEMANAWA_34VIEW_PLAN.md §8): projY(y, elev)
 // drives the relief bake, the unsquashed entity billboards and the painter y-sort.
 
 const Projection = {

@@ -1,5 +1,8 @@
 # Te Manawa — Terrain Implementation Plan
 
+> **Archived 2026-11-02.** Superseded by `TEMANAWA_GEOGRAPHY.md` (the built terrain), as the note
+> below already said.
+
 > ⛔ **Superseded, then partly revived. Read `TEMANAWA_GEOGRAPHY.md`
 > and `TEMANAWA_BUILD_V3.md` §6 first.**
 >

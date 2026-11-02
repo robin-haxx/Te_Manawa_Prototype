@@ -14,6 +14,15 @@ Evidence tags used throughout: **[measured]** is a TVZ record or deposit. **[ana
 from another volcano. **[inference]** is scaled or estimated by us and must be labelled that way
 in any visitor copy.
 
+> **Status 2026-11-02 — step 0 built, as "the aftermath covers one boost/goal cycle"; steps 1–8 not
+> built.** Instead of the fixed ~4 yr/s clock of §3.1 and §7.1, the aftermath's span is the real time
+> one boost from the eruption year takes to the next glacial/interglacial (`DeepTime.AFTERMATH`,
+> 15–60 s). A boost begun in the aftermath runs the rest of the ash out as it lands; an unattended wall
+> clears over the same span (`idleClears`, on); the dial still clears it on `decayYears`. So item 1
+> below is fixed: the wall no longer stays grey while geology is paused. Items 2–5 (the kill model, the
+> uniform grey, the same-species regrowth) stand, and the staged beats of §3 can be driven by the
+> aftermath's 0→1 progress over that span. Line references below are from 2026-10-15.
+
 ---
 
 ## 0. Summary
@@ -439,8 +448,9 @@ Each step leaves the kiosk shippable and harness-green. Run `node tools/bootchec
 
 ## 7. Decisions for you
 
-1. **Aftermath pace.** ~4 yr/s makes 200 years ≈ 50 s and Ōruanui's 80 years ≈ 20 s. Faster
-   (more action) or slower (more ambient)?
+1. ~~**Aftermath pace.**~~ **Decided and built 2026-11-02: the aftermath covers one boost/goal
+   cycle** (`DeepTime.AFTERMATH`). (The question was: ~4 yr/s makes 200 years ≈ 50 s and Ōruanui's 80
+   years ≈ 20 s; faster or slower?)
 2. **A visitor "years after" readout?** For example a small "**60 years after Whakamaru**" under
    the year line. It is the most direct way to teach "it came back within two centuries", but it
    adds HUD text. The alternative is to keep it debug-only.

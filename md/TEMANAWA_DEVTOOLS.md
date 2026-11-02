@@ -5,8 +5,10 @@ browser dev console on the running install and tune the editable globals — `LO
 `GEN` (landform) and `GEO` (the ranges) — then press a key to re-bake in place. Same land,
 same ecosystem, no reload.
 
-Defined in `TeManawa_devtools.js` (loads after `TeManawa_terrain.js`). Authoring only: the
-kiosk wall is locked to keys `1`–`4` and never reaches `B` / `G` / `N`.
+Defined in `TeManawa_devtools.js` (loads after `TeManawa_terrain.js`). Authoring only: **open the
+page with `?dev=1`** (without it the keys are locked to the wall's set, `Kiosk.keyAllowed`), and
+`B` / `G` / `N` (and `SHIFT+F`) work only while the debug overlay is on (`D`), so a stray press
+cannot start a ~5 s bake.
 
 > Type **`DEV.help()`** in the console for the built-in cheatsheet.
 

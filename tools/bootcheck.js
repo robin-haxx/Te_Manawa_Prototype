@@ -24,7 +24,9 @@ const ctx={console:{log(){},warn(){},error(...a){_errors.push('console.error: '+
   parseInt,parseFloat,isNaN,isFinite,Infinity,NaN,URLSearchParams,
   setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},
   localStorage:{_d:{},getItem(k){return this._d[k]??null},setItem(k,v){this._d[k]=v},removeItem(k){delete this._d[k]}},
-  location:{search:'',reload(){_errors.push('!! location.reload called')}},
+  // ?dev: the harness is an authoring session — every key works and a draw() error throws (so a
+  // DRAW FAIL still stops the run). "kiosk hardening" below switches it off to test the wall.
+  location:{search:'?dev=1',reload(){_errors.push('!! location.reload called')}},
   navigator:{userAgent:'node'},
   document:{body:{style:{}},head:{appendChild(){}},createElement:()=>({style:{},textContent:''}),
             addEventListener(){},documentElement:{style:{}},
@@ -35,7 +37,7 @@ ctx.window=ctx; ctx.globalThis=ctx;
 ctx.window.addEventListener=()=>{};
 // Startup URL flags, so a whole boot can be exercised in either mode:
 //   TERRAIN=fit node tools/bootcheck.js     ART=low node tools/bootcheck.js
-if(process.env.TERRAIN) ctx.location.search='?terrain='+process.env.TERRAIN;
+if(process.env.TERRAIN) ctx.location.search+='&terrain='+process.env.TERRAIN;
 if(process.env.ART) ctx.location.search+=(ctx.location.search?'&':'?')+'art='+process.env.ART;
 // p5 surface
 let _t=0; const FRAME=(f)=>{_t+=16; f();};
@@ -240,7 +242,7 @@ try{
 // FOREST (warm) growth suits the interglacial, TUSSOCK (cold) growth suits the glacial. The
 // RIGHT press for the current climate holds habitat health (full ground saturation); the WRONG
 // press drains regime-fit and the scene quietly desaturates. Asserts the SIGN of the effect in
-// both climate states — the core of md/TEMANAWA_INTERACTION_HEALTH_PLAN.md step 2. Drives the
+// both climate states — the core of md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md step 2. Drives the
 // health update directly (flags forced live via a far-future `until`), so it is millis-clock-
 // independent; regime-fit is read straight off Game (not the slow-slewed _sceneSat).
 try{
@@ -271,7 +273,7 @@ try{
 // Kererū are the only large-seed disperser: Simulation.disperseSeed() is the one runtime path
 // that GROWS the plant population (cap-guarded — nothing else adds plants). In the interglacial
 // the forest recruits via kererū, so the recruitment term of habitat health holds; with no
-// kererū it stalls and drains. md/TEMANAWA_INTERACTION_HEALTH_PLAN.md step 3.
+// kererū it stalls and drains. md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md step 3.
 try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
   const PT=vm.runInContext('PLANT_TYPES',ctx);
@@ -1237,6 +1239,177 @@ try{
   const a=Date.now(); K.game.init(); const full=Date.now()-a;
   console.log('full init() for comparison:', full+'ms  -> soft is ~'+(full/Math.max(1,t[t.length-1])).toFixed(0)+'x cheaper');
 }catch(e){ console.log('RESET FAIL:', e.message, e.stack.split('\n')[1]); process.exit(1); }
+
+// ---- kiosk hardening: the wall's lockdown, the nightly reload, a draw() error ------------------
+// Three defects found 2026-11-02 (MISTAKES.md): no key was locked, so the console's plant-next 'd'
+// opened the debug overlay on the wall whenever the wall had focus; the 03:00 reload re-fired on
+// every boot inside that minute; and a draw() throw ended p5's loop for good, so the soft recovery
+// reset a world that never drew again. Plus: a recovery mid-attract must stop the sequence first,
+// and with audio off nothing may load. The console page's own layer (secondscreen/kiosk.js) last.
+try{
+  let fail=0; const chk=(c,m)=>{ if(!c){ fail++; console.log('  FAIL',m); } };
+  const K=vm.runInContext('Kiosk',ctx), G=vm.runInContext('game',ctx), DB=vm.runInContext('Debug',ctx),
+        P=vm.runInContext('Palaeo',ctx), DT=vm.runInContext('DeepTime',ctx), PG=vm.runInContext('PlantGallery',ctx),
+        CF=vm.runInContext('CONFIG',ctx), CL=vm.runInContext('Climate',ctx);
+  const GEOo=vm.runInContext('typeof GEO!=="undefined"?GEO:null',ctx);
+  const errs0=_errors.length, reloads=()=>_errors.filter(e=>e.includes('location.reload called')).length;
+  chk(K.devMode===true, 'the harness boots with ?dev (all keys live, draw() errors throw)');
+
+  // (a) THE LOCKDOWN. Off ?dev, only 1–5 and the dial reach the game; any other key is presence only.
+  K.devMode=false;
+  const mode0=DB.mode, geo0=GEOo&&GEOo._overlay, aff0=CF.showClimateAffinity;
+  K.lastInputAt=0; G.handleKey('d'); G.handleKeyUp('d');
+  chk(DB.mode===mode0, `locked: 'd' (the console's plant-next) does not open the debug overlay (mode ${DB.mode})`);
+  chk(K.lastInputAt>0, 'locked: a blocked key still counts as presence (the idle timer restarts)');
+  G.handleKey('r'); chk(!GEOo || GEOo._overlay===geo0, "locked: 'r' (the Alpine detent in absolute mode) does not toggle the range overlay");
+  G.handleKey('c'); chk(CF.showClimateAffinity===aff0, "locked: 'c' does not toggle the climate tint");
+  G.handleKey('p'); chk(!P.active, "locked: 'p' does not start the attract sequence");
+  G.handleKey('D'); G.handleKeyUp('D'); chk(DB.mode===mode0, 'locked: SHIFT+D is blocked too');
+  const kd0=ctx.keyIsDown; ctx.keyIsDown=()=>true; const pg0=PG.active;
+  PG.tick(); ctx.__tick(300); PG.tick();
+  ctx.keyIsDown=kd0; PG._downAt=null; PG._holdConsumed=false;
+  chk(PG.active===pg0, 'locked: holding D for 3 s does not open the plant gallery (it polls the key itself)');
+  G._tmGrowWarmUntil=0; G.handleKey('2');
+  chk(G._tmGrowWarmUntil>0, "locked: '2' (a wall button) still works");
+  G._tmGrowWarmUntil=0; G._regimeFit=1;
+  const d0=DT.dialStep; G.handleKey(DT.DIAL_KEYS.faster[0]);
+  chk(DT.dialStep===Math.min(DT.dialSteps,d0+1), 'locked: the time dial still works');
+  DT.dialSet(d0);
+  K.devMode=true; G.handleKey('d'); G.handleKeyUp('d');          // a tap: the gallery replays it to Debug on key-up
+  chk(DB.mode!==mode0, "with ?dev 'd' cycles the debug overlay");
+  DB.mode=mode0;
+
+  // (b) THE NIGHTLY RELOAD fires once at 03:00, never again from the page that reload booted.
+  const RealDate=ctx.Date, at=new RealDate(2026,10,3,3,0,20).getTime(); let now=at;
+  class FakeDate extends RealDate { constructor(...a){ super(...(a.length?a:[now])); } static now(){ return now; } }
+  const keep={boot:K._bootAt, reset:K.lastResetMs, hb:K.lastHeartbeat, inp:K.lastInputAt};
+  ctx.Date=FakeDate;
+  try{
+    let r0=reloads();
+    K._bootAt=now; K.lastResetMs=0; K.lastHeartbeat=now; K.lastInputAt=now;      // a page booted at 03:00:20
+    K.tick(); now+=2000; K.lastHeartbeat=now; K.tick();
+    chk(reloads()===r0, 'a page booted inside the 03:00 minute does not reload itself again');
+    r0=reloads(); now=at; K._bootAt=at-3600000; K.lastResetMs=0; K.lastHeartbeat=now; K.lastInputAt=now;
+    K.tick();
+    chk(reloads()===r0+1, 'a page that was up before 03:00 reloads at 03:00');
+  } finally { ctx.Date=RealDate; K._bootAt=keep.boot; K.lastResetMs=keep.reset; K.lastHeartbeat=Date.now(); K.lastInputAt=Date.now(); }
+
+  // (c) A draw() ERROR on the wall is caught and recovered, and the loop keeps drawing; a storm of
+  //     them gives way to a hard reload; with ?dev it still throws.
+  K.devMode=false; K._frameErrCount=0; K._frameErrAt=0;
+  let throws=1; G.update=function(...a){ if(throws>0){ throws--; throw new Error('harness: injected frame error'); } return Object.getPrototypeOf(G).update.apply(this,a); };
+  let threw=false; const rc=K.resetCount;
+  try{ FRAME(ctx.draw); }catch(e){ threw=true; }
+  chk(!threw, 'on the wall a draw() error is caught (the p5 loop survives)');
+  chk(K.resetCount===rc+1, 'and recovered with a soft reset');
+  threw=false; try{ for(let i=0;i<5;i++) FRAME(ctx.draw); }catch(e){ threw=true; }
+  chk(!threw, 'the frames after a recovered error draw normally');
+  chk(K.getErrorLog().some(e=>e.kind==='frame' && /injected frame error/.test(e.message)), 'the draw() error is in the ring buffer');
+  let r1=reloads(); K._frameErrAt=Date.now(); K._frameErrCount=K.frameErrorMax; throws=1;
+  try{ FRAME(ctx.draw); }catch(e){ threw=true; }
+  chk(!threw && reloads()===r1+1, `past ${K.frameErrorMax} errors inside the window, a hard reload instead of another recovery`);
+  K._frameErrCount=0; K._frameErrAt=0;
+  K.devMode=true; throws=1; threw=false;
+  try{ FRAME(ctx.draw); }catch(e){ threw=true; }
+  chk(threw, 'with ?dev a draw() error still throws (DevTools, this harness)');
+  delete G.update; throws=0;
+
+  // (d) A RECOVERY MID-ATTRACT stops the sequence first; the reset stamps the heartbeat.
+  chk(P.begin(G,'manual'), 'begin() for the recovery check');
+  for(let i=0;i<40;i++) FRAME(ctx.draw);
+  CL.PRE_WINDOW_SEA.scale=0.5; K.lastHeartbeat=0;
+  K.recover();
+  chk(!P.active && P.state==='idle', 'a recovery during the attract sequence aborts it');
+  chk(CL.PRE_WINDOW_SEA.scale===0, 'the abort leaves the pre-window sea breath off');
+  chk(DT.yearsBP<=DT.yearsStart, 'the recovery lands inside the window');
+  chk(K.lastHeartbeat>0, 'a long recovery stamps the heartbeat (it is not a stall)');
+  for(let i=0;i<10;i++) FRAME(ctx.draw);
+
+  // (e) AUDIO OFF: nothing loads.
+  const AM=vm.runInContext('AudioManager',ctx); let loads=0; const ls0=ctx.loadSound;
+  ctx.loadSound=(...a)=>{ loads++; return ls0(...a); };
+  const am=new AM(); am.loadAll();
+  chk(am.enabled===false && loads===0, `audio off: loadAll() decodes nothing (${loads} loads)`);
+  am.enabled=true; am.loadAll(); chk(loads>0, 'audio on: loadAll() loads the set');
+  ctx.loadSound=ls0;
+
+  // (f) THE CONSOLE'S LAYER (secondscreen/kiosk.js), in its own context.
+  {
+    const handlers={}; let creloads=0, cnow=at; const store={};
+    class CDate extends RealDate { constructor(...a){ super(...(a.length?a:[cnow])); } static now(){ return cnow; } }
+    const cctx={ Date:CDate, JSON, String, console:{warn(){},error(){},log(){}},
+      window:{ addEventListener:(t,f)=>{ handlers[t]=f; } }, setInterval:()=>0,
+      localStorage:{ getItem:k=>store[k]??null, setItem:(k,v)=>{store[k]=v;}, removeItem:k=>{delete store[k];} },
+      location:{ reload:()=>{ creloads++; } } };
+    vm.createContext(cctx);
+    vm.runInContext(fs.readFileSync(path.join(dir,'secondscreen','kiosk.js'),'utf8')+';this.TMConsoleKiosk=TMConsoleKiosk;', cctx);
+    const CK=cctx.TMConsoleKiosk;
+    chk(!!handlers.error && !!handlers.unhandledrejection, 'console: error and rejection handlers are armed at load');
+    CK.tick(); chk(creloads===0, 'console: a page booted inside 03:00 does not reload itself again');
+    CK._bootAt=at-3600000; CK.tick(); chk(creloads===1, 'console: a page up before 03:00 reloads at 03:00');
+    cnow=at+7200000; creloads=0;
+    for(let i=0;i<CK.errorBurstMax;i++) handlers.error({message:'x',filename:'app.js',lineno:1});
+    chk(creloads===0 && CK.getErrorLog().length>=CK.errorBurstMax, 'console: errors are logged; a few do not reload');
+    handlers.error({message:'x',filename:'app.js',lineno:1});
+    chk(creloads===1, 'console: a burst of errors reloads the page');
+  }
+
+  // Leave the wall as the rest of the harness expects it.
+  K.devMode=true; K.lastInputAt=Date.now(); K.lastHeartbeat=Date.now();
+  for(let i=_errors.length-1;i>=errs0;i--) if(/\[Kiosk\]|location\.reload called|\[Palaeo\]/.test(_errors[i])) _errors.splice(i,1);
+  console.log(fail? `kiosk hardening: ${fail} FAILURES`
+    : "kiosk hardening: keys locked to 1–5 + the dial off ?dev (blocked keys are presence); 03:00 reloads once, never from its own boot; a draw() error is recovered and the loop survives, a storm hard-reloads, ?dev still throws; a recovery aborts the attract; audio off loads nothing; the console logs, bursts reload, 03:00 once");
+}catch(e){ console.log('KIOSK FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- eruption aftermath: the ash covers one boost/goal cycle (DeepTime.AFTERMATH) ----------------
+// Decided 2026-11-02. Keyed to sim-years alone, the ash never cleared while geology was paused (the
+// default), so a visitor's eruption left the wall grey until somebody boosted (MISTAKES.md). Now: the
+// span is the real time one boost from the eruption year takes to the next glacial/interglacial; a
+// boost begun in the aftermath runs the rest out as it lands; the dial still clears it on sim-years.
+try{
+  let fail=0; const chk=(c,m)=>{ if(!c){ fail++; console.log('  FAIL',m); } };
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), A=DT.AFTERMATH;
+  const near=(a,b,eps=0.02)=>Math.abs(a-b)<=eps;
+  // (a) the cycle length: the ramp integrates as designed, and every eruption gets a span in range
+  chk(DT.timelapseSecondsFor(1000,2000)===0, 'no distance, no time-lapse');
+  const s55=DT.timelapseSecondsFor(155000,100000), s105=DT.timelapseSecondsFor(205000,100000);
+  chk(near(s55,20,0.2) && near(s105,30,0.2), `the ramp: 55 kyr takes the 20 s ramp, 105 kyr ten more seconds at the top rate (${s55.toFixed(2)} s, ${s105.toFixed(2)} s)`);
+  const spans=DT.ERUPTIONS.map(e=>DT.aftermathMs(e.yearsBP)/1000);
+  chk(spans.every(s=>s>=A.minSeconds && s<=A.maxSeconds), `every eruption's aftermath is one cycle, clamped to ${A.minSeconds}–${A.maxSeconds} s (${spans.map(s=>s.toFixed(1)).join(', ')} s)`);
+  const er=DT.eruptionByYear(349000);
+  const arm=()=>{ DT.endTimelapse(); DT.dialSet(0); DT._dialRate=0; DT._deepUntil=0; DT.seekTo(349000); G.applyAsh(er); };
+  // (b) PAUSED (the default): the ash runs out over the cycle in real time, and is gone at its end
+  arm(); const cyc=G._ashCycleMs;
+  chk(G._ashCover===1 && near(cyc, DT.aftermathMs(349000), 1), 'an eruption arms full ash and the cycle span');
+  _t+=cyc/2; G.updateAshCover();
+  chk(near(G._ashCover,0.5), `paused, half a cycle on: half the ash (${G._ashCover.toFixed(3)})`);
+  _t+=cyc/2+16; G.updateAshCover();
+  chk(G._ashCover===0, 'paused, one cycle on: the ash is gone (the wall no longer stays grey)');
+  // (c) idleClears off: paused, the ash holds; the visitor's boost is what clears it
+  A.idleClears=false; arm(); _t+=cyc*2; G.updateAshCover();
+  chk(G._ashCover===1, 'idleClears off: paused, the ash holds');
+  A.idleClears=true;
+  // (d) A BOOST IN THE AFTERMATH runs the rest out with its time-lapse and ends it on landing
+  arm(); _t+=cyc/4; G.updateAshCover(); const c0=G._ashCover;
+  const B=vm.runInContext('Climate',ctx).nextRegimeBoundary(349000, DT.yearsEnd).yearsBP;
+  DT.beginTimelapse(B); G.updateAshCover();
+  DT.yearsBP=349000-(349000-B)/2; G.updateAshCover();
+  chk(near(c0,0.75) && near(G._ashCover,c0/2), `a boost half-way to the next turn halves what was left (${c0.toFixed(3)} → ${G._ashCover.toFixed(3)})`);
+  DT.yearsBP=B; DT.update(1); G.updateAshCover();
+  chk(!DT.isTimelapsing() && G._ashCover===0, 'the boost lands: the aftermath is over');
+  // (e) the DIAL still clears it on sim-years when that is sooner; the cover never comes back
+  arm(); DT.dialSet(30); DT._dialRate=DT.dialTargetRate(30);
+  DT.yearsBP=349000-G._ashDecayYears*0.6; G.updateAshCover();
+  chk(near(G._ashCover,0.4), `the dial 60% through decayYears: 40% of the ash (${G._ashCover.toFixed(3)})`);
+  DT.yearsBP=349000; G.updateAshCover();
+  chk(near(G._ashCover,0.4), 'played back to the eruption year, the ash does not come back');
+  // (f) a soft reset clears the aftermath
+  G.resetEcosystem();
+  chk(G._ashCover===0 && G._ashTlSeen===false, 'a soft reset leaves no ash');
+  DT.endTimelapse(); DT.dialSet(0); DT._dialRate=0; DT.reset();
+  console.log(fail? `eruption aftermath: ${fail} FAILURES`
+    : `eruption aftermath: one boost/goal cycle (${spans.map(s=>s.toFixed(0)).join('/')} s by eruption); paused it still clears; a boost runs it out as it lands; the dial clears it on sim-years; it never comes back`);
+}catch(e){ console.log('AFTERMATH FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- the land before the window: the palaeogeography attract sequence (TeManawa_palaeo.js) ----
 // md/TEMANAWA_PALAEO_ATTRACT.md. (a) The dated pre-window factors are exactly their window values at
@@ -2244,27 +2417,83 @@ try{
   chk(TG.format('{a} {regime}','X','interglacial','')==='an interglacial' && TG.format('{a} {regime}','X','glacial','')==='a glacial',
       'the verdict says "an interglacial" / "a glacial"');
 
-  // 2. Staging, on the 1 Ma land: the ranges have not risen, so there are no subalpine tops.
+  // 2–3. THE HABITAT GATE, staged. It is logic, so it is tested on a staged subalpine belt, not on the
+  // land: this harness's white-noise terrain barely lifts its ranges (peak ~0.65 at every date, a few
+  // dozen subalpine cells), while the real build's peaks reach ~0.88 (8,000+ subalpine cells at 30 ka),
+  // so "the land at 30 ka has subalpine" was a fact about the noise, and it failed on every run from
+  // 2026-11-01 (on `main` too). The belt is set exactly one cell short of the threshold, then exactly at it.
   seat(1000000);
-  chk(G.simulation.hasHabitat('flax',TGL.minHabitatCells) && !G.simulation.hasHabitat('dracophyllum',TGL.minHabitatCells),
-      'at 1 Ma harakeke has habitat and Dracophyllum has none to speak of (no subalpine tops yet)');
+  chk(G.simulation.hasHabitat('flax',TGL.minHabitatCells), 'at 1 Ma harakeke has habitat');
+  const BM=G.terrain.biomeIndexMap, BA=G.terrain.biomeArray, savedBM=BM.slice();
+  const iSub=BA.findIndex(b=>b&&b.key==='subalpine'), iMont=BA.findIndex(b=>b&&b.key==='montane');
+  const stageSubalpine=(n)=>{ let k=0; for(let i=0;i<BM.length;i++) if(BM[i]===iSub) BM[i]=iMont;
+    for(let i=0;i<BM.length && k<n;i++) if(BM[i]===iMont){ BM[i]=iSub; k++; } return k; };
+  chk(stageSubalpine(TGL.minHabitatCells-1)===TGL.minHabitatCells-1 && !G.simulation.hasHabitat('dracophyllum',TGL.minHabitatCells),
+      'one cell short of the threshold, Dracophyllum has no habitat');
   const gDraco={ id:'t-draco', group:'forest', prompt:'P-draco', cond:'c', answer:['dracophyllum'] };
   const gLate ={ id:'t-late',  group:'moa', prompt:'P-late',  cond:'c', answer:['flax'], fromYearsBP:500000 };
   TGL.list=[gLate, gHara]; TG.reset(); tick();
   chk(TG.live()===gHara, `a fromYearsBP goal waits for its opening (live: ${TG.live()&&TG.live().id})`);
-  // Isolate the habitat gate: a GLACIAL clock over the unrisen 1 Ma land (seeking does not morph the land
-  // until frames run). Dracophyllum fits the climate, so only its missing habitat can keep it dark.
+  // A GLACIAL clock: Dracophyllum fits the climate, so only its missing habitat can keep it dark.
   DT.seekTo(30000); TGL.list=[gDraco, gHara]; TG.reset(); tick();
   chk(TG.glacialNow() && TG.live()===gHara,
-      `the habitat gate alone keeps a Dracophyllum goal dark before the ranges rise (live: ${TG.live()&&TG.live().id})`);
-
-  // 3. At 30 ka (a glacial) the ranges carry subalpine tops: the Dracophyllum goal (a cold plant) opens
-  //    by itself, as does the window.
-  seat(30000);
+      `the habitat gate alone keeps a Dracophyllum goal dark without a subalpine belt (live: ${TG.live()&&TG.live().id})`);
+  stageSubalpine(TGL.minHabitatCells);
   chk(G.simulation.hasHabitat('dracophyllum',TGL.minHabitatCells) && !G.simulation.hasHabitat('dracophyllum',1e9),
-      'hasHabitat counts cells against its threshold (enough subalpine at 30 ka, but not a billion cells)');
+      'hasHabitat counts cells against its threshold (exactly enough opens it, a billion does not)');
   TGL.list=[gDraco]; TG.reset(); tick();
-  chk(TG.live()===gDraco, `the Dracophyllum goal goes live once the ranges carry subalpine tops (live: ${TG.live()&&TG.live().id})`);
+  chk(TG.live()===gDraco, `the Dracophyllum goal goes live once the land carries a subalpine belt (live: ${TG.live()&&TG.live().id})`);
+  // 3a. THE SUBALPINE DATE (§16.14, decided 2026-11-02). The real 1 Ma land already carries a thin
+  //     subalpine belt, so the habitat gate alone would open these goals at the start: every goal
+  //     answered ONLY from the subalpine tops carries one shared date, and stays dark before it even
+  //     with the belt in place (here staged, in the oldest glacial of the window), then opens at 30 ka.
+  {
+    const CLI=vm.runInContext('Climate',ctx), thr=(CLI.regimeThreshold!=null)?CLI.regimeThreshold:0.5;
+    const subOnly=(k)=>{ const bs=BA.filter(b=>G.simulation._biomeTakes(b,k,!!(PT[k]&&PT[k].disturbanceRecruit)));
+      return bs.length>0 && bs.every(b=>b.key==='subalpine'); };
+    const subGoals=realBook.filter(gl=>!gl.off && gl.answer.every(subOnly));
+    const dates=new Set(subGoals.map(gl=>gl.fromYearsBP));
+    chk(subGoals.length>=3, `the book's subalpine-only goals are found (${subGoals.map(gl=>gl.id).join(', ')})`);
+    chk(dates.size===1 && [...dates][0]!=null && [...dates][0]<1000000,
+        `every subalpine-only goal waits for the ranges, on one shared date (${[...dates].join(', ')})`);
+    const from=[...dates][0];
+    let yOld=null; for(let y=990000; y>from; y-=1000) if(CLI.glacialIndexAt(y)>=thr){ yOld=y; break; }
+    chk(yOld!=null, `the window has a glacial before the subalpine date (${yOld})`);
+    if(yOld!=null){
+      DT.seekTo(yOld); TGL.list=subGoals.concat([gHara]); TG.reset(); tick();
+      const liveOld=TG.liveGoals(G, TG.glacialNow(), DT.yearsBP).filter(gl=>subGoals.includes(gl));
+      chk(TG.glacialNow() && G.simulation.hasHabitat('dracophyllum',TGL.minHabitatCells) && liveOld.length===0 && TG.live()===gHara,
+          `at ${yOld/1000} ka, with a subalpine belt, the subalpine-only goals stay dark (live: ${liveOld.map(gl=>gl.id).join(', ')||'none'})`);
+    }
+    DT.seekTo(30000); TG.reset(); tick();
+    const liveLate=TG.liveGoals(G, TG.glacialNow(), DT.yearsBP).filter(gl=>subGoals.includes(gl));
+    chk(liveLate.length===subGoals.length,
+        `at 30 ka the subalpine-only goals are live (${liveLate.map(gl=>gl.id).join(', ')})`);
+  }
+  BM.set(savedBM);
+  seat(30000);                              // the rest of this section runs on the 30 ka land, as before
+
+  // 3b. A FRESH GOAL PAST A GLACIAL TURN (decided 2026-11-02): the time dial or a deep burst carrying
+  //     the clock across a glacial/interglacial turn draws a new goal. A turn with the clock not
+  //     fast-forwarding, or under a boost's own time-lapse, keeps a goal that is still live.
+  {
+    const gN1={ id:'t-n1', group:'moa', prompt:'P-n1', cond:'c', answer:['flax'] };
+    const gN2={ id:'t-n2', group:'moa', prompt:'P-n2', cond:'c', answer:['flax'] };   // harakeke: live in either climate
+    const warmY=122000, coldY=150000, d0=DT.dialStep;
+    TGL.list=[gN1,gN2]; DT.dialSet(0); DT._dialRate=0; DT.seekTo(warmY); TG.reset(); tick();
+    chk(!TG.glacialNow() && TG.live()===gN1, `fresh goal: the interglacial draws the first (live: ${TG.live()&&TG.live().id})`);
+    DT.dialSet(12); DT._dialRate=DT.dialTargetRate(12); DT.yearsBP=coldY; tick();
+    chk(TG.glacialNow() && TG.live()===gN2, `fresh goal: the dial carrying the clock into a glacial draws a new goal (live: ${TG.live()&&TG.live().id})`);
+    DT.dialSet(0); DT._dialRate=0; DT.yearsBP=warmY; tick();
+    chk(TG.live()===gN2, `fresh goal: a turn with the clock not fast-forwarding keeps the live goal (live: ${TG.live()&&TG.live().id})`);
+    DT.yearsBP=coldY; tick(); DT.beginTimelapse(warmY); DT.yearsBP=warmY+1; tick();
+    chk(DT.isTimelapsing() && !TG.glacialNow() && TG.live()===gN2,
+        `fresh goal: a boost's time-lapse across the turn keeps the goal (its verdict decides) (live: ${TG.live()&&TG.live().id})`);
+    DT.endTimelapse(); DT.yearsBP=warmY; tick();
+    DT.pressDeep(); DT.yearsBP=coldY; tick();
+    chk(TG.live()===gN1, `fresh goal: a deep burst across a turn draws anew too (live: ${TG.live()&&TG.live().id})`);
+    DT._deepUntil=0; DT.dialSet(d0); DT._dialRate=0; DT.seekTo(30000); TG.reset(); tick();
+  }
   TGL.list=[gLate]; TG.reset(); tick();
   chk(TG.live()===gLate, `a fromYearsBP goal is live once the clock is younger than its opening (live: ${TG.live()&&TG.live().id})`);
   const gWarm={ id:'t-warm', group:'forest', prompt:'P-warm', cond:'c', answer:['tawa'] };
@@ -2629,7 +2858,7 @@ try{
 }
 
 // ---- 3/4 projection: pure module, round-trip, no CONFIG writeback -----
-// Plan-oblique paint (md/TEMANAWA_34VIEW_PLAN.md §2, §9). The module is pure so
+// Plan-oblique paint (md/archive/TEMANAWA_34VIEW_PLAN.md §2, §9). The module is pure so
 // most of this needs no sketch; the live-state checks confirm the game
 // configured it from the level and never leaked K/LIFT onto CONFIG.
 {
@@ -2701,7 +2930,7 @@ try{
 // ---- look-dev tools: LOOK toggles + in-place re-bake --------------------
 // Every illustration move must be a LOOK on/off toggle, must bake cleanly when
 // switched off (the "isolate one move" workflow), and rebakeTerrain() must
-// re-bake in place — no reseed, no ecosystem reset (md/TEMANAWA_34VIEW_PLAN.md §7).
+// re-bake in place — no reseed, no ecosystem reset (md/archive/TEMANAWA_34VIEW_PLAN.md §7).
 {
   const L = vm.runInContext('LOOK', ctx);
   const G = vm.runInContext('game', ctx);
@@ -3580,11 +3809,17 @@ try{
   chk(TG.estuaryStrength(122000) > 0 && TG.estuaryStrength(140000) === 0, 'the estuary is present at a highstand and absent in a full glacial');
   if (GEO && G.terrain._geoCache) {
     const T = G.terrain;
+    // The mean of the highest 1% of sampled cells, not a count above a fixed 0.6: this harness's
+    // white-noise land peaks near 0.65, so a count above 0.6 was often 0 -> 0 and failed on a coin flip
+    // (2 of 6 runs on 2026-11-02). The base noise is cached across the two morphs, so the crests can
+    // only differ by the deep-time uplift.
+    const topMean = (h) => { const s = []; for (let i = 0; i < h.length; i += 53) s.push(h[i]); s.sort((x, y) => y - x);
+      const n = Math.max(1, Math.floor(s.length / 100)); let t = 0; for (let i = 0; i < n; i++) t += s[i]; return t / n; };
     T.morphTo(vm.runInContext('DeepTime.yearsStart', ctx), 1);   // p=0 — ranges nascent
-    let lo = 0; const a = T.heightMap; for (let i = 0; i < a.length; i += 53) if (a[i] > 0.6) lo++;
+    const lo = topMean(T.heightMap);
     T.morphTo(vm.runInContext('DeepTime.yearsEnd', ctx), 1);      // p=1 — ranges mature
-    let hi = 0; const b = T.heightMap; for (let i = 0; i < b.length; i += 53) if (b[i] > 0.6) hi++;
-    chk(hi > lo, `ranges rise with deep time — high-ground cells ${lo} -> ${hi}`);
+    const hi = topMean(T.heightMap);
+    chk(hi > lo, `ranges rise with deep time — mean of the highest 1% ${lo.toFixed(3)} -> ${hi.toFixed(3)}`);
     chk(!!T._geoCache, 'the geo field is cached (morph re-applies the deep-time factors only)');
 
     // The early west breathes: count land cells west of the ranges (u < 0.45) at an early highstand,

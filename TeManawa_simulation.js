@@ -398,7 +398,7 @@ class Simulation {
     // The 3/4 squash (Projection.K ≤ 1) packs more world rows onto the screen
     // vertically, so widen the bottom bound by 1/K — an over-inclusive box only
     // ever costs a few off-screen draws, never a visible pop-out. (LIFT headroom
-    // joins this once relief lands — md/TEMANAWA_34VIEW_PLAN.md §5 culling note.)
+    // joins this once relief lands — md/archive/TEMANAWA_34VIEW_PLAN.md §5 culling note.)
     const K = (typeof Projection !== 'undefined' && Projection.K) ? Projection.K : 1;
     this._viewLeft = 0;
     this._viewTop = 0;
@@ -2453,7 +2453,7 @@ class Simulation {
     // by pos.y ascending (far/north first), render in that order. The list is a
     // persistent array cleared each frame (never reallocated) and insertion sort
     // is ~O(n) on the near-sorted order frame to frame — no allocation in
-    // draw(). md/TEMANAWA_34VIEW_PLAN.md §5.
+    // draw(). md/archive/TEMANAWA_34VIEW_PLAN.md §5.
     const GM = 60;   // uniform cull margin (covers sprite extent + lift)
     const list = this._sortList || (this._sortList = []);
     list.length = 0;

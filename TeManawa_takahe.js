@@ -3,7 +3,7 @@
 // ------------------------------------------------------------
 // Porphyrio mantelli. A big flightless rail of the North Island, known here from
 // subfossil bones. It "borrows the living takahē's blue-green" for recognition
-// (md/TEMANAWA_FAUNA_POOL.md, md/TEMANAWA_FAUNA.md): a museum visitor reads a takahē,
+// (md/ecology/TEMANAWA_FAUNA_POOL.md, md/ecology/TEMANAWA_FAUNA.md): a museum visitor reads a takahē,
 // and the label teaches that this was its extinct northern cousin.
 //
 // CORRECTNESS TRAP (the docs call it out explicitly): the LIVING takahē

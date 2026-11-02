@@ -4,6 +4,15 @@ Architecture, performance budget and the full sprite manifest for
 **`TEMANAWA_PLAN_V3.md`**, which is the design spine. This document does not make design
 decisions — where the two disagree, the plan wins.
 
+> **Status update 2026-11-02** (final testing and handoff). Since the August reconcile below: the
+> engine is **45 project scripts** plus p5 and p5.sound; a **runtime atlas** packs every sprite at
+> setup (`TeManawa_spriteatlas.js`) and a DOM-stacked **WebGL** layer draws the cast by default
+> (`TeManawa_glbatch.js`); the `warp` clock shipped as a list of disturbances, so the four per-cell
+> fields in §2.2 are deferred, not the frontier; the install is **two screens** (§2.6). The keyboard
+> lockdown §3 described had never been built; it was built on 2026-11-02 with the other pre-handoff
+> kiosk fixes (`TEMANAWA_PLAN_V3.md` §14.1): `?dev=1` unlocks it. Audio is **off for opening and not
+> loaded** (decided 2026-11-02). The running install is documented in `TEMANAWA_OPERATIONS.md`.
+>
 > **Reconciled 2026-08-14** against the current codebase (the build Plan v3 describes).
 > Since the 2026-08-07 pass: re-pointed from v2.1 to v3; the module inventory is current
 > (now **31 engine scripts, ~715 kB** — `water`, `atlas`, `plant_defs`, `kereru`,
@@ -68,7 +77,12 @@ economy strip projected. Of the split trio above, **`plant_defs` (≈ the flora 
 `atlas` have landed**; the four-`Float32Array` `fields` / `disturb()` module (§2.2) has
 **not** — it is the frontier; `sketch.js` itself is scoped in `TEMANAWA_REORG.md` §4.
 
-### 2.2 The data model — the disturbance fields *(not built; the frontier)*
+### 2.2 The data model — the disturbance fields *(not built; deferred)*
+
+> **2026-11-02:** the `warp` local clock shipped as a small list of active disturbances
+> (`Simulation.disturb` / `warpAt`, decaying on real time; `TEMANAWA_PLAN_V3.md` §9), not as a
+> `Float32Array`. The `wet` / `open` / `bare` fields below remain unbuilt and are deferred; plants
+> still read `biome.plantTypes`.
 
 `heightMap` exists and morphs (§6). The four per-cell disturbance fields below are the
 **biggest unbuilt system** and the substrate for the aftermath that teaches (`PLAN_V3.md`
@@ -134,10 +148,14 @@ visible black screen every time the watchdog reloads. And the watchdog *will* re
   per animation, `N` frames left-to-right, **one `loadImage` per animation** — the boot-cost
   win at animation granularity. The *packed* five-atlas layout with a JSON frame map (one
   `loadImage` for a whole group) is the further step; no `sprites/*.json` frame map exists yet.
-- ✅ **Juvenile-moa load bug fixed** (was a live bug here). `TeManawa_entity_sprites.js`
-  now loads `moa_juvenile_walk_1..4.png` — which exist — with a real
-  `console.warn` failure callback instead of the silent `() => {}`. Juveniles no longer
-  fall through to adult art.
+- ✅ **A runtime atlas replaced the frame-map plan** (`TeManawa_spriteatlas.js`): at `setup()` every
+  loaded sprite PNG is packed into shared GPU pages (482 frames in one page at 0.5× in the harness)
+  and `image()` is wrapped so the cast draws from them transparently. The cold-boot cost is still one
+  `loadImage` per file; the win is binds and VRAM.
+- ✅ **Juvenile-moa load bug fixed** (was a live bug here). Juveniles now share the adult frames of
+  their species' art, drawn smaller (`TeManawa_moa.js` `updateAge`); the old
+  `moa_juvenile_walk_*.png` files are no longer loaded (`TEMANAWA_PLAN_V3.md` §14.4 lists them for
+  `_retired/`).
 
 ### 2.5 The runtime systems as built
 
@@ -152,9 +170,9 @@ and each has a design doc.
 | **Animated water** | `TeManawa_water.js` | Per-frame overlay of looping flow decals / eels / sea shimmer over the *baked* water (the bake is a static blit, so motion is a decal layer) |
 | **Glacial clock** | `TeManawa_seasons.js` | `SeasonManager` rebound off the season timer to `Climate.glacialIndexAt(yearsBP)`; `winterness` = glacial index; four buffers = four glacial stages; forest contraction (`forestBandByStage`) (`DEEPTIME_ECOLOGY_PLAN.md`) |
 | **Habitat health → saturation** | `Game._updateHabitatHealth`, `HEALTH` block | Derived `H = F × R` eased slowly; a `saturate()` filter on the **ground blit only**, gated off when healthy, photosensitivity-slewed (`INTERACTION_HEALTH_PLAN.md`) |
-| **Five buttons** | `TeManawa_hud.js` `BUTTONS` | Flag-plus-per-frame-read, no event bus: Deep Time · FOREST · TUSSOCK · STORM · ERUPTION |
+| **Five buttons** | `TeManawa_hud.js` `BUTTONS` | Flag-plus-per-frame-read: Deep Time · FOREST · TUSSOCK · STORM · ERUPTION. The baseline; on the wall the console drives the same handlers over the bus (§2.6) |
 | **Eruptions** | `DeepTime.ERUPTIONS`, `Game.applyEruptionAt`, `ashCover` | Four year-bound events; auto-fire on clock crossing; button ⑤ seeks/reverts between them; `ashCover` clears+regrows in three severity tiers (`PLAN_V3.md` §8) |
-| **Fauna** | `Boid` subclasses `Moa` / `EylesHarrier` / `Kereru` | Two-clock split (`behave` = warped dt, `update` = real dt); one `Egg` type by `offspringType`; **kererū `disperseSeed` is the only runtime plant growth**, cap-guarded (`FAUNA_IMPL.md`) |
+| **Fauna** | `Boid` subclasses `Moa` / `EylesHarrier` / `Kereru`, and seven subclasses of `Moa` and `Kereru` | Thirteen founded birds. Two-clock split (`behave` = warped dt, `update` = real dt; metabolism on the real clock); one `Egg` type by `offspringType`; **the flyers' `disperseSeed` is how the forest spreads on its own**, cap-guarded (boosts and plant homeostasis also add plants) (`FAUNA_IMPL.md`) |
 
 Everything here is keyed to `yearsBP` or the glacial index, reads at a glance, and is
 debug-gated where it would otherwise narrate.
@@ -201,7 +219,11 @@ browser. More robust than `--allow-file-access-from-files`, and it costs nothing
 --autoplay-policy=no-user-gesture-required --check-for-update-interval=31536000
 ```
 
-**Audio.** Do **not** rely on the autoplay flag alone — p5.sound runs on Web Audio and
+**Audio — off for opening, and not loaded** (decided 2026-11-02). `AudioManager.enabled` is
+`false`, and it gates loading as well as playback, so `preload()` decodes none of the 17 files. The
+guidance below stands if audio returns.
+
+Do **not** rely on the autoplay flag alone — p5.sound runs on Web Audio and
 the `AudioContext` can still start suspended. Carry a `resume()` on the first input of
 any kind, start silent and fade in, and make sure **nothing essential is conveyed by
 audio alone** (an accessibility rule from the v1 plan, still standing), so a
@@ -221,8 +243,14 @@ notifications and automatic updates. Assume the museum power-cycles the wall at 
 - A **scheduled reload at 03:00**. Blunt, and it defeats every slow leak you didn't find.
 
 **Input lockdown.** `touch-action: none`, `user-select: none`, `cursor: none`, context
-menu suppressed, pinch-zoom disabled, keys limited to `1`–`5` (the five buttons) so physical
-arcade microswitches map straight onto the existing handlers (`TeManawa_kiosk.js` does this).
+menu suppressed, pinch-zoom disabled, and keys limited to `1`–`5` and the time dial
+(`Kiosk.keyAllowed`) — `TeManawa_kiosk.js` does all of these. A blocked key still counts as presence.
+`?dev=1` on the URL unlocks every key for authoring. (Until 2026-11-02 this section claimed the key
+limit while the code had none; `MISTAKES.md`.)
+
+**Frame errors.** `draw()` catches its own exceptions: on the wall `Kiosk.frameError` logs, recovers
+and keeps the p5 loop alive (an uncaught throw would end it, leaving only the watchdog reload), and a
+burst of them hard-reloads; with `?dev` they throw as normal.
 
 **Display.** Call `pixelDensity(1)` explicitly. On a 4K panel p5 defaults to 2
 and **quadruples fill rate for no visible gain** — on its own this can be the difference
@@ -427,6 +455,12 @@ whole point is that it stays in memory:
 | Re-bake vegetation layer | see §5.4 | **5–10 ms amortised** |
 | **Total** | | **~10–25 ms** |
 
+> **Update 2026-11-02.** Idle and end-of-window now play the attract sequence and land on the bare
+> keep-terrain swap (`Kiosk.landAttract()` → `resetEcosystem()`), so the eruption-checkpoint reset
+> below runs only on error recovery. The harness still times `resetToAttract()`: **3.2–4.1 s** per
+> reset against a full `init()` of **7.6–8.5 s**. The open question at the end of this note is now
+> `TEMANAWA_PLAN_V3.md` §16.3.
+>
 > ✅ **Measured — and now two-tier.** `tools/bootcheck.js` times six consecutive soft
 > resets. When the reset **keeps the terrain**, it is still ~**20 ms**, against a full
 > `Game.init()` that is now **~6.8 s** in the harness (up from ~950 ms at Phase 1.5 as the
@@ -488,9 +522,9 @@ The load that actually costs, and the one the watchdog pays.
 |---|---|---|
 | `p5.js` | 5.4 MB unminified | ✅ **shipped:** `p5.min.js`, ~1.4 MB — saved ~4.0 MB and ~200–400 ms of parse |
 | `p5.sound.min.js` | 200 kB | unchanged |
-| Engine JS | **~715 kB across 31 scripts** — *grew* with the terrain/projection/ecology/dev-tools work, did not shrink to the projected ~250 kB | bundle to 1 file |
-| Sprites | 2.0 MB across **91 loose PNGs**, heading for 158 | **5 atlases** (no frame map exists yet) |
-| Audio | **6.5 MB across 17 mp3s, still all in `preload()`** | preload the ambient bed only; lazy-load the rest — **still outstanding** |
+| Engine JS | **45 project scripts** (was ~715 kB across 31 in August) — *grew* with the terrain/ecology/cast/console work | bundle to 1 file |
+| Sprites | hundreds of PNGs across per-species folders (the cast's multi-state art), plus the 42-frame 1080p ash cover, which loads lazily one frame at a time | packed into GPU pages at `setup()` by the runtime atlas; the load is still one request per file |
+| Audio | was 6.5 MB across 17 mp3s, all in `preload()` | ✅ **not loaded** while audio is off (2026-11-02) |
 | Fonts | 360 kB, 2 files | unchanged |
 
 **Estimated cold boot, local server, kiosk-class hardware:**
@@ -499,10 +533,9 @@ The load that actually costs, and the one the watchdog pays.
   sequential image requests, and 6.5 MB of audio decoded up front.
 - **After the four changes above: ~1.5–2.5 s.**
 
-`[BUILD]` The single highest-value change remaining is **preloading only the ambient
-audio bed**. 6.5 MB of mp3 decoded in `preload()` blocks the first frame, and fifteen of
-the seventeen clips are event sounds that aren't needed for several seconds. (The
-`p5.min.js` swap — previously second on this list — has shipped.)
+`[BUILD]` ✅ **The audio is no longer loaded** (2026-11-02: audio is off for opening), which was the
+single highest-value cold-boot change left: 6.5 MB of mp3 decoded in `preload()` used to block the
+first frame for sounds that never played. (The `p5.min.js` swap has shipped too.)
 
 **Show something in the first 200 ms.** Draw a static title card from a single small
 image before the main `preload()` resolves, so a watchdog reload reads as a transition
@@ -549,9 +582,10 @@ grid size and the bake interval, and guessing at it is how installations die on 
 ## 6. Terrain — how the morph reads
 
 The terrain model is the **SVG geography skeleton** (`TEMANAWA_GEOGRAPHY.md`, `PLAN_V3.md`
-§2), not the two-heightmap lerp this section originally analysed. It now morphs on **three**
-deep-time curves — uplift, incision, and **emergence** (a monotonic sea-plane lift that opens
-the run as a marine embayment; `DEEPTIME_ECOLOGY_PLAN.md` Axis A). Three conclusions from the
+§2), not the two-heightmap lerp this section originally analysed. It morphs on uplift and
+incision, under a **relative sea level in metres** that floods a baked shelf by contour and opens
+the run as a marine embayment (`TEMANAWA_COAST_PLAN.md`; the old monotonic sea-plane lift is
+retired). Three conclusions from the
 original analysis carried over and still hold:
 
 1. **The river is authored once, so antecedence is free.** A morph that changes elevation
@@ -579,7 +613,7 @@ visible jumps to events the visitor already sees (an eruption marker, a glacial 
 
 ---
 
-**Reference:** `TEMANAWA_PLAN_V3.md` (the spine) · `TEMANAWA_PEDAGOGY.md` (what it teaches, the
-road ahead) · `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` · `TEMANAWA_INTERACTION_HEALTH_PLAN.md` ·
-`TEMANAWA_FAUNA_IMPL.md` · `TEMANAWA_GEOGRAPHY.md` · `TEMANAWA_34VIEW_PLAN.md` · the ecology
-dives and `research/*.pdf` (the evidence base).
+**Reference:** `TEMANAWA_PLAN_V3.md` (the spine, and the road ahead in §14) ·
+`TEMANAWA_SECOND_SCREEN.md` · `TEMANAWA_OPERATIONS.md` · `TEMANAWA_FAUNA_IMPL.md` ·
+`TEMANAWA_GEOGRAPHY.md` · `TEMANAWA_COAST_PLAN.md` · the built plans in `md/archive/`, the ecology
+dives in `md/ecology/` and `research/*.pdf` (the evidence base).

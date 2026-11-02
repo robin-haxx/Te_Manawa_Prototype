@@ -127,6 +127,9 @@ const PlantGallery = {
   // (window blur mid-hold) can't strand the timer, and so the toggle fires
   // exactly when the 3 s mark is crossed rather than on release.
   tick() {
+    // The wall's lockdown: this polls the key directly, so it must ask Kiosk itself (handleKey's gate
+    // never sees a held key).
+    if (typeof Kiosk !== 'undefined' && Kiosk.keyAllowed && !Kiosk.keyAllowed('d')) return;
     const down = (typeof keyIsDown === 'function') && keyIsDown(this.KEY_D);
     if (!down) { this._downAt = null; this._holdConsumed = false; return; }
     if (this._downAt == null) { this._downAt = millis(); this._holdConsumed = false; }

@@ -73,7 +73,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     viewAreaGain: 1.25
   },
 
-  // 3/4 plan-oblique paint (md/TEMANAWA_34VIEW_PLAN.md). The SIMULATION stays
+  // 3/4 plan-oblique paint (md/archive/TEMANAWA_34VIEW_PLAN.md). The SIMULATION stays
   // top-down; this only tips the CAMERA.
   //   K        pitch squash — 1.0 is straight top-down, lower tilts further.
   //            Author 0.72-0.85 for the "slightly higher than Terra Nil" angle.
@@ -134,7 +134,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // needs a page reload to show up — it is not read per frame.
   // ==========================================================
   // `outlineColor` is the ink the illustration pass strokes along this biome's
-  // boundaries (md/TEMANAWA_34VIEW_PLAN.md §7) — it replaces contour lines as the
+  // boundaries (md/archive/TEMANAWA_34VIEW_PLAN.md §7) — it replaces contour lines as the
   // ground's linework. `contourColor` is now unused (contours retired) but kept
   // so nothing downstream that still reads it breaks.
   //
@@ -300,7 +300,7 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // flagged `openCountry`) favour lowland grassland/scrub/coast, and get a small
     // population lift while the visitor grows TUSSOCK in a GLACIAL — the matched cold
     // regime (Game._tussockFlush). It reads as "cold is busier, not emptier"
-    // (md/TEMANAWA_ECOLOGY_FAUNA.md). Bounded by the population caps below, so it is
+    // (md/ecology/TEMANAWA_ECOLOGY_FAUNA.md). Bounded by the population caps below, so it is
     // only ever a nudge. Wired in Moa.behave (hunger relief) + _resetAfterMating
     // (breeding cooldown); see TeManawa_goose.js.
     openCountryTussockBoost:      true,

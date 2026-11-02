@@ -488,7 +488,7 @@ frames.
   - If you use the phases, add Cowie, J. D. (1963). Dune-building phases in the Manawatu district,
     New Zealand. *New Zealand Journal of Geology and Geophysics*, *6*(2), 268–280.
     https://doi.org/10.1080/00288306.1963.10420083
-  - `md/TEMANAWA_ECOLOGY_COAST.md` §1–2.
+  - `md/ecology/TEMANAWA_ECOLOGY_COAST.md` §1–2.
 - **C20. Wetland paragraph.**
   - This paragraph came from my earlier notes, and it still needs its own citation. The
     levée → swamp → peat → avulsion chain and the Taonui basin phrase trace to Esler (1978).

@@ -8,7 +8,7 @@ differs in detail from that set). Exported 2026-10-28, after the cold-cover bake
 glacial stage, and only the frost wash said "cold". The live trees already retreated downhill
 with `LEVEL_MECHANICS.forestBandByStage`, but the ground under them stayed forest. Now each
 stage's bake opens the forest biomes above that stage's treeline into the glacial shrub–grassland
-the LGM pollen records (`md/TEMANAWA_ECOLOGY_OPEN.md` §4): grey scrub just above the line, olive
+the LGM pollen records (`md/ecology/TEMANAWA_ECOLOGY_OPEN.md` §4): grey scrub just above the line, olive
 tussock-scrub, tawny tussock toward the snow. Slopes facing SE, in the lee of the fixed NW wind,
 hold dark beech instead.
 

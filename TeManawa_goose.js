@@ -3,8 +3,8 @@
 // ------------------------------------------------------------
 // Cnemiornis gracilis. A heavy flightless goose of open grassland, scrub and
 // coast, and it is IN THE LOCAL BONES (the Te Ahu a Tūranga assemblage, returned to
-// the Ruahine; replicas at Te Manawa — md/TEMANAWA_ECOLOGY_FAUNA.md §2,
-// md/TEMANAWA_SPECIES_SUMMARY.md).
+// the Ruahine; replicas at Te Manawa — md/ecology/TEMANAWA_ECOLOGY_FAUNA.md §2,
+// md/archive/TEMANAWA_SPECIES_SUMMARY.md).
 // Its ecological job here is to make the COLD phase busier, not emptier: when the
 // forest contracts and the plains open out in a glacial, the large grazing birds
 // (this goose, the plains/coastal moa) come into their own.
@@ -27,7 +27,7 @@
 // also get a small population lift while the visitor grows TUSSOCK in a glacial,
 // the matched cold regime. That lift lives in the shared grazer code (Moa.behave /
 // _resetAfterMating, gated on Game._tussockFlush), not here, so it applies to the
-// flagged moa too. See md/TEMANAWA_ECOLOGY_FAUNA.md ("cold is busier").
+// flagged moa too. See md/ecology/TEMANAWA_ECOLOGY_FAUNA.md ("cold is busier").
 //
 // Art: dedicated sprite (sprites/Moa/Goose_Running_*.png), wired as the `goose`
 // entry in EntitySprites.MOA_VARIANT_SETS and selected via `spriteSet: 'goose'`:

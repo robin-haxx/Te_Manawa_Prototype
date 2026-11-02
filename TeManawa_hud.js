@@ -61,7 +61,7 @@ window.TM_TIME = TM_TIME;
 // (0 = tree fern, cold-sensitive → 1 = tussock, cold-hardy; PLANT_TYPES in sketch.js). The
 // FOREST button grows warm/forest cover (low tolerance), the TUSSOCK button grows cold-hardy
 // open country (high tolerance); mid-tolerance plants (e.g. flax 0.7) are neutral to both, so
-// neither press is a universal win. See md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §2.
+// neither press is a universal win. See md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md §2.
 const TM_GROW = { warmMax: 0.65, coldMin: 0.75, step: 0.02, seedCount: 6,   // seedCount: seedlings a press starts (Simulation.seedGrowth)
   // Kahikatea is NOT force-grown by the FOREST button (it's disturbance-governed — see
   // Plant.update). Instead the button ACCELERATES its lifecycle by this factor: a growing stand

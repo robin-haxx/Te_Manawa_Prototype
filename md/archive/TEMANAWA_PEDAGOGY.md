@@ -1,5 +1,11 @@
 # Te Manawa — what it teaches, and the road to a finished installation
 
+> **Archived 2026-11-02 — written 2026-09-20, before the touchscreen console, the full bird cast,
+> the plant goals and the attract sequence.** §1–2 (the teaching contract and what the wall teaches)
+> still read true for the land and climate; §3–6 (status and the road ahead) are superseded by
+> `TEMANAWA_PLAN_V3.md` §13–16. For the natural history the piece is built on, read
+> `TEMANAWA_NATURAL_HISTORY.md`.
+
 **What a visitor actually learns about the natural history of the Manawatū from the
 running build, and what is left to build to turn the prototype into an installed exhibit.**
 

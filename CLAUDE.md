@@ -1,15 +1,18 @@
 # Te Manawa — working notes
 
 **Avian Age: Te Manawa** — a standalone museum installation. An ambient top-down diorama
-of the Manawatū across ~1 Ma to 25.5 ka, on one screen, unattended, no operator, no
-network. Vanilla JavaScript on p5.js, classic scripts, no build step.
+of the Manawatū across ~1 Ma to 25.5 ka on a 4K wall, driven from a 1080p touchscreen
+console beside it; unattended, no operator, no network. Vanilla JavaScript on p5.js,
+classic scripts, no build step. Running the install: `md/TEMANAWA_OPERATIONS.md`.
 
 > **Governing principle** (`md/TEMANAWA_PLAN_V3.md` §0):
 > *This is a cartoon seen from above, not a survey of the Manawatū.*
 
 A fork of the Mauri engine, stripped of its economy. If something in the code looks like
-it belongs to a game — currency, goals, win states, a toolbar — it is residue, not
-design. See `md/TEMANAWA_REORG.md` §5.
+it belongs to a game — currency, win states, a toolbar, placeable items with costs — it is
+residue, not design (`md/archive/TEMANAWA_REORG.md` §5; the placeable path is still wired
+but nothing calls it). The plant goals (`TeManawa_goals.js`) are the exception: new design,
+a question a plant answers, not a score.
 
 ---
 
@@ -18,8 +21,16 @@ design. See `md/TEMANAWA_REORG.md` §5.
 `loadImage` from `file://` is blocked by Chrome's CORS policy, so it must be served:
 
 ```
-node tools/serve.js          # then open the printed 127.0.0.1 URL
+node tools/serve.js          # then open the printed 127.0.0.1 URL — add ?dev=1 to author
 ```
+
+**`?dev=1` is the authoring switch.** Without it the page behaves as the wall: only `1`–`5` and the
+time dial reach the game, and a `draw()` error is logged and recovered instead of thrown. With it,
+every authoring key works and a `draw()` error throws as normal. The harness runs with `?dev=1`.
+
+The touchscreen console is `/secondscreen/` on the same server; the two talk over
+`BroadcastChannel`, so open both in one browser profile. The install itself (windows, flags,
+recovery, what to deploy) is `md/TEMANAWA_OPERATIONS.md`.
 
 `node tools/serve.js 8093 --export` (dev only) also accepts `POST /__export?path=…` and writes the
 body under `exports/`. Load `tools/export_frames.js` in the page and call
@@ -49,11 +60,12 @@ than adding a test framework. If a section prints `FAILURES`, that is a real reg
 | Order | Document | Role |
 |---|---|---|
 | 1 | `md/TEMANAWA_PLAN_V3.md` | **The design spine.** Build Plan v3 — current design, phase status, road ahead. Where anything disagrees with it, it wins |
-| 2 | `md/TEMANAWA_BUILD_V3.md` | Architecture, performance budgets, the 158-asset manifest (technical companion) |
-| 3 | `md/TEMANAWA_TERRAIN_PLAN.md` | Terrain and morph pipeline detail |
-| 4 | `md/TEMANAWA_REORG.md` | Structural proposal — what to reorganise and in what order |
+| 2 | `md/TEMANAWA_BUILD_V3.md` | Architecture, performance budgets, the asset manifest (technical companion) |
+| 3 | `md/TEMANAWA_SECOND_SCREEN.md` | The interaction model: the console, the bus, the paused clock, the boost. Wins over the spine on interaction |
+| 4 | `md/TEMANAWA_GEOGRAPHY.md` | The terrain: SVG skeleton, elevation, the deep-time morph (the sea is `TEMANAWA_COAST_PLAN.md`) |
 
-`md/README.md` indexes the rest. `MISTAKES.md` (repo root) is the incident log
+`md/README.md` indexes the rest: live references in `md/`, the ecology research in
+`md/ecology/`, built and superseded plans in `md/archive/`. `MISTAKES.md` (repo root) is the incident log
 behind the rules below — what was tried, why it failed, and the rule that stops a
 repeat. Newest first; add to it when a mistake is worth not repeating.
 
@@ -64,34 +76,48 @@ repeat. Newest first; add to it when a mistake is worth not repeating.
 ```
 index.html                 script load order — it is hand-ordered and it matters
 TeManawa_kiosk.js          watchdog, idle/attract, soft reset, error ring buffer
-TeManawa_audio.js          ambient bed + event sounds
+TeManawa_audio.js          ambient bed + event sounds — off for opening: enabled=false gates loading and playback
 TeManawa_registry.js       species/plant/biome/placeable registry + validation
 TeManawa_spatial.js        spatial hash grids
-TeManawa_simulation.js     the world: entity lists, update/render loops, spawning
+TeManawa_simulation.js     the world: entity lists, update/render loops, spawning, disturb()/warpAt
+TeManawa_plant_defs.js     the flora table (coldTolerance 0 = tree-fern-sensitive → 1 = tussock-hardy)
 TeManawa_species_data.js   MOA_SPECIES, EAGLE_SPECIES
 TeManawa_entity_sprites.js SpriteAngle, ArtMode, ART_SETS, EntitySprites
-TeManawa_outline.js        live fauna outline (PROTOTYPE: bush moa + kererū) — recolours the baked border, 1 quad/creature
 geo/manawatu.geo.js        SVG-authored geography skeleton (ranges + river) — see TEMANAWA_GEOGRAPHY.md
 TeManawa_terrain.js        TerrainGenerator — geo skeleton, noise, biome classify, 3/4 relief bake, LOOK look-dev
 TeManawa_projection.js     plan-oblique 3/4 projection — pure, p5-free (like climate.js)
-TeManawa_seasons.js        SeasonManager
+TeManawa_seasons.js        SeasonManager — the glacial clock (four buffers = four glacial stages)
+TeManawa_atlas.js          SpriteStrips: one strip PNG per animation (water decals, wind gusts)
+TeManawa_water.js          WaterLayer: river flow decals, eels/fish, sea shimmer over the baked water
 TeManawa_boid.js           steering base class
-TeManawa_moa.js  _eagle.js  _egg.js  _plant.js  _placeable.js
-TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored
-TeManawa_time.js           DeepTime — yearsBP is the authoritative clock
+TeManawa_moa.js            Moa — the grazer guild's base class; these extend it:
+  _goose.js  _takahe.js  _kiwi.js  _finsch_duck.js
+TeManawa_eagle.js          EylesHarrier (kērangi); the base-type key stays 'eagle'
+TeManawa_kereru.js         Kereru — the flighted engine and seed disperser; these extend it:
+  _kokako.js  _huia.js  _tui.js (tūī extends kōkako)
+TeManawa_egg.js  _plant.js  _placeable.js   (placeable: only placeableSprites is live)
+TeManawa_outline.js        live fauna outline (PROTOTYPE: bush moa + kererū) — recolours the baked border, 1 quad/creature
+TeManawa_spriteatlas.js    runtime texture atlas: packs every loaded sprite at setup(), wraps image()
+TeManawa_glbatch.js        the default WebGL entity layer (DOM-stacked); falls back to 2D
+TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored; SEA_ANCHORS
+TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the time dial
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) — pure, p5-free
-TeManawa_hud.js            InstallHUD: timeline, four buttons, storm/ash FX
+TeManawa_hud.js            InstallHUD: timeline, visitor year/goal, the five buttons (debug), storm/ash/wind FX
 TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
 TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only attract sequence (idle + end-of-window), its own clock, the names of the time — see TEMANAWA_PALAEO_ATTRACT.md
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
+TeManawa_plant_debug.js    plant sprite gallery (hold D 3 s)
 TeManawa_UI.js             thin host; delegates to InstallHUD
 TeManawa_level_format.js   level schema + resolution
-levels/                    level definitions
+levels/                    level definitions — the scaffold carries the ground look, caps and ecology knobs
 TeManawa_devtools.js       LOOK / GEN console dev tools (B/G/N) — see TEMANAWA_DEVTOOLS.md
-TeManawa_sketch.js         CONFIG, Game, and the p5 entry points (see REORG §4)
-tools/                     serve.js, bootcheck.js, svg2geo.js
+TeManawa_sketch.js         CONFIG, Game, and the p5 entry points
+TeManawa_bus.js            the console bus (BroadcastChannel 'temanawa'): intents in, telemetry out — loads after sketch.js
+secondscreen/              the touchscreen console page (static DOM) — see secondscreen/README.md
+tools/                     serve.js, bootcheck.js, svg2geo.js, export_frames.js, outline_plants.js, shot.js
 geo/                       manawatu.svg (authored) + manawatu.geo.js (emitted)
-md/                         design, build and research docs — start at md/README.md
+md/                        live docs — start at md/README.md; md/ecology/ research, md/archive/ built plans
+exports/                   terrain snapshot sets (dev reference, not needed on the wall)
 sprites/  audio/  typefaces/  research/
 ```
 
@@ -104,7 +130,8 @@ sprites/  audio/  typefaces/  research/
 - `goals.js` **before** `hud.js` and `bus.js` — the HUD draws its line, the bus judges each boost
 - `hud.js` **before** `UI.js` — `UI.js` reads `InstallHUD.TOP_H`
 - `outline.js` **before** `spriteatlas.js` — `setup()` builds the border masks before the atlas packs them beside their sprites
-- `sketch.js` **last** — it owns `setup()` and `draw()`
+- `sketch.js` **last** of the engine — it owns `setup()` and `draw()`; only `bus.js` follows it,
+  because it reaches for `game`, `InstallHUD` and `DeepTime`
 
 `tools/bootcheck.js` derives its load order by parsing `index.html`, so a wrong order
 fails the harness immediately rather than in a browser.
@@ -121,7 +148,7 @@ group = plants | fauna | terrain | fx | ui
 ```
 
 Existing files predate this and are mixed (`Beech_Mature.png`, `moa_walk_1.png`,
-`LB_moa_walk_01.png`). New art follows the rule; see `md/TEMANAWA_REORG.md` §3.2.
+`LB_moa_walk_01.png`). New art follows the rule; see `md/archive/TEMANAWA_REORG.md` §3.2.
 Retired art goes to `sprites/_retired/`, it is not deleted.
 
 **Never pass `() => {}` as a `loadImage` failure callback.** A silent failure to load
@@ -170,7 +197,7 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 | Live fauna | ≤ 300 |
 | `image()` calls per frame | ≤ 1,500 |
 | `pixelDensity` | **1** — never raise it; use `CONFIG.spriteSupersample` instead (below) |
-| Soft reset | **10–25 ms** (measured 17–31). A reset must never touch the network |
+| Soft reset | the attract landing (`resetEcosystem()`): **10–25 ms** budget (17–31 when last measured). A reset must never touch the network |
 | Photosensitivity | ≤ 3 luminance transitions/sec; large changes ramped ≥ 500 ms |
 
 `CONFIG.mapGrid` is a **cell budget**, not a width — both terrain footprint modes spend
@@ -193,20 +220,22 @@ pixels, so `mousePressed`/`mouseReleased` divide by `SS`. See `Game._composeTerr
 
 | | Soft reset | Hard reload |
 |---|---|---|
-| Trigger | idle, end-of-window, error recovery | watchdog stall, crash, nightly 03:00 |
-| Path | `Kiosk.resetToAttract()` → `Game.resetEcosystem()` | `location.reload()` |
-| Cost | **17–31 ms** | 1.5–2.5 s |
+| Trigger | the attract landing (idle, end-of-window); error recovery | watchdog stall, crash, nightly 03:00 |
+| Path | landing: `Kiosk.landAttract()` → `Game.resetEcosystem()` · recovery: `Kiosk.resetToAttract()` → `Game.applyEruptionAt()` (a terrain morph) | `location.reload()` |
+| Cost | landing **17–31 ms** (last measured) · recovery ~1.2 s browser, 3.2–4.1 s harness | several seconds: preload plus a full `init()` |
 | Frequency | hundreds a day | ideally once a day |
 
-`Game.init()` is the expensive one (several seconds — ~6.8 s in the harness; the terrain bake is
-heavy) because it regenerates terrain noise over every cell and bakes four season buffers.
+The harness's "soft resets" line times `resetToAttract()`, the recovery path, so it reads in seconds.
+
+`Game.init()` is the expensive one (several seconds — 7.6–8.5 s in the harness on 2026-11-02; the
+terrain bake is heavy) because it regenerates terrain noise over every cell and bakes four season buffers.
 `resetEcosystem()` keeps the terrain and replaces only the living world. Every 12th reset reseeds the land via `init()` so it varies across a
 day. **Nothing on the visitor path may call `init()`.**
 
 **The attract itself is a sequence, not a swap** (`TeManawa_palaeo.js`, `md/TEMANAWA_PALAEO_ATTRACT.md`).
 Idle and end-of-window call `Palaeo.begin()`: a ≥ 500 ms dip to dark, the land re-baked to 4 Ma under it
-(the every-12th `init()` reseed happens here, under the dark, with the heartbeat stamped), then ~70 s of
-the land alone — the Wanganui Basin, the basement finger, the Manawatū Strait opening and closing, the
+(the every-12th `init()` reseed happens here, under the dark, with the heartbeat stamped), then about
+4 minutes of the land alone (`TM_PALAEO.kyrPerSec` plus the holds) — the Whanganui Basin, the basement finger, the Manawatū Strait opening and closing, the
 ranges — through the terrain's own sliced morph at pre-window dates, paced so no swap ever lands under a
 live crossfade (`terrain._morphCuts` must stay 0), and a second dip into `Kiosk.landAttract()` →
 `resetEcosystem()` on the 1 Ma land. DeepTime stays parked throughout (it cannot represent 4 Ma); the
@@ -218,15 +247,19 @@ skips to the landing. The **error-recovery path never runs it**: a recovery is t
 
 ## Authoring keys
 
-Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
+**Locked on the wall: open the page with `?dev=1` to use them.** Without it `Kiosk.keyAllowed` lets
+through only `1`–`5` and the time dial; any other key is presence only (it restarts the idle timer and
+skips a running attract). Anything that polls a key itself must ask `Kiosk.keyAllowed` too, as
+`PlantGallery.tick` does (`MISTAKES.md`).
 
 | Key | |
 |---|---|
-| `1`–`5` | The five visitor buttons (deep time, FOREST growth, TUSSOCK growth, storm, eruption) — FOREST helps in the interglacial, TUSSOCK in the glacial; the wrong one for the climate desaturates the scene |
+| `1`–`5` | The five baseline buttons (deep time, FOREST growth, TUSSOCK growth, storm, eruption) — FOREST helps in the interglacial, TUSSOCK in the glacial; the wrong one for the climate desaturates the scene. On the wall the console does this |
 | `]` / `[` / `\` | **Time dial** (macro-pad encoder: CW / CCW / push) — a standing fast-forward over 30 detents, 0 (geology paused) → 5,000 yr/s (the whole window in ~3¼ min), power-curve so the low end is fine. The rate eases (0.6 s), a boost timelapse never runs slower than it, and the detent survives soft resets. The mouse wheel turns it too. Works in the sim window and the console (relayed over the bus as `{type:'dial'}`). Keys in `DeepTime.DIAL_KEYS` + `secondscreen/input.js` |
-| `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
+| `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON. Hold `D` 3 s for the plant sprite gallery |
+| `R` / `C` | The range-authoring overlay (footprints + spine axes) / the climate-affinity tint on the cast |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` — **debug overlay on only** (a full synchronous rebuild) |
-| `P` | Play the attract sequence now (the land before the window, 4 Ma → 1 Ma), any time. While it runs the **time dial** (`]` / `[` / `\`, the wheel, the console's dial) is the sequence's: faster / slower through a pause into **reverse**, push = ×1 forward; any other key skips to the landing. Slowed to ≤ 5 kyr/s the pre-window sea breathes a 41-kyr cycle. Not reachable on the wall (keys locked to `1`–`5`), where it comes from the idle timer and the end of the window |
+| `P` | Play the attract sequence now (the land before the window, 4 Ma → 1 Ma), any time. While it runs the **time dial** (`]` / `[` / `\`, the wheel, the console's dial) is the sequence's: faster / slower through a pause into **reverse**, push = ×1 forward; any other key skips to the landing. Slowed to ≤ 5 kyr/s the pre-window sea breathes a 41-kyr cycle. On the wall the sequence comes from the idle timer and the end of the window |
 | `B` / `G` / `N` | Dev tools **(debug overlay on only)**: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. Each is a ~5 s synchronous terrain bake, so they are gated behind `Debug.enabled` — a stray `B` no longer freezes the sim (and no longer collides with the second screen's `b`=boost). See `md/TEMANAWA_DEVTOOLS.md` |
 | `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
@@ -235,27 +268,37 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 
 ## Current phase
 
-The build runs ahead of the old phase ledger — see `md/TEMANAWA_PLAN_V3.md` §13 for the honest
-status. Done or substantially built: the terrain (SVG skeleton + uplift/incision/emergence morph +
-3/4 cel look + water layer), the glacial-cycle climate to 1 Ma, forest contraction, the four
-eruptions, the **five buttons**, habitat health, the kererū dispersal loop, and the **second-screen
-interaction overhaul** (a 1080p touchscreen console over a `BroadcastChannel` bus — geology paused
-until a boost, per-species boost, ramped timelapse to the next glacial/interglacial; built and
-harness-green — see `md/TEMANAWA_SECOND_SCREEN.md`). The **frontier** is
-four things: the **fauna cast** turning on (the scaffold now founds an 8-species grazer-guild mix — 4
-**North Island** moa (giant `Dinornis`, little bush `Anomalopteryx`, Mantell's `Pachyornis` and the
-stout-legged `Euryapteryx`, on the three moa sprites; the South Island upland and heavy-footed moa
-are defined but not founded) + the North Island goose `Cnemiornis` + the mōho / NI takahē `Porphyrio mantelli` + the North Island
-brown kiwi `Apteryx mantelli` + Finsch's duck `Chenonetta finschi`, all moa-guild birds on dedicated
-multi-state art, plus four flighted forest birds — kererū, kōkako, huia and the tūī `Prosthemadera`
-(a strong-flying nectar-feeder that reuses the kōkako's song/territory). The goose/mōho/duck make
-the cold phase busier; the kiwi is the warm-phase forest counterweight, and its quirk — soil-turning —
-gently heals the forest floor where it forages, closing the forest loop with the kererū. Every second-screen
-plant adds one bird, and every founded bird is on one or two plants — `md/TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6), the
-**flora art** (~113 assets — all fauna run on placeholder art), the **disturbance clocks** (`disturb()`
-+ `warp`, not yet built), and the **interaction tuning**. `CONFIG.mapGrid` is still 512 (can now drop).
-Newest (2026-11-01): **the land before the window** — the idle / end-of-window attract is now a
-land-only sequence from 4 Ma to the 1 Ma opening, driven through the terrain's dated geology extended
-before the window (`GEO_EPOCHS.palaeo*`), with the names of the time (`md/TEMANAWA_PALAEO_ATTRACT.md`).
-Its tunables (`TM_PALAEO`: pacing, holds, notes, the basin's spelling) and the look of the pre-window
-land (`LOOK.palaeo*`) are the open co-design items.
+**Final testing and handoff.** The honest status is `md/TEMANAWA_PLAN_V3.md` §13; what is left is §14.
+Built: the terrain (SVG skeleton, uplift/incision morph, the sea-level coast, 3/4 cel look, water layer,
+river names), the glacial-cycle climate to 1 Ma with cold cover, the four eruptions, habitat health, the
+disturbance clocks (`disturb()` + `warpAt`, the wetland bloom, kahikatea river recruitment), the
+**second-screen console** (`md/TEMANAWA_SECOND_SCREEN.md`), the plant goals, the time dial, and the
+attract sequence (**the land before the window**, `md/TEMANAWA_PALAEO_ATTRACT.md`).
+
+**The cast** — thirteen North Island birds on dedicated multi-state art: 4 North Island moa (giant
+`Dinornis`, little bush `Anomalopteryx`, Mantell's `Pachyornis` and the stout-legged `Euryapteryx`,
+on the three moa sprites; the South Island upland and heavy-footed moa are defined but not founded),
+the North Island goose `Cnemiornis`, the mōho / NI takahē `Porphyrio mantelli`, the North Island
+brown kiwi `Apteryx mantelli` and Finsch's duck `Chenonetta finschi` (all moa-guild birds); Eyles'
+harrier; and four flighted forest birds — kererū, kōkako, huia and the tūī `Prosthemadera`. The
+goose/mōho/duck make the cold phase busier; the kiwi is the warm-phase counterweight, and its
+soil-turning gently heals the forest floor. Every second-screen plant adds one bird, and every founded
+bird is on one or two plants (`md/TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6).
+
+**Kiosk fixes landed 2026-11-02** (PLAN §14.1, harness "kiosk hardening"): the 03:00 reload no longer
+re-fires from its own boot; keys are locked to the wall set unless `?dev`; a `draw()` error is caught
+and recovered, so the p5 loop survives; a recovery aborts a running attract; the console page has its
+own layer (`secondscreen/kiosk.js`); `serve.js` survives a malformed URL; audio is not loaded.
+
+**Built 2026-11-02** (PLAN §14.2): the eruption aftermath covers **one boost/goal cycle**
+(`DeepTime.AFTERMATH` — the ash no longer waits on sim-years that never pass while geology is paused);
+and a **fresh goal** is drawn when the dial or a deep burst carries the clock across a glacial turn.
+The harness's plant-goals failure was its white-noise terrain (the ranges barely rise there); that test
+now stages the habitat.
+
+**The harness's terrain is not the real terrain.** `noise` is `Math.random()` there, so its ranges
+peak near 0.65 at every date while the real build reaches ~0.88. Test logic that needs a landform
+(a habitat, a band) by staging it, not by trusting the noise (`MISTAKES.md`).
+
+Open co-design items: `TM_PALAEO` pacing and notes, the look of the pre-window land (`LOOK.palaeo*`),
+the live outline prototype, `CONFIG.mapGrid` (still 512), and the interpretation layer (PLAN §16).

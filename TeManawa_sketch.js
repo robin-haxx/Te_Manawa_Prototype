@@ -49,8 +49,7 @@ let currentFPS = 60;
 // Art-move status: the dedicated per-species folders (sprites/<Species>/) are the
 // incoming look. As each lands it is wired here `single` — one frame for every
 // state — until its full state set is drawn. See md/TEMANAWA_BUILD_V3.md §4.1.
-// Species with a folder but no sim plant type yet (Manuka, Kahikatea, Nikau, Tawa,
-// CabbageTree, Epiphytes) are art-in-hand only; they wire up when the type does.
+// Every plant type the habitats place has a set below; Epiphytes is art-in-hand only.
 const PLANT_SPRITE_SETS = {
   // Dedicated-folder art, one frame standing in for every state (single). The
   // old root Tussock_/Flax_/Fern_ state files are superseded and left in place.
@@ -435,7 +434,7 @@ const CONFIG = {
                               //   full detail but makes each morph bake ~2.25x pricier (MORE stutter). Neither
                               //   the machine-independent transfer cost changes here. The zero-compromise
                               //   stutter cut is structural: bake only the visible glacial phase per morph, not
-                              //   all four — see md/TEMANAWA_TERRAIN_PLAN.md.
+                              //   all four — see md/archive/TEMANAWA_TERRAIN_PLAN.md.
   morphBudgetMs: 3,           // per-frame time slice for the incremental re-bake (60fps frame = 16.6ms)
   morphFadeMs: 600,           // crossfade for the on-screen buffer swap (floored at 500ms — photosensitivity)
 
@@ -843,7 +842,7 @@ function initPlaceableColors() {
 // A single scene-wide scalar (Game._habitatHealth, 0..1) drives how saturated the GROUND
 // looks: a healthy habitat shows its full authored colour; a mismanaged one quietly drains
 // toward SAT_FLOOR (never full grey — museum-ambient, not alarming). See
-// md/TEMANAWA_INTERACTION_HEALTH_PLAN.md. Authored here so weights live in ONE place.
+// md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md. Authored here so weights live in ONE place.
 //
 // The health target combines an ASH-disturbance term (1 − _ashCover; an eruption greys the
 // ground, it recovers as the ash decays) with a REGIME-FIT term (step 2 — the split FOREST /
@@ -1154,9 +1153,11 @@ class Game {
     // Eruption ash state (disturb/regen, plan §2.1). A fresh living world carries no ash;
     // applyAsh() arms it after a rebuild when an eruption is being shown.
     this._ashCover = 0; this._ashFromYear = 0; this._ashDecayYears = 1; this._ashTier = null;
+    this._ashArmedMs = 0; this._ashCycleMs = 0;              // the aftermath's real-time span (updateAshCover)
+    this._ashTlSeen = false; this._ashTlFrom = 0; this._ashTlCover0 = 0;   // a boost begun in the aftermath
     this._ashCloudUntil = 0; this._ashCloudMode = 'tap';   // eruption sprite cover (InstallHUD.renderAshCloud)
 
-    // Habitat-health readout (md/TEMANAWA_INTERACTION_HEALTH_PLAN.md). A fresh world starts
+    // Habitat-health readout (md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md). A fresh world starts
     // healthy and fully saturated; the signal follows ash + regime-fit, so an undisturbed,
     // well-managed world stays at full colour. Soft resets keep these (they ease on their
     // own), so only the full init() reseeds them.
@@ -1346,6 +1347,12 @@ class Game {
     this._ashFromYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
     this._ashDecayYears = tier.decayYears || 18000;
     this._ashTier = eruption ? eruption.tier : 'major';
+    // The aftermath covers one boost/goal cycle (DeepTime.AFTERMATH): its span is the time a boost
+    // from here would take to the next glacial/interglacial. Re-armed on every eruption, so the boost
+    // an eruption stopped short starts nothing; the visitor's next one does.
+    this._ashArmedMs = (typeof millis === 'function') ? millis() : 0;
+    this._ashCycleMs = (typeof DeepTime !== 'undefined' && DeepTime.aftermathMs) ? DeepTime.aftermathMs(this._ashFromYear) : 0;
+    this._ashTlSeen = false; this._ashTlFrom = 0; this._ashTlCover0 = 0;
     const plants = this.simulation && this.simulation.plants;
     if (plants) {
       const PT = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
@@ -1441,14 +1448,36 @@ class Game {
     }
   }
 
-  // Ash clears over decayYears of SIM time (yearsBP falls as the run plays), so the land
-  // greens back on its own. Called each frame from update().
+  // THE AFTERMATH: the ash runs out over one boost/goal cycle (DeepTime.AFTERMATH). Three clocks,
+  // the fastest wins, and the cover never comes back:
+  //   · real time over _ashCycleMs (the span one boost from the eruption year takes), so an
+  //     unattended wall clears too — unless AFTERMATH.idleClears is off;
+  //   · a boost begun in the aftermath: the cover left when it began runs out with its time-lapse,
+  //     and is gone when it lands;
+  //   · sim-years over decayYears, when the dial or a deep burst plays the clock (not under a boost,
+  //     whose own clock governs).
+  // Keyed to sim-years alone, ash never cleared while geology was paused, the default since the
+  // second screen, so a visitor's eruption left the wall grey (MISTAKES.md). Called each frame from
+  // update(); allocation-free.
   updateAshCover() {
-    if (this._ashCover > 0 && typeof DeepTime !== 'undefined' && this._ashDecayYears > 0) {
-      const elapsed = this._ashFromYear - DeepTime.yearsBP;      // yearsBP decreases as time runs
-      const t = elapsed / this._ashDecayYears;
-      this._ashCover = t >= 1 ? 0 : (t < 0 ? this._ashCover : 1 - t);
+    if (!(this._ashCover > 0) || typeof DeepTime === 'undefined') return;
+    let a = this._ashCover;
+    const A = DeepTime.AFTERMATH || {};
+    const now = (typeof millis === 'function') ? millis() : 0;
+    if (A.idleClears !== false && this._ashCycleMs > 0)
+      a = Math.min(a, 1 - (now - this._ashArmedMs) / this._ashCycleMs);
+    if (DeepTime.isTimelapsing()) {
+      if (!this._ashTlSeen || this._ashTlFrom !== DeepTime._tlFrom) {   // a boost began: run out what is left
+        this._ashTlSeen = true; this._ashTlFrom = DeepTime._tlFrom; this._ashTlCover0 = a;
+      }
+      a = Math.min(a, this._ashTlCover0 * (1 - DeepTime.timelapseProgress()));
+    } else if (this._ashTlSeen) {
+      a = 0;                                                            // the boost landed: the cycle is over
+    } else if (this._ashDecayYears > 0) {
+      const t = (this._ashFromYear - DeepTime.yearsBP) / this._ashDecayYears;   // yearsBP falls as time runs
+      if (t > 0) a = Math.min(a, 1 - t);
     }
+    this._ashCover = a > 0 ? a : 0;
   }
 
   // SAND FLUX model (TEMANAWA_ECOLOGY_COAST.md §10A/§10D) — pure, so tools/bootcheck.js can
@@ -1619,7 +1648,7 @@ class Game {
   // Habitat health → the "quiet saturation" readout. Eases _habitatHealth toward a target,
   // then slews _sceneSat (the live saturate() factor) toward the mapped target with a hard
   // per-frame cap so a whole-scene colour change can never land as a cut (photosensitivity).
-  // md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §1, §5. Allocation-free (hot path).
+  // md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md §1, §5. Allocation-free (hot path).
   //
   // Health = ash disturbance × regime fit × recruitment. The ash term is grazing-
   // independent and reads exactly 0 on an undisturbed map, so the DEFAULT look is
@@ -2056,6 +2085,7 @@ class Game {
   }
 
   handleKeyUp(k) {
+    if (typeof Kiosk !== 'undefined' && Kiosk.keyAllowed && !Kiosk.keyAllowed(k)) return;   // the wall's lockdown (handleKey)
     // Plant gallery owns the D key: a short tap here is replayed to Debug.
     if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyUp(k)) return;
     if (typeof InstallHUD !== 'undefined') InstallHUD.handleKeyUp(this, k);
@@ -2063,6 +2093,14 @@ class Game {
 
   handleKey(k) {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
+    // THE WALL'S LOCKDOWN (Kiosk.keyAllowed): without ?dev on the URL only the five buttons and the
+    // time dial get past here. Any other key is still presence (noteInput above, and it skips a
+    // running attract) but does nothing: the console's own keys land here whenever this window has
+    // focus, and its plant-next 'd' used to open the debug overlay on the wall. See MISTAKES.md.
+    if (typeof Kiosk !== 'undefined' && Kiosk.keyAllowed && !Kiosk.keyAllowed(k)) {
+      if (typeof Palaeo !== 'undefined' && Palaeo.active) Palaeo.skip();
+      return;
+    }
     // Swallow D so tap-vs-hold resolves on release/tick (see TeManawa_plant_debug.js).
     if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyDown(k)) return;
     // THE LAND BEFORE THE WINDOW: while the attract sequence runs every key is presence (it skips to
@@ -2376,7 +2414,31 @@ function initializeRegistry() {
   if (CONFIG.debugMode) console.log('Registry initialized:', REGISTRY.getSummary());
 }
 
+// p5 requests the next frame only AFTER draw() returns, so an uncaught throw here ends the loop for
+// good and the watchdog's reload, 10 s later, is the only recovery. On the wall Kiosk.frameError logs
+// it, recovers and returns true, and the loop keeps running; with ?dev it returns false and the error
+// is rethrown, so DevTools and the harness still see it. See MISTAKES.md.
 function draw() {
+  try {
+    _drawFrame();
+  } catch (err) {
+    _unwindDrawState();
+    if (typeof Kiosk === 'undefined' || !Kiosk.frameError(err)) throw err;
+  }
+}
+
+// A throw mid-render leaves p5's push() stack unbalanced (draw() pushes, and so do the renderers it
+// calls); pop it back to empty so the next frame starts clean. p5 resets the matrix itself each frame.
+function _unwindDrawState() {
+  try {
+    const P = (typeof p5 !== 'undefined') ? p5.instance : null;
+    if (P && P._styles) while (P._styles.length) pop();
+    if (typeof drawingContext !== 'undefined' && drawingContext) drawingContext.globalAlpha = 1;
+    if (typeof GLBatch !== 'undefined') GLBatch._open = false;   // a half-built batch; begin() starts the next clean
+  } catch (e) { /* never let the unwind itself throw */ }
+}
+
+function _drawFrame() {
   // On first frame, re-check dimensions in case setup() got stale values
   if (_needsInitialResize) {
     _needsInitialResize = false;

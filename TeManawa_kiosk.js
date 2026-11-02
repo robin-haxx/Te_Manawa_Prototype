@@ -9,10 +9,11 @@
 //
 //     A RESET MUST NEVER TOUCH THE NETWORK.
 //
-// resetToAttract() rebuilds the world from memory. It is the same code
-// path used by the idle timeout, the end of the timeline, the Eruption
-// button and the onerror handler, so it gets exercised constantly and
-// is the one thing in the build that cannot be allowed to rot.
+// Every reset rebuilds the world from memory. The idle timeout and the end
+// of the timeline play the attract sequence (TeManawa_palaeo.js), which lands
+// through landAttract(); the error handlers, the Eruption button's wrap and
+// the older eruption-staged attract (TM_PALAEO.enabled = false) go through
+// resetToAttract(). Both are exercised constantly and cannot be allowed to rot.
 //
 // A hard reload (location.reload) re-decodes every asset and is the
 // expensive path. It is reserved for a stalled frame loop and the
@@ -27,15 +28,25 @@ const Kiosk = {
   crossfadeMillis:    400,     // covers the soft reset
   errorLogKey:        'tm_errors',
   errorLogMax:        20,
+  frameErrorMax:      3,       // draw() errors inside frameErrorWindowMs before a recovery gives way to a hard reload
+  frameErrorWindowMs: 30000,
 
   // ---- state -----------------------------------------------
   lastInputAt:   0,
   lastHeartbeat: 0,
   resetCount:    0,
   lastResetMs:   0,
+  _bootAt:       0,
   _fadeUntil:    0,
   _watchdogTimer: null,
   _installed:    false,
+  _frameErrAt:   0,
+  _frameErrCount: 0,
+  // ?dev (or ?dev=1) on the page URL: every key works and a draw() error throws (DevTools, the
+  // harness). Without it, the wall's lockdown: only _wallKeys (built in install()) reach the game,
+  // and a draw() error is logged and recovered so the frame loop survives.
+  devMode:       false,
+  _wallKeys:     null,
   // Set by attach() from setup(): NOT window.game, which is permanently
   // undefined here (a classic-script `let` is a lexical global, not a window
   // property), so every recovery path would silently no-op. See MISTAKES.md.
@@ -52,7 +63,17 @@ const Kiosk = {
     if (this._installed) return;
     this._installed = true;
 
-    this.lastInputAt = this.lastHeartbeat = Date.now();
+    this.lastInputAt = this.lastHeartbeat = this._bootAt = Date.now();
+
+    try {
+      const q = (typeof location !== 'undefined' && location.search) ? new URLSearchParams(location.search) : null;
+      this.devMode = !!(q && q.has('dev') && q.get('dev') !== '0');
+    } catch (e) { this.devMode = false; }
+    // The keys the wall accepts: the five buttons and the time dial. Everything else (the debug
+    // overlay, the authoring overlays, P) needs ?dev. The console's own keys land here whenever this
+    // window has focus; they count as presence but do nothing.
+    const dial = (typeof DeepTime !== 'undefined' && DeepTime.DIAL_KEYS) || { faster: [], slower: [], reset: [] };
+    this._wallKeys = new Set(['1', '2', '3', '4', '5', ...dial.faster, ...dial.slower, ...dial.reset]);
 
     // --- error capture -> ring buffer -> soft reset ----------
     window.addEventListener('error', (e) => {
@@ -105,7 +126,13 @@ const Kiosk = {
 
     console.log('[Kiosk] installed: idle ' + this.idleSeconds + 's, watchdog ' +
                 this.watchdogSeconds + 's, nightly reload ' +
-                (this.nightlyReloadHour === null ? 'off' : this.nightlyReloadHour + ':00'));
+                (this.nightlyReloadHour === null ? 'off' : this.nightlyReloadHour + ':00') +
+                (this.devMode ? ', DEV (all keys, draw errors throw)' : ', keys locked to the wall set'));
+  },
+
+  // Does this key reach the game? Always with ?dev; on the wall, only the wall set.
+  keyAllowed(k) {
+    return this.devMode || !this._wallKeys || this._wallKeys.has(k);
   },
 
   // ==========================================================
@@ -182,11 +209,14 @@ const Kiosk = {
       }
     }
 
-    // 3. Nightly refresh: blunt, and it defeats every slow leak we didn't find.
+    // 3. Nightly refresh: blunt, and it defeats every slow leak we didn't find. The page must also
+    //    have been up for two minutes: a page booted by this reload is still inside the 03:00
+    //    minute, and its lastResetMs is 0, so without the boot check it reloaded again on every
+    //    boot until the minute ran out. See MISTAKES.md.
     if (this.nightlyReloadHour !== null) {
       const d = new Date();
       if (d.getHours() === this.nightlyReloadHour && d.getMinutes() === 0 &&
-          now - this.lastResetMs > 120000) {
+          now - this.lastResetMs > 120000 && now - this._bootAt > 120000) {
         this.hardReload('nightly');
       }
     }
@@ -291,6 +321,7 @@ const Kiosk = {
       this.resetCount++;
       this.lastResetMs = Date.now();
       this._fadeUntil = millis() + this.crossfadeMillis;
+      this.beat();                         // a legitimate long rebuild (a morph, or init() on a reseed) is not a stall
     } catch (err) {
       this.logError('reset', String(err && err.message || err));
       this.hardReload('reset-failed');
@@ -324,11 +355,31 @@ const Kiosk = {
   // ==========================================================
   recover() {
     const g = this.game;
+    // An error mid-sequence: stop the attract first. Left running, it keeps driving its own morph
+    // over the reset (and, if it was the thing that threw, throws again). The reset's morphTo then
+    // re-bakes all four buffers, so no pre-window land survives into the window.
+    if (typeof Palaeo !== 'undefined' && Palaeo.active && Palaeo._abort) Palaeo._abort('error recovery');
     if (g && g.terrain && g.currentLevel) {
       const ms = this.resetToAttract(g, 'error');
       if (ms >= 0) return;
     }
     this.hardReload('unrecoverable');
+  },
+
+  // A draw() error, caught in sketch.js. An uncaught one would end p5's loop for good (p5 requests
+  // the next frame only after draw() returns), leaving the watchdog's reload, 10 s later, as the
+  // only recovery. Returns false with ?dev, so the caller rethrows (DevTools, the harness). On the
+  // wall: log, recover, keep drawing; past frameErrorMax inside frameErrorWindowMs, a hard reload.
+  frameError(err) {
+    if (this.devMode) return false;
+    const now = Date.now();
+    if (now - this._frameErrAt > this.frameErrorWindowMs) { this._frameErrAt = now; this._frameErrCount = 0; }
+    this._frameErrCount++;
+    const where = (err && err.stack) ? String(err.stack).split('\n')[1] || '' : '';
+    this.logError('frame', String(err && err.message || err) + ' ' + where.trim());
+    if (this._frameErrCount > this.frameErrorMax) { this.hardReload('frame-errors'); return true; }
+    this.recover();
+    return true;
   },
 
   hardReload(reason) {

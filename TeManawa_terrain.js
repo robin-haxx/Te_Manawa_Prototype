@@ -1,6 +1,6 @@
 // ============================================================================
 // LOOK — the terrain look-development control surface (bake-time)
-// md/TEMANAWA_34VIEW_PLAN.md §7
+// md/archive/TEMANAWA_34VIEW_PLAN.md §7
 // ============================================================================
 // Every knob for the "pixel topo map → cartoon illustration" ground, in ONE place.
 // All of it is applied during the season bake, never per frame.
@@ -287,7 +287,7 @@ const LOOK = {
 
   // ---- COASTAL DUNE FIELD (the Manawatū transgressive dunefield) ---------------
   // The one landform driver that never changes across the whole deep-time window: the NW
-  // wind blows shelf/beach sand inland toward the ESE (md/TEMANAWA_ECOLOGY_COAST.md §1,§10).
+  // wind blows shelf/beach sand inland toward the ESE (md/ecology/TEMANAWA_ECOLOGY_COAST.md §1,§10).
   // Rendered here as a BAKE-TIME SAND TINT only (no elevation change yet): each western
   // coastal-plain cell's colour is blended toward duneColor by an intensity that is densest
   // just inland of the shore and thins inland to 0 at the REACH. The reach is a screen-X
@@ -1232,7 +1232,7 @@ class TerrainGenerator {
     const clampedPos = Math.max(0, Math.min(1, position));
 
     // Cel look: snap to the nearest authored ramp stop → 2-3 flat tones per biome
-    // instead of a smooth gradient (md/TEMANAWA_34VIEW_PLAN.md §7).
+    // instead of a smooth gradient (md/archive/TEMANAWA_34VIEW_PLAN.md §7).
     if (LOOK.posterize) {
       return this._getCachedColor(colors[Math.round(clampedPos * (colors.length - 1))]);
     }
@@ -1342,7 +1342,7 @@ class TerrainGenerator {
     // cell. This is what the season bakes render from, decoupling PAINT resolution
     // from the sim's cell budget so the ground reads as smooth curves, not grid
     // cells. The sim's heightMap/biomeIndexMap (built above) are untouched.
-    // md/TEMANAWA_34VIEW_PLAN.md §4.
+    // md/archive/TEMANAWA_34VIEW_PLAN.md §4.
     this._computePaintGrid();
 
     // Pre-bake all 4 seasonal buffers

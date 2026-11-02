@@ -172,10 +172,10 @@ Alpine Habitat screen (glacial) · sim Subalpine band (Alpine and Snow bands are
   - huia's huhu grubs [G]
   - bird with different male/female beaks [G]
   - several similar species [I/G]
-- *Dracophyllum*: most kinds on Earth here [G] (subalpine ground) · several similar species [I/G] · rides out storms [I/G]
+- *Dracophyllum*: most kinds on Earth here [G] (subalpine ground, from 500 ka) · several similar species [I/G] · rides out storms [I/G]
 - Wharariki (all need subalpine ground):
-  - wind-blown seeds [I/G]
-  - crosses with harakeke [I/G]
+  - wind-blown seeds [I/G] (from 500 ka)
+  - crosses with harakeke [I/G] (from 500 ka)
   - yellow flowers [I/G]
   - tūī pollinate [I/G]
   - two voice boxes [I/G]
@@ -215,10 +215,11 @@ The harrier has no glacial goal (tōtara is warm-only), so its stage falls throu
 | When | Climate | Change |
 |---|---|---|
 | 1,000 ka, opening | interglacial | Interglacial set, minus Ōkatia and the eruption goals. Kidnappers fires at the opening instant, so it doesn't count as an eruption |
-| 950 ka | glacial | First glacial set (beech, tussock, scrub, *Dracophyllum*) |
+| 950 ka | glacial | First glacial set (beech, tussock, scrub) |
 | 900 ka, Kaukatea | glacial | Eruption goals join: grows back after a volcano [G], spreads after ash falls [I/G] |
 | 859–818 ka | interglacial | Out-competes nīkau drops out where nīkau is scarce |
-| 1,000–350 ka | both | Subalpine ground grows ~450 → ~8,300 cells (gate 200); *Dracophyllum* and wharariki goals live throughout (one seed, 1920×1080) |
+| 1,000–350 ka | both | Subalpine ground grows ~450 → ~8,300 cells (gate 200; one seed, 1920×1080). It passes the gate from the opening, so the goals answered only from the tops wait on a date instead (`TEMANAWA_PLAN_V3.md` §16.14) |
+| 500 ka | — | The subalpine date opens: *Dracophyllum*'s "most kinds" [G] and wharariki's wind-seeds and harakeke-cross [I/G]; the [G] one first shows in the MIS 12 glacial (480 ka) |
 | 400 ka | — | Ōkatia's date gate opens (needs an interglacial with ≥10 grown tōtara; first seen 342–314 ka) |
 | 349 ka, Whakamaru | glacial | No change (eruption gate already open) |
 | 122 ka | interglacial | Full interglacial set |

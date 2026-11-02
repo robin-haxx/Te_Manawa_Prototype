@@ -379,7 +379,7 @@ class Moa extends Boid {
     // tussock the visitor grows in a GLACIAL, the matched cold regime. A mild hunger
     // relief keeps them in breeding condition, and _resetAfterMating shortens their egg
     // cooldown while it holds: a small population lift, so the cold phase is busier, not
-    // emptier (md/TEMANAWA_ECOLOGY_FAUNA.md). Reads the shared per-frame flag
+    // emptier (md/ecology/TEMANAWA_ECOLOGY_FAUNA.md). Reads the shared per-frame flag
     // (Game._tussockFlush) so the regime/millis isn't recomputed per bird. Runs before
     // the mating early-return so completeMating sees a fresh flag this frame.
     this._openCountryBoost = false;

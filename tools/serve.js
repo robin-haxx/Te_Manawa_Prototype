@@ -61,13 +61,17 @@ http.createServer((req, res) => {
     });
     return;
   }
-  let rel = decodeURIComponent(req.url.split('?')[0]);
+  // A malformed escape (e.g. /%E0%A4%A) makes decodeURIComponent throw, and an uncaught throw here
+  // takes the whole server down with it. It is the wall's only server.
+  let rel;
+  try { rel = decodeURIComponent(req.url.split('?')[0]); }
+  catch (e) { res.writeHead(400); return res.end('bad request'); }
   if (rel === '/') rel = '/index.html';
   else if (rel.endsWith('/')) rel += 'index.html';   // a directory URL (e.g. /secondscreen/) → its index.html
 
   const file = path.join(ROOT, rel);
-  // Never serve outside the project directory.
-  if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end('forbidden'); }
+  // Never serve outside the project directory (the separator matters: ROOT + "_old" is outside).
+  if (!file.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end('forbidden'); }
 
   fs.readFile(file, (err, data) => {
     if (err) {
@@ -86,4 +90,9 @@ http.createServer((req, res) => {
   console.log(`  http://127.0.0.1:${PORT}`);
   if (EXPORT) console.log('  --export: POST /__export?path=… writes under exports/');
   console.log('  ctrl-c to stop');
+}).on('error', (err) => {
+  // Port taken (a second copy, or another app): say so and exit non-zero, so a supervisor logs a
+  // clear reason rather than a stack trace.
+  console.error(`Te Manawa server could not start on 127.0.0.1:${PORT}: ${err.code || err.message}`);
+  process.exit(1);
 });

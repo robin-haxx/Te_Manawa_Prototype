@@ -1,11 +1,17 @@
 # Te Manawa — Deep-Time Habitat & Eruption Plan
 
+> **Archived 2026-11-02 — built.** The glacial rebind, the climate to 1 Ma, forest contraction and
+> the four eruptions all shipped. Two things here are out of date: emergence by `LOOK.seaRise`
+> (retired for a real sea-level curve, `TEMANAWA_COAST_PLAN.md`) and the deferred wetland bloom
+> (built, `TEMANAWA_PLAN_V3.md` §9). The eruption *aftermath* is replanned in
+> `TEMANAWA_ERUPTION_AFTERMATH_PLAN.md`. The current state is `TEMANAWA_PLAN_V3.md` §3, §8 and the code.
+
 Implementation plan for populating the 1 Ma → 25.5 ka window with **year-bound habitat
 change** and **four year-bound TVZ eruptions** that clear the cast and let the visitor
 watch it recover. Builds on the geology-is-year-bound work already landed in
 `TerrainGenerator.GEO_EPOCHS` / `geoTimeFactors()`.
 
-Reads against, and defers to, `md/TEMANAWA_PLAN_V3.md` (the spine) and `md/TEMANAWA_ECOLOGY_WETLAND.md`
+Reads against, and defers to, `md/TEMANAWA_PLAN_V3.md` (the spine) and `md/ecology/TEMANAWA_ECOLOGY_WETLAND.md`
 §6 (the eruption sequence).
 
 > **Governing principle, unchanged:** *a cartoon seen from above, not a survey.* Everything
@@ -422,9 +428,9 @@ Glacials & vegetation:
 - *The vegetation cover of New Zealand at the Last Glacial Maximum* (Newnham et al.) — central/
   southern North Island mostly shrubland/grassland/herbfield, forest in refugia, treeline hundreds
   of metres lower — https://www.sciencedirect.com/science/article/abs/pii/S0277379112003356
-- `md/TEMANAWA_ECOLOGY_OPEN.md` — pre-human forest >80%; treeline; induced shrubland.
+- `md/ecology/TEMANAWA_ECOLOGY_OPEN.md` — pre-human forest >80%; treeline; induced shrubland.
 
 Habitat & disturbance (internal):
-- `md/TEMANAWA_ECOLOGY_WETLAND.md` §6 — the five-stage eruption sequence, Ōruanui pollen timings,
+- `md/ecology/TEMANAWA_ECOLOGY_WETLAND.md` §6 — the five-stage eruption sequence, Ōruanui pollen timings,
   the Whakamaru "inference not measurement" caveat (bloom stage deferred here — no wetland biome).
 - `md/TEMANAWA_PLAN_V3.md` — the design spine; climate and disturbance conclusions.

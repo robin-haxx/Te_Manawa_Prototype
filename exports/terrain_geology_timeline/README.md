@@ -111,6 +111,8 @@ Lower Pohangina Valley* (2.7 Ma map); Knight 2014, *Ravaged Beauty*; and
   - the steepest range faces (the Ruahine spur at the gorge) render as dense dark streaks: the 3/4
     relief bake drawing side faces on very steep ground;
   - a strip of land along the top-left edge across the drowned sea, from the north-edge falloff.
+    Addressed in `79b8a72` (2026-11-02): the far-edge ease now raises land only, so sea stays sea.
+    These frames predate the fix; re-export to confirm it is gone from the window too.
 
   The sheer cliffs that the first version of this fix drew along every highstand shore are gone: the
   plain is now lowered with the sea (`md/TEMANAWA_COAST_PLAN.md` §5b), and these frames are

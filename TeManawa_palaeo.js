@@ -383,6 +383,7 @@ const Palaeo = {
 
   _abort(why) {
     if (typeof console !== 'undefined') console.warn('[Palaeo] aborted: ' + why);
+    this._setSeaBreath(0);                                      // as the landing does: never leave the pre-window cycle on
     this.active = false; this.state = 'idle'; this._veil = 0; this.game = null;
   },
 

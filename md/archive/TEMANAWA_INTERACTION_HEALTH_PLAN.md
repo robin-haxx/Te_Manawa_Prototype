@@ -1,5 +1,10 @@
 # Te Manawa — Interaction & Habitat-Health Plan
 
+> **Archived 2026-11-02 — built.** The FOREST/TUSSOCK split, habitat health as ground saturation,
+> the kererū dispersal loop and storm overuse all shipped and are harness-checked. The interaction
+> model has since moved to the touchscreen (`TEMANAWA_SECOND_SCREEN.md`); the remaining tuning
+> (step 5) is tracked in `TEMANAWA_PLAN_V3.md` §14. Kept as the design record for the `HEALTH` block.
+
 A plan to make the visitor buttons *teach the ecology*, not just perturb it. Three changes,
 one shared signal:
 
@@ -12,9 +17,9 @@ one shared signal:
    kererū grounded, dispersal stalls, the forest cannot recruit, and the scene drains of
    colour — the storm's hidden cost.
 
-Reads against, and defers to, `md/TEMANAWA_PLAN_V3.md` (the spine), `md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md`
-(the glacial-clock rebind this builds on), `md/TEMANAWA_ECOLOGY_FAUNA.md` §3.3 (the kererū
-dispersal fact), and `md/TEMANAWA_34VIEW_PLAN.md` §7 (the "quiet ground" look this extends).
+Reads against, and defers to, `md/TEMANAWA_PLAN_V3.md` (the spine), `md/archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md`
+(the glacial-clock rebind this builds on), `md/ecology/TEMANAWA_ECOLOGY_FAUNA.md` §3.3 (the kererū
+dispersal fact), and `md/archive/TEMANAWA_34VIEW_PLAN.md` §7 (the "quiet ground" look this extends).
 
 > **Governing principle, unchanged:** *a cartoon seen from above, not a survey.* Every
 > mechanic below is a handful of scalars keyed to a legible ecological signal. The test of
@@ -357,11 +362,11 @@ Steps 1–2 are independent of 3–4; **step 3 blocks step 4.**
 
 ## Sources (internal)
 
-- `md/TEMANAWA_ECOLOGY_FAUNA.md` §3.3 — kererū the large-seed disperser; moa the seed destroyers;
+- `md/ecology/TEMANAWA_ECOLOGY_FAUNA.md` §3.3 — kererū the large-seed disperser; moa the seed destroyers;
   the modern collapse is a *kererū* problem. The mechanical spine of §3–4.
-- `md/TEMANAWA_FAUNA.md` §167-169 — kererū the only surviving disperser of large podocarp/tawa
+- `md/ecology/TEMANAWA_FAUNA.md` §167-169 — kererū the only surviving disperser of large podocarp/tawa
   fruit; "a real mechanic, not decoration."
-- `md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` §1.1 — `winterness` == `glacialIndex(yearsBP)`; the world
+- `md/archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` §1.1 — `winterness` == `glacialIndex(yearsBP)`; the world
   is a glacial cycle, which is what the split growth reads.
-- `md/TEMANAWA_34VIEW_PLAN.md` §7 — "quiet the ground's saturation so the outlined sprites pop." The
+- `md/archive/TEMANAWA_34VIEW_PLAN.md` §7 — "quiet the ground's saturation so the outlined sprites pop." The
   existing look this feature turns into a live health signal.

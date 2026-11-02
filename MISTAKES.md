@@ -10,6 +10,75 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## The ash waited on a clock that no longer ran
+
+- **What happened.** After a visitor's eruption the ground stayed grey, and the scene sat at the
+  saturation floor, until somebody boosted. `Game.updateAshCover()` decayed the ash by sim-years
+  elapsed, and since the second screen geology is paused unless a boost, a deep burst or the dial moves
+  it. Measured headless on 2026-10-15: after ~60 s, ash still 1.000, health 0.
+- **Root cause.** The pause changed what "time passing" means, and every decay keyed to `yearsBP` kept
+  its old meaning. The idle reset used to hide it; the attract sequence only cleared it for idle.
+- **Rule.** Anything a visitor should see recover needs a clock that runs while geology is paused. The
+  aftermath now covers one boost/goal cycle in real time (`DeepTime.AFTERMATH`), with sim-years only
+  ever making it faster. Harness: "eruption aftermath" (2026-11-02).
+
+## A goal test trusted the harness's terrain
+
+- **What happened.** The plant-goals check "the Dracophyllum goal goes live once the ranges carry
+  subalpine tops" failed on every harness run from at least 2026-11-01, `main` included, and was
+  carried as a known failure.
+- **Root cause.** The harness's `noise` is `Math.random()`. On that white-noise base the ranges barely
+  rise (peak ~0.65 at every date, a few dozen subalpine cells), while the real build reaches ~0.88 with
+  8,000+ subalpine cells at 30 ka. The check was a fact about the noise, not about the gate. The
+  geography probe "ranges rise with deep time" (a count of cells above 0.6) failed the same way, at
+  random.
+- **Rule.** Test logic that depends on a landform by staging the landform (here the subalpine belt,
+  one cell short of the threshold and then at it); test the terrain by relative measures that survive
+  white noise (the crests' mean, not a count above a fixed height). And a failure carried as "known"
+  for more than a day gets a probe, not a shrug (2026-11-02).
+
+## The wall's key lockdown was in the docs, not the code
+
+- **What happened.** `TEMANAWA_BUILD_V3.md` §3, `CLAUDE.md` and comments in `TeManawa_sketch.js` all
+  said `TeManawa_kiosk.js` limited the keys to `1`–`5`. It never did: it blocked the context menu,
+  double-click and pinch, nothing more. Every authoring key (`D`, `R`, `C`, `P`, hold-`D`) was live on
+  the wall, and the console's own keys land on the diorama whenever its window has focus — its
+  plant-next `d` opened the debug overlay on the 4K screen; its Alpine detent `r` toggled the range
+  overlay.
+- **Root cause.** The lockdown was specified early (arcade buttons on keys `1`–`5`) and each later key
+  was written against that promise ("not reachable on the wall") instead of against the code. The
+  hold-`D` gallery polls `keyIsDown` directly, so even a gate in `handleKey` would have missed it.
+- **Consequence.** Found in the pre-handoff audit (2026-11-02), before any visitor saw it.
+- **Rule.** A safety property is claimed only where the harness asserts it. The lockdown is
+  `Kiosk.keyAllowed` (wall keys: `1`–`5` and the time dial; `?dev` unlocks everything), checked at the
+  top of `Game.handleKey` / `handleKeyUp` *and* in anything that polls a key itself
+  (`PlantGallery.tick`). A blocked key is still presence. Harness: "kiosk hardening".
+
+## The 03:00 reload reloaded the page it had just booted
+
+- **What happened.** `Kiosk.tick` hard-reloaded when the hour was 3, the minute 0 and `lastResetMs`
+  over two minutes old. A freshly loaded page has `lastResetMs = 0`, so the page that reload booted —
+  still inside 03:00 — reloaded again, and again, until the minute ran out.
+- **Root cause.** The guard meant "not twice in a row" but measured time since the last *soft* reset,
+  which a new page has never had. Nothing tested a boot inside the reload's own minute.
+- **Rule.** A scheduled reload also requires the page to have been up for longer than the window it
+  fires in (`Kiosk._bootAt`; the console's `TMConsoleKiosk` does the same). Harness: "kiosk hardening"
+  fakes the clock at 03:00:20 (2026-11-02).
+
+## A draw() error ended the frame loop, so the soft recovery recovered nothing
+
+- **What happened.** On any exception in `draw()`, `window.onerror` called `Kiosk.recover()`, which
+  rebuilt the world — but p5 requests the next frame only *after* `draw()` returns, so the throw had
+  already ended the loop. The wall froze on its last frame until the watchdog reloaded the page 10 s
+  later.
+- **Root cause.** The recovery path was designed against the error handler, not against p5's loop: the
+  "17–31 ms soft recovery" only ever worked for errors outside `draw()` (bus handlers, timers).
+- **Rule.** `draw()` wraps the frame in `try/catch`: on the wall `Kiosk.frameError` logs, unwinds the
+  push stack, recovers and keeps the loop alive; past `frameErrorMax` errors inside
+  `frameErrorWindowMs` it hard-reloads. With `?dev` it rethrows, so DevTools and the harness (which runs
+  with `?dev`) still see every draw error. A recovery during the attract sequence aborts the sequence
+  first (2026-11-02).
+
 ## The first attract sequence showed its dated maps for no time at all, under the wrong names
 
 - **What happened.** The land-before-the-window sequence (`TeManawa_palaeo.js`) ran green in the

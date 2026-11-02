@@ -36,6 +36,20 @@ stage. The last three goals shown are skipped while there is any other choice. A
 a climate swing for as long as it is still live. A miss leaves it up. A new visitor (soft reset)
 starts the sequence again at moa.
 
+> **Built 2026-11-02 — a fresh goal past a glacial turn.** When the time dial or a deep burst carries
+> the clock across a glacial/interglacial turn, a **new goal** is drawn instead of holding the current
+> one across the swing (`TMGoals._fastForwarding`; the recent memory keeps the old goal out of the draw
+> while there is another choice). A boost's own time-lapse is not a trigger: it lands on the turn by
+> design and its verdict decides. Harness: "plant goals" §3b.
+>
+> **The habitat gate and 1 Ma** (`TEMANAWA_PLAN_V3.md` §16.14, decided 2026-11-02): the real build's
+> 1 Ma land already carries a subalpine belt (568–3,522 cells on two seeds, against the 200-cell gate),
+> so the habitat gate alone would open a Dracophyllum or wharariki goal from the start. The three goals
+> answered only from the tops (`most-kinds-here`, `wind-seeds`, `flax-cousin`) therefore carry a date,
+> `fromYearsBP: 500000` (ranges well risen): the two wharariki goals open at 500 ka, the cold
+> Dracophyllum one in the MIS 12 glacial (480 ka). Harness: "plant goals" §3a holds every
+> subalpine-only goal to one shared date.
+
 Each goal's **group** is the bird its main answer feeds (the plant's paired bird,
 `TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6): kahikatea, harakeke and mānuka feed moa; tōtara the harrier;
 pūrei, tussock and tī kōuka the lowland birds; tawa, tree ferns, nīkau and kōwhai the forest birds.
@@ -96,7 +110,7 @@ drafts already backed by a card and are now switched on (marked *draft →*); tw
 | Boost a scrub that fed a moa whose females were far bigger than males! | moa | scrub | glacial | Both scrub cards: giant moa females |
 | Boost a plant that has evolved apart from Australia's for 10 million years! | moa | mānuka | either | Mānuka |
 | Boost a plant for the moa whose biggest kind lived around the Manawatū! | moa | mānuka | either | Mānuka: stout-legged moa |
-| Boost a plant with more kinds here than anywhere else on Earth! | moa | *Dracophyllum* | glacial, once the ranges have tops | *Dracophyllum* |
+| Boost a plant with more kinds here than anywhere else on Earth! | moa | *Dracophyllum* | glacial, from 500 ka (the ranges have tops) | *Dracophyllum* |
 | *draft →* Boost a tree that needs a flood to grow! | moa | kahikatea | interglacial | Kahikatea: seedlings need fresh, wet silt |
 | *draft →* Boost a tangled shrub that may have grown that way to keep moa off! | moa | scrub | glacial | Grey scrub |
 | *draft →* Boost a plant that holds the dry sand plains! | moa | mānuka | either | Mānuka |
@@ -120,8 +134,8 @@ drafts already backed by a card and are now switched on (marked *draft →*); tw
 | Boost a small tree that lived through the ice ages! | forest | kōwhai | either | Kōwhai |
 | Boost a tree that held on when the cold pushed forests downhill! | forest | mountain beech | glacial | Mountain beech |
 | Boost a tree where huia hunted fat huhu grubs! | forest | mountain beech | glacial | Mountain beech: huia |
-| Boost a plant whose seeds blow away on the wind! | forest | wharariki | either, once the ranges have tops | Wharariki |
-| Boost a plant that crosses with harakeke where the two meet! | forest | wharariki | either, once the ranges have tops | Wharariki |
+| Boost a plant whose seeds blow away on the wind! | forest | wharariki | either, from 500 ka (the ranges have tops) | Wharariki |
+| Boost a plant that crosses with harakeke where the two meet! | forest | wharariki | either, from 500 ka (the ranges have tops) | Wharariki |
 | *draft →* Boost a tree for the bird whose male and female had different beaks! | forest | mountain beech | glacial | Mountain beech: huia |
 | *draft →* Boost a flower for the bird with two voice boxes! | forest | wharariki, kōwhai | either, tūī alive | Wharariki: tūī (answer widened to the card that says it) |
 

@@ -1,5 +1,9 @@
 # Te Manawa — 3/4 View & Illustration Restyle
 
+> **Archived 2026-11-02 — built.** The plan-oblique projection, relief bake, y-sort and cel look all
+> shipped (`TeManawa_projection.js`, `LOOK` in `TeManawa_terrain.js`). Kept as the design record.
+> The current state is `TEMANAWA_PLAN_V3.md` §2 and the code.
+
 Status: **substantially built** (Phase 3). Sits under `TEMANAWA_PLAN_V3.md`; where they
 disagree, the plan wins. Reshaped Phase 3 (terrain) — it did not add a phase. Built:
 `TeManawa_projection.js`, the relief bake, entity y-sort with feet anchors, and the cel

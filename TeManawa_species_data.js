@@ -393,7 +393,7 @@ const MOA_SPECIES = {
     rarity: 'common',
     
     size: { min: 5, max: 7 },
-    adultMassKg: [26, 64],   // md/TEMANAWA_ECOLOGY_FAUNA.md §3.1 — straddles the harrier's 40 kg ceiling
+    adultMassKg: [26, 64],   // md/ecology/TEMANAWA_ECOLOGY_FAUNA.md §3.1 — straddles the harrier's 40 kg ceiling
     bodyColor: { r: [82, 100], g: [55, 68], b: [25, 38] },
     
     baseSpeed: 0.15,       // Fastest moa
@@ -443,7 +443,7 @@ const MOA_SPECIES = {
 // in dry forest and shrubland with fast dashes, not by soaring over open country.
 // The internal base type stays 'eagle' (a mechanical list name, not
 // visitor-facing); only the identity is the harrier's. See
-// md/TEMANAWA_NATURAL_HISTORY.md §II and md/TEMANAWA_SPECIES_KERANGI.md.
+// md/TEMANAWA_NATURAL_HISTORY.md §II and md/ecology/TEMANAWA_SPECIES_KERANGI.md.
 //
 // `maxPreyKg` is the one hunting field the harrier reads from here: North Island
 // birds could take moa only up to ~40 kg (NZ Birds Online), enforced against each

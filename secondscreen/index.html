@@ -88,7 +88,9 @@
 
 </div>
 
-<!-- load order: data + bus + input before the app -->
+<!-- load order: the kiosk layer first (its error handlers armed before anything else runs),
+     then data + bus + input before the app -->
+<script src="kiosk.js"></script>
 <script src="encyclopedia.js"></script>
 <script src="bus.js"></script>
 <script src="input.js"></script>

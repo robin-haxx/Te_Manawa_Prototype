@@ -19,8 +19,9 @@
     <!-- ==================================================================
          Avian Age: TE MANAWA — standalone museum installation.
          An ambient top-down diorama; the parent engine's economy is stripped
-         (no currency, toolbar, goals, win/lose). The play area is a letterboxed
-         grid, adaptive by default (CONFIG.terrainFit).
+         (no currency, toolbar, win/lose; the plant goals are new design, not residue).
+         Driven from the touchscreen console in secondscreen/ over TeManawa_bus.js.
+         The play area is a letterboxed grid, adaptive by default (CONFIG.terrainFit).
 
          See md/TEMANAWA_PLAN_V3.md for the design spine and phase status, and
          md/TEMANAWA_BUILD_V3.md for architecture and budgets.
@@ -81,7 +82,7 @@
     <script src="TeManawa_finsch_duck.js"></script>
     <script src="TeManawa_eagle.js"></script>
     <!-- Kererū: the large-seed disperser (extends Boid; behave/update/render). Loads after
-         boid.js; disperses forest seedlings at runtime. md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §3 -->
+         boid.js; disperses forest seedlings at runtime. md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md §3 -->
     <script src="TeManawa_kereru.js"></script>
     <!-- Kōkako + huia: the other flighted forest birds. Both EXTEND Kereru (short-flight
          frugivore loop, >50% less seed dispersal), so they MUST load after kereru.js.
@@ -106,10 +107,10 @@
          module above and before sketch.js (which calls SpriteAtlas.build()). -->
     <script src="TeManawa_spriteatlas.js"></script>
 
-    <!-- Optional WebGL entity-sprite layer (?render=gl). Draws the sprite cast as
-         batched textured quads on an offscreen GL canvas sourced from the atlas
-         pages, composited back into the 2D frame. Default off; needs the atlas, so
-         load after it and before sketch.js. -->
+    <!-- WebGL entity-sprite layer — the DEFAULT renderer (?render=2d opts out). Draws the
+         sprite cast as batched textured quads from the atlas pages on a canvas stacked
+         between the terrain and the HUD; falls back to 2D when WebGL is missing, lost or
+         software-rendered. Needs the atlas, so load after it and before sketch.js. -->
     <script src="TeManawa_glbatch.js"></script>
 
     <!-- Deep time + parametric climate. Pure modules, no p5 dependency;
@@ -136,7 +137,7 @@
          See md/TEMANAWA_PALAEO_ATTRACT.md. -->
     <script src="TeManawa_palaeo.js"></script>
 
-    <!-- Debug overlay (press D) -->
+    <!-- Debug overlay (press D; the page needs ?dev=1, see Kiosk.keyAllowed) -->
     <script src="TeManawa_debug.js"></script>
 
     <!-- Plant sprite gallery (hold D 3 s) — full-screen sprite-scale debug view.

@@ -21,7 +21,7 @@ class AudioManager {
     
     // State
     this.loaded = false;
-    this.enabled = false;   // muted by default; the install starts silent, flip to re-enable all audio
+    this.enabled = false;   // off for opening: nothing loads or plays. Flip (before preload) to re-enable all audio
     this.musicEnabled = true;
     this.sfxEnabled = true;
     
@@ -52,6 +52,10 @@ class AudioManager {
    * @returns {Promise} Resolves when all audio is loaded
    */
   loadAll() {
+    // Audio is off for opening (decided 2026-11-02), so don't decode 6.5 MB of mp3 in preload() for
+    // sounds that never play: `enabled` is the one switch, for loading as well as playback. Every
+    // play path already tolerates a null or unloaded sound.
+    if (!this.enabled) { this.loaded = false; return; }
     const audioPath = 'audio/';
     
     // Background music

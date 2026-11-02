@@ -1,5 +1,12 @@
 # Te Manawa — Codebase Reorganisation Proposal
 
+> **Archived 2026-11-02 — a proposal from 2026-08-14, mostly not acted on.** Done: §6 (CLAUDE.md,
+> the index, committed junk), §7 (the three bugs), §9 (the adaptive terrain mode). Not done, and
+> still accurate: **§5, the economy residue in `CONFIG` / `PLACEABLES` / `GAME_STATE`** (it is all
+> still there, plus the whole placeable path, which nothing calls) and §3.2, the sprite naming
+> convention. §4 (splitting `sketch.js`) and §8's order are superseded by the build moving on. The
+> live cleanup list is `TEMANAWA_PLAN_V3.md` §14.
+
 Written before Phases 3–7 and before the ~113 new art assets land. Scope: **structure
 only**. No design decisions — where this disagrees with `TEMANAWA_PLAN_V3.md`, the plan
 wins; where it disagrees with `TEMANAWA_BUILD_V3.md`, the build companion wins.

@@ -3,7 +3,7 @@
 // ------------------------------------------------------------
 // Hemiphaga novaeseelandiae. The only bird large enough to swallow and pass big
 // podocarp/tawa fruit, so the FOREST only recruits where kererū go
-// (md/TEMANAWA_ECOLOGY_FAUNA.md §3.3; moa were seed *destroyers*, not dispersers).
+// (md/ecology/TEMANAWA_ECOLOGY_FAUNA.md §3.3; moa were seed *destroyers*, not dispersers).
 // The cast reference is md/TEMANAWA_FAUNA_IMPL.md.
 //
 // A flyer, like the eagle, but a different animal to watch: it makes SHORT flights
@@ -28,7 +28,7 @@
 // the forest contracts and the birds cannot feed (a population floor prevents a
 // stuck, un-recruitable forest). A storm grounds them, so dispersal pauses; overuse
 // of STORM keeps them grounded and the scene desaturates via the recruitment term
-// of habitat health (Game._recruitment). See md/TEMANAWA_INTERACTION_HEALTH_PLAN.md §3.
+// of habitat health (Game._recruitment). See md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md §3.
 //
 // Placeholder art (a drawn glyph: green-grey back, pale breast, wings folded when
 // perched); the 5-frame flight sprite + perched frame (BUILD_V3 §4 / SPRITE_BRIEF)

@@ -67,7 +67,7 @@ class EylesHarrier extends Boid {
     this._driftTimer = 0;
 
     // Quartering / BURST flight (goshawk build, NOT a soaring circle — the received Haast's-eagle
-    // model was wrong; see md/TEMANAWA_ECOLOGY_FAUNA.md §5 and TEMANAWA_PLAN_V3.md §"raptor").
+    // model was wrong; see md/ecology/TEMANAWA_ECOLOGY_FAUNA.md §5 and TEMANAWA_PLAN_V3.md §"raptor").
     // patrol() alternates a fast committed DASH with a slow glide COAST, sweeping back and forth
     // low over the territory. _speedCap (Boid.update) ramps between the two speeds, so each dash
     // accelerates in and each coast decays out — that ramp IS the visible burst rhythm.
@@ -478,7 +478,7 @@ class EylesHarrier extends Boid {
     this.edges();
   }
   
-  // Quartering BURST patrol (see the constructor and md/TEMANAWA_ECOLOGY_FAUNA.md §5): a fast
+  // Quartering BURST patrol (see the constructor and md/ecology/TEMANAWA_ECOLOGY_FAUNA.md §5): a fast
   // committed dash, then a slow glide, sweeping back and forth low over the territory — a
   // goshawk-build harrier, not the soaring circle the inherited Haast's-eagle model flew. Only
   // ever runs when the bird is calm (hunger below threshold); the hunt/catch path is untouched.

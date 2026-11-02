@@ -14,7 +14,7 @@
 //
 // The four phases also key the four baked terrain buffers and their snow lines
 // (TerrainGenerator.seasonBuffers / seasonSnowLines).
-// See md/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §1.1.
+// See md/archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §1.1.
 // =============================================================================
 
 // ============================================

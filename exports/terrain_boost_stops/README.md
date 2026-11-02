@@ -77,7 +77,8 @@ positive means the sea stood inland of today's coast.
   - **A strip of land along the top-left edge,** across the drowned sea (most stops). The north-edge
     falloff (`_nsEdgeFalloff`) lifts the far row toward plain height after the flood. It was faint
     before; the deeper flood makes it obvious. At 255 ka (21) a river stub on it reads as a straight
-    channel along the edge.
+    channel along the edge. Addressed in `79b8a72` (2026-11-02): the ease now raises land only, so
+    sea stays sea. These frames predate the fix; re-export to confirm.
   - (The sheer highstand cliffs of the first sea-level export are gone: the plain is now lowered with
     the sea, and these frames are re-exported with that.) (The faint threads that marked the eastern tributary's course before it emerged are gone:
   the tributaries are present from 1 Ma.)

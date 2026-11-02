@@ -36,7 +36,8 @@
 //     · climate: one of its answers must FIT the current climate (a warm answer only in an
 //       interglacial, a cold one only in a glacial; both-worlds plants always), so it can be met;
 //     · habitat: … and have room to grow on the current land (Simulation.hasHabitat, at least
-//       minHabitatCells). A Dracophyllum goal stays dark until the ranges carry subalpine tops.
+//       minHabitatCells). A goal answered only from the subalpine tops also carries a date
+//       (fromYearsBP 500000), because the 1 Ma land already has a thin subalpine belt.
 //   Optional extra gates:
 //     fromYearsBP / untilYearsBP   live only once the clock is at/younger than, or while at/older than
 //     requires: { plants: { Totara: 10 } }    at least this many GROWN plants of a kind on the land
@@ -61,7 +62,7 @@ const TM_GOALS = {
     // ---- MOA: kahikatea (little bush moa), harakeke (Mantell's moa), mānuka (stout-legged moa) ----
     // Esler: harakeke spread after drainage and stopbanking, onto ground that had been too wet for it,
     // so the flax-filled Manawatū of the old photographs is partly a product of drainage
-    // (md/TEMANAWA_ECOLOGY_WETLAND.md §3). Both-worlds (coldTolerance 0.7): live in either climate.
+    // (md/ecology/TEMANAWA_ECOLOGY_WETLAND.md §3). Both-worlds (coldTolerance 0.7): live in either climate.
     { id: 'harakeke-rarer', group: 'moa',
       prompt: 'Boost a plant that was rarer in ancient times than today',
       cond:   'rarer in ancient times than today',
@@ -125,11 +126,15 @@ const TM_GOALS = {
       answer: ['manuka'],
       text:   { answer: '{plant} fed the stout-legged moa, and the biggest ones lived around places like the Manawatū!' } },
     // Dracophyllum: "Aotearoa has more kinds of Dracophyllum than anywhere else in the world!" Cold, and only
-    // once the ranges carry subalpine tops (the habitat gate).
+    // once the ranges have risen. THE SUBALPINE DATE (decided 2026-11-02, md/TEMANAWA_PLAN_V3.md §16.14):
+    // the real 1 Ma land already carries a thin subalpine belt (568–3,522 cells on two seeds, over the
+    // habitat gate), so the goals answered only from the tops (this one, wind-seeds, flax-cousin) wait for
+    // ~0.5 Ma, "ranges well risen" (md/TEMANAWA_NATURAL_HISTORY.md). Keep the three dates in step.
     { id: 'most-kinds-here', group: 'moa',
       prompt: 'Boost a plant with more kinds here than anywhere else on Earth!',
       cond:   'a plant with more kinds in Aotearoa than anywhere else on Earth',
-      answer: ['dracophyllum'] },
+      answer: ['dracophyllum'],
+      fromYearsBP: 500000 },
 
     // ---- HARRIER: tōtara (Eyles' harrier) ---------------------------------------------------------
     // Rangitāne kōrero: the spirit Ōkatia, in a giant tōtara, forced its way through the ranges to the
@@ -296,16 +301,19 @@ const TM_GOALS = {
       prompt: 'Boost a tree where huia hunted fat huhu grubs!',
       cond:   'a tree where huia hunted huhu grubs',
       answer: ['beech'] },
-    // Wharariki: "Its seeds blow away on the wind."
+    // Wharariki: "Its seeds blow away on the wind." Wharariki grows only on the subalpine tops, so it
+    // waits for the ranges like the Dracophyllum goal (most-kinds-here).
     { id: 'wind-seeds', group: 'forest',
       prompt: 'Boost a plant whose seeds blow away on the wind!',
       cond:   'a plant whose seeds blow away on the wind',
-      answer: ['wharariki'] },
+      answer: ['wharariki'],
+      fromYearsBP: 500000 },
     // Wharariki: "it crosses with harakeke where the two meet."
     { id: 'flax-cousin', group: 'forest',
       prompt: 'Boost a plant that crosses with harakeke where the two meet!',
       cond:   'a plant that crosses with harakeke where the two meet',
-      answer: ['wharariki'] },
+      answer: ['wharariki'],
+      fromYearsBP: 500000 },
 
     // ---- SUGGESTED — sim mechanics and bird traits to fill the timeline. Each one's facts and the gap
     // it fills: md/TEMANAWA_GOALS.md §4. Those whose fact is on the answer's card were switched on
@@ -538,6 +546,12 @@ const TMGoals = {
     }
     if (typeof DeepTime === 'undefined') return;
     const glacial = this.glacialNow();
+    // A FRESH GOAL PAST A GLACIAL TURN (decided 2026-11-02): when the time dial or a deep burst carries
+    // the clock across a glacial/interglacial turn, draw a new goal instead of holding the old one
+    // across the swing (the keep rule below would hold any goal still live in the new climate). A
+    // boost's own time-lapse is left to its verdict: it lands on the turn by design, and a solve
+    // already draws anew. The recent memory keeps the old goal out of the draw while there is a choice.
+    if (this._glacial !== null && glacial !== this._glacial && this._fastForwarding()) this._force = true;
     const baked = g ? g._bakedYearsBP : undefined;
     if (this._force || this._dirty || glacial !== this._glacial || baked !== this._baked) {
       const keep = !this._force;
@@ -548,6 +562,12 @@ const TMGoals = {
   _timeMoving() {
     if (typeof DeepTime === 'undefined') return false;
     return !!((DeepTime.isTimelapsing && DeepTime.isTimelapsing()) || (DeepTime.isDeep && DeepTime.isDeep()));
+  },
+  // The visitor driving the clock themselves: the dial off zero or a deep burst, and not a boost.
+  _fastForwarding() {
+    if (typeof DeepTime === 'undefined') return false;
+    if (DeepTime.isTimelapsing && DeepTime.isTimelapsing()) return false;
+    return !!((DeepTime.isDeep && DeepTime.isDeep()) || (DeepTime.dialRate && DeepTime.dialRate() > 0));
   },
 
   // ---- the verdict -------------------------------------------------------------------------------
