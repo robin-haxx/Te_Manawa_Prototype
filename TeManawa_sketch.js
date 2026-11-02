@@ -2067,8 +2067,10 @@ class Game {
     if (typeof PlantGallery !== 'undefined' && PlantGallery.onKeyDown(k)) return;
     // THE LAND BEFORE THE WINDOW: while the attract sequence runs every key is presence (it skips to
     // the landing), never a button on the parked old world. The debug overlay still cycles (authoring).
+    // The time dial's keys slow, speed, pause or reverse the sequence instead of skipping it.
     if (typeof Palaeo !== 'undefined' && Palaeo.active) {
       if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
+      if (Palaeo.dialKey(k)) return;
       Palaeo.skip(); return;
     }
     // The macro pad's TIME DIAL ([ / ] / \ by default — DeepTime.DIAL_KEYS): a standing 0–5,000 yr/s fast-forward.
@@ -2449,9 +2451,9 @@ function mouseWheel(e) {
     PlantGallery.scroll(e.deltaY);
     return false;
   }
-  if (typeof Palaeo !== 'undefined' && Palaeo.active) {   // presence during the attract sequence: skip, never turn the dial
+  if (typeof Palaeo !== 'undefined' && Palaeo.active) {   // during the attract sequence the wheel is ITS dial (slower / faster / pause / reverse)
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
-    Palaeo.skip();
+    Palaeo.dialWheel(e.deltaY);
     return false;
   }
   if (typeof DeepTime !== 'undefined' && DeepTime.dialWheel) {

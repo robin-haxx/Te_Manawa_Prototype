@@ -251,10 +251,12 @@ const LOOK = {
   // of it, the Ruataniwha shelf in the east closing with the Mount Bruce uplift. TIMING is dated in
   // GEO_EPOCHS.palaeo* (Trewick & Bland 2012, Fig. 4A–D); these are the SHAPES. Every term is exactly 0
   // at any date inside the window (≤ 1 Ma), so the sim's land is untouched — the harness asserts it.
-  palaeoAxisCore:      0.6,   // the basin flood keeps off the axis CORE: range mass below this drowns fully, 1 (inside the footprint polygons, and the gorge saddle between them) stays dry, smoothstep between — "an emergent finger of basement" (4 Ma) that is continuous across the gorge area. 0.6 keeps the footprints and lets their spread margin shelve under over a gentle slope; lower = a wider finger, higher = a steeper shore. Tune live (press B/G/N).
+  palaeoAxisCore:      0.4,   // the basin flood keeps off the axis CORE: range mass (× the dated spine thinning, palaeoFingerNarrow) below this drowns fully, 1 stays dry, smoothstep between — "an emergent finger of basement" (4 Ma), continuous across the gorge saddle. The band from here to 1 is the finger's SHORE: wide (0.4) so it shelves under over most of the flank; higher = a narrower finger with a steeper shore the relief bake paints as a stepped cliff. Tune live (press B/G/N).
+  palaeoBridgeW:       0.06,  // the early land bridge across the gorge saddle: its half-width as a fraction of the map width (wMDist is in map units; the authored main channel is 0.05 wide, so this is a gently shelving isthmus ~40 cells each side of the river, inside the gorge window — "no seaway across the gorge area" at 4 Ma)
+  palaeoFingerNarrow:  0.8,   // how much the finger thins to its crest lines while GEO_EPOCHS.palaeoFingerNarrow is 1 (early): the mass is scaled by 1 − this × (1 − spine closeness), so at the flanks it falls under palaeoAxisCore and shelves under. 0 = the whole footprint at every date
   palaeoAxisLow:       0.75,  // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by this much × (1 − uplift/upliftStart), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma)
   palaeoAxisLowE:      0.22,  // … the level it is cut toward (lowland)
-  palaeoAxisFloorE:    0.19,  // "emergent": inside the axis core the pre-window land stands at least this high (± the wobble), so the finger is land even where its footprint lies on today's coastal shelf (the southern Tararua, whose base is sea without the range uplift). Fades with the basin, 0 at the opening
+  palaeoAxisFloorE:    0.15,  // "emergent": inside the axis core the pre-window land stands at least this high (± the wobble), so the finger is land even where its footprint lies on today's coastal shelf (the southern Tararua, whose base is sea without the range uplift). Kept just above the lowland line, where the relief bake's lift is nearly flat (bakeLift tapers to 0 at the waterline) — higher, and the thin bridge across the saddle paints as a striped wall. Fades with the basin, 0 at the opening
   palaeoBasinEastU:    0.62,  // the EAST shelf (the Ruataniwha Strait's south-west end) lies east of this screen-X fraction; it closes earlier than the west (GEO_EPOCHS.palaeoBasinE*)
   palaeoBasinEastFeather: 0.12, // width (in screen-X) of the blend from the west basin's clock to the east's
   palaeoStraitHalfW:   0.085, // the Manawatū Strait's HALF-width across the gap (screen-X fraction) at full strength: "< 20 km wide" (T&B p. 170) ≈ 0.17 of LOOK.frameKm. The width scales with the dated curve, so the 3 Ma seaway is a thread and the 2.4 Ma one the full strip
@@ -1407,6 +1409,9 @@ class TerrainGenerator {
       //   the axis before the rapid uplift: "an emergent finger of basement rocks, albeit at low
       //   elevation" (4 Ma); "some uplift… initiated by 1.5 Ma"; joins upliftStart at upliftFrom
       palaeoUpliftPre:  [[4000000, 0.03], [1500000, 0.07]],
+      //   how NARROW the finger is: 1 = a strip along the crest lines (T&B Fig. 4A's thin fingers of
+      //   exposed basement), 0 = the whole footprint (the ranges' own shape, as the uplift starts)
+      palaeoFingerNarrow: [[4000000, 1], [3000000, 1], [1650000, 0]],
       //   the oldest date the attract sequence shows (its terms hold their state at older dates)
       palaeoFrom: 4000000
     };
@@ -1451,7 +1456,8 @@ class TerrainGenerator {
     const palaeo = preWindow ? {
       basinW: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinWFrom, 0], [E.palaeoBasinWTo, 1]], yearsBP),
       basinE: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinEFrom, 0], [E.palaeoBasinETo, 1]], yearsBP),
-      axis:   TerrainGenerator._anchorCurve(E.palaeoAxisStrait, yearsBP)
+      axis:   TerrainGenerator._anchorCurve(E.palaeoAxisStrait, yearsBP),
+      narrow: TerrainGenerator._anchorCurve(E.palaeoFingerNarrow, yearsBP)
     } : TerrainGenerator.PALAEO_NONE;
     // The axis before the rapid uplift: the dated pre-window anchors, joining upliftStart at upliftFrom.
     const upliftPre = preWindow
@@ -1515,7 +1521,7 @@ class TerrainGenerator {
   // The pre-window terms inside the window: one frozen zero object, shared (geoTimeFactors runs per
   // morph; nothing should allocate for a state that never changes).
   static get PALAEO_NONE() {
-    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0 });
+    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0, narrow: 0 });
     return TerrainGenerator._palaeoNone;
   }
 
@@ -1849,7 +1855,7 @@ class TerrainGenerator {
     //              caller fades it out continuously where the strait or the shoals take the cell, so
     //              it never steps at a feather's edge; 0 inside the window.
     if (fingerLift > 0) {
-      const fe = (fingerE > 0) ? fingerE : 0.19;
+      const fe = (fingerE > 0) ? fingerE : 0.15;
       if (e < fe) e += (fe - e) * fingerLift;
     }
     // (The relative-sea shift is applied above, before the river carve.)
@@ -2359,7 +2365,9 @@ class TerrainGenerator {
     const gc = this.gridCols, gr = this.gridRows, n = gc * gr, scale = this.scale;
     const invc = 1 / gc, invr = 1 / gr;
     const rMask = new Float32Array(n), rH = new Float32Array(n), ridge = new Float32Array(n),
-          detail = new Float32Array(n), crest = new Float32Array(n);
+          detail = new Float32Array(n), crest = new Float32Array(n),
+          rSp = new Float32Array(n),   // spine closeness, 1 on a range's crest line → 0 at its flank (the saddle: 1)
+          rSad = new Uint8Array(n);    // 1 where the cell's mass is the gorge SADDLE's (between the polygons), not a range's
     const rf = this._rangeFbmOut || (this._rangeFbmOut = { ridge: 0, detail: 0, crest: 0 });
     const fbmD = (typeof LOOK !== 'undefined' && LOOK.rangeFbmDetail != null) ? LOOK.rangeFbmDetail : 0.10;
     const fbmC = (typeof LOOK !== 'undefined' && LOOK.rangeCrestTex != null) ? LOOK.rangeCrestTex : 0.07;
@@ -2387,6 +2395,8 @@ class TerrainGenerator {
         if (mf && gSad > 0) { const sm = TerrainGenerator._gorgeSaddle(u, Math.abs(mf.s)); if (sm > bm) { bm = sm; bh = gSadH; br = null; } }   // Te Āpiti: the ranges meet at the river
         rMask[idx] = bm;
         rH[idx] = (bm > 0 && br) ? bh * TerrainGenerator._spineHeight(br, u, v, spine) : bh;
+        rSp[idx] = (bm > 0 && br) ? TerrainGenerator._spineHeight(br, u, v, 1) : (bm > 0 ? 1 : 0);
+        rSad[idx] = (bm > 0 && !br) ? 1 : 0;
         if (bm > 0) { this._rangeFbm(wx, wy, rf); ridge[idx] = rf.ridge; detail[idx] = rf.detail * fbmD; crest[idx] = rf.crest * fbmC; }
         if (mf) { wMDist[idx] = mf.d; wMBaseW[idx] = mf.w; wMPos[idx] = mf.p; wMDepth[idx] = mf.depth; wMS[idx] = mf.s; wME[idx] = mf.e; }
         if (this._tribField(u, v, tf) >= 0) {
@@ -2396,7 +2406,7 @@ class TerrainGenerator {
         idx++;
       }
     }
-    this._geoCache = { rMask, rH, ridge, detail, crest, wMDist, wMBaseW, wMPos, wMDepth, wMS, wME, tJ, tS, tS0: tS.slice(), tP, tE,
+    this._geoCache = { rMask, rH, ridge, detail, crest, rSp, rSad, wMDist, wMBaseW, wMPos, wMDepth, wMS, wME, tJ, tS, tS0: tS.slice(), tP, tE,
                        tJ2, tS2, tS02: tS2.slice(), tP2, tE2 };
     this._meanderKey = null;   // a fresh cache holds the un-meandered lines: re-apply on the next combine
   }
@@ -3273,7 +3283,7 @@ class TerrainGenerator {
     // is the one marine term that does NOT: Trewick & Bland put the Ruahine "under the ocean" at 2.4 Ma.
     const PL = t.palaeo || TerrainGenerator.PALAEO_NONE, LKp = (typeof LOOK !== 'undefined') ? LOOK : {};
     const palaeoOn = PL.basinW > 0 || PL.basinE > 0 || PL.axis > 0;
-    const pAxisCore = (LKp.palaeoAxisCore != null) ? LKp.palaeoAxisCore : 0.6;
+    const pAxisCore = (LKp.palaeoAxisCore != null) ? LKp.palaeoAxisCore : 0.4;
     const pEastU = (LKp.palaeoBasinEastU != null) ? LKp.palaeoBasinEastU : 0.62;
     const pEastF = (LKp.palaeoBasinEastFeather > 0) ? LKp.palaeoBasinEastFeather : 0.12;
     const pStraitHW = ((LKp.palaeoStraitHalfW != null) ? LKp.palaeoStraitHalfW : 0.085) * PL.axis;   // the strait's width carries the dated curve
@@ -3286,7 +3296,10 @@ class TerrainGenerator {
     const pAxisLow = (palaeoOn && pUpStart > 0 && up < pUpStart)
       ? ((LKp.palaeoAxisLow != null) ? LKp.palaeoAxisLow : 0.75) * (1 - up / pUpStart) : 0;
     const pAxisLowE = (LKp.palaeoAxisLowE != null) ? LKp.palaeoAxisLowE : 0.22;
-    const pAxisFloorE = (LKp.palaeoAxisFloorE != null) ? LKp.palaeoAxisFloorE : 0.19;
+    const pAxisFloorE = (LKp.palaeoAxisFloorE != null) ? LKp.palaeoAxisFloorE : 0.15;
+    const pNarrow = ((LKp.palaeoFingerNarrow != null) ? LKp.palaeoFingerNarrow : 0.8) * (PL.narrow || 0);   // the dated thinning of the finger
+    const rSpArr = c.rSp, rSadArr = c.rSad;
+    const pBridgeW = (LKp.palaeoBridgeW > 0) ? LKp.palaeoBridgeW : 0.06;   // the early land bridge across the saddle: half-width, map-width units (wMDist's)
     const pGorgeU = (LKp.straitGorgeU != null) ? LKp.straitGorgeU : 0.50;
     const pShoal = ((LKp.palaeoShoal != null) ? LKp.palaeoShoal : 0.85) * PL.axis;
     const pShoalV = (LKp.palaeoShoalV != null) ? LKp.palaeoShoalV : 0.52;
@@ -3471,7 +3484,31 @@ class TerrainGenerator {
             // gorge area" at 4 Ma), shelving under across the spread margin outside them. And it is
             // EMERGENT: the core stands at least pAxisFloorE even where its footprint lies on today's
             // shelf (the southern Tararua), fading with the basin so it is 0 at the opening.
-            let core = (rMask[i] - pAxisCore) / (1 - pAxisCore);
+            // Early, the finger is thin — a strip along each range's crest line and the river
+            // bridge across the saddle (T&B Fig. 4A); it broadens to the whole footprint as the
+            // uplift starts (GEO_EPOCHS.palaeoFingerNarrow).
+            let mass = rMask[i];
+            if (pNarrow > 0 && rSpArr) {
+              // The thinned range mass: a strip along each crest line. The saddle's own mass (between
+              // the polygons) counts as flank here — its crest profile falls off within a few cells of
+              // the river and would stand as a plateau with a sheer face.
+              const sp = (rSadArr && rSadArr[i]) ? 0 : rSpArr[i];
+              mass = mass * (1 - pNarrow * (1 - sp));
+              // The early land bridge across the gap: a WIDE isthmus along the main stem (pBridgeW of the
+              // map width either side, smoothstepped, inside the gorge window), fading as the finger broadens.
+              // Computed for EVERY cell near the gap and maxed with the range mass, so the mass is
+              // continuous across the saddle/range class boundary (a branch on the class left a 0.3
+              // step between neighbouring cells, which the relief bake painted as a striped wall).
+              const nw = PL.narrow || 0;
+              if (nw > 0 && wMDistArr) {
+                let bm = 1 - wMDistArr[i] / pBridgeW;
+                if (bm > 0) {
+                  bm = bm * bm * (3 - 2 * bm) * (1 - TerrainGenerator._gorgeOpen(u)) * nw;
+                  if (bm > mass) mass = bm;
+                }
+              }
+            }
+            let core = (mass - pAxisCore) / (1 - pAxisCore);
             core = core < 0 ? 0 : core > 1 ? 1 : core * core * (3 - 2 * core);
             basinSub = basin * (1 - core);
             fingerLift = basin * core;

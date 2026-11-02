@@ -40,8 +40,20 @@ const TM_PALAEO = {
   // The sequence's keyframes, oldest first: [yearsBP, holdSeconds]. The four dated maps of Trewick &
   // Bland (4, 3, 2.4, 1 Ma) plus the strait's final closure (1.6 Ma). The last one is the landing and
   // MUST be the window's start (DeepTime.yearsStart): the sim resumes on exactly that land.
-  keyframes:   [[4000000, 4], [3000000, 3], [2400000, 4], [1600000, 3], [1000000, 3]],
-  kyrPerSec:   60,        // travel rate between keyframes (3 Myr ≈ 50 s at 60)
+  keyframes:   [[4000000, 10], [3000000, 8], [2400000, 10], [1600000, 8], [1000000, 8]],
+  kyrPerSec:   15,        // travel rate between keyframes at ×1 (3 Myr ≈ 200 s; with the holds ≈ 4 min)
+  // THE DIAL while the sequence runs (the same keys / wheel / console message as DeepTime's time dial,
+  // routed here): a detent −6 … 6. 0 pauses; ±1…±6 play at SPEEDS[|detent|−1] × kyrPerSec, forward
+  // (+) or in REVERSE (−). Holds count in sequence time (an 8 s hold is 2 s at ×4, never ends paused).
+  dialSpeeds:  [0.25, 0.5, 1, 2, 4, 8],
+  dialStart:   3,         // the detent a sequence opens at (×1 forward); the dial's push returns here
+  dialWheelStep: 100,     // wheel deltaY per detent (as DeepTime.dialWheelStep)
+  // THE SEA'S BREATH before the window: a synthetic 41-kyr glacial–interglacial cycle
+  // (Climate.PRE_WINDOW_SEA) blended in only when the land moves slowly enough for a cycle to read —
+  // full at ≤ seaBreathBelow kyr/s (a cycle ≥ 8 s), gone by seaBreathOff (a cycle every 4 s would be
+  // a flicker). It shows where there is a coast to move: on the plain as the basin shoals (1.65 → 1 Ma).
+  seaBreathBelow: 5,
+  seaBreathOff:  10,
   minYears:    20000,     // the smallest clock move that earns a re-bake (paced by the crossfade anyway)
   budgetMs:    8,         // per-frame morph slice while the sequence runs (nothing lives, so it can be generous)
   firstBudgetMs: 14,      // … and under the opening dark, where nothing at all is on screen
@@ -93,9 +105,12 @@ const Palaeo = {
   bakes:    0,         // re-bakes landed this sequence
   runs:     0,         // sequences played (the harness reads it)
   _t0:      0,         // millis() the current state began
-  _leg:     0,         // index into keyframes
-  _holdUntil: 0,
+  _leg:     0,         // index into keyframes: the one last reached (forward) or returned to (reverse)
+  _holdLeft: 0,        // seconds of the current hold still to run, in sequence time
+  _holdPending: false, // on a keyframe whose land is not yet on screen
   _skipping: false,
+  dialStep: 3,         // the dial's detent while the sequence runs (TM_PALAEO.dialSpeeds; 0 = paused, − = reverse)
+  _wheelAcc: 0,
   _veil:    0,         // 0..1 dark overlay
   _bakedYear: NaN, _bakedAll: false,
   _reseed:  false,
@@ -112,8 +127,10 @@ const Palaeo = {
     if (typeof TerrainGenerator === 'undefined' || !g.terrain.morphBegin) return false;
     const now = this._now();
     this.active = true; this.state = 'dipIn'; this.reason = reason || 'manual'; this.game = g;
-    this._t0 = now; this._leg = 0; this._holdUntil = 0; this._holdPending = false; this._skipping = false; this._veil = 0;
+    this._t0 = now; this._leg = 0; this._holdLeft = 0; this._holdPending = false; this._skipping = false; this._veil = 0;
     this.bakes = 0; this._bakedYear = NaN; this._bakedAll = false;
+    this.dialStep = TM_PALAEO.dialStart; this._wheelAcc = 0;
+    this._setSeaBreath(0);
     this.yearsBP = this._kf(0)[0];
     // The reseed-every-Nth of the attract loop: decided here, done under the opening dark.
     this._reseed = (typeof Kiosk !== 'undefined' && Kiosk.takeReseed) ? Kiosk.takeReseed() : false;
@@ -133,8 +150,60 @@ const Palaeo = {
   skip() {
     if (!this.active) return false;
     if (this.state === 'dipOut' || this.state === 'rise2') return false;
-    this._skipping = true; this._holdUntil = 0; this._holdPending = false;
+    this._skipping = true; this._holdLeft = 0; this._holdPending = false;
     return true;
+  },
+
+  // ---- the dial while the sequence runs ------------------------
+  // One detent per call (± a fast spin), clamped to ±dialSpeeds.length; 0 pauses, below 0 reverses.
+  dialTurn(delta) { return this.dialSet(this.dialStep + (delta | 0)); },
+  dialSet(step) {
+    const n = TM_PALAEO.dialSpeeds.length;
+    this.dialStep = Math.max(-n, Math.min(n, step | 0));
+    return this.dialStep;
+  },
+  dialReset() { return this.dialSet(TM_PALAEO.dialStart); },
+  // The time dial's keys (DeepTime.DIAL_KEYS: CW / CCW / push), while the sequence runs. True when taken.
+  dialKey(k) {
+    if (!this.active) return false;
+    const K = (typeof DeepTime !== 'undefined' && DeepTime.DIAL_KEYS) ? DeepTime.DIAL_KEYS : { faster: [']'], slower: ['['], reset: ['\\'] };
+    if (K.faster.indexOf(k) !== -1) { this.dialTurn(1);  return true; }
+    if (K.slower.indexOf(k) !== -1) { this.dialTurn(-1); return true; }
+    if (K.reset.indexOf(k)  !== -1) { this.dialReset();  return true; }
+    return false;
+  },
+  dialWheel(deltaY) {
+    this._wheelAcc += deltaY;
+    const n = Math.trunc(this._wheelAcc / (TM_PALAEO.dialWheelStep || 100));
+    if (n !== 0) { this._wheelAcc -= n * (TM_PALAEO.dialWheelStep || 100); this.dialTurn(-n); }
+    return n;
+  },
+  // The signed rate multiplier the clock plays at: 0 paused, − reverse; a skip overrides it forward.
+  rateMult() {
+    if (this._skipping) return TM_PALAEO.skipMult;
+    const S = TM_PALAEO.dialSpeeds, d = this.dialStep;
+    if (!d) return 0;
+    return (d > 0 ? 1 : -1) * S[Math.min(S.length, Math.abs(d)) - 1];
+  },
+  // "paused" / ">> × 2" / "<< × 0.5" / ">> skip", for the caption.
+  speedLabel() {
+    if (this._skipping) return '>> skip';
+    const m = this.rateMult();
+    if (m === 0) return 'paused';
+    const a = Math.abs(m), s = a >= 1 ? String(a) : a.toFixed(2).replace(/0+$/, '');
+    return (m > 0 ? '>> × ' : '<< × ') + s;
+  },
+
+  // The sea's breath before the window (Climate.PRE_WINDOW_SEA.scale): 1 when the land crawls
+  // (≤ seaBreathBelow kyr/s), 0 when it moves too fast for a cycle to read (≥ seaBreathOff).
+  _seaScale() {
+    const rate = TM_PALAEO.kyrPerSec * Math.abs(this.rateMult());
+    const lo = TM_PALAEO.seaBreathBelow, hi = Math.max(lo + 1e-6, TM_PALAEO.seaBreathOff);
+    const t = (hi - rate) / (hi - lo);
+    return t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  },
+  _setSeaBreath(scale) {
+    if (typeof Climate !== 'undefined' && Climate.PRE_WINDOW_SEA) Climate.PRE_WINDOW_SEA.scale = scale;
   },
 
   // ---- per frame, from Game.update (always; cheap when idle) ---
@@ -171,7 +240,7 @@ const Palaeo = {
         this._veil = 1 - this._ease((now - this._t0) / dip);
         if (this._veil <= 0) {
           this._veil = 0; this.state = 'play'; this._leg = 0;
-          this._armHold(now);                                           // the 4 Ma land is already on screen
+          this._armHold();                                              // the 4 Ma land is already on screen
         }
         break;
       }
@@ -200,36 +269,48 @@ const Palaeo = {
     }
   },
 
-  // The clock: holds on a keyframe, travels to the next; the last hold ends in the landing dip.
-  // A hold is PENDING (the clock waits) until the keyframe's own re-bake is on screen, so the time
-  // the visitor gets to read a dated map is counted from when the land shows it, not from when the
-  // clock got there (on a slow bake the hold would otherwise be spent still morphing). A skip waits
-  // for nothing.
+  // The clock: holds on a keyframe, travels to the next at the dial's rate — forward, paused, or in
+  // reverse; the last hold, reached forward, ends in the landing dip. A hold is PENDING (the clock
+  // waits) until the keyframe's own re-bake is on screen, so the time the visitor gets to read a
+  // dated map is counted from when the land shows it, not from when the clock got there (on a slow
+  // bake the hold would otherwise be spent still morphing); it then runs in SEQUENCE time (×|rate|),
+  // so a fast dial shortens it and a pause never ends it. A skip waits for nothing. In reverse the
+  // target is the keyframe just left (or, from a keyframe, the older one), and the oldest date holds.
   _advanceClock(now, sec) {
-    const K = TM_PALAEO.keyframes, last = K.length - 1;
+    const K = TM_PALAEO.keyframes, last = K.length - 1, mult = this.rateMult();
     if (this._holdPending) {                                   // on a keyframe, its land not yet shown
       this.yearsBP = K[this._leg][0];
       if (this._skipping) this._holdPending = false; else return;
     }
-    if (now < this._holdUntil) { this.yearsBP = K[this._leg][0]; return; }
-    if (this._leg >= last) {                                   // the last hold is over → land
-      this.yearsBP = K[last][0];
-      this.state = 'dipOut'; this._t0 = now;
-      return;
+    if (this._holdLeft > 0) {                                  // the hold, in sequence time
+      this.yearsBP = K[this._leg][0];
+      this._holdLeft -= sec * Math.abs(mult);
+      if (this._holdLeft > 0) return;
+      this._holdLeft = 0;
     }
-    const next = K[this._leg + 1];
-    const rate = TM_PALAEO.kyrPerSec * 1000 * (this._skipping ? TM_PALAEO.skipMult : 1);
-    this.yearsBP -= rate * sec;
-    if (this.yearsBP <= next[0]) {
-      this.yearsBP = next[0]; this._leg++;
-      this._holdPending = true; this._holdUntil = 0;           // armed by _onBaked once this keyframe's land shows
+    if (mult === 0) return;                                    // paused
+    const yrs = TM_PALAEO.kyrPerSec * 1000 * Math.abs(mult) * sec;
+    if (mult > 0) {
+      if (this._leg >= last) {                                 // the last hold is over → land
+        this.yearsBP = K[last][0];
+        this.state = 'dipOut'; this._t0 = now;
+        return;
+      }
+      const next = K[this._leg + 1];
+      this.yearsBP -= yrs;
+      if (this.yearsBP <= next[0]) { this.yearsBP = next[0]; this._leg++; this._holdPending = true; }   // armed by _onBaked once the land shows
+    } else {
+      const ti = (this.yearsBP < K[this._leg][0]) ? this._leg : this._leg - 1;
+      if (ti < 0) { this.yearsBP = K[0][0]; return; }          // the oldest date: nothing further back
+      this.yearsBP += yrs;
+      if (this.yearsBP >= K[ti][0]) { this.yearsBP = K[ti][0]; this._leg = ti; this._holdPending = true; }
     }
   },
 
-  // The keyframe's land is on screen: start its hold (0 while skipping).
-  _armHold(now) {
+  // The keyframe's land is on screen: start its hold (none while skipping).
+  _armHold() {
     this._holdPending = false;
-    this._holdUntil = this._skipping ? 0 : now + this._kf(this._leg)[1] * 1000;
+    this._holdLeft = this._skipping ? 0 : this._kf(this._leg)[1];
   },
 
   // A re-bake only when nothing is in flight, the last visible swap's crossfade has ended (a swap under
@@ -240,15 +321,19 @@ const Palaeo = {
       return;
     }
     if (T._morphFade) return;
-    const want = this.yearsBP, onHold = this._holdPending || now < this._holdUntil || this._leg >= TM_PALAEO.keyframes.length - 1;
+    const want = this.yearsBP, onHold = this._holdPending || this._holdLeft > 0 || this._leg >= TM_PALAEO.keyframes.length - 1;
     const moved = Math.abs(want - this._bakedYear) >= TM_PALAEO.minYears;
-    if (moved || (onHold && this._bakedYear !== want)) {
+    // The sea's breath can change the land at a fixed date too (the dial slowed): re-bake for it.
+    const breath = this._seaScale(), breathMoved = Math.abs(breath - (this._bakedBreath || 0)) > 0.05;
+    if (moved || breathMoved || (onHold && this._bakedYear !== want)) {
       const isLast = want === this._last()[0];
       this._issueBake(T, want, isLast);
     }
   },
 
   _issueBake(T, year, allPhases) {
+    const breath = this._seaScale();
+    this._setSeaBreath(breath); this._bakedBreath = breath;   // read by the morph through Climate.seaLevelAt
     T.morphBegin(year, this._bakeScale(), !!allPhases);
     this._pendingYear = year; this._pendingAll = !!allPhases;
   },
@@ -263,7 +348,7 @@ const Palaeo = {
     }
     this._anchorSig = '';   // the land moved under the names: re-seat them
     // A pending hold starts now that its keyframe's land is on screen.
-    if (this.state === 'play' && this._holdPending && year === this._kf(this._leg)[0]) this._armHold(now);
+    if (this.state === 'play' && this._holdPending && year === this._kf(this._leg)[0]) this._armHold();
   },
 
   _retireFade(T) {
@@ -285,6 +370,7 @@ const Palaeo = {
   _land(g, T, now) {
     this._retireFade(T);
     this._clearRiverNames();                                    // the time's names never linger into the living world
+    this._setSeaBreath(0); this._bakedBreath = 0;               // the window never reads it; left clean
     const y = this._last()[0];
     if (g.water && g.water.build) g.water.build(T, y);          // a clean stamp for the new world (as an eruption does)
     if (typeof Kiosk !== 'undefined' && Kiosk.landAttract) Kiosk.landAttract(g, this.reason);
@@ -344,7 +430,7 @@ const Palaeo = {
 
   // The date as the HUD writes it (~ 2,400,000 years ago), quantised while travelling.
   dateLabel() {
-    const onHold = this.state !== 'play' || this._now() < this._holdUntil;
+    const onHold = this.state !== 'play' || this._holdPending || this._holdLeft > 0 || this.rateMult() === 0;
     const q = TM_PALAEO.dateQuant || 1;
     const y = onHold ? this.yearsBP : Math.round(this.yearsBP / q) * q;
     return '~ ' + Math.round(y).toLocaleString() + ' years ago';
@@ -352,7 +438,8 @@ const Palaeo = {
 
   // For the second screen's clock telemetry.
   telemetry() {
-    return this.active ? { active: true, yearsBP: Math.round(this.yearsBP), state: this.state, label: this.dateLabel() }
+    return this.active ? { active: true, yearsBP: Math.round(this.yearsBP), state: this.state, label: this.dateLabel(),
+                           dialStep: this.dialStep, speed: this.speedLabel() }
                        : { active: false };
   },
 
@@ -438,6 +525,11 @@ const Palaeo = {
     const date = this.dateLabel();
     HUD._blitText(date, FreckleFace, 'freckle', size, CENTER, CENTER, cx + 2, cy + 3, halo);
     HUD._blitText(date, FreckleFace, 'freckle', size, CENTER, CENTER, cx, cy, ink);
+    // The dial's reading, where the HUD puts its own dial badge (a dozen possible strings: cached).
+    if (this.state === 'play') {
+      const xEnd = W - Math.round(W * (HUD.VIS_INSET || 0.10)), by = H - (HUD.VIS_STRIP_H || 64) + 16;
+      HUD._blitText(this.speedLabel(), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, xEnd, by, [240, 240, 240]);
+    }
     if (!TM_PALAEO.notes) return;
     const note = this.epochNote(this.yearsBP), now = this._now(), fade = Math.max(500, TM_PALAEO.noteFadeMs);
     let c = this._cap;
@@ -470,8 +562,8 @@ const Palaeo = {
   drawStill(buf, T, W, H, y) {
     const g = { terrain: T };
     const labels = this._buildLabels();
-    const keep = { active: this.active, yearsBP: this.yearsBP, state: this.state, sig: this._anchorSig, game: this.game };
-    this.active = true; this.yearsBP = y; this.state = 'play'; this._holdUntil = Infinity; this.game = g;
+    const keep = { active: this.active, yearsBP: this.yearsBP, state: this.state, sig: this._anchorSig, game: this.game, hold: this._holdLeft };
+    this.active = true; this.yearsBP = y; this.state = 'play'; this._holdLeft = Infinity; this.game = g;
     this._anchorSig = '';
     const drawn = [];
     try {
@@ -502,7 +594,7 @@ const Palaeo = {
       }
     } finally {
       this.active = keep.active; this.yearsBP = keep.yearsBP; this.state = keep.state; this._anchorSig = keep.sig; this.game = keep.game;
-      this._holdUntil = 0;
+      this._holdLeft = keep.hold;
     }
     return drawn;
   },

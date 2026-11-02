@@ -77,6 +77,7 @@ pre-window basin).
 | Term | What it does in the frame | Dated anchors | Window value (≤ 1 Ma) |
 |---|---|---|---|
 | **basin, west** `basinW` | drowns the plain to the mottled sea floor everywhere outside the axis core — the range footprints and the gorge saddle between them (mass ≥ `LOOK.palaeoAxisCore`), their spread margin shelving under — the Wanganui Basin's shelf; smoothstep off | 1 at ≥ 1.65 Ma → 0 at 1.0 Ma | 0 |
+| **the finger's width** `narrow` | early (≥ 3 Ma) the finger is a strip along each range's crest line and the river bridge across the saddle — T&B Fig. 4A's thin fingers of exposed basement (`LOOK.palaeoFingerNarrow` scales the mass by spine closeness); it broadens to the whole footprint by 1.65 Ma as the uplift starts | 1 at ≥ 3.0 Ma → 0 at 1.65 Ma | 0 |
 | **the finger** `basinW`/`basinE` × core | inside the core the land is cut toward lowland (`LOOK.palaeoAxisLow`/`LowE`, by how far the pre-window uplift still has to go — "albeit at low elevation") and stands at least `LOOK.palaeoAxisFloorE` (the one pre-window term that raises: the southern Tararua's footprint lies on today's shelf and was land then). Both fade to 0 at the opening | with the basin | 0 |
 | **basin, east** `basinE` | the same drowning east of `LOOK.palaeoBasinEastU` (the Ruataniwha Strait's SW end), blended across a feather; closes with Mount Bruce | 1 at ≥ 1.65 Ma → 0 at 1.3 Ma | 0 |
 | **south strait** `southSink` (existing) | the depocentre off Levin–Foxton; drains 1.0 → 0.5 Ma | **rise moved back**: 4.6 → 4.0 Ma (was 1.1 → 1.0 Ma), so the south is sea throughout the pre-roll | identical (1 at 1 Ma, 0 by 0.5 Ma) |
@@ -110,7 +111,20 @@ strait drowned below 0.10 reads as sea, not as a wide river. No classify change.
          Kiosk bookkeeping) · fade up · the sim resumes, geology paused as always until a boost
 ```
 
-- **Any input skips**: a key, a click, a wheel turn, or a console intent runs the remaining legs at
+- **The dial is the sequence's while it runs** (2026-11-02): the time dial's keys, the wheel and the
+  console's dial message turn a detent −6 … 6 (`TM_PALAEO.dialSpeeds`: ×0.25 … ×8 of `kyrPerSec`,
+  0 = paused, negative = **reverse**; push = ×1 forward). Holds run in sequence time, so ×4 shortens
+  them and a pause never ends one; in reverse the clock returns to the keyframe it left and holds
+  there, and the oldest date holds. The caption shows the reading (`>> × 2`, `paused`, `<< × 0.5`).
+  Default pacing: 15 kyr/s with 10 / 8 / 10 / 8 / 8 s holds ≈ 4 min at ×1.
+- **The sea's breath before the window**: slowed to ≤ `seaBreathBelow` (5 kyr/s — a 41-kyr cycle
+  every ≥ 8 s) the pre-window sea breathes a synthetic pre-MPT cycle (`Climate.PRE_WINDOW_SEA`:
+  41 kyr, −70 … 0 m, phased to join the window's first anchor; gone by `seaBreathOff` 10 kyr/s, where
+  a cycle every 4 s would flicker). It costs nothing extra — the same re-bakes read it through
+  `relativeSeaLevel` — and it shows where there is a coast to move: on the plain as the basin shoals
+  (1.65 → 1 Ma); earlier the plain is shelf under the positional basin, which the eustatic shift
+  cannot bare. The window never reads it (the scale is 0 there; harness-asserted).
+- **Any other input skips**: a key, a click, or a console intent runs the remaining legs at
   `TM_PALAEO.skipMult` with no holds, then lands normally (never a cut).
 - **Transitions are the kiosk's own idiom** (the dark crossfade, `Kiosk.renderCrossfade`), both dips
   ≥ 500 ms; every terrain swap is the existing ≥ 500 ms crossfade and the next one waits for it; the
@@ -171,7 +185,7 @@ exist in the model before 1 Ma (as the spread fans), but no source names them fo
 | 19 | Frame | Kuripapango Strait, Mount Bruce divide, the 2.4 Ma depocentre are off-frame | Not labelled; in this document only |
 | 20 | `RiverNames` hysteresis (`holdLayouts`) | A name a re-layout cannot place stays one more layout before it fades — right on the open screen, wrong across a cover: the modern tributary names carried through the whole 4 Ma hold (seen in the first live run) | `RiverNames.clear()` under both dips (the sequence's first bake and the landing), so each era's first layout starts fresh; never called on the open screen |
 | 21 | The hold timer | A hold counted from the clock's *arrival* at a keyframe; on a slow bake (the harness, a cold kiosk) it was spent still morphing and the dated map was never on screen for its hold | A hold is *pending* until the keyframe's own re-bake lands (`_holdPending` → `_armHold` from `_onBaked`); a skip waits for nothing |
-| 22 | The gorge saddle (`LOOK.gorgeSaddle`) | A crest-weighted "finger" (range mass × spine closeness) drowned the saddle between the two ranges at every pre-window date, cutting the finger where Trewick & Bland say there was no seaway at 4 Ma | The finger is the range *footprints* (mass ≥ `LOOK.palaeoAxisCore` 0.6 — the polygons and the saddle), with the spread margin shelving under; the harness asserts the gap is land at 4, 2.75 and 1.6 Ma |
+| 22 | The gorge saddle (`LOOK.gorgeSaddle`) | A crest-weighted "finger" (range mass × spine closeness) drowned the saddle between the two ranges at every pre-window date, cutting the finger where Trewick & Bland say there was no seaway at 4 Ma | The finger is the range *footprints* (mass ≥ `LOOK.palaeoAxisCore`, a wide shelving band — the polygons and the saddle), with the spread margin shelving under; the harness asserts the gap is land at 4, 2.75 and 1.6 Ma |
 
 ---
 
@@ -215,11 +229,15 @@ exist in the model before 1 Ma (as the spread fans), but no source names them fo
 
 ## 8. Open decisions (co-design)
 
-- *Whanganui* or *Wanganui* for the basin on the wall (geology vs the district's name).
+- ~~*Whanganui* or *Wanganui*~~ — **Whanganui** (decided 2026-11-02).
 - The one-line notes under the date: keep, cut, or hand to interpretation.
-- The hold lengths and the rate (`TM_PALAEO.keyframes`, `kyrPerSec`): what reads on the wall.
-- Whether the sequence should also show the climate's first swings between 1.6 and 1.0 Ma (it could,
-  cheaply, with anchors; it would need the ~41-kyr cycles authored for that span).
+- The hold lengths and the rate (`TM_PALAEO.keyframes`, `kyrPerSec`): slowed to ~4 min on 2026-11-02;
+  the dial now lets a reviewer pace it live.
+- ~~The climate's swings before 1 Ma~~ — built as the sea's breath (§3), synthetic, shown only when the
+  dial crawls. Authored anchors for 1.6–1.0 Ma would replace the synthetic cycle if wanted.
+- **Eruptions before the window** (see the note in the as-built section): the Mangakino ignimbrites
+  of 1.6–1.0 Ma crossed the line of the developing ranges; none is shown yet. Worth an ash beat at
+  ~1.55 Ma (Ngaroma) and the window's own Kidnappers at 1 Ma if the sequence is to carry them.
 
 ---
 
@@ -250,8 +268,20 @@ the wall's pacing): 23 re-bakes, 0 cuts, no page or kiosk errors, landed in ~95 
 their bakes, so a slow machine stretches the run rather than skipping its maps). The ~60 kyr/s travel
 rate gives ~67 s at 60 fps.
 
-**Left for co-design** (§8): the spelling, the notes, the holds and rate, whether the 1.6–1.0 Ma climate
-should swing. **Known compromise:** the finger's interior is the base noise under the footprints cut
+**Supervolcanic eruptions reaching the region, 4–1 Ma** (Trewick & Bland 2012, pp. 165–167; the
+project's `TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md` for the window's two). The Taupō Volcanic Zone did not
+exist before c. 2 Ma; the arc then sat at the Tauranga–Kaimai centre (Coromandel), too far to reach the
+Manawatū with anything but fine ash. Rhyolitic volcanism at the **Mangakino Volcanic Centre** began by
+c. 1.7 Ma, and its ignimbrites are found in the Kidnappers Group of Hawke's Bay — "which must have been
+able to flow across the position of the developing mountains" (p. 166, Fig. 4D's dashed paths) — so the
+caldera-forming Mangakino eruptions of **~1.6–1.0 Ma** (Ngaroma c. 1.55 Ma, Ongatiti c. 1.21 Ma, Ahuroa
+c. 1.18 Ma, then Kidnappers/Rocky Hill c. 1.0 Ma, the last already the window's opening beat) are the
+ones that reached the frame, as ignimbrite over the low axis and as pumice into the basin (the Whanganui
+Basin's Nukumaruan–Castlecliffian tephras record them). The Alexandra volcanics (Karioi, Pirongia,
+2.74–1.6 Ma) were andesitic cones, not supereruptions. Nothing older than ~1.7 Ma reached the region as
+an ignimbrite. Not shown yet (§8).
+
+**Left for co-design** (§8): the notes, whether to add the Mangakino ash beats. **Known compromise:** the finger's interior is the base noise under the footprints cut
 toward lowland (`LOOK.palaeoAxisLow`), so it reads as one low island per range rather than a chain of
 islets; `LOOK.palaeoAxisCore` narrows or widens it live (`B` to re-bake).
 

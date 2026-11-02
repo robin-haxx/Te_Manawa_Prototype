@@ -111,7 +111,12 @@ const TMBus = (function () {
     // THE LAND BEFORE THE WINDOW: while the attract sequence runs, a console intent would act on the
     // parked old world and be thrown away at the landing. It is presence instead — the sequence skips
     // to the landing — and the console's `hello` still gets its clock and goal.
-    if (typeof Palaeo !== 'undefined' && Palaeo.active && m.type !== 'hello') { Palaeo.skip(); return; }
+    if (typeof Palaeo !== 'undefined' && Palaeo.active && m.type !== 'hello') {
+      if (m.type === 'dial') {                               // the macro pad's dial drives the sequence (slower / faster / pause / reverse)
+        if (m.reset) Palaeo.dialReset(); else if (typeof m.delta === 'number') Palaeo.dialTurn(m.delta);
+      } else Palaeo.skip();
+      return;
+    }
 
     switch (m.type) {
       case 'hello':

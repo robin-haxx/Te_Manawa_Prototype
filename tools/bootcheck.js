@@ -1291,9 +1291,14 @@ try{
   chk(state[4000000].plain<0.05 && state[4000000].tar>=0.8*state[1000000].tar && state[4000000].tar>state[4000000].plain+0.3,
       `4 Ma: the plain is sea and the Tararua core stands as the basement finger (plain ${pc(state[4000000].plain)}, Tararua ${pc(state[4000000].tar)} vs ${pc(state[1000000].tar)} at 1 Ma)`);
   chk(state[4000000].rua>=0 && frac(0.56,0.64,0.22,0.34,false)>=0.8*(1-state[1000000].rua), `4 Ma: the Ruahine core stands too (${pc(1-state[4000000].rua)} land)`);
-  chk(state[4000000].gap<0.5, `4 Ma: no seaway across the gorge area (${pc(state[4000000].gap)} sea)`);
+  // (the gap probe box is wider than the early finger's river bridge across the saddle, so some of it is sea
+  //  beside the bridge; "no seaway" is the bridge standing and the box being far less sea than once the strait opens)
+  chk(state[4000000].gap<0.7 && state[3000000].gap>state[4000000].gap+0.3, `4 Ma: no seaway across the gorge area — a land bridge stands (${pc(state[4000000].gap)} sea, vs ${pc(state[3000000].gap)} at 3 Ma)`);
+  // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
+  const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
+  { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
   chk(state[3000000].gap>0.6, `3 Ma: the narrow Manawatū Strait crosses the gap (${pc(state[3000000].gap)} sea)`);
-  chk(state[2750000].gap<0.5, `2.75 Ma: the gap is land in the Mangapanian (${pc(state[2750000].gap)} sea)`);
+  chk(state[2750000].gap<0.7 && state[2400000].gap>state[2750000].gap+0.3, `2.75 Ma: the gap is land in the Mangapanian (${pc(state[2750000].gap)} sea, vs ${pc(state[2400000].gap)} at 2.4 Ma)`);
   chk(state[2400000].gap>0.85, `2.4 Ma: the strait at its widest fills the gap (${pc(state[2400000].gap)} sea)`);
   chk(state[2400000].rua>0.4, `2.4 Ma: the Ruahine is shoaled (${pc(state[2400000].rua)} water)`);
   // (the probe box's north-east lies in the strait's feathered shore — "the northern Tararua under the sea" — so only part of it stands)
@@ -1362,6 +1367,27 @@ try{
   let f2=0; while (P.state!=='idle' && f2<30000) { FRAME(ctx.draw); f2++; }
   chk(P.state==='idle' && P.runs===r1+1 && f2<frames, `a skip lands sooner (${f2} vs ${frames} frames)`);
   chk(Math.round(DT.yearsBP)===1000000 && T._morphCuts===cuts0, 'a skipped sequence still lands at 1 Ma with no cut');
+
+  // (e2) the dial: forward, paused, reverse; the sea's breath gated on the rate; the window never reads it
+  const CLm=vm.runInContext('Climate',ctx);
+  chk(P.begin(G,'manual'), 'begin() for the dial check');
+  let fd=0; while (P.state!=='play' && fd<3000) { FRAME(ctx.draw); fd++; }
+  for (let i=0;i<150;i++) FRAME(ctx.draw);
+  const yF=P.yearsBP; chk(P.rateMult()===1 && yF<4000000, `the sequence opens forward at ×1 (${P.speedLabel()})`);
+  P.dialSet(0); for (let i=0;i<60;i++) FRAME(ctx.draw);
+  chk(P.yearsBP===yF && P.speedLabel()==='paused', 'detent 0 pauses the clock');
+  P.dialSet(-3); for (let i=0;i<150;i++) FRAME(ctx.draw);
+  chk(P.yearsBP>yF && P.rateMult()<0, `a negative detent reverses the clock (${Math.round(yF/1000)} → ${Math.round(P.yearsBP/1000)} ka, ${P.speedLabel()})`);
+  for (let i=0;i<900;i++) FRAME(ctx.draw);
+  chk(P.yearsBP===TMP.keyframes[0][0], 'reverse holds at the oldest date');
+  G.handleKey(']'); chk(P.dialStep===-2 && P.active, 'the dial key turns the sequence dial, never skips');
+  P.dialReset(); chk(P.dialStep===TMP.dialStart, 'the dial push returns to ×1 forward');
+  const k0=TMP.kyrPerSec; TMP.kyrPerSec=TMP.seaBreathBelow-1; chk(P._seaScale()===1, 'the sea breathes when the land crawls');
+  TMP.kyrPerSec=TMP.seaBreathOff+1; chk(P._seaScale()===0, '… and not when it races'); TMP.kyrPerSec=k0;
+  CLm.PRE_WINDOW_SEA.scale=1; chk(CLm.seaLevelAt(1000000)===CLm.SEA_ANCHORS[0][1] && CLm.seaLevelAt(950000)===-70 && CLm.seaLevelAt(1020500)!==CLm.SEA_ANCHORS[0][1],
+      'the pre-window cycle joins the first anchor and never touches the window'); CLm.PRE_WINDOW_SEA.scale=0;
+  P.skip(); let fe=0; while (P.state!=='idle' && fe<30000) { FRAME(ctx.draw); fe++; }
+  chk(P.state==='idle' && CLm.PRE_WINDOW_SEA.scale===0, 'the dial-driven sequence lands and leaves the sea scale at 0');
 
   // (f) the paths
   K.lastInputAt=0; K.tick(); chk(P.state==='dipIn', 'the idle tick starts the sequence');

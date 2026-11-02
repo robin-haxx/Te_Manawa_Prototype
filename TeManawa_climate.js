@@ -174,10 +174,26 @@ const Climate = {
     return a[a.length - 1][1];
   },
 
+  // BEFORE THE WINDOW (the attract sequence, md/TEMANAWA_PALAEO_ATTRACT.md): the table holds its first
+  // anchor for older dates. The sequence can instead breathe a synthetic pre-MPT cycle — the 41-kyr
+  // world, glacials shallower than the later 100-kyr ones (Lisiecki & Raymo 2005): sea = mean +
+  // amp·cos(…), phased to join the first anchor continuously — scaled by `scale`, which the sequence
+  // sets from its own rate (0 when the land is moving too fast for a cycle to read; 1 when it crawls).
+  // The window (≤ the first anchor) never reads this.
+  PRE_WINDOW_SEA: { period: 41000, mean: -30, amp: 30, scale: 0 },
+
   // Sea level (metres rel. present) at yearsBP, from SEA_ANCHORS, smoothstepped like the index.
   seaLevelAt(yearsBP) {
     const a = this.SEA_ANCHORS;
-    if (yearsBP >= a[0][0]) return a[0][1];
+    if (yearsBP >= a[0][0]) {
+      const P = this.PRE_WINDOW_SEA, s0 = a[0][1];
+      if (!P || !(P.scale > 0) || !(P.amp > 0) || !(P.period > 0)) return s0;
+      // Phase so the cycle passes through s0 at the first anchor, rising into the older peak.
+      const c0 = Math.max(-1, Math.min(1, (s0 - P.mean) / P.amp));
+      const phi = -Math.acos(c0);
+      const sea = P.mean + P.amp * Math.cos(2 * Math.PI * (yearsBP - a[0][0]) / P.period + phi);
+      return s0 + (sea - s0) * Math.min(1, P.scale);
+    }
     if (yearsBP <= a[a.length - 1][0]) return a[a.length - 1][1];
     for (let i = 0; i < a.length - 1; i++) {
       const [y0, s0] = a[i], [y1, s1] = a[i + 1];
