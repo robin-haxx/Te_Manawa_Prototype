@@ -43,7 +43,8 @@
 //     requires: { plants: { Totara: 10 } }    at least this many GROWN plants of a kind on the land
 //               { birds:  { kereru: 1 } }     at least this many of a bird alive
 //               { eruption: true }            only after an eruption has happened this session
-//     off: true                    keep it in the book but never deliver it (a draft)
+//     off: true                    keep it in the book but never deliver it (a draft, or cut from the live set:
+//                                  26 goals were switched off 2026-11-03 to halve the book; md/TEMANAWA_GOALS.md §2.2)
 //   When no goal is live, the line falls back to the regime objective (InstallHUD.GOAL_OBJECTIVE).
 //
 // Pure and p5-free (like climate.js): reads DeepTime / Climate / PLANT_TYPES / TM_GROW / TM_BOOST at
@@ -63,12 +64,12 @@ const TM_GOALS = {
     // Esler: harakeke spread after drainage and stopbanking, onto ground that had been too wet for it,
     // so the flax-filled Manawatū of the old photographs is partly a product of drainage
     // (md/ecology/TEMANAWA_ECOLOGY_WETLAND.md §3). Both-worlds (coldTolerance 0.7): live in either climate.
-    { id: 'harakeke-rarer', group: 'moa',
+    { id: 'harakeke-rarer', group: 'moa', off: true,
       prompt: 'Boost a plant that was rarer in ancient times than today',
       cond:   'rarer in ancient times than today',
       answer: ['flax'] },
     // Kahikatea forest is ~2% of what it was: milled for butter boxes, its swamps drained.
-    { id: 'kahikatea-rarer-today', group: 'moa',
+    { id: 'kahikatea-rarer-today', group: 'moa', off: true,
       prompt: 'Boost a plant that is much rarer today than in ancient times!',
       cond:   'much more common in ancient times than today',
       answer: ['kahikatea'] },
@@ -94,12 +95,12 @@ const TM_GOALS = {
       cond:   'a plant with flower stalks taller than a ceiling',
       answer: ['flax'] },
     // Kahikatea: "At Round Bush near Foxton, people crossed the flooded forest by stepping along its raised roots."
-    { id: 'stepping-roots', group: 'moa',
+    { id: 'stepping-roots', group: 'moa', off: true,
       prompt: 'Boost a tree whose roots were stepping stones in a flooded forest!',
       cond:   'a tree whose roots were stepping stones in a flooded forest',
       answer: ['kahikatea'] },
     // Kahikatea: "Kahikatea wood was used to make butter boxes."
-    { id: 'butter-boxes', group: 'moa',
+    { id: 'butter-boxes', group: 'moa', off: true,
       prompt: 'Boost a tree that was cut down to make butter boxes!',
       cond:   'a tree cut down to make butter boxes',
       answer: ['kahikatea'] },
@@ -109,13 +110,13 @@ const TM_GOALS = {
       cond:   'a scrub so thick that trampers had to crawl under it',
       answer: ['coprosma'] },
     // Both scrub cards (giant moa): "The females were far bigger than the males … nearly three times as heavy!"
-    { id: 'giant-moa-females', group: 'moa',
+    { id: 'giant-moa-females', group: 'moa', off: true,
       prompt: 'Boost a scrub that fed a moa whose females were far bigger than males!',
       cond:   'food for a moa whose females were far bigger than the males',
       answer: ['coprosma'],
       text:   { answer: '{plant} fed the giant moa, whose females were nearly three times as heavy as the males!' } },
     // Mānuka: "New Zealand mānuka has evolved apart from Australia's for about ten million years."
-    { id: 'manuka-apart', group: 'moa',
+    { id: 'manuka-apart', group: 'moa', off: true,
       prompt: "Boost a plant that has evolved apart from Australia's for 10 million years!",
       cond:   "evolving apart from Australia's for about ten million years",
       answer: ['manuka'] },
@@ -148,7 +149,7 @@ const TM_GOALS = {
       fromYearsBP: 400000,
       requires: { plants: { Totara: 10 } } },
     // Kererū were the harrier's favourite prey; kōkako bones are in its middens too (NZ Birds Online).
-    { id: 'seed-spreaders', group: 'harrier',
+    { id: 'seed-spreaders', group: 'harrier', off: true,
       prompt: 'Boost a tree that has seeds kererū and kōkako spread!',
       cond:   'a tree whose seeds kererū and kōkako spread',
       answer: ['Totara', 'nikau'],
@@ -160,7 +161,7 @@ const TM_GOALS = {
       cond:   'a tree that can live for 1,000 years',
       answer: ['Totara'] },
     // Tōtara: "the dead stumps didn't rot away. They still lie buried in the peat thousands of years later."
-    { id: 'buried-stumps', group: 'harrier',
+    { id: 'buried-stumps', group: 'harrier', off: true,
       prompt: 'Boost a tree whose stumps still lie buried in ancient peatlands!',
       cond:   'a tree whose stumps still lie buried in the peat',
       answer: ['Totara'] },
@@ -174,7 +175,7 @@ const TM_GOALS = {
     // ---- LOWLAND ANIMALS: pūrei (mōho/takahē), tussock (goose), tī kōuka (Finsch's duck) -----------
     // The both-worlds plants: the cards' neutral coldTolerance (0.65 < ct < 0.75), the ones the boost
     // gate matches in EITHER climate. Bootcheck holds this list to exactly those card plants.
-    { id: 'both-worlds', group: 'lowland',
+    { id: 'both-worlds', group: 'lowland', off: true,
       prompt: 'Boost a plant that is suited to cold and warm habitats!',
       cond:   'suited to cold and warm habitats',
       answer: ['kowhai', 'cabbagetree', 'flax', 'manuka', 'sedge', 'wharariki'],
@@ -196,12 +197,12 @@ const TM_GOALS = {
       cond:   'the grass that covered the ice-age plains',
       answer: ['tussock'] },
     // Pūrei (mōho): "The mōho was the North Island's takahē, a big flightless rail that grazed grass and swamp plants."
-    { id: 'moho-food', group: 'lowland',
+    { id: 'moho-food', group: 'lowland', off: true,
       prompt: "Boost a swamp plant that fed the North Island's takahē!",
       cond:   "food for the mōho, the North Island's takahē",
       answer: ['sedge'] },
     // Snow tussock: "Alpine country itself is young: permanent for only a million years."
-    { id: 'young-tops', group: 'lowland',
+    { id: 'young-tops', group: 'lowland', off: true,
       prompt: 'Boost the grass of the high tops, which are only a million years old!',
       cond:   'the grass of high tops that are only a million years old',
       answer: ['tussock'] },
@@ -212,7 +213,7 @@ const TM_GOALS = {
       cond:   'the plant with the largest seeds',
       answer: ['tawa'] },
     // Esler (p. 46): nīkau starved of light under the closed tawa canopy at the Gorge.
-    { id: 'outgrow-nikau', group: 'forest',
+    { id: 'outgrow-nikau', group: 'forest', off: true,
       prompt: 'Boost a plant that can out-compete nīkau!',
       cond:   'able to out-compete nīkau',
       answer: ['tawa'],
@@ -224,7 +225,7 @@ const TM_GOALS = {
       requires: { birds: { north_island_brown_kiwi: 1 } } },
     // Cards that stand for a group of close relatives: tree ferns (mamaku, ponga), beech, Dracophyllum,
     // kōwhai (8 species), Coprosma, tussock. Live in either climate.
-    { id: 'similar-species', group: 'forest',
+    { id: 'similar-species', group: 'forest', off: true,
       prompt: 'Boost a plant that comes in several similar species!',
       cond:   'a plant with several similar species',
       answer: ['fern', 'beech', 'dracophyllum', 'kowhai', 'coprosma', 'tussock'] },
@@ -234,11 +235,11 @@ const TM_GOALS = {
       cond:   'a plant that dies back when it gets colder',
       answer: ['fern', 'nikau', 'tawa'] },
     // Tōtara and kahikatea "berries" are fleshy red stalks under the seed; nīkau's are true fruit.
-    { id: 'red-berries', group: 'forest',
+    { id: 'red-berries', group: 'forest', off: true,
       prompt: 'Boost a plant with red berries!',
       cond:   'a plant with red berries',
       answer: ['nikau', 'Totara', 'kahikatea'] },
-    { id: 'yellow-flowers', group: 'forest',
+    { id: 'yellow-flowers', group: 'forest', off: true,
       prompt: 'Boost a plant with yellow flowers!',
       cond:   'a plant with yellow flowers',
       answer: ['kowhai', 'wharariki'] },
@@ -255,7 +256,7 @@ const TM_GOALS = {
       cond:   'a tree that grows right up to the treeline',
       answer: ['beech'],
       text:   { answer: '{plant} grows right up to the treeline, and in the ice ages beech was the main forest tree!' } },
-    { id: 'mast-years', group: 'forest',
+    { id: 'mast-years', group: 'forest', off: true,
       prompt: 'Boost a tree that has mast years!',
       cond:   'a tree that has mast years',
       answer: ['beech'],
@@ -267,22 +268,22 @@ const TM_GOALS = {
       cond:   "the world's southernmost palm",
       answer: ['nikau'] },
     // Mamaku & ponga: "Mamaku is Aotearoa's tallest tree fern, growing up to 20 metres tall!"
-    { id: 'tallest-tree-fern', group: 'forest',
+    { id: 'tallest-tree-fern', group: 'forest', off: true,
       prompt: "Boost Aotearoa's tallest tree fern!",
       cond:   "Aotearoa's tallest tree fern",
       answer: ['fern'] },
     // Mamaku & ponga: "Ponga's fronds are green on top and brilliant silver underneath."
-    { id: 'silver-fronds', group: 'forest',
+    { id: 'silver-fronds', group: 'forest', off: true,
       prompt: 'Boost a plant whose fronds are silver underneath!',
       cond:   'a plant whose fronds are silver underneath',
       answer: ['fern'] },
     // Tawa: "how much tawa grew in the ancient Manawatū is a mystery: its pollen doesn't preserve".
-    { id: 'pollen-mystery', group: 'forest',
+    { id: 'pollen-mystery', group: 'forest', off: true,
       prompt: "Boost a tree whose pollen doesn't last in the ground!",
       cond:   "a tree whose pollen doesn't last in the ground",
       answer: ['tawa'] },
     // Kōwhai: "their seeds float: kōwhai's ancestors reached these islands across the ocean!"
-    { id: 'floating-seeds', group: 'forest',
+    { id: 'floating-seeds', group: 'forest', off: true,
       prompt: 'Boost a plant whose seeds floated here across the ocean!',
       cond:   'a plant whose seeds floated here across the ocean',
       answer: ['kowhai'] },
@@ -297,7 +298,7 @@ const TM_GOALS = {
       cond:   'a tree that held on when the cold pushed forests downhill',
       answer: ['beech'] },
     // Mountain beech (huia): "They hunted huhu grubs, fat beetle larvae that live in rotting wood."
-    { id: 'huhu-grubs', group: 'forest',
+    { id: 'huhu-grubs', group: 'forest', off: true,
       prompt: 'Boost a tree where huia hunted fat huhu grubs!',
       cond:   'a tree where huia hunted huhu grubs',
       answer: ['beech'] },
@@ -309,7 +310,7 @@ const TM_GOALS = {
       answer: ['wharariki'],
       fromYearsBP: 500000 },
     // Wharariki: "it crosses with harakeke where the two meet."
-    { id: 'flax-cousin', group: 'forest',
+    { id: 'flax-cousin', group: 'forest', off: true,
       prompt: 'Boost a plant that crosses with harakeke where the two meet!',
       cond:   'a plant that crosses with harakeke where the two meet',
       answer: ['wharariki'],
@@ -329,12 +330,12 @@ const TM_GOALS = {
       cond:   'food for a bird with no wings at all',
       answer: ['kahikatea', 'flax', 'coprosma', 'manuka'],
       text:   { answer: '{plant} fed a moa, a bird with no wings at all!' } },
-    { id: 'tangled-shrub', group: 'moa',           // trait: divaricating shrubs vs moa browsing
+    { id: 'tangled-shrub', group: 'moa', off: true,           // trait: divaricating shrubs vs moa browsing
       prompt: 'Boost a tangled shrub that may have grown that way to keep moa off!',
       cond:   'a tangled shrub that may have kept moa off',
       answer: ['coprosma'],
       text:   { answer: '{plant} grows in a tangle of twigs that may have kept hungry moa away!' } },
-    { id: 'sand-plains', group: 'moa',             // Esler: mānuka held the dry sand plains
+    { id: 'sand-plains', group: 'moa', off: true,             // Esler: mānuka held the dry sand plains
       prompt: 'Boost a plant can hold dry sand plains!',
       cond:   'a plant of the dry sand plains',
       answer: ['manuka'] },
@@ -355,27 +356,27 @@ const TM_GOALS = {
       answer: ['sedge'],
       requires: { eruption: true },
       text:   { answer: '{plant} spreads after volcanic ash falls, as the ash widens the swamp edges!' } },
-    { id: 'flightless-goose', group: 'lowland',    // trait: the North Island goose couldn't fly
+    { id: 'flightless-goose', group: 'lowland', off: true,    // trait: the North Island goose couldn't fly
       prompt: "Boost the grass that fed a goose that couldn't fly!",
       cond:   "the grass that fed a goose that couldn't fly",
       answer: ['tussock'],
       text:   { answer: "{plant} fed the North Island goose, which couldn't fly!" } },
-    { id: 'walking-duck', group: 'lowland',        // trait: Finsch's duck had nearly stopped flying
+    { id: 'walking-duck', group: 'lowland', off: true,        // trait: Finsch's duck had nearly stopped flying
       prompt: 'Boost a plant from the land of a duck that had almost stopped flying!',
       cond:   'from the land of a duck that had almost stopped flying',
       answer: ['cabbagetree'],
       text:   { answer: "{plant} grew where Finsch's duck lived, a duck that walked more than it flew!" } },
-    { id: 'storm-riders', group: 'lowland',        // sim: STORM_HARDY plants ride a storm out
+    { id: 'storm-riders', group: 'lowland', off: true,        // sim: STORM_HARDY plants ride a storm out
       prompt: 'Boost a plant that rides out storms!',
       cond:   'a plant that rides out storms',
       answer: ['tussock', 'flax', 'manuka', 'coprosma', 'dracophyllum', 'sedge', 'wharariki'] },
     // Forest birds
-    { id: 'huia-beaks', group: 'forest',           // trait: male and female huia beaks differed
+    { id: 'huia-beaks', group: 'forest', off: true,           // trait: male and female huia beaks differed
       prompt: 'Boost a tree for the bird whose male and female had different beaks!',
       cond:   'a tree for the bird whose male and female had different beaks',
       answer: ['beech'],
       text:   { answer: "{plant} was home to the huia: the male's beak was short and strong, the female's long and curved!" } },
-    { id: 'two-voice-boxes', group: 'forest',      // trait: tūī sing with two voice boxes
+    { id: 'two-voice-boxes', group: 'forest', off: true,      // trait: tūī sing with two voice boxes
       prompt: 'Boost a flower for the bird with two voice boxes!',
       cond:   'a flower for the bird with two voice boxes',
       answer: ['wharariki', 'kowhai'],

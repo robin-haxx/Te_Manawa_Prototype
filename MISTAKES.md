@@ -10,6 +10,23 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A half-drowned shelf painted as spikes
+
+- **What happened.** In the attract sequence the closing Manawatū Strait (2.1 → 1.63 Ma) painted as a
+  column of spiky towers, the early land bridge across the gorge as a sheer causeway with the river along
+  its crest, and the first try at an east coast that sweeps east as a coast of spikes again.
+- **Root cause.** Every marine term lowered the ground by a fraction of its height above the sea floor.
+  At partial strength that keeps the relief, so the high cells stand proud of a half-drowned shelf as
+  islets with cliff faces, and the 3/4 relief bake paints those as towers. The bridge was the reverse:
+  land held at the saddle's base height (~0.28) between flanks drowned to the floor within a few cells.
+  A first ceiling that climbed steeply to a high level and carried the per-cell wobble all the way up
+  was a rough surface, and the ranges planed to it painted as spikes too.
+- **Rule.** A coast that moves across high ground is a CEILING, applied last, not a lerp: the sea floor,
+  then up through the waterline to a lowland level over the shore's feather (wobbled, so the coast
+  meanders), then off the land gently and without the wobble (`LOOK.palaeoShoreE`/`Rise`). Keep the
+  lerp only where the sea rises by elevation over low ground (the west basin's shoaling). Land a term
+  holds up stays low and level, with any river cut into it (2026-11-02).
+
 ## The ash waited on a clock that no longer ran
 
 - **What happened.** After a visitor's eruption the ground stayed grey, and the scene sat at the

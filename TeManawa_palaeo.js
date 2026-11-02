@@ -25,13 +25,17 @@
 //           flight, the last swap's crossfade has ENDED (never a cut — TerrainGenerator._morphCuts
 //           stays 0) and the clock has moved ≥ minYears (or sits on a hold not yet baked); the last
 //           re-bake (1 Ma) is all four buffers again, so the landing is consistent
-//   dipOut  fade to dark · the landing: Kiosk.landAttract → Game.resetEcosystem (DeepTime.reset → 1 Ma)
-//   rise2   fade up on the living 1 Ma world; the sim is already running under the veil
+//   erupt   the Kidnappers eruption opens the window: the ground rumbles and the ash flash builds (the
+//           eruption charge, TM_TIME.erLongPressMs), the ash cloud rolls over, and under its opaque
+//           cover the landing: Kiosk.landAttract → Game.resetEcosystem (DeepTime.reset → 1 Ma). The
+//           cloud then clears over the living 1 Ma world, drawn by the HUD (the sequence is over)
+//   (eruptLanding false: dipOut — fade to dark · the same landing — then rise2, fade up on the world)
 //
 // Any input skips: the remaining legs run at skipMult with no holds, then the landing is the same.
-// Photosensitivity (TEMANAWA_BUILD_V3.md §3): both dips ≥ 500 ms, every terrain swap the existing
-// ≥ 500 ms crossfade, the caption and the names crossfade (≥ 500 ms). No per-frame allocation on
-// the draw path: the labels are built once, the caption strings are quantised.
+// Photosensitivity (TEMANAWA_BUILD_V3.md §3): the dips ≥ 500 ms, every terrain swap the existing
+// ≥ 500 ms crossfade, the caption and the names crossfade (≥ 500 ms), the eruption's flash a 4.5 s
+// ramp and a 1.6 s fall, its cover a 500 ms ramp. No per-frame allocation on the draw path: the
+// labels are built once, the caption strings are quantised.
 // ============================================================
 
 // Console-tunable like TM_TIME / TM_RIVER_NAMES. Sizes in 1080-space px; dates in yearsBP.
@@ -58,6 +62,12 @@ const TM_PALAEO = {
   budgetMs:    8,         // per-frame morph slice while the sequence runs (nothing lives, so it can be generous)
   firstBudgetMs: 14,      // … and under the opening dark, where nothing at all is on screen
   dipMs:       700,       // fade to dark / up, each way (≥ 500: photosensitivity)
+  // THE LANDING is the Kidnappers eruption (~1.0 Ma, Mangakino; DeepTime's first event): after the 1 Ma
+  // hold, the eruption charge (rumble + building flash), then the ash cloud, and the living world swapped
+  // in under its cover. false = the older dip to dark and back.
+  eruptLanding: true,
+  coverLeadMs: 900,       // the cloud opens this long before the swap (its backdrop is opaque from 500 ms on)
+  eruptionNote: 'The Kidnappers eruption, far to the north, rains ash across the young land.',   // co-design placeholder, as EPOCHS
   skipMult:    12,        // an input plays the rest at this × kyrPerSec, with no holds
   dateQuant:   50000,     // the travelling date is rounded to this (a few strings for the text cache, ~1 change/s)
   notes:       true,      // the one-line note under the date (co-design placeholder copy; EPOCHS[].note)
@@ -97,8 +107,8 @@ try { if (typeof window !== 'undefined') window.TM_PALAEO = TM_PALAEO; } catch (
 
 const Palaeo = {
   // ---- state -------------------------------------------------
-  active:   false,     // the sequence owns the world (dipIn … dipOut); the sim neither updates nor renders
-  state:    'idle',    // idle | dipIn | bake0 | rise | play | dipOut | rise2
+  active:   false,     // the sequence owns the world (dipIn … the landing); the sim neither updates nor renders
+  state:    'idle',    // idle | dipIn | bake0 | rise | play | erupt (or dipOut | rise2)
   yearsBP:  0,         // the sequence's own clock
   reason:   '',
   game:     null,
@@ -118,6 +128,8 @@ const Palaeo = {
   _labelKey: '',
   _cap:     null,      // caption state { date, note slots }
   _anchorSig: '',
+  _coverAt: 0,         // millis() the landing eruption's cloud opened (0 = not yet)
+  lastCoverMs: 0,      // how long the cloud had been up when the world was swapped (the harness reads it)
 
   // ---- the two cues ------------------------------------------
   // Start the sequence. `reason` is 'idle' | 'end-of-window' | 'manual'. Refused (false) while one is
@@ -138,7 +150,8 @@ const Palaeo = {
     // end (the terminal Oruanui) would otherwise be seen as 'past its crest' by the new HUD and erupt at
     // 1 Ma. A LIVE ash-cloud window is kept: it finishes dissipating over the sequence (Oruanui's cover
     // becomes the end-of-window's). The ground's health filter and ash wash are the old world's too.
-    g._tmAttractErAt = 0; g._tmAutoErAt = 0; g._tmAutoErupt = null; g._tmErDownAt = 0; g._tmErFired = false;
+    g._tmAttractErAt = 0; g._tmAutoErAt = 0; g._tmAutoErupt = null; g._tmErDownAt = 0; g._tmErFired = false; g._tmPalaeoErAt = 0;
+    this._coverAt = 0;
     g._tmAshUntil = 0; g._ashCover = 0; g._sceneSat = 1; g._habitatHealth = 1;
     g._tmStormUntil = 0; g._tmGrowWarmUntil = 0; g._tmGrowColdUntil = 0; g._tmBolt = null;
     if (typeof Kiosk !== 'undefined') Kiosk.lastInputAt = Date.now();   // the idle timer restarts; landAttract restarts it again
@@ -149,7 +162,7 @@ const Palaeo = {
   // Visitor presence: play the rest fast (no holds), then land normally. Never a cut.
   skip() {
     if (!this.active) return false;
-    if (this.state === 'dipOut' || this.state === 'rise2') return false;
+    if (this.state === 'erupt' || this.state === 'dipOut' || this.state === 'rise2') return false;
     this._skipping = true; this._holdLeft = 0; this._holdPending = false;
     return true;
   },
@@ -211,6 +224,10 @@ const Palaeo = {
     if (this.state === 'idle') return;
     const g = this.game, T = g && g.terrain, now = this._now();
     if (!T) { this._abort('no terrain'); return; }
+    // The landing eruption's 42 cloud frames warm in one at a time from InstallHUD.update, which does not
+    // run while the sequence owns the world: keep warming them here, or a sequence started soon after
+    // boot (P) lands with no cover. A no-op once they are in.
+    if (typeof InstallHUD !== 'undefined' && InstallHUD._ashWarmupTick) InstallHUD._ashWarmupTick();
     const sec = Math.max(0, (dt == null ? 1 : dt)) / ((typeof DeepTime !== 'undefined' && DeepTime.fps) ? DeepTime.fps : 60);
     const dip = Math.max(500, TM_PALAEO.dipMs);
     switch (this.state) {
@@ -249,13 +266,33 @@ const Palaeo = {
         this._paceBakes(T, now, false);
         break;
       }
+      case 'erupt': {
+        // The charge runs from _t0 (g._tmPalaeoErAt: the HUD's flash + shake read it). Once the landing
+        // bake is in, the cloud opens coverLeadMs before the charge's crest; at the crest its backdrop
+        // is opaque, and the living world is swapped in under it. The cloud and the falling flash then
+        // play out over the 1 Ma world through the HUD, which draws them once the sequence is over.
+        const ready = this._landingBake(T);
+        const TT = (typeof TM_TIME !== 'undefined') ? TM_TIME : { erLongPressMs: 4500, cloudMillis: 5250, ashMillis: 1600 };
+        const lead = Math.max(600, TM_PALAEO.coverLeadMs || 0);
+        if (!this._coverAt) {
+          if (ready && now - this._t0 >= TT.erLongPressMs - lead) {
+            g._ashCloudUntil = now + TT.cloudMillis; g._ashCloudMode = 'hold';
+            this._coverAt = now;
+          }
+        } else if (now - this._coverAt >= lead) {
+          const cloudUntil = g._ashCloudUntil;
+          this.lastCoverMs = now - this._coverAt;
+          g._tmPalaeoErAt = 0;
+          this._land(g, T, now);
+          g._ashCloudUntil = cloudUntil; g._ashCloudMode = 'hold';                          // a reset never cuts the cover short
+          g._tmAshUntil = now + TT.ashMillis; g._tmAshMode = 'hold';                        // the charged flash falls
+          this._coverAt = 0; this._veil = 0; this.state = 'idle'; this.game = null;
+        }
+        break;
+      }
       case 'dipOut': {
         this._veil = this._ease((now - this._t0) / dip);
-        // The landing bake: the last keyframe, all four buffers. Issued here if play left it undone
-        // (a skip can reach 1 Ma with a travel bake still in flight), and always waited for.
-        if (T.morphInProgress) { if (T.morphStep(TM_PALAEO.firstBudgetMs)) this._onBaked(this._pendingYear, this._pendingAll); }
-        else if (!(this._bakedYear === this._last()[0] && this._bakedAll)) this._issueBake(T, this._last()[0], true);
-        if (this._veil >= 1 && !T.morphInProgress && this._bakedYear === this._last()[0] && this._bakedAll) {
+        if (this._landingBake(T) && this._veil >= 1) {
           this._land(g, T, now);
           this.state = 'rise2'; this._t0 = now;
         }
@@ -267,6 +304,22 @@ const Palaeo = {
         break;
       }
     }
+  },
+
+  // The landing bake: the last keyframe, all four buffers. Issued here if play left it undone (a skip
+  // can reach 1 Ma with a travel bake still in flight), stepped, and waited for. True once it is in.
+  _landingBake(T) {
+    const y = this._last()[0];
+    if (T.morphInProgress) { if (T.morphStep(TM_PALAEO.firstBudgetMs)) this._onBaked(this._pendingYear, this._pendingAll); }
+    else if (!(this._bakedYear === y && this._bakedAll)) this._issueBake(T, y, true);
+    return !T.morphInProgress && this._bakedYear === y && this._bakedAll;
+  },
+
+  // The landing begins: the eruption charge (eruptLanding) or the dip to dark.
+  _beginLanding(g, now) {
+    this._t0 = now; this._coverAt = 0;
+    if (TM_PALAEO.eruptLanding) { this.state = 'erupt'; if (g) g._tmPalaeoErAt = now; }
+    else this.state = 'dipOut';
   },
 
   // The clock: holds on a keyframe, travels to the next at the dial's rate — forward, paused, or in
@@ -293,7 +346,7 @@ const Palaeo = {
     if (mult > 0) {
       if (this._leg >= last) {                                 // the last hold is over → land
         this.yearsBP = K[last][0];
-        this.state = 'dipOut'; this._t0 = now;
+        this._beginLanding(this.game, now);
         return;
       }
       const next = K[this._leg + 1];
@@ -384,13 +437,15 @@ const Palaeo = {
   _abort(why) {
     if (typeof console !== 'undefined') console.warn('[Palaeo] aborted: ' + why);
     this._setSeaBreath(0);                                      // as the landing does: never leave the pre-window cycle on
+    if (this.game) this.game._tmPalaeoErAt = 0;                 // nor a landing eruption's rumble
+    this._coverAt = 0;
     this.active = false; this.state = 'idle'; this._veil = 0; this.game = null;
   },
 
   // ---- render --------------------------------------------------
   // Over the ground tier (Game.render draws the terrain, water decals and washes, nothing alive): the
-  // river names (the palaeo names, through RiverNames), the region names, the caption, a live ash cloud,
-  // the debug overlay. Called in place of GameUI.renderFullscreenOverlay while active.
+  // river names (the palaeo names, through RiverNames), the region names, the caption, the eruption's
+  // flash and a live ash cloud, the debug overlay. Called in place of GameUI.renderFullscreenOverlay while active.
   renderOverlay(g, W, H) {
     if (typeof InstallHUD !== 'undefined') {
       if (InstallHUD.renderEdgeGlow) InstallHUD.renderEdgeGlow(g, W, H);
@@ -398,6 +453,7 @@ const Palaeo = {
     if (typeof RiverNames !== 'undefined' && RiverNames.render) RiverNames.render(g, W, H);
     this._renderLabels(g, W, H);
     this._renderCaption(W, H);
+    if (typeof InstallHUD !== 'undefined' && InstallHUD.renderAshFlash) InstallHUD.renderAshFlash(g, W, H);
     if (typeof InstallHUD !== 'undefined' && InstallHUD.renderAshCloud) InstallHUD.renderAshCloud(g, W, H);
     if (typeof Debug !== 'undefined' && Debug.enabled && Debug.render) Debug.render(g, W, H);
   },
@@ -532,7 +588,8 @@ const Palaeo = {
       HUD._blitText(this.speedLabel(), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, xEnd, by, [240, 240, 240]);
     }
     if (!TM_PALAEO.notes) return;
-    const note = this.epochNote(this.yearsBP), now = this._now(), fade = Math.max(500, TM_PALAEO.noteFadeMs);
+    const note = (this.state === 'erupt' && TM_PALAEO.eruptionNote) ? TM_PALAEO.eruptionNote : this.epochNote(this.yearsBP);
+    const now = this._now(), fade = Math.max(500, TM_PALAEO.noteFadeMs);
     let c = this._cap;
     if (!c) c = this._cap = { cur: { text: null, t0: -1e9 }, out: { text: null, t0: -1e9, a0: 0 } };
     if (note !== c.cur.text) {

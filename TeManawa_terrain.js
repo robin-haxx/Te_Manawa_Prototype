@@ -252,15 +252,34 @@ const LOOK = {
   // GEO_EPOCHS.palaeo* (Trewick & Bland 2012, Fig. 4A–D); these are the SHAPES. Every term is exactly 0
   // at any date inside the window (≤ 1 Ma), so the sim's land is untouched — the harness asserts it.
   palaeoAxisCore:      0.4,   // the basin flood keeps off the axis CORE: range mass (× the dated spine thinning, palaeoFingerNarrow) below this drowns fully, 1 stays dry, smoothstep between — "an emergent finger of basement" (4 Ma), continuous across the gorge saddle. The band from here to 1 is the finger's SHORE: wide (0.4) so it shelves under over most of the flank; higher = a narrower finger with a steeper shore the relief bake paints as a stepped cliff. Tune live (press B/G/N).
-  palaeoBridgeW:       0.06,  // the early land bridge across the gorge saddle: its half-width as a fraction of the map width (wMDist is in map units; the authored main channel is 0.05 wide, so this is a gently shelving isthmus ~40 cells each side of the river, inside the gorge window — "no seaway across the gorge area" at 4 Ma)
+  palaeoBridgeW:       0.09,  // the early land bridge across the gorge saddle: its half-width as a fraction of the map width (wMDist is in map units; the authored main channel is 0.05 wide, so this is a broad, gently shelving isthmus either side of the river, inside the gorge window — "no seaway across the gorge area" at 4 Ma)
+  palaeoBridgeWobble:  0.03,  // meander the isthmus's shores off the river's line with the cached wobble (map-width fraction), so it reads as a saddle of land, not a causeway that copies the channel
+  palaeoBridgeFlat:    1,     // how far the isthmus is levelled to the finger's floor (palaeoAxisFloorE ± the wobble), both ways. Its base height is the gorge saddle's (~0.28 at 4 Ma), and a causeway that high between two drowned flanks painted as a sheer ridge with the river along its crest (2026-11-02). 0 = the old lift-only floor
+  palaeoBridgeChannel: 0.035, // the river's bed across the levelled isthmus sits this far under it (never under the 0.10 waterline), so the channel is cut INTO the saddle instead of standing on top of it
   palaeoFingerNarrow:  0.8,   // how much the finger thins to its crest lines while GEO_EPOCHS.palaeoFingerNarrow is 1 (early): the mass is scaled by 1 − this × (1 − spine closeness), so at the flanks it falls under palaeoAxisCore and shelves under. 0 = the whole footprint at every date
   palaeoAxisLow:       0.75,  // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by this much × (1 − uplift/upliftStart), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma)
   palaeoAxisLowE:      0.22,  // … the level it is cut toward (lowland)
   palaeoAxisFloorE:    0.15,  // "emergent": inside the axis core the pre-window land stands at least this high (± the wobble), so the finger is land even where its footprint lies on today's coastal shelf (the southern Tararua, whose base is sea without the range uplift). Kept just above the lowland line, where the relief bake's lift is nearly flat (bakeLift tapers to 0 at the waterline) — higher, and the thin bridge across the saddle paints as a striped wall. Fades with the basin, 0 at the opening
   palaeoBasinEastU:    0.62,  // the EAST shelf (the Ruataniwha Strait's south-west end) lies east of this screen-X fraction; it closes earlier than the west (GEO_EPOCHS.palaeoBasinE*)
   palaeoBasinEastFeather: 0.12, // width (in screen-X) of the blend from the west basin's clock to the east's
+  // The east does not emerge all at once: its coast is a FRONT that sweeps east from the axis as the
+  // eastern ranges and Mount Bruce rise (GEO_EPOCHS.palaeoBasinE*), so the lower North Island fills out
+  // eastward toward the 1 Ma land. Land west of the front, shelf sea east of it.
+  palaeoEastFrontFrom: 0.42,  // the front's screen-X at palaeoBasinEFrom (west of the axis, so with the tilt and the wobble the whole east is still sea)
+  palaeoEastFrontTo:   1.15,  // … at palaeoBasinETo (past the right edge: the whole east is land)
+  palaeoEastFrontTilt: 0.25,  // the coast runs NNE–SSW like the ranges: the front stands this much further WEST at the bottom of the map than at the top
+  palaeoEastFrontFeather: 0.07, // the shore's width (screen-X): the shelf rises through the waterline over this
+  palaeoEastFrontWobble: 0.06,  // meander the front with the cached wobble (screen-X), so the coast is not a ruled line
   palaeoStraitHalfW:   0.085, // the Manawatū Strait's HALF-width across the gap (screen-X fraction) at full strength: "< 20 km wide" (T&B p. 170) ≈ 0.17 of LOOK.frameKm. The width scales with the dated curve, so the 3 Ma seaway is a thread and the 2.4 Ma one the full strip
-  palaeoStraitFeather: 0.06,  // softness of the strait's shores (screen-X fraction): wide, so the drop to the shelf floor is a slope the relief bake paints as a beach, not a dark wall
+  palaeoStraitFeather: 0.06,  // the strait's shore: the ceiling over the ground (below) climbs from the floor to palaeoShoreE over this (screen-X fraction) — a slope the relief bake paints as a beach, not a dark wall
+  // THE CEILINGS' SHAPE (the strait and the east front): from the sea floor up through the waterline to
+  // palaeoShoreE over the shore's feather (wobbled, so the coast meanders), then on off the land over
+  // palaeoShoreRise WITHOUT the wobble. The land under them is planed to a low coastal plain that climbs
+  // gently inland. A ceiling that climbed steeply and carried the wobble all the way up was a rough
+  // surface, and the relief bake painted the ranges planed to it as spikes (2026-11-02).
+  palaeoShoreE:        0.18,  // the ceiling at the top of the shore: lowland, where the relief bake's lift is still small
+  palaeoShoreRise:     0.30,  // the distance (screen-X) over which it then climbs off the land
+  palaeoStraitShoal:   0.3,   // below this much of the dated strength the strait SHOALS instead of only narrowing: its floor rises through the waterline and on, so it closes as a planed strip of low land, then its ceiling lifts off the land altogether. The strait is a CEILING, not a lerp toward the floor: a partial lerp kept every high cell proud of the water and the closing strait painted as a column of spiky towers (2026-11-02)
   palaeoStraitWobble:  0.05,  // meander the strait's shores off the straight column with the cached wobble (screen-X fraction), as the south strait's shore is meandered
   palaeoStraitFloor:   0.06,  // the strait's shelf floor (elevation; the sea band is < 0.10): "shallow shelf depths"
   palaeoShoal:         0.85,  // how far the RUAHINE footprint (north of the strait) is pulled toward the waterline while the strait is open — "low-lying shoals and islands" (1 = fully to the shoal level)
@@ -1398,8 +1417,9 @@ class TerrainGenerator {
       //     "shelf to marginal-marine" at 1.5 Ma, "low-lying land and marginal marine estuaries" by 1 Ma)
       palaeoBasinWFrom: 1650000, palaeoBasinWTo: 1000000,
       //   basin, east: the Ruataniwha Strait's south-west end; closed by the Mount Bruce uplift ~1.5 Ma,
-      //     Hawke's Bay "largely land by 1 Ma"
-      palaeoBasinEFrom: 1650000, palaeoBasinETo: 1300000,
+      //     Hawke's Bay "largely land by 1 Ma". Not a fade: basinE is how much of the east is still sea,
+      //     and its coast sweeps east from the axis over these dates (LOOK.palaeoEastFront*)
+      palaeoBasinEFrom: 1750000, palaeoBasinETo: 1300000,
       //   the Manawatū Strait across the axis, as [yearsBP, strength] anchors, smoothstepped between and
       //   held outside: the first breach late in the Waipipian (~3.3 Ma), "a narrow seaway" at 3 Ma,
       //   "probably land during the Mangapanian" (3.0–2.4 Ma), "at its most extensive" at 2.4 Ma (the
@@ -1693,7 +1713,7 @@ class TerrainGenerator {
   // Combine the geo field for one cell with the deep-time factors. Pure/static so
   // the cached morph path and the direct _applyGeo share it (no divergence), and
   // tools/bootcheck.js can assert it.
-  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat, crest, basinSub, axisSub, axisFloor, shoalSub, shoalE, axisLow, axisLowE, fingerLift, fingerE) {
+  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat, crest, basinSub, axisCap, shoalSub, shoalE, axisLow, axisLowE, fingerLift, fingerE) {
     let e0 = e;                                    // pre-range LOCAL ground — the level the river follows (the relative-sea shift moves it too)
     if (rMask > 0 && uplift > 0 && rH > 0) {
       // RANGES scale the EXISTING ground instead of replacing it with a crest template.
@@ -1838,26 +1858,29 @@ class TerrainGenerator {
     // terms the caller dates from GEO_EPOCHS.palaeo*; a caller that omits them (every window-era path,
     // the harness's short calls) passes undefined → no-op. Only ever lower.
     //   basinSub  the Wanganui Basin's shelf over the plain, to the same mottled floor as the straits
-    //   axisSub   the Manawatū Strait across the gap, to a shallow shelf floor (axisFloor)
+    //   axisCap   the Manawatū Strait across the gap: a CEILING over the ground (the shelf floor in the
+    //             strait, climbing up its shores; the caller shapes and dates it). A ceiling, not a lerp:
+    //             a partial lerp keeps every high cell proud of the water, and the relief bake paints them
+    //             as towers
     //   shoalSub  the Ruahine pulled toward the waterline (shoalE, wobbled) → shoals and islets
     if (basinSub > 0) {
       if (e > sf) e += (sf - e) * basinSub;
-    }
-    if (axisSub > 0) {
-      const af = (axisFloor > 0) ? axisFloor : 0.06;
-      if (e > af) e += (af - e) * axisSub;
     }
     if (shoalSub > 0) {
       if (e > shoalE) e += (shoalE - e) * shoalSub;
     }
     //   fingerLift the emergent finger: inside the axis core the land stands at least fingerE (the one
     //              pre-window term that RAISES — the footprint on today's shelf was land then). The
-    //              caller fades it out continuously where the strait or the shoals take the cell, so
-    //              it never steps at a feather's edge; 0 inside the window.
+    //              caller fades it out continuously where the shoals take the cell, so it never steps
+    //              at a feather's edge; 0 inside the window.
     if (fingerLift > 0) {
       const fe = (fingerE > 0) ? fingerE : 0.15;
       if (e < fe) e += (fe - e) * fingerLift;
     }
+    // The strait's ceiling comes LAST, over the floored finger: the finger stays one coherent low
+    // platform right up to the strait's shore, which the ceiling cuts as one smooth slope. (Releasing
+    // the floor near the strait instead bared the range's raw noise there as a field of peaks.)
+    if (axisCap < 1 && e > axisCap) e = axisCap;
     // (The relative-sea shift is applied above, before the river carve.)
     return e < 0 ? 0 : e > 1 ? 1 : e;
   }
@@ -3302,6 +3325,23 @@ class TerrainGenerator {
     const pStraitF = (LKp.palaeoStraitFeather > 0) ? LKp.palaeoStraitFeather : 0.06;
     const pStraitWob = (LKp.palaeoStraitWobble != null) ? LKp.palaeoStraitWobble : 0.05;
     const pStraitFloor = (LKp.palaeoStraitFloor != null) ? LKp.palaeoStraitFloor : 0.06;
+    const pShoreE = (LKp.palaeoShoreE != null) ? LKp.palaeoShoreE : 0.18;
+    const pShoreRise = (LKp.palaeoShoreRise > 0) ? LKp.palaeoShoreRise : 0.30;
+    const pStraitShoalA = (LKp.palaeoStraitShoal > 0) ? LKp.palaeoStraitShoal : 0.3;
+    // Below palaeoStraitShoal of its strength the strait's floor rises (squared, so the water lingers):
+    // through the waterline, then over the land, until at strength 0 the ceiling stands above it all.
+    const pStraitLiftT = (PL.axis > 0 && PL.axis < pStraitShoalA) ? 1 - PL.axis / pStraitShoalA : 0;
+    const pStraitLift = pStraitLiftT * pStraitLiftT;
+    // The east coast's front (LOOK.palaeoEastFront*): from the axis at basinE 1 to past the edge at 0.
+    const pEFrom = (LKp.palaeoEastFrontFrom != null) ? LKp.palaeoEastFrontFrom : 0.42;
+    const pETo = (LKp.palaeoEastFrontTo != null) ? LKp.palaeoEastFrontTo : 1.15;
+    const pEFront = pETo + (pEFrom - pETo) * PL.basinE;
+    const pETilt = (LKp.palaeoEastFrontTilt != null) ? LKp.palaeoEastFrontTilt : 0.25;
+    const pEFeather = (LKp.palaeoEastFrontFeather > 0) ? LKp.palaeoEastFrontFeather : 0.07;
+    const pEWob = (LKp.palaeoEastFrontWobble != null) ? LKp.palaeoEastFrontWobble : 0.06;
+    const pBridgeWob = (LKp.palaeoBridgeWobble != null) ? LKp.palaeoBridgeWobble : 0.03;
+    const pBridgeFlat = (LKp.palaeoBridgeFlat != null) ? LKp.palaeoBridgeFlat : 1;
+    const pBridgeChan = (LKp.palaeoBridgeChannel != null) ? LKp.palaeoBridgeChannel : 0.035;
     // The axis before the rapid uplift sits low: its height above pAxisLowE is cut by pAxisLow × how far
     // the pre-window uplift still has to go (0 at the opening, where uplift = upliftStart).
     const pUpStart = TerrainGenerator.GEO_EPOCHS.upliftStart;
@@ -3486,10 +3526,33 @@ class TerrainGenerator {
         // BEFORE THE WINDOW: the basin over everything but the axis core (west and east on their own
         // clocks, blended across pEastU), the strait strip across the gap (unprotected), the Ruahine
         // shoals north of it. All 0 inside the window (PL is the frozen zero object there).
-        let basinSub = 0, axisSub = 0, shoalSub = 0, shoalE = 0, fingerLift = 0;
+        let basinSub = 0, axisCap = 1, shoalSub = 0, shoalE = 0, fingerLift = 0, bridgeK = 0;
         if (palaeoOn) {
           const east = TerrainGenerator._southStrength(u, 1, pEastU - pEastF, pEastF);          // 0 west → 1 east of pEastU
-          const basin = PL.basinW + (PL.basinE - PL.basinW) * east;
+          // The east's clock is a FRONT sweeping east as basinE runs out: a CEILING over the shelf, at the
+          // sea floor east of the front and climbing off the land west of it (the shape of
+          // LOOK.palaeoShoreE/Rise). A lerp toward the floor would keep every high cell proud of a
+          // half-drowned shelf, and the relief bake paints those as a coast of spikes. eastSea (1 east of
+          // the front → 0 where the ceiling leaves the land) is what the finger's floor fades with there.
+          // The drowning lerp still runs where the east is sea (east of the front and across its shore,
+          // 1 − ri), so the finger's flanks there shelve under as before; only the moving coast is the ceiling's.
+          let eastSea = 0, eastShelf = 0, eastCap = 1.1;
+          if (PL.basinE > 0 && east > 0) {
+            const s = pEFront - (u + pETilt * (v - 0.5));                                          // > 0 west of the front (land side)
+            let ri = (s - wv * pEWob) / pEFeather;
+            ri = ri <= 0 ? 0 : ri >= 1 ? 1 : ri * ri * (3 - 2 * ri);
+            let ro = (s - pEFeather) / pShoreRise;
+            ro = ro <= 0 ? 0 : ro >= 1 ? 1 : ro;
+            const cap = seaFloor + (pShoreE - seaFloor) * ri + (1.1 - pShoreE) * ro;
+            let es = s / (pEFeather + pShoreRise);
+            eastSea = es <= 0 ? 1 : es >= 1 ? 0 : 1 - es;
+            eastShelf = 1 - ri;
+            eastCap = 1.1 + (cap - 1.1) * east;
+          }
+          const basinW = PL.basinW * (1 - east);                                                   // the west's clock (it shoals by elevation)
+          const basinL = basinW + eastShelf * east;                                                // the drowning lerp
+          const basin = basinW + eastSea * east;                                                   // what the finger's floor fades with
+          let bridge = 0;                                                                          // the isthmus's own mass, when it is what holds the cell up
           if (basin > 0) {
             // The finger of basement stays dry: the range FOOTPRINTS (mass 1 inside the polygons, and
             // the gorge saddle between them, so the finger is continuous — "no seaway across the
@@ -3505,26 +3568,45 @@ class TerrainGenerator {
               // THE THIN FINGER, built from CONTINUOUS fields only (every branch on which range or saddle
               // "owns" a cell left a one-cell step at the class boundary that the relief bake painted as
               // a striped wall — twice): the RANGE-only mass thinned to its crest lines, the land bridge
-              // along the main stem across the gap (pBridgeW of the map width either side, smoothstepped,
-              // inside the gorge window), and the whole footprint (ranges + saddle) fading in as the
-              // finger broadens. The max of the three; each is continuous, so the mass is.
+              // along the main stem across the gap (pBridgeW of the map width either side, its shores
+              // meandered, smoothstepped, inside the gorge window), and the whole footprint (ranges +
+              // saddle) fading in as the finger broadens. The max of the three; each is continuous, so the mass is.
               const thin = rMaskRArr[i] * (1 - pNarrow * (1 - rSpArr[i]));
               mass = mass * (1 - nw);
               if (thin > mass) mass = thin;
               if (wMDistArr) {
-                let bm = 1 - wMDistArr[i] / pBridgeW;
-                if (bm > 0) { bm = bm * bm * (3 - 2 * bm) * (1 - TerrainGenerator._gorgeOpen(u)) * nw; if (bm > mass) mass = bm; }
+                let bm = 1 - (wMDistArr[i] + wv * pBridgeWob) / pBridgeW;
+                if (bm > 0) {
+                  if (bm > 1) bm = 1;
+                  bm = bm * bm * (3 - 2 * bm) * (1 - TerrainGenerator._gorgeOpen(u)) * nw;
+                  if (bm > mass) mass = bm;
+                  bridge = bm;
+                }
               }
             }
             let core = (mass - pAxisCore) / (1 - pAxisCore);
             core = core < 0 ? 0 : core > 1 ? 1 : core * core * (3 - 2 * core);
-            basinSub = basin * (1 - core);
+            basinSub = basinL * (1 - core);
             fingerLift = basin * core;
+            if (eastCap < 1.1) { const ec = eastCap + (1.1 - eastCap) * core; if (ec < axisCap) axisCap = ec; }   // the finger stands clear of the east shelf too
+            if (bridge > 0 && pBridgeFlat > 0) {                                                   // how far the isthmus levels this cell (its own core)
+              let bc = (bridge - pAxisCore) / (1 - pAxisCore);
+              bc = bc < 0 ? 0 : bc > 1 ? 1 : bc * bc * (3 - 2 * bc);
+              bridgeK = basin * bc * pBridgeFlat;
+            }
           }
           if (pStraitHW > 0) {
-            const d = Math.abs(u + wv * pStraitWob - pGorgeU) - pStraitHW;                         // ≤ 0 inside the strait; its shores meander
-            let sp = d <= 0 ? 1 : 1 - d / pStraitF;
-            axisSub = sp < 0 ? 0 : sp * sp * (3 - 2 * sp);
+            // The ceiling: the shelf floor inside the strait, climbing its meandered shore to pShoreE over
+            // the feather (smoothstepped, so it meets the land without a kink), then off the land over
+            // pShoreRise, un-wobbled; all of it lifted as the strait shoals.
+            const d = Math.abs(u - pGorgeU) - pStraitHW;                                           // ≤ 0 inside the strait
+            let r = (d + (Math.abs(u + wv * pStraitWob - pGorgeU) - Math.abs(u - pGorgeU))) / pStraitF;   // the shore meanders
+            r = r <= 0 ? 0 : r >= 1 ? 1 : r * r * (3 - 2 * r);
+            let ro = (d - pStraitF) / pShoreRise;
+            ro = ro <= 0 ? 0 : ro >= 1 ? 1 : ro;
+            const floor = pStraitFloor + wv * 0.02;
+            const cap = floor + (pShoreE - floor) * r + (1.1 - pShoreE) * ro + pStraitLift * 1.1;
+            if (cap < axisCap) axisCap = cap;
           }
           let shoaled = 0;                                                                         // how far this cell is given to the Ruahine shoals (0..1)
           if (pShoal > 0 && rMask[i] > 0) {
@@ -3533,13 +3615,28 @@ class TerrainGenerator {
             shoalE = pShoalE + wv * pShoalAmp;                                                     // islets either side of the waterline
             shoaled = PL.axis * north;
           }
-          // The floor fades out CONTINUOUSLY where the strait or the shoals take the cell (never a
-          // step at a feather's edge: the relief bake paints a step as a tower of cliff).
-          if (fingerLift > 0) fingerLift *= 1 - Math.max(axisSub, shoaled);
+          // The floor fades out CONTINUOUSLY where the shoals take the cell (never a step at a feather's
+          // edge: the relief bake paints a step as a tower of cliff). The strait needs no fade: its
+          // ceiling is applied over the floored land, last.
+          if (fingerLift > 0) fingerLift *= 1 - shoaled;
+          if (bridgeK > 0) bridgeK *= 1 - shoaled;
         }
-        const e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, 1, up, inc, relief, incise, sea, 1, 1, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat, crestArr ? crestArr[i] : 0,
-                                               basinSub, axisSub, pStraitFloor + wv * 0.02, shoalSub, shoalE, pAxisLow, pAxisLowE,
-                                               fingerLift, pAxisFloorE + wv * 0.02);
+        let e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, 1, up, inc, relief, incise, sea, 1, 1, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat, crestArr ? crestArr[i] : 0,
+                                             basinSub, axisCap, shoalSub, shoalE, pAxisLow, pAxisLowE,
+                                             fingerLift, pAxisFloorE + wv * 0.02);
+        // THE ISTHMUS (before the window): level the saddle to the finger's floor, both ways, and cut the
+        // river's bed into it, so the river crosses a low neck of land instead of riding a causeway's crest.
+        // bridgeK shelves off with the isthmus's own core, so its shore is the slope down to the basin.
+        if (bridgeK > 0) {
+          const fl = pAxisFloorE + wv * 0.02;
+          e += (fl - e) * bridgeK;
+          if (wMaskM > 0) {
+            let bed = fl - pBridgeChan;
+            if (bed < 0.105) bed = 0.105;                                                          // above the waterline: a river, not a seaway
+            if (e > bed) e += (bed - e) * wMaskM * bridgeK;
+          }
+          if (e > axisCap) e = axisCap;
+        }
         // DROWNED-VALLEY ESTUARY: at a warm highstand the sea backs up the main-stem valley. Drown
         // the low valley floor near the main channel (wMDist/wMPos) toward the sea floor, elevation-
         // gated so terraces stay dry, reaching further inland as the highstand strengthens.

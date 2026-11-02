@@ -78,10 +78,11 @@ pre-window basin).
 |---|---|---|---|
 | **basin, west** `basinW` | drowns the plain to the mottled sea floor everywhere outside the axis core — the range footprints and the gorge saddle between them (mass ≥ `LOOK.palaeoAxisCore`), their spread margin shelving under — the Wanganui Basin's shelf; smoothstep off | 1 at ≥ 1.65 Ma → 0 at 1.0 Ma | 0 |
 | **the finger's width** `narrow` | early (≥ 3 Ma) the finger is a strip along each range's crest line and the river bridge across the saddle — T&B Fig. 4A's thin fingers of exposed basement (`LOOK.palaeoFingerNarrow` scales the mass by spine closeness); it broadens to the whole footprint by 1.65 Ma as the uplift starts | 1 at ≥ 3.0 Ma → 0 at 1.65 Ma | 0 |
+| **the isthmus** (the bridge) | the bridge across the saddle is a broad, LOW neck: its shores meandered off the river's line (`LOOK.palaeoBridgeWobble`), levelled to the finger's floor both ways (`palaeoBridgeFlat`), and the river's bed cut `palaeoBridgeChannel` into it. (Until 2026-11-02 it kept the saddle's base height, ~0.28, between two drowned flanks: a causeway with the river along its crest) | with `narrow` | 0 |
 | **the finger** `basinW`/`basinE` × core | inside the core the land is cut toward lowland (`LOOK.palaeoAxisLow`/`LowE`, by how far the pre-window uplift still has to go — "albeit at low elevation") and stands at least `LOOK.palaeoAxisFloorE` (the one pre-window term that raises: the southern Tararua's footprint lies on today's shelf and was land then). Both fade to 0 at the opening | with the basin | 0 |
-| **basin, east** `basinE` | the same drowning east of `LOOK.palaeoBasinEastU` (the Ruataniwha Strait's SW end), blended across a feather; closes with Mount Bruce | 1 at ≥ 1.65 Ma → 0 at 1.3 Ma | 0 |
+| **basin, east** `basinE` | east of `LOOK.palaeoBasinEastU` (the Ruataniwha Strait's SW end) the shelf is a **front**: a ceiling at the sea floor east of it, climbing off the land west of it (shaped like the strait's, below), that sweeps east from the axis (`LOOK.palaeoEastFront*`: from u 0.42 to past the edge, tilted NNE–SSW like the ranges, meandered), so the lower North Island fills out eastward toward the 1 Ma land; closes with Mount Bruce. (Until 2026-11-02 a uniform fade 1.65 → 1.3 Ma: the whole east surfaced at once, as spiky islets) | 1 at ≥ 1.75 Ma → 0 at 1.3 Ma | 0 |
 | **south strait** `southSink` (existing) | the depocentre off Levin–Foxton; drains 1.0 → 0.5 Ma | **rise moved back**: 4.6 → 4.0 Ma (was 1.1 → 1.0 Ma), so the south is sea throughout the pre-roll | identical (1 at 1 Ma, 0 by 0.5 Ma) |
-| **axis strait** `axisStrait` | a strip across the axis centred on the gap, NOT range-protected, pulled to a shallow shelf floor; its width scales with the factor (`LOOK.palaeoStraitHalfW` 0.085 ≈ 20 km at 1), its shores feathered and meandered (`palaeoStraitFeather`, `palaeoStraitWobble`) | 0 → 0.45 (3.35–3.2 Ma, the narrow seaway) → 0.45 (3.0) → 0 (2.9–2.55, closed) → 1 (2.4) → 1 (2.1) → 0 (1.63) | 0 |
+| **axis strait** `axisStrait` | a strip across the axis centred on the gap, NOT range-protected: a **ceiling** over the ground, applied last — the shallow shelf floor inside, climbing its meandered shore (`palaeoStraitFeather`, `palaeoStraitWobble`) to `LOOK.palaeoShoreE` (lowland), then off the land over `palaeoShoreRise` without the wobble, so the land beside it is planed to a coastal plain that climbs gently inland. Its width scales with the factor (`LOOK.palaeoStraitHalfW` 0.085 ≈ 20 km at 1); below `palaeoStraitShoal` (0.3) of it the floor rises instead, so the strait closes as a planed strip of low land and the ceiling then lifts off. (Until 2026-11-02 a lerp toward the floor: at partial strength every high cell stood proud of the water, and the closing strait painted as a column of spiky towers) | 0 → 0.45 (3.35–3.2 Ma, the narrow seaway) → 0.45 (3.0) → 0 (2.9–2.55, closed) → 1 (2.4) → 1 (2.1) → 0 (1.63) | 0 |
 | **Ruahine shoals** `axisStrait` × `LOOK.palaeoShoal` | north of the strait the Ruahine footprint is pulled to the waterline with the cached wobble, so it breaks into "low-lying shoals and islands" (full at 2.4 Ma, partial at 3.0) | same curve | 0 |
 | **pre-window uplift** | the axis is a low basement finger: `uplift` 0.03 at 4 Ma → 0.07 at 1.5 Ma → 0.15 at 1.0 Ma (= `upliftStart`) | smoothstep between anchors | unchanged |
 | river | the NE arm present and the flow east before 1.25 Ma (existing `mainArm`); fans spread (existing); tributaries cut where the sea drowns them (existing `_tribSeaCut`) | existing | unchanged |
@@ -107,8 +108,12 @@ strait drowned below 0.10 reads as sea, not as a wide river. No classify change.
    │     the clock has moved ≥ minYears (or sits on a hold the bake has not reached)
    │     the last bake (to 1.0 Ma) is ALL FOUR buffers again, so the landing is consistent
    ▼
- LAND — fade to dark · resetEcosystem() (the cast spawns on the 1 Ma land, DeepTime.reset → 1 Ma,
-         Kiosk bookkeeping) · fade up · the sim resumes, geology paused as always until a boost
+ LAND — the Kidnappers eruption (TM_PALAEO.eruptLanding): the ground rumbles and the ash flash builds
+         over the eruption charge (TM_TIME.erLongPressMs, 4.5 s); the ash cloud opens coverLeadMs before
+         its crest; under its opaque backdrop resetEcosystem() (the cast spawns on the 1 Ma land,
+         DeepTime.reset → 1 Ma, Kiosk bookkeeping); the cloud and the falling flash then clear over the
+         living world (drawn by the HUD) · the sim resumes, geology paused as always until a boost
+         (eruptLanding false: the older fade to dark · the same landing · fade up)
 ```
 
 - **The dial is the sequence's while it runs** (2026-11-02): the time dial's keys, the wheel and the
@@ -126,7 +131,13 @@ strait drowned below 0.10 reads as sea, not as a wide river. No classify change.
   cannot bare. The window never reads it (the scale is 0 there; harness-asserted).
 - **Any other input skips**: a key, a click, or a console intent runs the remaining legs at
   `TM_PALAEO.skipMult` with no holds, then lands normally (never a cut).
-- **Transitions are the kiosk's own idiom** (the dark crossfade, `Kiosk.renderCrossfade`), both dips
+- **The landing is an eruption** (2026-11-02): the window opens on Kidnappers (~1.0 Ma, Mangakino;
+  `DeepTime`'s first event), with the same charge, flash, shake and 42-frame ash cloud the eruption
+  button and the timeline eruptions use (`g._tmPalaeoErAt` drives the HUD's `renderAshFlash` /
+  `eruptionShakeOffset` like `_tmAttractErAt`). The note under the date reads
+  `TM_PALAEO.eruptionNote` while it builds. Only the spectacle: the eruption's ash is not applied to the
+  fresh world, which opens calm as before. A key or console intent during it is presence only.
+- **Transitions are the kiosk's own idiom** (the dark crossfade, `Kiosk.renderCrossfade`), the dips
   ≥ 500 ms; every terrain swap is the existing ≥ 500 ms crossfade and the next one waits for it; the
   caption crossfades on change. Inside the photosensitivity budget (`TEMANAWA_BUILD_V3.md` §3).
 - **Cost**: nothing lives during the sequence, so the morph gets a larger per-frame slice
@@ -188,6 +199,8 @@ exist in the model before 1 Ma (as the spread fans), but no source names them fo
 | 23 | `_nsEdgeFalloff` (the far-edge ease) | It eased the top rows *two-way* toward plains, raising a low far row to meet the relief crop — right on the window's land, but in the sequence it lifted the drowned basin into a strip of false land with a ruler-straight coast along the top | Raises **land** only (fading in over the first 0.05 above the waterline); sea stays sea. The down-easing of truncated ranges, which is what stops the vertical smear, is untouched |
 | 24 | Class boundaries in the thin finger | Each branch on which range or saddle "owns" a cell (`rSad`) left a one-cell step at the polygon edge (the Ruahine's southern tip near the gorge, 2.4–2.0 Ma) — the de-cliff pass caps it at 0.12/cell, and the relief bake paints that as a striped tower | The finger is built from continuous fields only: the range-only mass thinned to its crest lines, the river bridge inside the gorge window, the full footprint fading in as it broadens; the max of the three. Harness: no one-cell step > 0.1 inside the core off the strait at any pre-window date |
 | 22 | The gorge saddle (`LOOK.gorgeSaddle`) | A crest-weighted "finger" (range mass × spine closeness) drowned the saddle between the two ranges at every pre-window date, cutting the finger where Trewick & Bland say there was no seaway at 4 Ma | The finger is the range *footprints* (mass ≥ `LOOK.palaeoAxisCore`, a wide shelving band — the polygons and the saddle), with the spread margin shelving under; the harness asserts the gap is land at 4, 2.75 and 1.6 Ma |
+| 25 | The marine terms over high ground (2026-11-02) | Each lowered the ground by a fraction toward the sea floor; at partial strength high cells stood proud as islets with cliff faces — the closing strait painted as a column of spiky towers, and the early bridge across the gap kept the saddle's base height between drowned flanks, a causeway with the river along its crest | The strait and the east front are **ceilings** applied last (floor → `LOOK.palaeoShoreE` over a wobbled shore, then off the land over `palaeoShoreRise` un-wobbled); the strait shoals shut below `palaeoStraitShoal`; the isthmus is levelled to the finger's floor with the river cut into it. Harness: the isthmus check (bed under low banks), the east-front sweep, and the existing no-step check. `MISTAKES.md`, "A half-drowned shelf painted as spikes" |
+| 26 | The landing (2026-11-02) | A dip to dark, then the living world: the swap from the sequence's last frame to the 1 Ma window read as a hard cut | The Kidnappers eruption covers it (`TM_PALAEO.eruptLanding`): the charge's rumble and flash (`g._tmPalaeoErAt`, read by `renderAshFlash` / `eruptionShakeOffset`), the cloud opened `coverLeadMs` before the crest, the swap under its opaque backdrop, the cloud and falling flash left to the HUD. The cloud frames warm from the sequence's own tick too, so a sequence started soon after boot still lands covered |
 
 ---
 

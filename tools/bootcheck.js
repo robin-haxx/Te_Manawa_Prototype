@@ -1424,7 +1424,7 @@ try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), K=vm.runInContext('Kiosk',ctx);
   const TG=vm.runInContext('TerrainGenerator',ctx), P=vm.runInContext('Palaeo',ctx), TMP=vm.runInContext('TM_PALAEO',ctx);
   const RN=vm.runInContext('RiverNames',ctx), CFG=vm.runInContext('CONFIG',ctx), LK=vm.runInContext('LOOK',ctx);
-  const BUS=vm.runInContext('TMBus',ctx);
+  const BUS=vm.runInContext('TMBus',ctx), HUD=vm.runInContext('InstallHUD',ctx);
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
   const T=G.terrain, E=TG.GEO_EPOCHS, seaE=0.10;
 
@@ -1486,6 +1486,26 @@ try{
   // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
   const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
   { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
+  // THE ISTHMUS across the gap (2026-11-02): a LOW neck of land with the river cut into it, not a causeway
+  // at the saddle's base height (~0.28) with the river along its crest
+  {
+    T.morphTo(4000000,1); const C3=T._geoCache, H=T.heightMap; let bs=0,bn=0,ks=0,kn=0;
+    for (let r=0;r<gr;r++) for (let col=0;col<gc;col++) {
+      if (Math.abs(col/gc-gu)>0.03) continue;
+      const i=r*gc+col, d=C3.wMDist[i];
+      if (d<0.005) { bs+=H[i]; bn++; } else if (d>0.03 && d<0.045 && H[i]>=seaE) { ks+=H[i]; kn++; }
+    }
+    const bed=bs/Math.max(1,bn), bank=ks/Math.max(1,kn);
+    chk(bn>0 && kn>0 && bed>=seaE && bed<bank && bank<0.22, `4 Ma: the river crosses the gap in a channel cut into a low isthmus (bed ${bed.toFixed(3)}, banks ${bank.toFixed(3)})`);
+  }
+  // THE EAST fills out as a front sweeping east from the axis (1.75 → 1.3 Ma), not all at once
+  {
+    const near=()=>frac(0.74,0.80,0.30,0.70,false), far=()=>frac(0.93,0.99,0.30,0.70,false);
+    T.morphTo(1750000,1); const n0=near(), f0=far();
+    T.morphTo(1500000,1); const n1=near(), f1=far();
+    T.morphTo(1300000,1); const n2=near(), f2=far();
+    chk(n1>n0+0.25 && f1<=f0+0.05 && f2>f1+0.2, `the east coast sweeps east: near the axis land ${pc(n0)} → ${pc(n1)} by 1.5 Ma while the far east stays sea (${pc(f0)} → ${pc(f1)}), then it too is land by 1.3 Ma (${pc(f2)})`);
+  }
   chk(state[3000000].gap>0.6, `3 Ma: the narrow Manawatū Strait crosses the gap (${pc(state[3000000].gap)} sea)`);
   chk(state[2750000].gap<0.7 && state[2400000].gap>state[2750000].gap+0.3, `2.75 Ma: the gap is land in the Mangapanian (${pc(state[2750000].gap)} sea, vs ${pc(state[2400000].gap)} at 2.4 Ma)`);
   chk(state[2400000].gap>0.85, `2.4 Ma: the strait at its widest fills the gap (${pc(state[2400000].gap)} sea)`);
@@ -1528,17 +1548,26 @@ try{
   const cuts0=T._morphCuts, resets0=K.resetCount, sim0=G.simulation;
   chk(P.begin(G,'idle'), 'begin() accepted from mid-run');
   chk(!P.begin(G,'idle'), 'begin() refuses while one runs');
-  let frames=0, lastSwap=T._lastSwapMs, minGap=Infinity, swaps=0; const seen={}, states=new Set();
+  let frames=0, lastSwap=T._lastSwapMs, minGap=Infinity, swaps=0, shookIn=0, coverAtLanding=-1; const seen={}, states=new Set();
   const baked=()=>P._bakedYear;
   while (P.state!=='idle' && frames<30000) {
+    const wasActive=P.active;
     FRAME(ctx.draw); frames++; states.add(P.state);
     if (T._lastSwapMs!==lastSwap) { if (swaps>0) minGap=Math.min(minGap, T._lastSwapMs-lastSwap); lastSwap=T._lastSwapMs; swaps++; }
     if (P.state==='play' && baked()===P.yearsBP) seen[baked()]=true;
+    if (P.state==='erupt' && HUD.eruptionShakeOffset(G)) shookIn++;
+    if (wasActive && !P.active) coverAtLanding=ctx.millis()-(G._ashCloudUntil-vm.runInContext('TM_TIME',ctx).cloudMillis);
   }
   const bakes1=P.bakes;
   chk(P.state==='idle' && frames<30000, `the sequence lands (${frames} frames, ${bakes1} re-bakes, ${swaps} visible swaps)`);
   for (const k of TMP.keyframes) chk(seen[k[0]], `the ${k[0]/1e6} Ma keyframe was baked on its hold`);
-  chk(['dipIn','bake0','rise','play','dipOut','rise2'].every(s=>states.has(s)), 'every state was visited');
+  chk(['dipIn','bake0','rise','play','erupt'].every(s=>states.has(s)) && !states.has('dipOut'), 'every state was visited, and the landing is the eruption');
+  // THE LANDING ERUPTION (Kidnappers): the ground rumbles through the charge, the world is swapped in
+  // only once the ash cloud's backdrop is opaque (it ramps over 500 ms), and the cloud and the falling
+  // flash are left running for the HUD to finish over the living world
+  chk(shookIn>30, `the landing eruption rumbles before the swap (${shookIn} shaking frames)`);
+  chk(P.lastCoverMs>=600 && coverAtLanding>=600, `the world is swapped under an opaque ash cover (${P.lastCoverMs} ms into the cloud)`);
+  chk(G._ashCloudUntil>ctx.millis() && G._tmAshUntil>ctx.millis() && !G._tmPalaeoErAt, 'the cloud and the falling flash play on over the 1 Ma world; the charge is cleared');
   chk(T._morphCuts===cuts0, `no crossfade cut across the sequence (cuts ${T._morphCuts-cuts0})`);
   chk(minGap>=Math.max(500,CFG.morphFadeMs), `visible swaps never closer than the fade (${minGap===Infinity?'n/a':minGap+' ms'})`);
   chk(Math.round(DT.yearsBP)===1000000 && G._bakedYearsBP===1000000, `lands on 1 Ma with the land baked there (${Math.round(DT.yearsBP)} / ${G._bakedYearsBP})`);
@@ -1548,13 +1577,17 @@ try{
   chk(!DT.hasEnded() && !DT.isTimelapsing(), 'the clock is reset and parked');
   chk(!T.morphInProgress && !T._morphFade, 'no job or fade left behind');
 
-  // (e) a skip lands quickly
+  // (e) a skip lands quickly — through the older dip-to-dark landing (eruptLanding off), so it stays covered
   const r1=P.runs; DT.seekTo(400000);
+  for (let i=0;i<400;i++) FRAME(ctx.draw);                   // let the landing eruption's cloud finish first
+  TMP.eruptLanding=false;
   chk(P.begin(G,'end-of-window'), 'begin() accepted again (end-of-window)');
   for (let i=0;i<60;i++) FRAME(ctx.draw);
   chk(P.skip() && P._skipping, 'a key during the sequence skips');
-  let f2=0; while (P.state!=='idle' && f2<30000) { FRAME(ctx.draw); f2++; }
+  const states2=new Set(); let f2=0; while (P.state!=='idle' && f2<30000) { FRAME(ctx.draw); f2++; states2.add(P.state); }
+  TMP.eruptLanding=true;
   chk(P.state==='idle' && P.runs===r1+1 && f2<frames, `a skip lands sooner (${f2} vs ${frames} frames)`);
+  chk(states2.has('dipOut') && states2.has('rise2') && !states2.has('erupt'), 'with eruptLanding off, the landing is the dip to dark');
   chk(Math.round(DT.yearsBP)===1000000 && T._morphCuts===cuts0, 'a skipped sequence still lands at 1 Ma with no cut');
 
   // (e2) the dial: forward, paused, reverse; the sea's breath gated on the rate; the window never reads it
@@ -1581,6 +1614,7 @@ try{
   // (f) the paths
   K.lastInputAt=0; K.tick(); chk(P.state==='dipIn', 'the idle tick starts the sequence');
   P._abort('harness'); G._palaeo=null;
+  G._ashCloudUntil=0;   // (e2)'s landing eruption left its cloud up; an idle stage is refused under a live cover, by design
   TMP.enabled=false; K.lastInputAt=0; G._tmAttractErAt=0; K.tick(); chk(!!G._tmAttractErAt && P.state==='idle', 'with the sequence off, idle stages the eruption instead'); G._tmAttractErAt=0; TMP.enabled=true;
   const rc=K.resetCount; K.recover(); chk(P.state==='idle' && K.resetCount===rc+1, 'error recovery is the synchronous reset, never the sequence');
   chk(P.begin(G,'manual'), 'begin() for the bus check');
@@ -2358,7 +2392,11 @@ try{
   const solve=(key)=>{ boost({ plantKey:key }); _t+=TGL.holdMs+1; tick(); };   // boost, then let the verdict release
   const realBook=TGL.list, realRand=TG._rand;
   TG._rand=()=>0;                           // deterministic draws: always the stage pick, always the first
-  const gHara=realBook.find(gl=>gl.id==='harakeke-rarer');
+  // The harakeke goal is the logic tests' both-worlds fixture. It is switched off in the book (cut from
+  // the live set 2026-11-03), so the fixture is a copy with `off` cleared: the tests exercise the gate,
+  // verdict and draw logic, not whether this particular goal is delivered.
+  const bookHara=realBook.find(gl=>gl.id==='harakeke-rarer');
+  const gHara=bookHara ? Object.assign({}, bookHara, { off:false }) : null;
   try{
 
   // 1. The book is well formed, and every answer is a real plant a visitor can boost from a card.
@@ -2453,7 +2491,7 @@ try{
       return bs.length>0 && bs.every(b=>b.key==='subalpine'); };
     const subGoals=realBook.filter(gl=>!gl.off && gl.answer.every(subOnly));
     const dates=new Set(subGoals.map(gl=>gl.fromYearsBP));
-    chk(subGoals.length>=3, `the book's subalpine-only goals are found (${subGoals.map(gl=>gl.id).join(', ')})`);
+    chk(subGoals.length>=2, `the book's subalpine-only goals are found (${subGoals.map(gl=>gl.id).join(', ')})`);
     chk(dates.size===1 && [...dates][0]!=null && [...dates][0]<1000000,
         `every subalpine-only goal waits for the ranges, on one shared date (${[...dates].join(', ')})`);
     const from=[...dates][0];
@@ -2582,7 +2620,9 @@ try{
   // A goal's own success line: the both-worlds goal answers in glacial/interglacial terms, and its
   // other lines fall back to the book's.
   if(gBoth){
-    TGL.list=[gBoth]; TG.reset(); tick();
+    // switched off in the book (2026-11-03: not on most answers' cards), so the verdict test drives a copy
+    const gBothLive=Object.assign({}, gBoth, { off:false });
+    TGL.list=[gBothLive]; TG.reset(); tick();
     boost({ plantKey:'manuka', plantName:'Mānuka' });
     chk(TG.verdict() && TG.verdict().kind==='answer' && TG.text()==='Mānuka was suited to both glacial and interglacial habitats!',
         `a goal can word its own success line: "${TG.text()}"`);
