@@ -1483,11 +1483,23 @@ try{
     chk(steep<=4, `no one-cell step > 0.1 inside the finger's core off the strait at 4, 3, 2.4 and 2 Ma (${steep}; a few under the harness's white-noise base — the class-boundary wall was hundreds)`);
     chk(topLand/topN<0.3, `the far edge over the drowned basin stays sea (${pc(topLand/topN)} land in the top 5% of the north-west)`);
   }
+  // the DRAINAGE develops with the land (GEO_EPOCHS.palaeoRiver; T&B p. 166: the Manawatū system grows
+  // north of the Mount Bruce divide from ~1.5 Ma): before it, no river channel and no drowned-valley
+  // estuary or its infill ride the authored river line across the finger; after it, both are there;
+  // inside the window the term is exactly 1
+  {
+    const drain=(y)=>{ T.morphTo(y,1); const W=T._paintWater, E=T._estState; let r=0, e=0;
+      for (let i=0;i<W.length;i++) if (W[i]===2) r++; for (let i=0;i<E.length;i++) if (E[i]) e++; return [r,e]; };
+    for (const y of [4000000, 3000000, 2400000]) { const [r,e]=drain(y); chk(r===0 && e===0, `${y/1e6} Ma: no river channel or estuary infill before the drainage develops (${r} river px, ${e} filled cells)`); }
+    const [r13]=drain(1300000); chk(r13>0, `1.3 Ma: the river system has developed (${r13} river px)`);
+    chk(TG.geoTimeFactors(1000000).palaeo.river===1 && TG.geoTimeFactors(25500).palaeo.river===1, 'the drainage term is 1 inside the window');
+  }
   // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
   const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
   { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
-  // THE ISTHMUS across the gap (2026-11-02): a LOW neck of land with the river cut into it, not a causeway
-  // at the saddle's base height (~0.28) with the river along its crest
+  // THE ISTHMUS across the gap (2026-11-02): a LOW, level neck of land, not a causeway at the saddle's base
+  // height (~0.28). No river crosses it at 4 Ma (GEO_EPOCHS.palaeoRiver is 0), so the line it would take
+  // is the saddle's levelled centre, below its shelving banks
   {
     T.morphTo(4000000,1); const C3=T._geoCache, H=T.heightMap; let bs=0,bn=0,ks=0,kn=0;
     for (let r=0;r<gr;r++) for (let col=0;col<gc;col++) {
@@ -1496,7 +1508,7 @@ try{
       if (d<0.005) { bs+=H[i]; bn++; } else if (d>0.03 && d<0.045 && H[i]>=seaE) { ks+=H[i]; kn++; }
     }
     const bed=bs/Math.max(1,bn), bank=ks/Math.max(1,kn);
-    chk(bn>0 && kn>0 && bed>=seaE && bed<bank && bank<0.22, `4 Ma: the river crosses the gap in a channel cut into a low isthmus (bed ${bed.toFixed(3)}, banks ${bank.toFixed(3)})`);
+    chk(bn>0 && kn>0 && bed>=seaE && bed<bank && bank<0.22, `4 Ma: a low, level isthmus crosses the gap (river line ${bed.toFixed(3)}, banks ${bank.toFixed(3)})`);
   }
   // THE EAST fills out as a front sweeping east from the axis (1.75 → 1.3 Ma), not all at once
   {
@@ -1532,7 +1544,7 @@ try{
   // anchor is marginal land under the harness's white-noise base, so it is checked as a mechanism).
   for (const L of P._labels) {
     const D=L.def, wt=T.waterTypeAt(D.u*T.mapWidth, D.v*T.mapHeight);
-    chk(L.ok===((D.on==='sea')?wt===1:wt===0), `${L.text}: ok reads the painted surface (${D.on}, class ${wt})`);
+    chk(L.ok===((D.on==='sea')?wt===1:wt!==1), `${L.text}: ok reads the painted surface (${D.on}, class ${wt})`);
   }
   P.active=true; P.yearsBP=1400000;
   const main=T.getRivers().find(r=>r.type!=='tributary'), trib=T.getRivers().find(r=>r.type==='tributary');

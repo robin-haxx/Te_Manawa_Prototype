@@ -12,7 +12,7 @@ map u ≈ 0.16 … 0.9.
 
 | # | Date | What the frame shows | Source |
 |---|---:|---|---|
-| 01 | 4,000 ka | Deep-marine Wanganui Basin over the plain; a low, continuous finger of basement along the axis; no seaway at the gorge (a low isthmus, the river cut into it); the Ruataniwha shelf in the east | Trewick & Bland 2012 Fig. 4A, p. 160 |
+| 01 | 4,000 ka | Deep-marine Wanganui Basin over the plain; a low, continuous finger of basement along the axis; no seaway at the gorge (a low, level isthmus; no river yet, the drainage develops from ~1.6 Ma); the Ruataniwha shelf in the east | Trewick & Bland 2012 Fig. 4A, p. 160 |
 | 02 | 3,300 ka | The first marine breach across the gorge area (late Waipipian) | p. 170 |
 | 03 | 3,000 ka | A narrow seaway, the Manawatū Strait; the Ruahine a finger of low land and shoals | Fig. 4B, p. 163 |
 | 04 | 2,750 ka | The strait closed: the gorge area land, planed (Mangapanian) | p. 165 |
@@ -26,5 +26,5 @@ map u ≈ 0.16 … 0.9.
 
 The 4 Ma, 3 Ma, 2.4 Ma and 1 Ma frames are the four maps of Trewick & Bland's Fig. 4, read inside this
 frame; the rest are the turns between them. Re-exported 2026-11-02 after the marine terms became ceilings
-(the isthmus, the strait's shores, the east front; `md/TEMANAWA_PALAEO_ATTRACT.md` §5 rows 25–26). The climate is held at the window's first anchor (MIS 25)
+(the isthmus, the strait's shores, the east front; `md/TEMANAWA_PALAEO_ATTRACT.md` §5 rows 25–27). The climate is held at the window's first anchor (MIS 25)
 throughout, by design (§1 of the plan).

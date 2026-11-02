@@ -534,7 +534,9 @@ const Palaeo = {
     for (const L of labels) {
       const D = L.def, x = D.u * mw, y = D.v * mh;
       const wt = T.waterTypeAt ? T.waterTypeAt(x, y) : 0;
-      L.ok = (D.on === 'sea') ? wt === 1 : (D.on === 'land') ? wt === 0 : true;
+      // 'land' is anything but open sea: a stream crossing the anchor is still land under the name (a hill
+      // stream on the proto-Ruahine used to hide its name whenever the fan's geometry put one there).
+      L.ok = (D.on === 'sea') ? wt === 1 : (D.on === 'land') ? wt !== 1 : true;
       const lift = T.paintLiftAt ? T.paintLiftAt(x, y) : T.getElevationAt(x, y);
       const cx = vx + vz * Projection.projX(x), cy = vy + vz * Projection.groundY(y, lift);
       const ang = (D.deg || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
