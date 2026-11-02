@@ -226,7 +226,7 @@ Not reachable on the wall — the kiosk lockdown limits input to `1`–`5`.
 | `]` / `[` / `\` | **Time dial** (macro-pad encoder: CW / CCW / push) — a standing fast-forward over 30 detents, 0 (geology paused) → 5,000 yr/s (the whole window in ~3¼ min), power-curve so the low end is fine. The rate eases (0.6 s), a boost timelapse never runs slower than it, and the detent survives soft resets. The mouse wheel turns it too. Works in the sim window and the console (relayed over the bus as `{type:'dial'}`). Keys in `DeepTime.DIAL_KEYS` + `secondscreen/input.js` |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` — **debug overlay on only** (a full synchronous rebuild) |
-| `P` | Play the attract sequence now (the land before the window, 4 Ma → 1 Ma) — **debug overlay on only**; any key while it runs skips to the landing. On the wall it comes from the idle timer and the end of the window |
+| `P` | Play the attract sequence now (the land before the window, 4 Ma → 1 Ma), any time; any key while it runs skips to the landing. Not reachable on the wall (keys locked to `1`–`5`), where it comes from the idle timer and the end of the window |
 | `B` / `G` / `N` | Dev tools **(debug overlay on only)**: re-bake paint (`LOOK`) / apply landform (`GEN`) / new seed. Each is a ~5 s synchronous terrain bake, so they are gated behind `Debug.enabled` — a stray `B` no longer freezes the sim (and no longer collides with the second screen's `b`=boost). See `md/TEMANAWA_DEVTOOLS.md` |
 | `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |

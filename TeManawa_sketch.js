@@ -2096,9 +2096,12 @@ class Game {
     // R toggles the range-authoring overlay (footprints + spine axes). Authoring only.
     if ((k === 'r' || k === 'R') && typeof GEO !== 'undefined') { GEO.toggle(); return; }
 
-    // P plays the attract sequence now (the land before the window, 4 Ma → 1 Ma). Authoring only:
-    // on the wall it comes from the idle timer and the end of the window. See md/TEMANAWA_PALAEO_ATTRACT.md.
-    if ((k === 'p' || k === 'P') && typeof Palaeo !== 'undefined') { if (authoring) Palaeo.begin(this, 'manual'); return; }
+    // P plays the attract sequence now (the land before the window, 4 Ma → 1 Ma); a press while it runs
+    // skips to the landing (the block at the top of this handler). Not gated behind the debug overlay:
+    // it costs no synchronous bake (the sequence is sliced) and the wall's lockdown keeps keys to 1–5,
+    // so on the wall it only ever comes from the idle timer and the end of the window.
+    // See md/TEMANAWA_PALAEO_ATTRACT.md.
+    if ((k === 'p' || k === 'P') && typeof Palaeo !== 'undefined') { Palaeo.begin(this, 'manual'); return; }
 
     // C toggles the climate-affinity tint on the cast (warm=amber, cold=blue). Authoring
     // only — the wall is locked to 1-5. Free while off; the baked tints warm up lazily on
