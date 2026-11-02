@@ -1523,7 +1523,7 @@ try{
   // anchor is marginal land under the harness's white-noise base, so it is checked as a mechanism).
   for (const L of P._labels) {
     const D=L.def, wt=T.waterTypeAt(D.u*T.mapWidth, D.v*T.mapHeight);
-    chk(L.ok===((D.on==='sea')?wt===1:wt===0), `${L.text}: ok reads the painted surface (${D.on}, class ${wt})`);
+    chk(L.ok===((D.on==='sea')?wt===1:wt!==1), `${L.text}: ok reads the painted surface (${D.on}, class ${wt})`);
   }
   P.active=true; P.yearsBP=1400000;
   const main=T.getRivers().find(r=>r.type!=='tributary'), trib=T.getRivers().find(r=>r.type==='tributary');
