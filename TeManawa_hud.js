@@ -1386,6 +1386,10 @@ const InstallHUD = {
       const c = Math.max(0, Math.min(1, (now - g._tmAttractErAt) / TM_TIME.erLongPressMs));
       a = Math.max(a, c * c * TM_TIME.ashPeak);
     }
+    if (g._tmPalaeoErAt) {                                  // the attract sequence's landing eruption (Palaeo 'erupt') — same ramp
+      const c = Math.max(0, Math.min(1, (now - g._tmPalaeoErAt) / TM_TIME.erLongPressMs));
+      a = Math.max(a, c * c * TM_TIME.ashPeak);
+    }
 
     if (g._tmAshUntil && now < g._tmAshUntil) {
       const p = Math.max(0, Math.min(1, 1 - (g._tmAshUntil - now) / TM_TIME.ashMillis));
@@ -1426,6 +1430,9 @@ const InstallHUD = {
     }
     if (g._tmAttractErAt) {                                 // attract-loop reset rumble — same ramp
       s = Math.max(s, Math.min(1, (now - g._tmAttractErAt) / TM_TIME.erLongPressMs));
+    }
+    if (g._tmPalaeoErAt) {                                  // the attract sequence's landing eruption — same ramp
+      s = Math.max(s, Math.min(1, (now - g._tmPalaeoErAt) / TM_TIME.erLongPressMs));
     }
     if (g._ashCloudUntil && now < g._ashCloudUntil) {
       s = Math.max(s, (g._ashCloudUntil - now) / TM_TIME.cloudMillis);   // 1 at the fire -> 0 at the end

@@ -58,7 +58,12 @@ pūrei, tussock and tī kōuka the lowland birds; tawa, tree ferns, nīkau and k
 
 ## 2. The goal book
 
-✅ = live (**52**, up from 17 on 2026-10-19). ⏸ = draft (`off: true`, 5), wired and checked but not
+> **2026-11-03: the live set was halved, 52 → 26, then 23** (§2.2: 7 moa / 3 harrier / 4 lowland / 9 forest). The cut
+> goals are `off: true`, not deleted, and are listed in §2.2. The ✅ marks in the tables below and in §2.1
+> are the state before the cut; §2.2 says which are still live. Not ✅ any more: the through-the-timeline
+> counts under §2.1.
+
+✅ = live (**52**, up from 17 on 2026-10-19; **26** since the 2026-11-03 cut, §2.2). ⏸ = draft (`off: true`, 5), wired and checked but not
 delivered until you switch it on; the drafts are listed in §4. The tables below are the original
 seventeen; **§2.1 lists the 35 added from the encyclopedia cards.**
 
@@ -139,9 +144,46 @@ drafts already backed by a card and are now switched on (marked *draft →*); tw
 | *draft →* Boost a tree for the bird whose male and female had different beaks! | forest | mountain beech | glacial | Mountain beech: huia |
 | *draft →* Boost a flower for the bird with two voice boxes! | forest | wharariki, kōwhai | either, tūī alive | Wharariki: tūī (answer widened to the card that says it) |
 
+### 2.2 The 2026-11-03 cut: 52 → 26
+
+**Rule of thumb:** keep the goals the wall visibly backs up, drop the ones §5 says the sim contradicts
+or never shows, and drop the ones whose answer set is so wide the question stops discriminating. Every
+stage keeps several goals, in both climates. To bring one back, delete its `off: true`.
+
+| Stage | Still live | Switched off |
+|---|---|---|
+| Moa (7) | `tallest`, `flood-tree`, `tall-flower-stalks`, `crawl-under-scrub`, `scrub-after-volcano`, `manawatu-moa`, `most-kinds-here` | `harakeke-rarer`, `kahikatea-rarer-today`, `stepping-roots`, `butter-boxes`, `giant-moa-females`, `manuka-apart`, `tangled-shrub`, `sand-plains` |
+| Harrier (4) | `okatia`, `top-predator`, `thousand-years`, `seed-spreaders` | `buried-stumps` |
+| Lowland (6) | `both-worlds`, `ice-age-grass`, `purei-island`, `ash-bloom`, `regrow-from-base`, `storm-riders` | `moho-food`, `young-tops`, `flightless-goose`, `walking-duck` |
+| Forest (9) | `largest-seeds`, `shelters-kiwi`, `dies-back-cold`, `tui-flowers`, `beech-treeline`, `held-in-cold`, `southernmost-palm`, `small-survivor`, `wind-seeds` | `outgrow-nikau`, `similar-species`, `red-berries`, `yellow-flowers`, `mast-years`, `tallest-tree-fern`, `silver-fronds`, `pollen-mystery`, `floating-seeds`, `huhu-grubs`, `flax-cousin`, `huia-beaks`, `two-voice-boxes` |
+
+**Second pass, 2026-11-03: 26 → 23.** Each remaining goal was held to "the fact is on its answer's card".
+Three failed and are switched off:
+- `storm-riders` ("rides out storms"): ambiguous, teaches nothing, and only the Dracophyllum card says it,
+  so six of its seven answers can't be found by browsing.
+- `both-worlds` ("suited to cold and warm habitats"): an abstract label, not on most of its six answers' cards.
+- `seed-spreaders` ("seeds kererū and kōkako spread"): the tōtara card never says it, and the kōkako
+  link to nīkau fruit is unconfirmed (§3).
+
+Borderline but kept: `flood-tree` (the card says "fresh, wet silt", not "flood"), `purei-island` (the card says
+"pedestal", the prompt says "island"), and `dies-back-cold` (tawa is an answer but its card says nothing about cold).
+Live now: moa 7, harrier 3, lowland 4, forest 9. The lowland stage is the thin one.
+
+Consequences to know:
+- **`harakeke-rarer` is off because the sim shows the opposite** (§5.1: 68 grown harakeke at 1 Ma) and the
+  claim is only strictly true against the flax-mill era. Fix the wetland palette, then switch it on. The
+  harness keeps it as its both-worlds test fixture (a copy with `off` cleared).
+- **`okatia` is still live but needs Rangitāne o Manawatū's sign-off** on wording and spelling before the wall (§3).
+- **Thin pools:** interglacial moa and harrier each have about 4 live goals, so with `recentMemory: 3`
+  the draw cycles through them visibly. The harrier still has no glacial goal, and all four harrier
+  goals answer tōtara (`seed-spreaders` also nīkau).
+- The subalpine-date test now finds two subalpine-only goals (`most-kinds-here`, `wind-seeds`);
+  `flax-cousin` is off but keeps the same `fromYearsBP`.
+- The live counts in the table below are from before the cut; re-sample before quoting them.
+
 ### Through the timeline
 
-Live goals by climate, each sample settled on its own land and cast (2026-10-19, browser):
+Live goals by climate, each sample settled on its own land and cast (2026-10-19, browser; **before the 2026-11-03 cut**):
 
 | Sample | Live goals (moa / harrier / lowland / forest) | Before 2026-10-19 |
 |---|---|---|

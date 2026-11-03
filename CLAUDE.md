@@ -236,9 +236,11 @@ day. **Nothing on the visitor path may call `init()`.**
 Idle and end-of-window call `Palaeo.begin()`: a ≥ 500 ms dip to dark, the land re-baked to 4 Ma under it
 (the every-12th `init()` reseed happens here, under the dark, with the heartbeat stamped), then about
 4 minutes of the land alone (`TM_PALAEO.kyrPerSec` plus the holds) — the Whanganui Basin, the basement finger, the Manawatū Strait opening and closing, the
-ranges — through the terrain's own sliced morph at pre-window dates, paced so no swap ever lands under a
-live crossfade (`terrain._morphCuts` must stay 0), and a second dip into `Kiosk.landAttract()` →
-`resetEcosystem()` on the 1 Ma land. DeepTime stays parked throughout (it cannot represent 4 Ma); the
+east filling out, the ranges — through the terrain's own sliced morph at pre-window dates, paced so no swap
+ever lands under a live crossfade (`terrain._morphCuts` must stay 0). It lands on the **Kidnappers
+eruption**: the eruption charge's rumble and flash, then the ash cloud, and under its opaque backdrop
+`Kiosk.landAttract()` → `resetEcosystem()` on the 1 Ma land (`TM_PALAEO.eruptLanding`; false = the
+older dip to dark). DeepTime stays parked throughout (it cannot represent 4 Ma); the
 sequence keeps its own clock and replaces the HUD with one caption. Any input, local or over the bus,
 skips to the landing. The **error-recovery path never runs it**: a recovery is the synchronous
 `resetToAttract()`. `TM_PALAEO.enabled = false` restores the older eruption-staged attract.

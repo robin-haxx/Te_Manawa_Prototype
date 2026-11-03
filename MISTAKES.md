@@ -10,6 +10,54 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## The neck painted as a sheer face: a field that picked one range per cell
+
+- **What happened.** With the neck moved onto the crest-to-crest line, the 4 Ma land across the gap
+  still showed a sheer, striped face where it met the Ruahine and a pale wall along its south shore,
+  right where visitors watch the strait open and close.
+- **Root cause.** Two. The crest closeness `rSp` took the spine of whichever range had the most mass
+  at a cell; in the gap both ranges' spread margins are ~0.86, so the choice flipped from the
+  Ruahine's crest (0.68) to the Tararua's (0.16) between neighbouring cells, and the thin finger, the
+  neck's weight and the land all stepped there. The same kind of argmax ownership had already left
+  striped walls twice (PALAEO_ATTRACT as-built row 24). Then the neck's level faded out with its core
+  before its shore drowned, so a rim of raw relief stood along the south shore, the shore that faces
+  the viewer, and the relief bake painted it as a face.
+- **Rule.** A field read by a smooth blend must never come from an argmax over ranges. Take a max of
+  continuous terms instead (`rSp` = max(mass × spine) ÷ mass). A level that is meant to hold a strip
+  of land down is a ceiling over its whole dry width, shore included, never a weight that fades
+  before the drowning does. The harness asserts both at 4 Ma (2026-11-03).
+
+## The land across the gap took the river's shape before there was a river
+
+- **What happened.** In the attract sequence, 4–2.75 Ma, the land joining the two basement fingers
+  across the gorge read as an artefact: a dog-leg from the Tararua's tip under the Ruahine, with a
+  cliffed lobe hanging south of it.
+- **Root cause.** The land bridge was the main stem's line widened (`wMDist` < `palaeoBridgeW`). The
+  river itself was hidden before the drainage develops (2026-11-02, `palaeoRiver`), but the bridge
+  still followed the river's line, including the bend south past the gorge, so the channel's shape
+  showed up in the land.
+- **Rule.** Land drawn before the drainage exists must not be built from the river's line, any more
+  than the channel or estuary is. The neck is the straight segment from one range's crest tip to the
+  other's (`TerrainGenerator._palaeoNeck`). The harness asserts that the river's line off the neck is
+  sea at 4 Ma (2026-11-03).
+
+## A half-drowned shelf painted as spikes
+
+- **What happened.** In the attract sequence the closing Manawatū Strait (2.1 → 1.63 Ma) painted as a
+  column of spiky towers, the early land bridge across the gorge as a sheer causeway with the river along
+  its crest, and the first try at an east coast that sweeps east as a coast of spikes again.
+- **Root cause.** Every marine term lowered the ground by a fraction of its height above the sea floor.
+  At partial strength that keeps the relief, so the high cells stand proud of a half-drowned shelf as
+  islets with cliff faces, and the 3/4 relief bake paints those as towers. The bridge was the reverse:
+  land held at the saddle's base height (~0.28) between flanks drowned to the floor within a few cells.
+  A first ceiling that climbed steeply to a high level and carried the per-cell wobble all the way up
+  was a rough surface, and the ranges planed to it painted as spikes too.
+- **Rule.** A coast that moves across high ground is a CEILING, applied last, not a lerp: the sea floor,
+  then up through the waterline to a lowland level over the shore's feather (wobbled, so the coast
+  meanders), then off the land gently and without the wobble (`LOOK.palaeoShoreE`/`Rise`). Keep the
+  lerp only where the sea rises by elevation over low ground (the west basin's shoaling). Land a term
+  holds up stays low and level, with any river cut into it (2026-11-02).
+
 ## The ash waited on a clock that no longer ran
 
 - **What happened.** After a visitor's eruption the ground stayed grey, and the scene sat at the
