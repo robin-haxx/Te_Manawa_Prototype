@@ -6,10 +6,16 @@
        beside a source must start off the map too) or inside a range, never on the plain.
        Confluence order down the Manawatū (Wikipedia): Mangatewainui, Tīraumea, Mangatainoka,
        Mangahao, Pohangina, Ōroua, Tokomaru; plus the Tamaki and Mangatoro (upper river), the
-       Kiwitea (into the Ōroua) and the Mākākahi (into the Mangatainoka). Redrawn 2026-10-20. -->
+       Kiwitea (into the Ōroua) and the Mākākahi (into the Mangatainoka). Redrawn 2026-10-20.
+       The ranges are drawn AS THEY STAND on the map (LOOK.flipRangeAxis false), traced from the real
+       topography: two ridges on the NE–SW axial line whose points meet at the gorge, their edges stepped
+       for a cartoon read. The outline is the range BODY; the crest grades out across broad foothills past
+       it (LOOK.rangeCrestOut), so draw it about as wide as the high ground. Redrawn 2026-11-03. -->
   <rect x="2" y="2" width="1596" height="896" fill="none" stroke="#ccc" stroke-width="2"/>
-  <polygon class="range" data-height="0.90" data-spread="0.18" points="404.63 486.535 748.222 541.535 824.574 696.535 766.037 881.535 608.24 996.539 442.806 956.539 379.179 766.535 419.9 586.535" style=""/>
-  <polygon class="range" data-height="0.91" data-spread="0.16" points="809.545 -53.829 1055.28 -14.225 1144.86 223.397 1091.09 425.376 922.171 457.059 783.952 282.803 771.153 76.863" style=""/>
+  <!-- TARARUA, south of the gorge: a point at the gorge, broadening SSW into a massif down a stepped west face -->
+  <polygon class="range" data-height="0.90" data-spread="0.18" points="794.6 478.2 782.1 490.2 742.8 525.5 719.5 550.6 678.4 590.9 664.0 619.0 621.1 651.2 606.8 686.5 567.4 711.6 535.2 751.9 510.2 787.1 474.4 812.2 442.2 857.5 410.0 902.8 374.3 953.1 299.1 1204.7 835.8 1204.7 773.2 953.1 760.6 902.8 746.3 852.5 757.1 812.2 742.8 761.9 753.5 721.7 778.5 686.5 764.2 651.2 782.1 611.0 800.0 570.7 812.5 530.5 810.7 495.3"/>
+  <!-- RUAHINE, north of the gorge: a narrow ridge leaning NE from a point at the gorge to the north-east corner -->
+  <polygon class="range" data-height="0.91" data-spread="0.16" points="1157.8 -304.7 1050.4 -73.2 1036.1 -12.9 1018.2 17.3 975.3 77.7 964.6 117.9 918.1 168.3 900.2 218.6 885.9 248.8 850.1 309.1 839.4 349.4 821.5 389.6 814.3 419.8 817.9 450.0 839.4 439.9 871.6 409.8 907.3 379.6 921.6 339.3 961.0 299.1 1000.4 258.8 1018.2 208.5 1059.4 168.3 1100.5 117.9 1114.8 67.6 1157.8 17.3 1157.8 -33.0 1184.6 -73.2 1300.9 -304.7"/>
   <polyline class="river" data-width="0.05" data-depth="1.0" fill="none" points="150,470 300,525 430,562 560,540 660,470 765,432 845,470 945,545 1055,548 1140,472 1226,360 1306,250 1366,176"/>
 
   <!-- WEST of the ranges: the Manawatū plain -->

@@ -28,8 +28,8 @@ const TM_FADE_MS = 380;
 // One extra quad per covered bird, in the same batch (no draw call). reveal: 0 turns it off.
 const PLANT_GHOST = {
   on: true,
-  reveal:      0.45,   // opacity of the over-canopy re-stamp of a fully covered animal (0 = off)
-  maxReduce:   0.55,   // deepest opacity cut: a plant dead-centre over an animal drops to 1-this alpha
+  reveal:      0.7,    // opacity of the over-canopy re-stamp of a fully covered animal (0 = off)
+  maxReduce:   0.3,    // deepest opacity cut: a plant dead-centre over an animal drops to 1-this alpha
   minHalfW:    9,      // world half-width below which a plant is too small to bother ghosting (tussock etc.)
   widthMul:    1.0,    // scales the footprint used for the horizontal overlap test
   depthBehind: 60,     // world units NORTH (behind) a plant to look for a covered animal
@@ -1437,6 +1437,7 @@ class Simulation {
       return;
     }
     prey.alive = false;
+    if (typeof eagle.onCatch === 'function') eagle.onCatch(prey);   // onto the kill, talons held on it
     if (audioManager) audioManager.playEagleCatch();
 
     eagle.kills++;

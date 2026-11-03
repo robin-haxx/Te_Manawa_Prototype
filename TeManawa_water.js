@@ -38,6 +38,7 @@ class WaterLayer {
     this.fish = [];          // a school of smaller fish on every river (always present)
     this._capped = false;    // true if a placement hit the maxDecals cap (logged, never silent)
     this._probe = { _x: 0, _y: 0, _angle: 0 };   // scratch for path sampling, no per-call alloc
+    this._run = { a: 0, b: 0 };                   // scratch for _reachAt
 
     // Deterministic candidate SLOTS: every possible decal position (sea-grid points + river-step
     // points), computed from GEOMETRY alone (never random()) so a given slot always maps to the
@@ -78,6 +79,7 @@ class WaterLayer {
       fishSpeed:        0.3,
       fishAnimSpeed:    0.14,
       swimHop:          12,     // world px: a dry speck across a swimmer's line up to this long is hopped, not bounced off (islets, pinches); a longer dry stretch is a real end
+      swimMinRun:       60,     // world px: a wet stretch shorter than this (hops bridged) is a pocket, not a reach; a swimmer in one moves to its path's longest reach
       maxDecals:        420,    // hard cap; counts toward the ≤1500 image()/frame budget
     };
   }
@@ -206,22 +208,76 @@ class WaterLayer {
       e.animTime += dt;
       const prevD = e.d;
       e.d += sp * dt * e.dir;
-      if (e.d <= 0) { e.d = 0; e.dir = 1; }
-      else if (e.d >= e.path.len) { e.d = e.path.len; e.dir = -1; }
+      let turned = false;
+      if (e.d <= 0) { e.d = 0; e.dir = 1; turned = true; }
+      else if (e.d >= e.path.len) { e.d = e.path.len; e.dir = -1; turned = true; }
       this._samplePath(e.path, e.d, e);           // -> e._x, e._y, e._angle
       // A short dry speck across the line (an islet in the coastal sea, a pinch at a tributary's
       // growing head) is hopped, not bounced off: turning at the first dry cell boxed swimmers into
       // pockets a few px long, where they paced back and forth. Only a real end turns them round.
       if (t && t.waterTypeAt(e._x, e._y) === 0 && this._hop(e)) continue;
       if (t && t.waterTypeAt(e._x, e._y) === 0) { // dried to bank → turn back
-        e.d = prevD; e.dir = -e.dir;
+        e.d = prevD; e.dir = -e.dir; turned = true;
         this._samplePath(e.path, e.d, e);
         // STRANDED: the step back is dry too, so a morph dried the water under it. Bouncing
         // alone would flip it in place on land forever (the "stuck eel"); move it to the
         // nearest wet stretch of its path instead.
         if (t.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
       }
+      // Every turn checks the reach it turned in: the nearest wet point (_rescue, a seed) can be a
+      // pocket a few px long between dry stretches, where a swimmer paced back and forth for good.
+      if (turned && t) this._settle(e);
     }
+  }
+
+  // The wet reach of `path` around arc-distance d, with dry gaps up to cfg.swimHop bridged (a
+  // swimmer hops those). Writes this._run.a/.b; allocation-free, 2 px steps.
+  _reachAt(path, d) {
+    const t = this.terrain, hop = this.cfg.swimHop || 0, len = path.len, p = this._probe;
+    let last = d;
+    for (let s = d; s <= len; s += 2) {
+      this._samplePath(path, s, p);
+      if (t.waterTypeAt(p._x, p._y) !== 0) last = s; else if (s - last > hop) break;
+    }
+    this._run.b = last; last = d;
+    for (let s = d; s >= 0; s -= 2) {
+      this._samplePath(path, s, p);
+      if (t.waterTypeAt(p._x, p._y) !== 0) last = s; else if (last - s > hop) break;
+    }
+    this._run.a = last;
+  }
+
+  // A swimmer in a pocket shorter than cfg.swimMinRun moves to a wet point in its path's longest
+  // reach, if that is longer. Called on a turn and after every (re)placement; returns true if moved.
+  _settle(e) {
+    const t = this.terrain, path = e.path, R = this._run;
+    if (!t || !path || !(path.len > 0)) return false;
+    this._samplePath(path, e.d, e);
+    if (t.waterTypeAt(e._x, e._y) === 0) return false;   // on the bank: _rescue's job, not ours
+    this._reachAt(path, e.d);
+    const cur = R.b - R.a;
+    if (cur >= (this.cfg.swimMinRun || 0)) return false;
+    // The longest reach on the path, one 2 px scan with the same gap bridging.
+    const hop = this.cfg.swimHop || 0, p = this._probe;
+    let bestA = 0, bestB = -1, a = -1, last = -1;
+    for (let s = 0; s <= path.len + 2; s += 2) {
+      let wet = false;
+      if (s <= path.len) { this._samplePath(path, s, p); wet = t.waterTypeAt(p._x, p._y) !== 0; }
+      if (wet) { if (a < 0) a = s; last = s; }
+      else if (a >= 0 && (s - last > hop || s > path.len)) {
+        if (last - a > bestB - bestA) { bestA = a; bestB = last; }
+        a = -1;
+      }
+    }
+    if (bestB - bestA <= cur) { this._samplePath(path, e.d, e); return false; }
+    // A wet point inside it: random along the reach, then forward to the next wet sample (the
+    // reach's own end is wet, so this always lands).
+    let d = bestA + random() * (bestB - bestA);
+    for (; d < bestB; d += 2) { this._samplePath(path, d, p); if (t.waterTypeAt(p._x, p._y) !== 0) break; }
+    e.d = Math.min(d, bestB);
+    if (random() < 0.5) e.dir = -e.dir;
+    this._samplePath(path, e.d, e);
+    return true;
   }
 
   // Look ahead along the swimmer's heading for water within cfg.swimHop world px; if there is some,
@@ -266,6 +322,7 @@ class WaterLayer {
       const e = E[i];
       this._samplePath(e.path, e.d, e);
       if (t.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
+      this._settle(e);   // the new land can have pinched its reach into a pocket
     }
   }
 
@@ -319,28 +376,34 @@ class WaterLayer {
 
     R.push();
     R.imageMode(CENTER);
-    this._drawSwimmers(R, null, dc, this.eels, 'eel_swim',  this.cfg.eelAnimSpeed,  1.6, 0.8, K);
-    this._drawSwimmers(R, null, dc, this.fish, 'fish_swim', this.cfg.fishAnimSpeed, 1.5, 0.9, K);
+    this._drawSwimmers(R, null, dc, this.eels, 'eel_swim',  this.cfg.eelAnimSpeed,  1.6, K);
+    this._drawSwimmers(R, null, dc, this.fish, 'fish_swim', this.cfg.fishAnimSpeed, 1.5, K);
     dc.globalAlpha = ga0;
     R.pop();
   }
 
-  // Draw a swimmer list with `strip` at `animSpeed`, sized e.size·(wMul × hMul).
-  // Shared by the tuna/eels and the fish. Never paints on land (a safety net for the
-  // one frame before update()'s bounce catches a newly-dried cell).
-  _drawSwimmers(R, g, dc, E, strip, animSpeed, wMul, hMul, K) {
+  // Draw a swimmer list with `strip` at `animSpeed`, sized e.size·mul square (the Tuna and Fish
+  // frames are square, facing right). Shared by the tuna/eels and the fish. Never paints on land
+  // (a safety net for the one frame before update()'s bounce catches a newly-dried cell).
+  // The heading is projected (y shortened by K) and the sprite turned to it, not scale(1, K) then
+  // rotate: that sheared every turned sprite, and with the old 2:1 box over square art it drew the
+  // tuna squashed. Leftward travel mirrors rather than rotating past 90°, so they swim belly-down.
+  _drawSwimmers(R, g, dc, E, strip, animSpeed, mul, K) {
     const t = this.terrain;
     for (let i = 0; i < E.length; i++) {
       const e = E[i];
       if (t.waterTypeAt(e._x, e._y) === 0) continue;
       const elev = t.paintLiftAt(e._x, e._y);
       const fr = Math.floor(e.animTime * animSpeed);
+      const s = e.dir < 0 ? -1 : 1, sz = e.size * mul;
+      let vx = Math.cos(e._angle) * s;
+      const vy = Math.sin(e._angle) * s * K;
       dc.globalAlpha = e.alpha;
       R.push();
       R.translate(Projection.projX(e._x), Projection.groundY(e._y, elev));
-      R.scale(1, K);
-      R.rotate(e._angle + (e.dir < 0 ? Math.PI : 0));
-      SpriteStrips.draw(strip, fr, 0, 0, e.size * wMul, e.size * hMul, g);
+      if (vx < 0) { R.scale(-1, 1); vx = -vx; }
+      R.rotate(Math.atan2(vy, vx));
+      SpriteStrips.draw(strip, fr, 0, 0, sz, sz, g);
       R.pop();
     }
   }
@@ -461,6 +524,7 @@ class WaterLayer {
         this._samplePath(path, e.d, e);
       }
       if (terrain.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
+      this._settle(e);
       this.eels.push(e);
     }
   }
@@ -496,6 +560,7 @@ class WaterLayer {
         this._samplePath(path, e.d, e);
       }
       if (terrain.waterTypeAt(e._x, e._y) === 0) this._rescue(e);
+      this._settle(e);
       this.fish.push(e);
     }
   }

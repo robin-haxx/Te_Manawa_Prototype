@@ -168,7 +168,9 @@ until 1.6 Ma, then takes their "proto-" convention (Fig. 4D: *proto-Ruahine Rang
 | **MANAWATŪ** (along the channel) | < 1.25 Ma | the main stem | river | Fig. 4D "Manawatu River" |
 
 The modern tributary names (Pohangina, Ōroua…) are **not** lettered during the sequence: those streams
-exist in the model before 1 Ma (as the spread fans), but no source names them for the time.
+exist in the model before 1 Ma (as the spread fans), but no source names them for the time. The
+same holds inside the window until the fans close: `RiverNames._name` letters a tributary only once
+`terrain._geoT.tribSpread` ≤ `TM_RIVER_NAMES.tribNameSpread` (≈ 395 ka).
 
 ---
 

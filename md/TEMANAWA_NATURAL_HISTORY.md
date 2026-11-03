@@ -417,6 +417,14 @@ The window itself is unchanged. `md/TEMANAWA_PALAEO_ATTRACT.md`.
     the build draws it as streams pulling together. The stream geometry is procedural (per seed),
     not mapped. The ~500 ka capture of Craw et al. now falls mid-convergence rather than at a
     tributary's first appearance.
+  - **Tributary names wait for the channel (2026-11-03).** The fans are a proto-drainage, and no
+    source names its streams for the time: the Ruahine was low (~1.3 mm/yr since; Rees et al. 2017),
+    the Pohangina had only been leaving the sea since ~1.6 Ma, and the Ōroua's course is steered by
+    the plain's mid–late Pleistocene anticlines (§I.4). So a tributary is lettered only once its fan
+    has closed (`TM_RIVER_NAMES.tribNameSpread` 0.05 of the spread, ≈ 395 ka); the main stem is
+    *Manawatū* from the opening (Fig. 4D). The same rule the attract sequence keeps before 1 Ma
+    (`TEMANAWA_PALAEO_ATTRACT.md` §4), carried into the window. Licence: one date for every
+    tributary; the east-side streams that fed the Woodville lake were probably integrated earlier.
   - **The river field was rebuilt to do this.** Each cell used to keep one river chosen by margin,
     with tributary emergence and an NE-arm hand-over patched on top. It is now two layers, the main
     stem and the tributary fan, unioned in the carve, classify and paint (`_buildGeoCache`).

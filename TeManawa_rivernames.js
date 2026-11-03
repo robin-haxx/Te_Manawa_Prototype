@@ -13,7 +13,8 @@
 // is such water and the step lands on screen clear of the HUD. A name takes the straightest stretch of
 // that which fits it, nearest the middle (and, once placed, nearest where it was), on a lightly
 // smoothed baseline. A river with no such stretch goes unnamed, so the names follow the land: a reach
-// the sea drowns or an arm that dries loses its name, and a river that comes into view gains one.
+// the sea drowns or an arm that dries loses its name, and a river that comes into view gains one. A
+// tributary is named only once its deep-time fan has closed into one channel (tribNameSpread).
 // Larger rivers are placed first; a name never overlaps another.
 //
 // WHEN: laid out only when the water is re-stamped (WaterLayer.rev: init, each morph, an eruption),
@@ -32,6 +33,13 @@ const TM_RIVER_NAMES = {
   // carries the river's name, as an atlas repeats a long river's name along it (and a 14-letter name
   // rarely fits its meanders). Delete the entry to letter it 'UPPER MANAWATŪ'.
   rename:    { 'upper Manawatū': 'Manawatū' },
+  // A tributary is lettered only once its fan of hill streams has drawn into one channel: the land's
+  // fan spread (terrain._geoT.tribSpread, 1 at 1 Ma → 0 at 300 ka, GEO_EPOCHS.tribConverge*) at or
+  // below this. 0.05 ≈ 395 ka. Before that the streams are a proto-drainage on low proto-ranges and a
+  // still-emerging plain, and no source names its rivers for the time; the Ōroua's course is steered
+  // by mid–late Pleistocene folds (TEMANAWA_NATURAL_HISTORY.md §I.3–I.4). The main stem keeps its
+  // name from the opening (Trewick & Bland Fig. 4D). 1 names every tributary throughout.
+  tribNameSpread: 0.05,
   mainSize:  26,           // the main stem's lettering
   tribSize:  19,           // the tributaries'
   minScale:  0.8,          // a name that fits nowhere at full size tries once more at this scale
@@ -126,8 +134,8 @@ const RiverNames = {
 
   _layoutBegin(T, W, H, ko, prev) {
     const rivers = (T && T.getRivers) ? T.getRivers() : [], order = [];
-    for (let i = 0; i < rivers.length; i++) if (this._name(rivers[i])) order.push(i);
-    this._prewarm(rivers);
+    for (let i = 0; i < rivers.length; i++) if (this._name(rivers[i], T)) order.push(i);
+    this._prewarm(rivers, T);
     order.sort((a, b) => this._rank(rivers[b]) - this._rank(rivers[a]));   // the main, then the larger tributaries
     return { T, W, ko, prev, rivers, order, k: 0, placed: [], out: [] };
   },
@@ -143,7 +151,7 @@ const RiverNames = {
   },
 
   _layoutRiver(job, i) {
-    const C = TM_RIVER_NAMES, rv = job.rivers[i], nm = this._name(rv);
+    const C = TM_RIVER_NAMES, rv = job.rivers[i], nm = this._name(rv, job.T);
     if (!nm) return;   // the name set can change between a job's slices (the attract sequence starting or landing): an unnamed river is skipped, never a crash
     const text = nm.normalize('NFC').toUpperCase(), chars = Array.from(text);
     const key = i + '|' + text, pl = job.prev ? job.prev.get(key) : null;
@@ -166,11 +174,15 @@ const RiverNames = {
     }
   },
 
-  _name(rv) {
+  // `T` (optional) is the land the name is for: a tributary on a land whose fan is still spread goes
+  // unnamed (tribNameSpread). Without a land, or one with no geo time, the present's names.
+  _name(rv, T) {
     // THE LAND BEFORE THE WINDOW: while the attract sequence runs the names are the time's (no
     // tributary names; the main 'proto-Manawatū' while its arm still flows east). TeManawa_palaeo.js.
     if (typeof Palaeo !== 'undefined' && Palaeo.active && Palaeo.riverName) return Palaeo.riverName(rv);
-    const C = TM_RIVER_NAMES, n = (rv && rv.src && rv.src.name) || (rv && rv.name);
+    const C = TM_RIVER_NAMES;
+    if (rv && rv.type === 'tributary' && T && T._geoT && T._geoT.tribSpread > C.tribNameSpread) return null;
+    const n = (rv && rv.src && rv.src.name) || (rv && rv.name);
     if (n) return (C.rename && C.rename[n]) || n;
     return (rv && rv.type !== 'tributary') ? C.mainName : null;
   },
@@ -394,13 +406,13 @@ const RiverNames = {
   // ---- glyphs ------------------------------------------------------------------------------------
   // Every letter of every name at each size, made on the first layout (at boot, behind init), so a
   // live re-layout never pays for a new sprite (~1 ms each). Again only if the set of names changes.
-  _prewarm(rivers) {
-    const C = TM_RIVER_NAMES, names = rivers.map(rv => this._name(rv)).filter(Boolean).join('|');
+  _prewarm(rivers, T) {
+    const C = TM_RIVER_NAMES, names = rivers.map(rv => this._name(rv, T)).filter(Boolean).join('|');
     const key = names + '|' + C.mainSize + '|' + C.tribSize + '|' + C.minScale + '|' + C.holdScale;
     if (this._warmKey === key) return;
     this._warmKey = key;
     for (const rv of rivers) {
-      const nm = this._name(rv);
+      const nm = this._name(rv, T);
       if (!nm) continue;
       const size0 = (rv.type !== 'tributary') ? C.mainSize : C.tribSize;
       for (const sc of [1, C.minScale, C.holdScale]) for (const ch of nm.normalize('NFC').toUpperCase()) this._glyph(ch, Math.round(size0 * sc));

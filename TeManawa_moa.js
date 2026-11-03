@@ -1541,6 +1541,7 @@ class Moa extends Boid {
     // Moa/ art is landscape and would stretch tall if forced into a square box.
     const _drawW = this.size * 2.5 * (this.speciesConfig.spriteScale || 1);
     const _drawH = (sprite.width > 0) ? _drawW * (sprite.height / sprite.width) : _drawW;
+    this._bodyLiftY = _drawH * 0.5;   // where the drawn body sits above pos (the harrier's strike aims here)
     // Foot-anchored: centre the image a half-height ABOVE the ground point so its base
     // sits on it (see the translate note). The vertical squash-stretch above scales about
     // the feet, so the turn-around bounce now springs from planted feet rather than the belly.

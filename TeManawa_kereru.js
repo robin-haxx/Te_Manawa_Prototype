@@ -668,6 +668,8 @@ class Kereru extends Boid {
     const settle = perched ? Math.min(1, Math.max(0, (this._cruiseAlt - alt) / Math.max(1, this._cruiseAlt - this._perchAltCur))) : 0;
     const offX = perched ? this._perchDX * settle : 0;
     const offY = perched ? this._perchDY * settle : 0;
+    this._bodyDX = offX;            // where the drawn body sits off pos (the harrier's strike aims here)
+    this._bodyLiftY = alt - offY;
 
     push();
     translate(this.pos.x, gy);

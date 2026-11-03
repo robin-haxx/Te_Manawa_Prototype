@@ -162,7 +162,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // so getBiomeFromElevation never returns it (validateBiomeBands WILL warn — that is intended,
     // like the alpine shadow). It is assigned only by the river-proximity override in
     // TeManawa_terrain.js (_rebuildBiomeMap + the paint pass), which claims the LOW river reaches
-    // — the banks plus a modest back-swamp margin (LOOK.riverWetlandT / riverWetlandElevMax).
+    // — back-swamp PATCHES at some bends and confluences, not a band round every channel
+    // (_buildWetField; LOOK.wetPatch* / riverWetlandElevMax).
     // Plants are the readable swamp assemblage: harakeke + tī kōuka, kahikatea swamp forest,
     // mānuka margin, nīkau accent, mingimingi (coprosma) swamp scrub, pūrei (sedge, Carex secta,
     // the open-water edge of the Moutoa zonation) — PLUS tussock, so the riverbank feeds the

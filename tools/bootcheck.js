@@ -1075,6 +1075,51 @@ try{
     : 'harrier prey ceiling: no adult over 40 kg (adult giant moa never; stout-legged males only; juveniles always); the real hunt scan obeys it');
 }catch(e){ console.log('HARRIER PREY CEILING FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
+// ---- harrier strike: the talons land on the prey's DRAWN body ---------------------------
+// The sim catches on world distance, but a moa is foot-anchored (its body half a sprite above
+// pos), a flyer rides its altitude, and the talons sit below the harrier's sprite centre: the
+// "catch sits off the prey" report. EylesHarrier._updateSwoop pulls the drawn harrier (render
+// only) so its talons meet the prey's body (_bodyLiftY, left by the prey's render); onCatch steps
+// it onto the kill with no visible jump and holds the talons there while the prey fades. The
+// oracle below re-derives the talon point from the render's own transform.
+try{
+  const G=vm.runInContext('game',ctx), P=vm.runInContext('Projection',ctx);
+  const sim=G.simulation;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const hawk=sim.eagles[0], m=sim.moas.find(x=>x.alive);
+  const save={x:hawk.pos.x,y:hawk.pos.y,t:hawk.target,h:hawk.hunting,sx:hawk._swX,sy:hawk._swY,alt:hawk._altitude};
+  m.render();
+  chk(m._bodyLiftY>0, `a moa's render leaves where its drawn body sits above pos (${m._bodyLiftY})`);
+  const gyOf=(b)=>P.groundY(b.pos.y, b.terrain.getElevationAt(b.pos.x,b.pos.y));
+  const facing=0.6, art=0.74, W=hawk.wingspan*2.8, alt=4;
+  const talon=()=>{                                        // drawn talon point, screen px
+    const tx=hawk.talonArt.x*W, ty=hawk.talonArt.y*W, b=-Math.PI/2-art, a=facing+Math.PI/2;
+    const x1=tx*Math.cos(b)-ty*Math.sin(b), y1=tx*Math.sin(b)+ty*Math.cos(b);
+    return { x:hawk.pos.x+hawk._swX+x1*Math.cos(a)-y1*Math.sin(a), y:gyOf(hawk)+hawk._swY+x1*Math.sin(a)+y1*Math.cos(a)-alt };
+  };
+  const body=()=>({ x:m.pos.x, y:gyOf(m)-m._bodyLiftY });
+  const step=(n)=>{ for(let i=0;i<n;i++) hawk._updateSwoop(gyOf(hawk),facing,false,art,W,W,alt); };
+  // Far out (past strikeReach) there is no pull.
+  hawk._swX=0; hawk._swY=0; hawk._killHold=0; hawk._kill=null; hawk.hunting=true; hawk.target=m;
+  hawk.pos.x=m.pos.x-80; hawk.pos.y=m.pos.y; step(30);
+  chk(Math.abs(hawk._swX)<1e-6 && Math.abs(hawk._swY)<1e-6, 'no strike pull outside strikeReach');
+  // At the catch radius the talons are pulled onto the body.
+  hawk.pos.x=m.pos.x-hawk.catchRadius; step(40);
+  let t=talon(), bd=body();
+  chk(Math.hypot(t.x-bd.x,t.y-bd.y)<0.5, `at catchRadius the drawn talons are on the prey's body (off ${Math.hypot(t.x-bd.x,t.y-bd.y).toFixed(2)} px)`);
+  // The catch steps onto the kill without moving the drawn bird, then holds the talons on it.
+  const ax=hawk.pos.x+hawk._swX, ay=gyOf(hawk)+hawk._swY;
+  hawk.onCatch(m); hawk.hunting=false; hawk.target=null;
+  chk(hawk.pos.x===m.pos.x && hawk.pos.y===m.pos.y, 'onCatch steps the harrier onto the kill');
+  chk(Math.abs(hawk.pos.x+hawk._swX-ax)<1e-6 && Math.abs(gyOf(hawk)+hawk._swY-ay)<1e-6, 'onCatch does not move the drawn harrier');
+  step(hawk.killHoldFrames-2); t=talon(); bd=body();
+  chk(Math.hypot(t.x-bd.x,t.y-bd.y)<0.5, 'the talons stay on the kill while it fades');
+  step(80);
+  chk(hawk._kill===null && Math.hypot(hawk._swX,hawk._swY)<0.05, 'after the hold the pull eases out and the kill is let go');
+  hawk.pos.x=save.x; hawk.pos.y=save.y; hawk.target=save.t; hawk.hunting=save.h; hawk._swX=save.sx; hawk._swY=save.sy; hawk._altitude=save.alt;
+  console.log(fail? `harrier strike: ${fail} FAILURES` : 'harrier strike: talons meet the prey\'s drawn body, the catch lands on the kill with no jump');
+}catch(e){ console.log('harrier strike: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
+
 // ---- storm overuse: the STORM cost (plan §4) ----------------------------------
 // Each STORM press adds decaying pressure; above the overuse line the kererū stay grounded
 // BETWEEN storms and interglacial recruitment stalls, so the scene desaturates. A SINGLE press
@@ -1455,7 +1500,7 @@ try{
   // Probe boxes inside the range cores (rMask 1), clear of the strait strip. The harness's base is
   // white noise, so the land under a core is what it is (the Tararua's is marginal here even at the
   // sim's own 1 Ma opening); the finger is asserted RELATIVE to 1 Ma and against the plain beside it.
-  const tararuaLand=()=>frac(0.36,0.41,0.62,0.74,false), ruahineSea=()=>frac(0.56,0.64,0.22,0.34,true);
+  const tararuaLand=()=>frac(0.36,0.44,0.82,0.92,false), ruahineSea=()=>frac(0.56,0.64,0.22,0.34,true);
   const plainLand=()=>frac(0.15,0.25,0.45,0.55,false), all=()=>frac(0,1,0,1,true);
   const state={};
   for (const y of [4000000, 3000000, 2750000, 2400000, 1600000, 1000000]) { T.morphTo(y,1); state[y]={ sea:all(), gap:gapSea(), tar:tararuaLand(), rua:ruahineSea(), plain:plainLand() }; }
@@ -1472,11 +1517,15 @@ try{
   // and the far edge stays SEA where the basin drowned it (the two-way edge ease used to raise a false coast)
   {
     const C2=T._geoCache; let steep=0, topLand=0, topN=0;
+    // Rows inside the far edge's two-way ease (_nsEdgeFalloff, geoTopMargin) are left out: since the
+    // Ruahine leans NE (2026-11-03) its shore runs off the top into the early east sea, and the ease's
+    // 0.10–0.15 ramp splits white-noise neighbours either side of it into steps (real terrain: 0 there).
+    const topRows = Math.ceil(gr * (T._geoTopMargin || 0));
     for (const y of [4000000, 3000000, 2400000, 2000000]) {
       T.morphTo(y,1); const H=T.heightMap;
       for (let r=1;r<gr-1;r++) for (let col=1;col<gc-1;col++) {
         const i=r*gc+col;
-        if (C2.rMask[i]>0.5 && C2.rMask[i+1]>0.5 && Math.abs(col/gc-gu)>0.2 && Math.max(Math.abs(H[i]-H[i+1]),Math.abs(H[i]-H[i+gc]))>0.1) steep++;
+        if (r>=topRows && C2.rMask[i]>0.5 && C2.rMask[i+1]>0.5 && Math.abs(col/gc-gu)>0.2 && Math.max(Math.abs(H[i]-H[i+1]),Math.abs(H[i]-H[i+gc]))>0.1) steep++;
         if (r<gr*0.05 && col<gc*0.3) { topN++; if (H[i]>=seaE) topLand++; }
       }
     }
@@ -3688,13 +3737,30 @@ try{
       ctx.noise = nz;
       chk(lifted > 0.35, `a range lifts the land well above the plains (got ${lifted.toFixed(2)})`);
     }
-    // Range spine: the crest concentrates on the range's long (PCA) axis; flanks fall to foothills.
+    // Range spine: the crest follows the drawn OUTLINE (signed distance to it): full in the core, and it
+    // grades down to the flank OUTSIDE the outline, over LOOK.rangeCrestOut — spread across the foothills
+    // in even steps, not a hard rim — and falls away past the range's drawn point at the gorge.
     const rr = T._geoRanges && T._geoRanges[0];
-    if (rr && rr.halfW) {
-      const offU = rr.cx + rr.perpX * rr.halfW * 0.9, offV = rr.cy + rr.perpY * rr.halfW * 0.9;
-      chk(Math.abs(TG._spineHeight(rr, rr.cx, rr.cy, 0.45) - 1) < 1e-9, 'range spine: full crest height on the axis');
-      chk(TG._spineHeight(rr, offU, offV, 0.45) < 0.75, 'range spine: the flank crest drops toward foothills');
-      chk(TG._spineHeight(rr, offU, offV, 0) === 1, 'range spine: spine 0 = flat plateau (back-compat)');
+    if (rr && rr.inR > 0) {
+      const LKs = vm.runInContext('LOOK', ctx);
+      const cOut = (LKs && LKs.rangeCrestOut != null) ? LKs.rangeCrestOut : 0.12, cIn = (LKs && LKs.rangeCrestIn > 0) ? LKs.rangeCrestIn : 0.02;
+      const cSh = (LKs && LKs.rangeCrestShape > 0) ? LKs.rangeCrestShape : 1.5;
+      const sh = (u, v, s) => TG._spineHeight(rr, u, v, s, cOut, cIn, cSh);
+      chk(Math.abs(sh(rr.inU, rr.inV, 0.45) - 1) < 1e-9, 'range spine: full crest height in the core');
+      const p0 = rr.poly[0], p1 = rr.poly[1], mu = (p0[0] + p1[0]) / 2, mv = (p0[1] + p1[1]) / 2;
+      const dl = Math.hypot(rr.inU - mu, rr.inV - mv) || 1, nu = -(rr.inU - mu) / dl, nv = -(rr.inV - mv) / dl;
+      // five samples outward from the outline across the grade: falling all the way, no quarter of it
+      // taking more than 60% of the drop (the old in-outline grade put it all in the first)
+      const prof = [0, 0.25, 0.5, 0.75, 1].map(k => sh(mu + nu * cOut * k, mv + nv * cOut * k, 0.95));
+      let mono = true, maxStep = 0; for (let k = 1; k < 5; k++) { if (prof[k] > prof[k - 1] + 1e-9) mono = false; maxStep = Math.max(maxStep, prof[k - 1] - prof[k]); }
+      const drop = prof[0] - prof[4];
+      chk(mono && drop > 0.5 && maxStep < 0.6 * drop, `range spine: the crest grades down across the foothills past the outline, not a rim (${prof.map(x => x.toFixed(2)).join(' → ')})`);
+      chk(sh(mu + nu * cOut * 1.2, mv + nv * cOut * 1.2, 0) === 1, 'range spine: spine 0 = flat plateau (back-compat)');
+      // The first vertex is the drawn point at the gorge (geo/manawatu.svg): past it the crest falls away
+      // toward the gorge — the range ends in a point, not the square end of an oblong band.
+      const tl = Math.hypot(p0[0] - rr.inU, p0[1] - rr.inV) || 1, tipU = p0[0] + (p0[0] - rr.inU) / tl * cOut * 0.5, tipV = p0[1] + (p0[1] - rr.inV) / tl * cOut * 0.5;
+      const tipH = sh(tipU, tipV, 0.95);
+      chk(tipH < 0.75, `range spine: the crest falls away past the range's point at the gorge (got ${tipH.toFixed(2)})`);
     }
     if (river) {
       // A river over the PLAINS incises below the local ground but does NOT ditch to sea
@@ -4435,6 +4501,26 @@ console.log('  playTime  ', g.playTime.toFixed(0));
   }
   const pacing = swimmers().filter((e, k) => hi[k] - lo[k] < 20).length;   // 240 ticks at 0.3–0.4 px/tick ≈ 70–95 px when free
   chk(pacing === 0, `every eel and fish keeps travelling, none paces a tiny pocket (${pacing} pacing)`);
+  //      Deterministic pocket: the real land leaves 6–20 px wet islands between dry stretches longer
+  //      than swimHop (349 ka main stem: d86 W6 d128 W8 d30 W466), and a swimmer seeded or rescued
+  //      into one paced there for good. Stage it on a straight synthetic path with waterTypeAt
+  //      stubbed by x: a 10 px pocket at 100–110, a 40 px dry gap, the long reach 150–400.
+  if (w.eels.length) {
+    const e = w.eels[0], keep = { path: e.path, d: e.d, dir: e.dir }, wt = T.waterTypeAt, fishKeep = w.fish;
+    w.fish = [];   // the stub would move the fish on their real paths
+    e.path = w._buildPath([[0, 0.5], [400 / T.mapWidth, 0.5]], T.mapWidth, T.mapHeight, true, false);
+    T.waterTypeAt = (x) => ((x >= 100 && x <= 110) || (x >= 150 && x <= 400)) ? 2 : 0;
+    try {
+      e.d = 105; e.dir = 1; w._samplePath(e.path, e.d, e);
+      for (let i = 0; i < 120; i++) w.update(1);
+      chk(e._x >= 150, `a swimmer in a 10 px pocket leaves it for the long reach (at x ${e._x.toFixed(0)})`);
+      e.d = 300; w._samplePath(e.path, e.d, e);
+      chk(!w._settle(e), 'a swimmer already in a long reach is left where it is');
+    } finally {
+      delete T.waterTypeAt; if (T.waterTypeAt !== wt) T.waterTypeAt = wt;
+      w.fish = fishKeep; e.path = keep.path; e.d = keep.d; e.dir = keep.dir; w._samplePath(e.path, e.d, e);
+    }
+  }
   //      Deterministic stranding: whether a given morph dries the water under a swimmer is seed
   //      luck, so strand one on purpose. Put an eel on a dry point of its own path (the window end's
   //      dried NE arm), exactly as a morph that dried the water under it would leave it, then
@@ -4672,10 +4758,21 @@ try{
 
   // (b) the real land at four dates: inside the canvas, clear of the HUD and of each other, real names
   const T=G.terrain, allowed=new Set(T.getRivers().map(rv=>RN._name(rv)).filter(Boolean).map(n=>n.normalize('NFC').toUpperCase()));
+  // THE NAME GATE: a tributary is named only once its deep-time fan has closed (tribNameSpread); the
+  // main stem from the opening. The streams at 1 Ma are a proto-drainage no source names.
+  const tribRv=T.getRivers().find(r=>r.type==='tributary'), mainRv=T.getRivers().find(r=>r.type!=='tributary');
+  const atSpread=(sp)=>({_geoT:{tribSpread:sp}});
+  chk(RN._name(tribRv,atSpread(1))===null && RN._name(tribRv,atSpread(C.tribNameSpread+0.01))===null &&
+      RN._name(tribRv,atSpread(C.tribNameSpread))!==null && RN._name(tribRv,atSpread(0))!==null && RN._name(tribRv)!==null,
+      'a tributary is named only once its fan has closed (spread ≤ tribNameSpread); with no land, its name');
+  chk(RN._name(mainRv,atSpread(1))==='Manawatū','the main stem is named while the tributaries are still fans');
   const counts=[];
   for(const y of [DT.yearsStart,420000,125000,DT.yearsEnd]){
     T.morphTo(y,1);
     const labs=RN.layout(T,W,H,ko,null); counts.push((y/1000)+' ka '+labs.length);
+    const fanOpen=T._geoT.tribSpread>C.tribNameSpread;
+    if(y===DT.yearsStart) chk(fanOpen && labs.every(g=>g.text==='MANAWATŪ'),`1 Ma: only the main stem is named (${labs.map(g=>g.text).join(', ')||'none'})`);
+    if(y<=300000) chk(!fanOpen,`${y/1000} ka: the fans have closed, so the tributaries are named`);
     let inside=true, clear=true, real=true, apart=true;
     for(const g of labs){
       if(!allowed.has(g.text)) real=false;

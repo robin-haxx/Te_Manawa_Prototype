@@ -317,6 +317,49 @@ Proposed `levelDef.geography` block, mirrored onto a `GEO` dev surface like
      the plain; every mouth on its parent's moved channel; swings, corridor and course shifts; the sea
      cut; the drowned lower Ōroua; the fill's clock and biomes; every tributary joined to the main or
      the sea. Frames in `exports/terrain_rivers_opiki/`.
+13. ✅ **Tapering ranges, traced from the real topography (2026-11-03).** The two ranges read as uniform
+   oblongs whatever their outline, and then (first fix) rose in a hard rim.
+   - **The cause was the crest, not the polygons.** `_spineHeight` set the crest by distance from one
+     straight PCA axis through each range, a constant-width band, so the snow and alpine cover were an
+     oblong slab cut off by the falloff. It now uses the cell's SIGNED distance to the drawn outline: full
+     height `LOOK.rangeCrestIn` (0.02) inside it, grading down to the flank `LOOK.rangeCrestOut` (0.12)
+     outside it, with the profile `(1 − t)^LOOK.rangeCrestShape` (1.5): steep under the crest, easing out
+     into the foothills. The crest follows the drawn outline (it steps where the edge steps and drops to a
+     point where the range narrows). The first version graded only INSIDE the outline, over about 0.05,
+     and the range climbed through four biome bands at its edge: a hard rim.
+   - **Valleys after the ceiling** (`LOOK.rangeValleyCut` 0.75): on the high eastern base every cell
+     overshot the soft ceiling, so the range came out as the crest profile alone, a smooth slab. The lift
+     is now cut back in the relief fBm's valleys after the ceiling, so it breaks into spurs and gullies.
+   - **The polygons are traced from the real topography** in `geo/manawatu.svg`. The Ruahine is a narrow
+     ridge leaning NE from a point at the gorge to the north-east corner; the Tararua comes to a point at
+     the gorge and broadens SSW into a massif down a stepped west face. Both run off the map. They are drawn
+     **as they stand on the map**: `LOOK.flipRangeAxis` is now false (it used to mirror the authored shapes
+     at load). Spreads stay 0.18 / 0.16 (the sea protection, palaeo fingers and tributary corridors keep
+     their reach; narrower ones left inland water pockets east of the Tararua at 1.5 Ma). The Ruahine's
+     off-map north end is kept narrow, clear of the early east-coast front.
+   - **The palaeo finger** reads the same outline (rSp), but its grade starts `LOOK.palaeoFingerReach`
+     (0.04) outside it, so the early finger keeps a gentle shore. Graded over the full depth instead, the
+     narrow tongue drowned and the 3 Ma finger broke into islands.
+   - **Two guards so the outline reads on every seed** (`_combineGeo`): `LOOK.rangeCrestCarve` (0.35)
+     floors the relief carve along the crest, so a fBm valley cuts the flanks but never the spine (the
+     narrow tongue to the gorge used to vanish into one). `LOOK.rangeBaseFloor` (0.35) raises the ground the
+     gain multiplies to a share of the crest, so the Tararua, over the western plain at a base of 0.1–0.2,
+     lifts into a range instead of low hills.
+   - Harness: the crest is full in the core, grades down in even steps across the foothills past the
+     outline (no quarter of the grade takes over 60% of the drop), and falls away past the drawn point at
+     the gorge. The palaeo "no one-cell step" check leaves out the top-edge ease rows: the NE-leaning
+     Ruahine's shore runs off the top there, and the ease's 0.10–0.15 ramp splits the harness's white-noise
+     neighbours into steps (0 on real terrain over three seeds). Before/after frames on a pinned seed are
+     in `exports/range_shape/`.
+14. ✅ **Wetland as patches (2026-11-03).** The low reaches' swamp was a band of one width round every
+   channel (river mask ≥ the old `riverWetlandT`), so each tributary read as water, a thin sand rim, then
+   a wetland "outline". It is now a scatter of cohesive patches (`_buildWetField`): a chamfer distance
+   from each cell to the nearest river water, against a patch radius drawn from a low-frequency noise
+   (`LOOK.wetPatchFreq` 0.035, `wetPatchCover` 0.5, `wetPatchMax` 0.028 of the map width, frayed by
+   `wetPatchEdge`), shrinking as the ground climbs to `riverWetlandElevMax`. Back-swamps sit at some bends
+   and confluences; other reaches run grass to the water. Classify and paint share the field (the paint
+   samples it bilinear), so the sim's wetland, where its plants and kahikatea grow, is the painted one.
+   Tributaries lose their sand rim on the plain (they keep shingle in the hills); the main keeps its bank.
 
 ---
 

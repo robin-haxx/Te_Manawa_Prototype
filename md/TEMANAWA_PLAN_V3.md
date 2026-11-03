@@ -96,7 +96,8 @@ static `_combineGeo` so the sliced and synchronous bake stay bit-identical):
 
 **Before the window**, the attract sequence drives the same morph from 4 Ma to the 1 Ma opening at
 dated pre-window anchors (`GEO_EPOCHS.palaeo*`, `TEMANAWA_PALAEO_ATTRACT.md`). The river names are
-lettered along the channels (`TeManawa_rivernames.js`).
+lettered along the channels (`TeManawa_rivernames.js`): the main stem from the opening, each
+tributary only once its deep-time fan has closed into one channel (≈ 395 ka, `tribNameSpread`).
 
 **The 3/4 illustrated look** (`TeManawa_projection.js`, `LOOK` in `TeManawa_terrain.js`). The
 *simulation stays top-down*; only the paint is plan-oblique. The relief bake displaces each row by

@@ -95,7 +95,7 @@ const TM_GOALS = {
       cond:   'a plant with flower stalks taller than a ceiling',
       answer: ['flax'] },
     // Kahikatea: "At Round Bush near Foxton, people crossed the flooded forest by stepping along its raised roots."
-    { id: 'stepping-roots', group: 'moa', off: true,
+    { id: 'stepping-roots', group: 'moa', 
       prompt: 'Boost a tree whose roots were stepping stones in a flooded forest!',
       cond:   'a tree whose roots were stepping stones in a flooded forest',
       answer: ['kahikatea'] },
@@ -283,22 +283,22 @@ const TM_GOALS = {
       cond:   "a tree whose pollen doesn't last in the ground",
       answer: ['tawa'] },
     // Kōwhai: "their seeds float: kōwhai's ancestors reached these islands across the ocean!"
-    { id: 'floating-seeds', group: 'forest', off: true,
+    { id: 'floating-seeds', group: 'forest', 
       prompt: 'Boost a plant whose seeds floated here across the ocean!',
       cond:   'a plant whose seeds floated here across the ocean',
       answer: ['kowhai'] },
     // Kōwhai: "Though it's a small tree, kōwhai lived through the ice ages!"
     { id: 'small-survivor', group: 'forest',
-      prompt: 'Boost a small tree that lived through the ice ages!',
-      cond:   'a small tree that lived through the ice ages',
+      prompt: 'Boost a colourful tree that lived through the ice ages!',
+      cond:   'a colourful tree that lived through the ice ages',
       answer: ['kowhai'] },
     // Mountain beech: "Cold pushed whole forests downhill, but Beech held in harsh soil while other trees died away."
     { id: 'held-in-cold', group: 'forest',
-      prompt: 'Boost a tree that held on when the cold pushed forests downhill!',
-      cond:   'a tree that held on when the cold pushed forests downhill',
+      prompt: 'Boost a tree that held on when ice ages pushed forests downhill!',
+      cond:   'a tree that held on when ice aces pushed forests downhill',
       answer: ['beech'] },
     // Mountain beech (huia): "They hunted huhu grubs, fat beetle larvae that live in rotting wood."
-    { id: 'huhu-grubs', group: 'forest', off: true,
+    { id: 'huhu-grubs', group: 'forest', 
       prompt: 'Boost a tree where huia hunted fat huhu grubs!',
       cond:   'a tree where huia hunted huhu grubs',
       answer: ['beech'] },

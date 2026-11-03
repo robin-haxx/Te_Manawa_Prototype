@@ -119,6 +119,17 @@ class EylesHarrier extends Boid {
     this._retractTimer = 0;
     this.clawExtendDist = 90;   // world-px at which the talons begin to reach (frame 0); fully out (frame 5) at catchRadius
     this.retractFrames = 10;    // real frames the talon retraction (frames 6→7) plays before flight resumes
+    // The STRIKE, render-only (see _updateSwoop): over the last `strikeReach` world-px the drawn
+    // body is pulled so the talons land on the prey's DRAWN body, then held on the kill while it
+    // fades. `talonArt` is the talon point in the hunting art, as a fraction of the drawn size from
+    // its centre (frame 5, talons fully out). `_swX/_swY` is the eased pull in screen px.
+    this.strikeReach = 40;
+    this.talonArt = { x: -0.02, y: 0.23 };
+    this.killHoldFrames = 24;   // real frames the talons stay on the kill (≈ the prey's death fade)
+    this._swX = 0;
+    this._swY = 0;
+    this._kill = null;
+    this._killHold = 0;
     // Eased flight altitude in world px (visual only — the sim stays 2D). Cruises
     // while flying, eases to 0 to dive/rest so a swoop-to-catch reads at 3/4. Kept LOW —
     // a harrier quarters close to the ground, it does not soar high like Haast's eagle.
@@ -1054,6 +1065,61 @@ class EylesHarrier extends Boid {
     return this._animState;
   }
 
+  // The STRIKE. The sim catches on world distance (catchRadius), but the drawn birds don't meet
+  // there: a ground bird is foot-anchored (its body sits half a sprite above its pos), a flyer
+  // rides its altitude, and the talons are below the harrier's sprite centre. So over the last
+  // `strikeReach` the DRAWN harrier is pulled (render-only, the sim untouched) until its talons
+  // land on the prey's drawn body (`_bodyDX` / `_bodyLiftY`, left by the prey's own render), held
+  // there on the kill while it fades, then eased out as the bird settles. Once per real frame
+  // (skipped for ghosts). Allocation-free.
+  _updateSwoop(gy, facing, mirror, artAngle, drawW, drawH, alt) {
+    let prey = null, k = 0;
+    if (this._killHold > 0) {
+      this._killHold--;
+      prey = this._kill; k = 1;
+      if (this._killHold <= 0) this._kill = null;
+    } else if (this.hunting && this.target) {
+      prey = this.target;
+      const ex = prey.pos.x - this.pos.x, ey = prey.pos.y - this.pos.y;
+      const d = Math.sqrt(ex * ex + ey * ey);
+      const span = this.strikeReach - this.catchRadius;
+      k = Math.max(0, Math.min(1, (this.strikeReach - d) / (span > 1 ? span : 1)));
+      k = k * k * (3 - 2 * k);
+    }
+    let dx = 0, dy = 0;
+    if (prey && k > 0) {
+      // The talon point through the render's own transform: R(facing+½π) · flip · R(−½π−artAngle).
+      const tx = this.talonArt.x * drawW, ty = this.talonArt.y * drawH;
+      const b = -HALF_PI - artAngle, cb = Math.cos(b), sb = Math.sin(b);
+      let x1 = tx * cb - ty * sb;
+      const y1 = tx * sb + ty * cb;
+      if (mirror) x1 = -x1;
+      const a = facing + HALF_PI, ca = Math.cos(a), sa = Math.sin(a);
+      const talX = x1 * ca - y1 * sa, talY = x1 * sa + y1 * ca - alt;
+      const pgy = Projection.groundY(prey.pos.y, this.terrain.getElevationAt(prey.pos.x, prey.pos.y));
+      dx = k * (prey.pos.x - this.pos.x + (prey._bodyDX || 0) - talX);
+      dy = k * (pgy - gy - (prey._bodyLiftY || 0) - talY);
+    }
+    const rate = k > 0 ? 0.35 : 0.1;
+    this._swX += (dx - this._swX) * rate;
+    this._swY += (dy - this._swY) * rate;
+  }
+
+  // From Simulation.handleEagleCatch: step onto the kill (the sim caught it up to catchRadius away),
+  // folding the move into the strike pull so the drawn bird doesn't jump, and hold the talons on it.
+  onCatch(prey) {
+    if (typeof Projection !== 'undefined' && Projection.groundY && this.terrain) {
+      const gy0 = Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y));
+      const gy1 = Projection.groundY(prey.pos.y, this.terrain.getElevationAt(prey.pos.x, prey.pos.y));
+      this._swX -= prey.pos.x - this.pos.x;
+      this._swY -= gy1 - gy0;
+    }
+    this.pos.x = prey.pos.x;
+    this.pos.y = prey.pos.y;
+    this._kill = prey;
+    this._killHold = this.killHoldFrames;
+  }
+
   render() {
     const spriteState = this._resolveAnimState();
     const isActiveHunt = spriteState === 'hunting' || spriteState === 'retract';
@@ -1073,43 +1139,48 @@ class EylesHarrier extends Boid {
     }
 
     if (sprite) {
+      const ghosting = typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting;
+      const facing = (this._facing !== undefined) ? this._facing : Math.atan2(this.vel.y, this.vel.x);
+      const mirror = SpriteAngle.shouldMirrorHeading(facing);
+      const artAngle = (EntitySprites.eagle && EntitySprites.eagle.artAngle) || 0;
+      // Preserve the source aspect ratio (the eagle art is square, 256x256).
+      const drawW = this.wingspan * 2.8;
+      const drawH = sprite.width > 0 ? drawW * (sprite.height / sprite.width) : this.wingspan * 2.1;
+      const gy = Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y));
+      const _alt = this._altitude || 0;
+      if (!ghosting) this._updateSwoop(gy, facing, mirror, artAngle, drawW, drawH, _alt);
+
       push();
       // Anchor on the 3/4 ground (rides terrain relief), draw the shadow there,
       // THEN lift the body to its flight altitude. The shadow staying on the
       // ground is what sells height at 3/4 — and a dive (altitude → 0) reads as a
       // real descent.
-      translate(this.pos.x, Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y)));
+      translate(this.pos.x, gy);
 
-      const _alt = this._altitude || 0;
-      if (CONFIG.drawShadows && !(typeof FaunaTrail !== 'undefined' && FaunaTrail._ghosting)) {
+      if (CONFIG.drawShadows && !ghosting) {
         const _sf = 1 - Math.min(0.55, _alt / 70);   // higher bird → smaller, fainter shadow
         noStroke();
         fill(0, 0, 0, (isActiveHunt ? 35 : 25) * _sf);
-        ellipse(isActiveHunt ? 2 : 5, 3, this.wingspan * 1.5 * _sf, this.wingspan * 0.6 * _sf);
+        ellipse((isActiveHunt ? 2 : 5) + this._swX, 3, this.wingspan * 1.5 * _sf, this.wingspan * 0.6 * _sf);
       }
 
-      translate(0, -_alt);   // lift body to altitude (undistorted; 0 when diving/resting)
+      translate(this._swX, this._swY - _alt);   // lift body to altitude (undistorted; 0 when diving/resting) + the strike pull
 
       // Step 1: orient a frame whose local "up" is the direction of travel.
       // _facing is the smoothed travel heading (eased in updateFacing()), so
       // the bird banks between headings instead of snapping.
-      const facing = (this._facing !== undefined) ? this._facing : Math.atan2(this.vel.y, this.vel.x);
       rotate(facing + HALF_PI);
 
       // Step 2: flip across the travel axis, so the bird keeps facing forward
       // and only the side shown to the camera swaps. Fed the smoothed heading,
       // so the (now rare) flip lands as the bird passes straight up or down —
       // edge-on, where the swap is invisible.
-      if (SpriteAngle.shouldMirrorHeading(facing)) scale(-1, 1);
+      if (mirror) scale(-1, 1);
 
       // Step 3: correct for the artwork not being drawn pointing "up".
-      const artAngle = (EntitySprites.eagle && EntitySprites.eagle.artAngle) || 0;
       rotate(-HALF_PI - artAngle);
 
       imageMode(CENTER);
-      // Preserve the source aspect ratio (the eagle art is square, 256x256).
-      const drawW = this.wingspan * 2.8;
-      const drawH = sprite.width > 0 ? drawW * (sprite.height / sprite.width) : this.wingspan * 2.1;
       if (typeof EntitySprites !== 'undefined' && EntitySprites.boostOutline)
         EntitySprites.boostOutline(this, sprite, drawW, drawH);   // boost highlight ring, under the harrier
       image(sprite, 0, 0, drawW, drawH);

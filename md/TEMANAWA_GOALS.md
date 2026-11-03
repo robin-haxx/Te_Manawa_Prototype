@@ -113,8 +113,8 @@ drafts already backed by a card and are now switched on (marked *draft →*); tw
 | Boost a tree that was cut down to make butter boxes! | moa | kahikatea | interglacial | Kahikatea: butter boxes |
 | Boost a scrub so thick that trampers had to crawl under it! | moa | scrub | glacial | Subalpine scrub: southern Ruahine leatherwood |
 | Boost a scrub that fed a moa whose females were far bigger than males! | moa | scrub | glacial | Both scrub cards: giant moa females |
-| Boost a plant that has evolved apart from Australia's for 10 million years! | moa | mānuka | either | Mānuka |
-| Boost a plant for the moa whose biggest kind lived around the Manawatū! | moa | mānuka | either | Mānuka: stout-legged moa |
+| Boost the plant that has evolved apart from Australia's for 10 million years! | moa | mānuka | either | Mānuka |
+| Boost the plant for the moa whose biggest kind lived around the Manawatū! | moa | mānuka | either | Mānuka: stout-legged moa |
 | Boost a plant with more kinds here than anywhere else on Earth! | moa | *Dracophyllum* | glacial, from 500 ka (the ranges have tops) | *Dracophyllum* |
 | *draft →* Boost a tree that needs a flood to grow! | moa | kahikatea | interglacial | Kahikatea: seedlings need fresh, wet silt |
 | *draft →* Boost a tangled shrub that may have grown that way to keep moa off! | moa | scrub | glacial | Grey scrub |

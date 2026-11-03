@@ -54,6 +54,12 @@ const LOOK = {
   outlineJitter: .35,   // hand-inked lineweight variation on the boundary ink (0 = uniform)
   rangeRelief:   1.5,  // geo ranges: valley depth vs crest (0 = flat plateau; ~0.5 = deep forested valleys = mountain variation). Regenerate to apply.
   rangeSpine:    0.95,  // geo ranges: crest concentration along the range's long (NE–SW) axis (0 = flat poly plateau; 1 = sharp central spine, flanks fall to foothills). Regenerate to apply.
+  rangeCrestCarve: 0.35, // geo ranges: the least carve (the share of rangeGain a cell keeps) along the crest, × the crest height rH, so the relief fBm's valleys cut a range's flanks but never its spine — the outline reads as one continuous ridge, down to the point at the gorge (0 = off: a valley can flatten a whole stretch of range). Regenerate to apply.
+  rangeBaseFloor: 0.35, // geo ranges: the ground under a range is raised to at least this fraction of its crest height (× mass × uplift) before the gain multiplies it, so a range over low base ground still reads as a range (0 = off: a range is only as high as the noise it scales). Regenerate to apply.
+  rangeCrestIn:   0.02,  // geo ranges: the crest follows the drawn outline (_spineHeight) — full crest height this far (map fraction) INSIDE it, so a range narrower than twice this is lower: it drops to its point at the gorge. Regenerate to apply.
+  rangeCrestOut:  0.12,  // … and it grades down to the flank this far OUTSIDE it, across the foothills. Wider = gentler slopes through the forest, subalpine and snow bands; too narrow and the range rises in a hard rim. Regenerate to apply.
+  rangeCrestShape: 1.5, // the crest profile (1 − t)^this across that grade: above 1 is steep under the crest and eases out into the foothills like a real range, so its foot does not break from the plain (1 = a straight ramp). Regenerate to apply.
+  rangeValleyCut: 0.75, // after the height ceiling, cut the range's lift back by this much in the relief fBm's valleys, so a range on high ground (where every cell reaches the ceiling) breaks into spurs and gullies instead of a smooth slab with a hard rim (0 = off). Regenerate to apply.
   rangeGain:     1.6,   // geo ranges: how hard uplift MULTIPLIES the existing ground (0 = no lift; higher = taller, more base-driven peaks). The ranges scale the plains' own spurs/valleys up into mountains rather than imposing a smooth crest template. Regenerate to apply.
   rangeCeil:     0.75,  // geo ranges: where the soft height ceiling starts, as a fraction of the per-cell crest rH (lower = flatter tops / more compression, preserves more base shape; higher = peaks reach closer to the authored height). Regenerate to apply.
   // RANGE fBm (2026-10-19). The ranges' relief comes from a ridged fractional-Brownian-motion field
@@ -67,7 +73,7 @@ const LOOK = {
   rangeFbmGain:    0.7,  // amplitude per octave (G = 2^-H; 0.5 = H 1, mountain-like)
   rangeFbmDetail:  0.10, // PRE-ceiling fBm added to the lifted ground (was a flat 0.12-wide 3-octave term)
   rangeCrestTex:   0.08, // POST-ceiling fBm on the range tops: the soft ceiling (rangeCeil) compresses every crest toward the authored height, so without this the high ground reads as one smooth cap
-  flipRangeAxis: true,  // geo ranges: mirror each range about its OWN centroid so its long (spine) axis leans along the OPPOSITE diagonal — the ranges run the other way without moving off their footprint. Centroid-preserving (nothing relocates). false = authored orientation. Regenerate to apply.
+  flipRangeAxis: false, // geo ranges: mirror each range about its OWN centroid so its long (spine) axis leans along the OPPOSITE diagonal — the ranges run the other way without moving off their footprint. Centroid-preserving (nothing relocates). false = authored orientation: since 2026-11-03 the SVG draws the ranges as they stand on the map (the tapering redraw), so leave this off. Regenerate to apply.
   riverWobble:   0.06,  // geo river: per-seed lateral meander off the SVG path (0 = follow it exactly)
   tribWobbleFrac: 0.2,  // tributaries: cap riverWobble at this fraction of the channel's own width. The wobble is a distance bias, so on a ~0.016-wide tributary the full 0.02 pushed the CENTRE LINE past the water threshold wherever the noise ran positive — the channel pinched shut into disconnected pools (and the fish/eels on it paced the pools). 0.2 keeps the centre line always wet. Regenerate to apply.
   riverIncise:   0.15,  // geo river: bed sits this far below the LOCAL ground (0..1 elevation), not down to sea level. Bounds the plunge crossing it. Lower = gentler gorge. Regenerate (G/N) to apply.
@@ -77,8 +83,15 @@ const LOOK = {
   riverBankT:    0.32,  // geo river: mask in [riverBankT, riverWaterT) reads as exposed RIVERBED / bank (sandy shingle, walkable) framing the water. Lower = wider bed. Raised from 0.22 to trim the wide sand bands that pooled where tributaries meet the main (the confluence seam-fallback bank keys off this too). Only affects river banks — sea beaches are elevation-classified (coastal band). Regenerate to apply.
   mainRiverWidthMult: .8,  // geo river: scales the MAIN stem's authored base width (geo width 0.05) at PRESENT — a thicker main riverbed. Multiplies the whole channel (water + shingle bed), and the early strait scales off it too. Independent of the tributary width below. Regenerate (G/N) to apply.
   tribWidthMult:  0.7,   // (was 0.9; twelve tributaries at 0.9 read as a web of canals, 2026-10-20) geo river: scales every TRIBUTARY's authored base width (geo width 0.02) — thinner side-streams. The thread is still floored by tribThinCap so it never beads to bare gully. Lower = thinner tributaries; keep ≥ ~0.6 so a few-cell-wide channel stays continuous. Regenerate to apply.
-  riverWetlandT: 0.20,  // WETLAND: mask ≥ this (and BELOW riverWaterT), on LOW ground (< riverWetlandElevMax), reads as WETLAND (swamp margin) instead of bare sand — so the lower river's banks + a modest back-swamp margin are Manawatū raupō/harakeke/kahikatea, not beach. Set BELOW riverBankT so the wet zone is wider than the old sand bank. The gorge reaches (above the elev cap) keep shingle; the open sea beach (far from any river) keeps sand. Robust to land re-tuning: it keys off the live river-proximity field, so it tracks the channel wherever it morphs. Regenerate to apply.
-  riverWetlandElevMax: 0.30,  // WETLAND: only the low reaches turn to swamp — a near-river cell above this normalised elevation stays shingle bank (the incised gorge in the hills has no back-swamp). ≈ the lowland/grassland ceiling. Regenerate to apply.
+  // WETLAND PATCHES (2026-11-03): the low river reaches' swamp is a scatter of COHESIVE PATCHES — back-
+  // swamps at some bends and confluences, none along others — not a ribbon of one width around every
+  // channel (which read as an outline). _buildWetField: each cell's distance to the nearest river water,
+  // against a patch radius drawn from a low-frequency noise. Classify and paint share the field.
+  wetPatchFreq:  0.035, // patch noise frequency (cycles per sim cell): lower = fewer, bigger patches
+  wetPatchCover: 0.5,   // the patch noise level a reach needs before it carries any swamp: higher = fewer patches (p5 noise sits mostly in 0.3–0.7)
+  wetPatchMax:   0.028, // the largest patch's reach from the water (map width fraction)
+  wetPatchEdge:  5,     // how ragged a patch's edge is (sim cells of high-frequency wander)
+  riverWetlandElevMax: 0.30,  // WETLAND: only the low reaches turn to swamp — patches shrink to nothing as the ground climbs to this normalised elevation (the incised gorge in the hills has no back-swamp). ≈ the lowland/grassland ceiling. Regenerate to apply.
   coastEase:     1,   // coast FALLOFF: land-rise exponent off the shore (>1 = gentle shelf/beach; <1 = the old steep cliff). This is knob (a) — how gently the land falls to the sea. Higher is gentler but widens the near-sea-level zone (softer waterline); pull toward ~1.1 if the coastline reads mushy. Regenerate to apply.
   coastInland:   0.14,  // coast POSITION (knob b, uniform): how far inland (east, as a fraction of screen X) the FINAL western shoreline sits — raise to bring the coast inland / expose more sea. 0.02 = the original tight coast; useful range ~0.2–0.7. Added to the per-row meander, so the actual waterline sits a little east of this. The SEVERE early southern strait is the marine submergence (seaSWReach), which recedes by ~0.5 Ma to leave this final coast. Regenerate to apply.
   coastInlandSouth: 0.1,  // coast POSITION (knob b, south bias): EXTRA inland reach added toward the south (v→1), 0 at the north edge → this many X-fractions at the south edge — so the southern/SW coast curves further in while the north stays put. This is the PERMANENT (present) curve; the strait's harsher early curve flattens onto it by ~0.5 Ma as seaSWReach recedes. Regenerate to apply.
@@ -257,6 +270,7 @@ const LOOK = {
   palaeoBridgeFlat:    1,     // how far the neck is held under its ceiling (palaeoNeckE ± palaeoNeckAmp), off the fingers' own core. A neck at the gorge saddle's base height (~0.28 at 4 Ma) between two drowned flanks painted as a sheer ridge (2026-11-02). 0 = the old lift-only floor
   palaeoNeckE:         0.125, // the neck's CEILING: just above the waterline (the sea is < 0.10), where the relief bake barely lifts the ground (bakeLift ≈ 0.02), so its south shore — the one that faces the viewer — has no face to paint. Applied over the WHOLE dry neck, shore band included: a level that faded out before the drowning did left a rim of raw relief along the shore, painted as a pale sheer face (2026-11-03)
   palaeoNeckAmp:       0.008, // the wobble on that ceiling (elevation): a little mottle, never enough to sink the neck under the sea
+  palaeoFingerReach:   0.04,  // the finger's spine closeness starts this far (map fraction, at native scale) OUTSIDE the drawn range outline, so the early finger stands a little wider than the range with a gentle shore while keeping its taper to the gorge (0 = the closeness starts on the outline: a narrower finger with a steeper shore). Regenerate to apply.
   palaeoFingerNarrow:  0.8,   // how much the finger thins to its crest lines while GEO_EPOCHS.palaeoFingerNarrow is 1 (early): the mass is scaled by 1 − this × (1 − spine closeness), so at the flanks it falls under palaeoAxisCore and shelves under. 0 = the whole footprint at every date
   palaeoAxisLow:       0.75,  // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by this much × (1 − uplift/upliftStart), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma)
   palaeoAxisLowE:      0.22,  // … the level it is cut toward (lowland)
@@ -1730,11 +1744,27 @@ class TerrainGenerator {
       // authored range height (keeping the snow line meaningful). rH carries the spine falloff.
       const gain  = (rangeGain != null) ? rangeGain : 2.2;
       const ceilK = (rangeCeil != null) ? rangeCeil : 0.45;
-      const carve = 1 - relief * (1 - ridge);      // 1 on ridge crests → deeper valleys as relief↑
+      let carve   = 1 - relief * (1 - ridge);      // 1 on ridge crests → deeper valleys as relief↑
+      // The CREST always rises: the carve is floored at LOOK.rangeCrestCarve × the crest (rH, which
+      // follows the drawn outline), so a fBm valley can cut the flanks but never the spine — the
+      // range reads as one continuous ridge down its outline, the narrow tongue to the gorge too.
+      const crestCarve = (typeof LOOK !== 'undefined' && LOOK.rangeCrestCarve > 0) ? LOOK.rangeCrestCarve * rH : 0;
+      if (carve < crestCarve) carve = crestCarve;
       const amp   = gain * uplift * rMask * carve; // 0 at rest → full at a mature range core
-      let lifted  = e * (1 + amp) + detail * rMask * uplift;
+      // …and the ground the gain multiplies stands at least LOOK.rangeBaseFloor of the crest as the
+      // range rises, so a range on low base ground (the Tararua, over the western plain at 0.1–0.2)
+      // still lifts into a range instead of a few low hills.
+      const floorK = (typeof LOOK !== 'undefined' && LOOK.rangeBaseFloor > 0) ? LOOK.rangeBaseFloor : 0;
+      const eB    = (floorK > 0) ? Math.max(e, floorK * rH * rMask * uplift) : e;
+      let lifted  = eB * (1 + amp) + detail * rMask * uplift;
       const knee = rH * ceilK, head = rH - knee;   // soft-ceiling: approach rH, never blow past it
       if (head > 0 && lifted > knee) lifted = rH - head * Math.exp(-(lifted - knee) / head);
+      // VALLEYS after the ceiling: on high base ground (the east) every cell overshoots the ceiling, so
+      // the range came out as the crest profile alone — a smooth slab whose sides were the only relief,
+      // a hard rim. Cut the lift back in the fBm's valleys (LOOK.rangeValleyCut of it where ridge is 0),
+      // so the range breaks into spurs and gullies whatever the ground under it.
+      const vCut = (typeof LOOK !== 'undefined' && LOOK.rangeValleyCut > 0) ? LOOK.rangeValleyCut : 0;
+      if (vCut > 0 && lifted > e) lifted = e + (lifted - e) * (1 - vCut * (1 - ridge));
       // Crest texture (fBm) AFTER the ceiling, which otherwise squeezes every high cell toward rH into
       // one smooth cap. Scaled by mass and uplift, so it grows with the range.
       if (crest) lifted += crest * rMask * uplift;
@@ -2418,6 +2448,10 @@ class TerrainGenerator {
     tJ.fill(255); tJ2.fill(255);
     const R = this._geoRanges;
     const spine = (typeof LOOK !== 'undefined' && LOOK.rangeSpine != null) ? LOOK.rangeSpine : 0.45;
+    const vF = this._viewF || 1, LKc = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const fReach = (LKc.palaeoFingerReach != null ? LKc.palaeoFingerReach : 0.04) / vF;   // the palaeo finger's grade (rSp)
+    const cOut = (LKc.rangeCrestOut != null ? LKc.rangeCrestOut : 0.12) / vF, cIn = (LKc.rangeCrestIn > 0 ? LKc.rangeCrestIn : 0.02) / vF;   // the crest's (rH)
+    const cShape = (LKc.rangeCrestShape > 0) ? LKc.rangeCrestShape : 1.5;
     const tf = this._tribFieldOut || (this._tribFieldOut = { j: -1, s: 0, p: 0, e: 0, j2: -1, s2: 0, p2: 0, e2: 0 });
     const gSad = (typeof LOOK !== 'undefined' && LOOK.gorgeSaddle > 0) ? LOOK.gorgeSaddle : 0;
     let gSadH = 0; for (const r of R) if (r.height > gSadH) gSadH = r.height;
@@ -2431,13 +2465,13 @@ class TerrainGenerator {
         for (let i = 0; i < R.length; i++) {
           const m = this._rangeMass(R[i], u, v);
           if (m > bm) { bm = m; bh = R[i].height; br = R[i]; }
-          if (m > 0) { const ms = m * TerrainGenerator._spineHeight(R[i], u, v, 1); if (ms > bms) bms = ms; }
+          if (m > 0) { const ms = m * TerrainGenerator._spineHeight(R[i], u, v, 1, fReach, cIn); if (ms > bms) bms = ms; }
         }
         rMaskR[idx] = bm;
         const mf = this._mainField(u, v);
         if (mf && gSad > 0) { const sm = TerrainGenerator._gorgeSaddle(u, Math.abs(mf.s)); if (sm > bm) { bm = sm; bh = gSadH; br = null; } }   // Te Āpiti: the ranges meet at the river
         rMask[idx] = bm;
-        rH[idx] = (bm > 0 && br) ? bh * TerrainGenerator._spineHeight(br, u, v, spine) : bh;
+        rH[idx] = (bm > 0 && br) ? bh * TerrainGenerator._spineHeight(br, u, v, spine, cOut, cIn, cShape) : bh;
         // Spine closeness, as max(mass × spine) over the ranges ÷ the range mass, so the thin finger
         // (rMaskR × (1 − k(1 − rSp)) = a blend of two maxes) is continuous. Taking the spine of the
         // range with the most mass flipped from one range's crest to the other's where their spread
@@ -3272,7 +3306,19 @@ class TerrainGenerator {
     const perpX = -axY, perpY = axX;                // crest falls off along the perpendicular
     let halfW = 1e-6;
     for (const p of poly) { const t = Math.abs((p[0] - cx) * perpX + (p[1] - cy) * perpY); if (t > halfW) halfW = t; }
-    return { height, spread, poly, cx, cy, perpX, perpY, halfW };
+    // The polygon's deepest interior point and its depth (distance to the nearest edge), sampled on a
+    // coarse grid over the bounding box: the crest scale for _spineHeight, and the probe point for the harness.
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of poly) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+    let inR = 0, inU = cx, inV = cy;
+    const N = 64;
+    for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+      const u = x0 + (x1 - x0) * i / N, v = y0 + (y1 - y0) * j / N;
+      if (!TerrainGenerator._pointInPoly(poly, u, v)) continue;
+      const dIn = TerrainGenerator._distToPolyEdges(poly, u, v);
+      if (dIn > inR) { inR = dIn; inU = u; inV = v; }
+    }
+    return { height, spread, poly, cx, cy, perpX, perpY, halfW, inR, inU, inV };
   }
 
   // Mirror a range polygon about the VERTICAL line through its own centroid. Reflection
@@ -3287,14 +3333,37 @@ class TerrainGenerator {
     return poly.map(p => [2 * cx - p[0], p[1]]);
   }
 
-  // Crest height multiplier for a cell: 1 on the range's spine axis, falling to
-  // (1 − spine) at the flanks (halfW away), so the range reads as a ridge, not a plateau.
-  // spine 0 → flat plateau (old behaviour). Pure/static.
-  static _spineHeight(r, u, v, spine) {
-    if (!(spine > 0) || !(r.halfW > 0)) return 1;
-    let t = ((u - r.cx) * r.perpX + (v - r.cy) * r.perpY) / r.halfW;
-    if (t < 0) t = -t; if (t > 1) t = 1;
-    const sp = 1 - t * t * (3 - 2 * t);             // 1 on the axis → 0 at the flank
+  // Crest height multiplier for a cell: 1 along the range's crest, falling to (1 − spine) at the
+  // flank, so the range reads as a ridge, not a plateau. spine 0 → flat plateau (old behaviour).
+  // The crest is measured from the OUTLINE, by the cell's signed distance to it (+ inside): full
+  // height `depth` inside, falling to the flank `reach` outside (map fractions, already view-scaled;
+  // omitted → LOOK.rangeCrestIn / rangeCrestOut). So the crest follows the drawn shape — it narrows
+  // and drops to a point where the range tapers and steps where its edge steps — and grades out
+  // across the foothills past the outline rather than climbing from flank to crest just inside it
+  // (that drew a hard rim through several biome bands at once). Until 2026-11-03 it was a band of
+  // constant width either side of the range's straight PCA axis, which drew every range as a
+  // uniform oblong whatever its outline. The palaeo finger's spine closeness (rSp) passes
+  // LOOK.palaeoFingerReach, a narrower finger. Pure/static.
+  static _spineHeight(r, u, v, spine, reach, depth, shape) {
+    if (!(spine > 0)) return 1;
+    let t = 1;                                       // past the reach: the flank
+    if (r.inR > 0) {
+      const LK = (typeof LOOK !== 'undefined') ? LOOK : {};
+      const a = (reach != null) ? reach : (LK.rangeCrestOut != null ? LK.rangeCrestOut : 0.12);
+      const b = (depth > 0) ? depth : (LK.rangeCrestIn > 0 ? LK.rangeCrestIn : 0.02);
+      const inside = TerrainGenerator._pointInPoly(r.poly, u, v);
+      if (inside || a > 0) {
+        const d = TerrainGenerator._distToPolyEdges(r.poly, u, v);
+        t = 1 - ((inside ? d : -d) + a) / (b + a);
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+      }
+    } else if (r.halfW > 0) {                        // a degenerate polygon: the old axis band
+      t = Math.abs((u - r.cx) * r.perpX + (v - r.cy) * r.perpY) / r.halfW;
+      if (t > 1) t = 1;
+    } else return 1;
+    // 1 on the crest → 0 at the flank. `shape` > 0: (1 − t)^shape, steep under the crest and easing
+    // out into the foothills like a real range (no break at its foot); omitted: a symmetric smoothstep.
+    const sp = (shape > 0) ? Math.pow(1 - t, shape) : 1 - t * t * (3 - 2 * t);
     return 1 - spine * (1 - sp);
   }
 
@@ -3809,9 +3878,13 @@ class TerrainGenerator {
     const spine = (typeof LOOK !== 'undefined' && LOOK.rangeSpine != null) ? LOOK.rangeSpine : 0.45;
     const rangeGain = (typeof LOOK !== 'undefined' && LOOK.rangeGain != null) ? LOOK.rangeGain : 2.2;
     const rangeCeil = (typeof LOOK !== 'undefined' && LOOK.rangeCeil != null) ? LOOK.rangeCeil : 0.45;
+    const vF = this._viewF || 1;
+    const cOut = (typeof LOOK !== 'undefined' && LOOK.rangeCrestOut != null ? LOOK.rangeCrestOut : 0.12) / vF;
+    const cShape = (typeof LOOK !== 'undefined' && LOOK.rangeCrestShape > 0) ? LOOK.rangeCrestShape : 1.5;
+    const cIn = (typeof LOOK !== 'undefined' && LOOK.rangeCrestIn > 0 ? LOOK.rangeCrestIn : 0.02) / vF;
     let rMask = 0, rH = 0;
     const R = this._geoRanges;
-    for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > rMask) { rMask = m; rH = R[i].height * TerrainGenerator._spineHeight(R[i], u, v, spine); } }
+    for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > rMask) { rMask = m; rH = R[i].height * TerrainGenerator._spineHeight(R[i], u, v, spine, cOut, cIn, cShape); } }
     if (typeof LOOK !== 'undefined' && LOOK.gorgeSaddle > 0) {   // Te Āpiti saddle (matches _buildGeoCache)
       const mf0 = this._mainField(u, v);
       if (mf0) {
@@ -4036,12 +4109,14 @@ class TerrainGenerator {
     const estForest = this._estForestBiome();
     const riverT = (typeof LOOK !== 'undefined' && LOOK.riverWaterT != null) ? LOOK.riverWaterT : 0.55;
     const riverBankT = (typeof LOOK !== 'undefined' && LOOK.riverBankT != null) ? LOOK.riverBankT : 0.30;
-    // WETLAND override: on LOW ground a near-river cell reads as swamp, not sand (see the wetland
-    // biome header in the scaffold). wetT sits below riverBankT so the wet zone is a touch wider
-    // than the old bank; wetElevMax caps it to the lowland so the gorge keeps shingle. Kept
-    // IDENTICAL to the paint pass so the sliced/sync bake and the sim biome map agree.
-    const wetT = (typeof LOOK !== 'undefined' && LOOK.riverWetlandT != null) ? LOOK.riverWetlandT : 0.20;
+    // WETLAND PATCHES: on LOW ground (never the gorge) swamp claims the cells _buildWetField reaches
+    // from the river water — cohesive patches, not a band round every channel. This loop records the
+    // river water and which cells could be swamp; the field is built after it and the patches laid in
+    // a second pass. The paint reads the same field (bilinear), so the sim map matches the render.
     const wetElevMax = (typeof LOOK !== 'undefined' && LOOK.riverWetlandElevMax != null) ? LOOK.riverWetlandElevMax : 0.30;
+    const nCells = gridCols * gridRows;
+    if (!this._wetRiver || this._wetRiver.length !== nCells) { this._wetRiver = new Uint8Array(nCells); this._wetElig = new Uint8Array(nCells); }
+    const wetRiver = this._wetRiver, wetElig = this._wetElig;
     const _gt = this._geoT || {};
     const riverTeff = riverT + (1 - (_gt.incision != null ? _gt.incision : 1)) * 0.25;
     const rivP = (_gt.palaeo && _gt.palaeo.river != null) ? _gt.palaeo.river : 1;   // the drainage before the window (matches the carve)
@@ -4073,7 +4148,8 @@ class TerrainGenerator {
         const elevation = this.heightMap[idx];
         const eClass = wob ? elevation + wob[idx] * w * TerrainGenerator._seaWobbleFade(elevation, seaWobE, seaWobW) : elevation;
         let biome = this.getBiomeFromElevation(eClass);
-        let waterHit = false, bedHit = false, wetHit = false;
+        const seaCell = biome.isWater || biome === this._waterBiome;
+        let waterHit = false, bedHit = false;
         const wetLow = eClass < wetElevMax && TerrainGenerator._gorgeAlong(u) < 0.5;   // only the lowland river reaches turn to swamp; never in the gorge
         if (C && this._waterBiome) {
           // MAIN layer.
@@ -4085,7 +4161,6 @@ class TerrainGenerator {
               let mM = tt * tt * (3 - 2 * tt) * rivP;
               if (mainArm > 0) mM *= TerrainGenerator._mainArmPresence(wMPosArr[idx], mainArm, mArmKeep, mArmFeather);   // NE arm dries to land
               if (mM >= riverTeff) waterHit = true; else if (mM >= riverBankT) bedHit = true;
-              if (wetLow && mM >= wetT) wetHit = true;   // low reaches: swamp margin, wider than the bank
             }
           }
           // TRIBUTARY fan. Highland thinning: a tributary on high ground is a STREAM cutting a gully,
@@ -4105,18 +4180,19 @@ class TerrainGenerator {
                 wT += hi; bT += hi;
               }
               if (bT < wT - bankRim) bT = wT - bankRim;   // a thin rim, not a sand ribbon
-              if (mT >= wT) waterHit = true; else if (mT >= bT) bedHit = true;
-              if (wetLow && mT >= wetT) wetHit = true;
+              if (mT >= wT) waterHit = true; else if (mT >= bT && !wetLow) bedHit = true;   // shingle in the hills; on the plain the grass (or a swamp patch) runs to the water
             }
           }
         }
         const est = estState ? estState[idx] : 0;   // filled ground is land, whatever the waterline wobble says
+        wetRiver[idx] = waterHit ? 1 : 0;
+        wetElig[idx] = (wetLow && !waterHit && est !== 2 && (est === 1 || !seaCell)) ? 1 : 0;
         if (waterHit) {
           biome = this._waterBiome;
         } else if (est === 2 && estForest) {
           biome = estForest;            // the Opiki cycle: swamp forest on the filled estuary
-        } else if ((est === 1 || wetHit) && this._wetlandBiome) {
-          biome = this._wetlandBiome;   // low riparian swamp — overrides the sand bank + the plain margin
+        } else if (est === 1 && this._wetlandBiome) {
+          biome = this._wetlandBiome;   // the Opiki cycle's filled swamp (the river's patches come below)
         } else if (bedHit && this._bedBiome) {
           biome = this._bedBiome;       // gorge reaches: exposed shingle
         } else if (biome === this.biomeList[1] && this._waterBiome) {
@@ -4126,6 +4202,83 @@ class TerrainGenerator {
         idx++;
       }
     }
+    // The river's swamp patches, over whatever the first pass laid (plain, bank, the coastal fallback).
+    const wf = this._buildWetField(wetRiver, this.heightMap, wetElevMax);
+    if (this._wetlandBiome) {
+      const wi = this.biomeIndexByKey[this._wetlandBiome.key];
+      for (let i = 0; i < nCells; i++) if (wetElig[i] && wf[i] >= 0.5) this.biomeIndexMap[i] = wi;
+    }
+  }
+
+  // WETLAND PATCH field (0..1, swamp at >= 0.5) per sim cell, from the river water this classify found.
+  // A two-pass chamfer distance (cells, 8-neighbour) to the nearest river water, against a patch radius
+  // that a low-frequency noise draws per place: 0 where the noise is under LOOK.wetPatchCover (no
+  // swamp on that reach, the grass runs to the water), up to LOOK.wetPatchMax where it is well over,
+  // shrinking as the ground climbs to elevMax. A second, finer noise frays the edge. Smooth across
+  // cells, so the paint's bilinear sample gives a soft-cornered patch with no grid steps. The noise is
+  // cached per seed + footprint (_wetNoiseField); the buffers are reused. Returns the field.
+  _buildWetField(river, elev, elevMax) {
+    const gc = this.gridCols, gr = this.gridRows, n = gc * gr;
+    if (!this._wetField || this._wetField.length !== n) { this._wetField = new Float32Array(n); this._wetDist = new Float32Array(n); }
+    const W = this._wetField, D = this._wetDist, BIG = 1e6, R2 = Math.SQRT2;
+    for (let i = 0; i < n; i++) D[i] = river[i] ? 0 : BIG;
+    for (let r = 0; r < gr; r++) for (let c = 0; c < gc; c++) {          // forward pass
+      const i = r * gc + c; let d = D[i]; if (d === 0) continue;
+      if (c > 0 && D[i - 1] + 1 < d) d = D[i - 1] + 1;
+      if (r > 0) {
+        const j = i - gc;
+        if (D[j] + 1 < d) d = D[j] + 1;
+        if (c > 0 && D[j - 1] + R2 < d) d = D[j - 1] + R2;
+        if (c < gc - 1 && D[j + 1] + R2 < d) d = D[j + 1] + R2;
+      }
+      D[i] = d;
+    }
+    for (let r = gr - 1; r >= 0; r--) for (let c = gc - 1; c >= 0; c--) { // backward pass
+      const i = r * gc + c; let d = D[i]; if (d === 0) continue;
+      if (c < gc - 1 && D[i + 1] + 1 < d) d = D[i + 1] + 1;
+      if (r < gr - 1) {
+        const j = i + gc;
+        if (D[j] + 1 < d) d = D[j] + 1;
+        if (c < gc - 1 && D[j + 1] + R2 < d) d = D[j + 1] + R2;
+        if (c > 0 && D[j - 1] + R2 < d) d = D[j - 1] + R2;
+      }
+      D[i] = d;
+    }
+    const LK = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const cover = (LK.wetPatchCover != null) ? LK.wetPatchCover : 0.5;
+    const rMax = ((LK.wetPatchMax > 0) ? LK.wetPatchMax : 0.028) * gc / (this._viewF || 1);
+    const jit = (LK.wetPatchEdge != null) ? LK.wetPatchEdge : 5;
+    const nz = this._wetNoiseField(), patch = nz.patch, edge = nz.edge;
+    for (let i = 0; i < n; i++) {
+      const d = D[i];
+      if (d >= BIG) { W[i] = 0; continue; }
+      let a = (patch[i] - cover) / 0.12;                                  // how far over the cover the place is
+      a = a <= 0 ? 0 : a >= 1 ? 1 : a * a * (3 - 2 * a);
+      let lo = (elevMax - elev[i]) / 0.08;                                // patches thin out up the valley sides
+      lo = lo <= 0 ? 0 : lo >= 1 ? 1 : lo;
+      const R = rMax * a * lo;
+      const w = 0.5 + (R - (d + (edge[i] - 0.5) * jit)) * 0.25;           // 0.5 at the patch edge, over ~2 cells
+      W[i] = w <= 0 ? 0 : w >= 1 ? 1 : w;
+    }
+    return W;
+  }
+
+  // The wetland patch noise, cached per seed / frequency / footprint: patch (low-frequency, where the
+  // back-swamps lie) and edge (4x finer, their ragged rims), both p5 noise in 0..1.
+  _wetNoiseField() {
+    const f = (typeof LOOK !== 'undefined' && LOOK.wetPatchFreq > 0) ? LOOK.wetPatchFreq : 0.035;
+    const key = this.seed + '|' + f + '|' + this.gridCols + 'x' + this.gridRows;
+    if (this._wetNoiseKey !== key) {
+      const gc = this.gridCols, gr = this.gridRows, s = this.seed;
+      const patch = new Float32Array(gc * gr), edge = new Float32Array(gc * gr);
+      let i = 0;
+      for (let r = 0; r < gr; r++) for (let c = 0; c < gc; c++, i++) {
+        patch[i] = noise(c * f + s * 11, r * f + s * 13);
+        edge[i] = noise(c * f * 4 + s * 17, r * f * 4 + s * 19);
+      }
+      this._wetNoise = { patch, edge }; this._wetNoiseKey = key;
+    }
+    return this._wetNoise;
   }
 
   // Reshape the land for a new yearsBP WITHOUT re-seeding: reuse the cached base
@@ -4514,9 +4667,9 @@ class TerrainGenerator {
       ? this._waterBiome.minElevation + (this._waterBiome.maxElevation - this._waterBiome.minElevation) * 0.5 : 0.05;
     const bedColorElev = this._bedBiome
       ? this._bedBiome.minElevation + (this._bedBiome.maxElevation - this._bedBiome.minElevation) * 0.5 : 0.12;
-    // WETLAND override (paint) — MUST stay identical to _rebuildBiomeMap so the render matches the
-    // sim biome map (and the sliced bake matches the synchronous one). See the wetland biome header.
-    const wetT = (typeof LOOK !== 'undefined' && LOOK.riverWetlandT != null) ? LOOK.riverWetlandT : 0.20;
+    // WETLAND PATCHES (paint) — the classify's field (_buildWetField), sampled bilinear, with the same
+    // eligibility, so the render matches the sim biome map. See the wetland biome header.
+    const wetF = this._wetField;
     const wetElevMax = (typeof LOOK !== 'undefined' && LOOK.riverWetlandElevMax != null) ? LOOK.riverWetlandElevMax : 0.30;
     const wetlandColorElev = this._wetlandBiome
       ? this._wetlandBiome.minElevation + (this._wetlandBiome.maxElevation - this._wetlandBiome.minElevation) * 0.5 : 0.22;
@@ -4569,7 +4722,7 @@ class TerrainGenerator {
         const estP = estState ? estState[(fy < 0.5 ? rowA : rowB) + (fx < 0.5 ? x0 : x1)] : 0;   // the Opiki cycle's filled ground (nearest sim cell) is land
         let wa = (estP === 0 && (biome.isWater || biome === this._waterBiome)) ? 1 : 0;   // true sea → rendered flat
         let colorElev = eClass;
-        let wetHit = false, bedHit = false;
+        let bedHit = false;
         const wetLow = eClass < wetElevMax && TerrainGenerator._gorgeAlong(wx * invGC) < 0.5;   // only the lowland river reaches turn to swamp; never in the gorge
         if (wa === 0 && C && this._waterBiome) {
           const a00 = rowA + x0, a10 = rowA + x1, a01 = rowB + x0, a11 = rowB + x1;
@@ -4585,7 +4738,6 @@ class TerrainGenerator {
               let mM = tt * tt * (3 - 2 * tt) * rivP;
               if (mainArm > 0) mM *= TerrainGenerator._mainArmPresence(posM, mainArm, mArmKeep, mArmFeather);   // NE arm dries to land, ending cleanly at the eastern confluence
               if (mM >= riverTeff) wa = 2; else if (mM >= riverBankT) bedHit = true;
-              if (wetLow && mM >= wetT) wetHit = true;
             }
           }
           // TRIBUTARY fan: bilinear signed distance / position / bank noise where all four corners
@@ -4614,8 +4766,7 @@ class TerrainGenerator {
                   wT += hi; bT += hi;
                 }
                 if (bT < wT - bankRim) bT = wT - bankRim;   // a thin rim, not a sand ribbon
-                if (mT >= wT) wa = 2; else if (mT >= bT) bedHit = true;
-                if (wetLow && mT >= wetT) wetHit = true;
+                if (mT >= wT) wa = 2; else if (mT >= bT && !wetLow) bedHit = true;   // as the classify: no sand rim on the plain
               }
             }
           }
@@ -4623,11 +4774,14 @@ class TerrainGenerator {
           else if (bedHit && this._bedBiome) { biome = this._bedBiome; colorElev = bedColorElev; }
         }
         // Low riparian swamp overrides the sand bank + the near-river plain margin (land cells only,
-        // never actual water). Matches _rebuildBiomeMap's wetHit branch so sim biome == painted biome.
+        // never actual water). Matches _rebuildBiomeMap's patch pass so sim biome == painted biome.
         // The Opiki cycle's filled estuary (nearest sim cell): swamp forest, else swamp. Matches the classify.
         const est = (wa === 0) ? estP : 0;
         if (est === 2 && estForest) { biome = estForest; colorElev = estForestColorElev; }
-        else if ((est === 1 || wetHit) && wa === 0 && this._wetlandBiome) { biome = this._wetlandBiome; colorElev = wetlandColorElev; }
+        else if (wa === 0 && this._wetlandBiome && (est === 1 || (wetLow && wetF && est !== 2 &&
+                 wetF[rowA + x0] * (1 - fx) * (1 - fy) + wetF[rowA + x1] * fx * (1 - fy) + wetF[rowB + x0] * (1 - fx) * fy + wetF[rowB + x1] * fx * fy >= 0.5))) {
+          biome = this._wetlandBiome; colorElev = wetlandColorElev;
+        }
         biomeA[i] = this.biomeIndexByKey[biome.key];
         waterA[i] = wa;
 
