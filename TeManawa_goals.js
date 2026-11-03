@@ -122,10 +122,10 @@ const TM_GOALS = {
       answer: ['manuka'] },
     // Mānuka (stout-legged moa): "the biggest lived in the south of the North Island, around places like the Manawatū!"
     { id: 'manawatu-moa', group: 'moa',
-      prompt: 'Boost a plant for the moa whose biggest kind lived around the Manawatū!',
-      cond:   'food for the moa whose biggest kind lived around the Manawatū',
+      prompt: 'Boost a plant for the small moa, who was bigger the further South they lived!',
+      cond:   'food for the small moa, who was bigger the further South they lived',
       answer: ['manuka'],
-      text:   { answer: '{plant} fed the stout-legged moa, and the biggest ones lived around places like the Manawatū!' } },
+      text:   { answer: '{plant} fed the stout-legged moa. They were larger in the Manawatū and South Island!' } },
     // Dracophyllum: "Aotearoa has more kinds of Dracophyllum than anywhere else in the world!" Cold, and only
     // once the ranges have risen. THE SUBALPINE DATE (decided 2026-11-02, md/TEMANAWA_PLAN_V3.md §16.14):
     // the real 1 Ma land already carries a thin subalpine belt (568–3,522 cells on two seeds, over the
