@@ -1464,8 +1464,8 @@ try{
   chk(state[4000000].plain<0.05 && state[4000000].tar>=0.8*state[1000000].tar && state[4000000].tar>state[4000000].plain+0.3,
       `4 Ma: the plain is sea and the Tararua core stands as the basement finger (plain ${pc(state[4000000].plain)}, Tararua ${pc(state[4000000].tar)} vs ${pc(state[1000000].tar)} at 1 Ma)`);
   chk(state[4000000].rua>=0 && frac(0.56,0.64,0.22,0.34,false)>=0.8*(1-state[1000000].rua), `4 Ma: the Ruahine core stands too (${pc(1-state[4000000].rua)} land)`);
-  // (the gap probe box is wider than the early finger's river bridge across the saddle, so some of it is sea
-  //  beside the bridge; "no seaway" is the bridge standing and the box being far less sea than once the strait opens)
+  // (the gap probe box is wider than the early finger's neck across the gap, so some of it is sea
+  //  beside the neck; "no seaway" is the neck standing and the box being far less sea than once the strait opens)
   chk(state[4000000].gap<0.7 && state[3000000].gap>state[4000000].gap+0.3, `4 Ma: no seaway across the gorge area — a land bridge stands (${pc(state[4000000].gap)} sea, vs ${pc(state[3000000].gap)} at 3 Ma)`);
   // no striped walls: inside the finger's core, off the strait, no one-cell step steeper than 0.1 at any
   // pre-window date (a class boundary in the mass left 0.12/cell steps the relief bake painted as towers);
@@ -1497,18 +1497,33 @@ try{
   // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
   const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
   { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
-  // THE ISTHMUS across the gap (2026-11-02): a LOW, level neck of land, not a causeway at the saddle's base
-  // height (~0.28). No river crosses it at 4 Ma (GEO_EPOCHS.palaeoRiver is 0), so the line it would take
-  // is the saddle's levelled centre, below its shelving banks
+  // THE NECK across the gap: a LOW, level neck of land (2026-11-02: not a causeway at the saddle's base
+  // height, ~0.28), on the straight line from one range's crest tip to the other's (2026-11-03: not the
+  // river's line, which gave the gap's land the channel's dog-leg and a lobe where it bends south). Its
+  // centre line is land and low; the river's line off the neck, in the gap and off the fingers, is sea
   {
-    T.morphTo(4000000,1); const C3=T._geoCache, H=T.heightMap; let bs=0,bn=0,ks=0,kn=0;
-    for (let r=0;r<gr;r++) for (let col=0;col<gc;col++) {
-      if (Math.abs(col/gc-gu)>0.03) continue;
-      const i=r*gc+col, d=C3.wMDist[i];
-      if (d<0.005) { bs+=H[i]; bn++; } else if (d>0.03 && d<0.045 && H[i]>=seaE) { ks+=H[i]; kn++; }
-    }
-    const bed=bs/Math.max(1,bn), bank=ks/Math.max(1,kn);
-    chk(bn>0 && kn>0 && bed>=seaE && bed<bank && bank<0.22, `4 Ma: a low, level isthmus crosses the gap (river line ${bed.toFixed(3)}, banks ${bank.toFixed(3)})`);
+    T.morphTo(4000000,1); const C3=T._geoCache, H=T.heightMap, N=C3.palaeoNeck; let cs=0,cn=0,cw=0,ch=0,rs=0,rn=0,kn=0,kh=0,jump=0;
+    chk(!!N, 'the early neck has a centre line (a range either side of the gorge)');
+    const thinAt=(i)=>C3.rMaskR[i]*(1-LK.palaeoFingerNarrow*(1-C3.rSp[i]));
+    const neckTop=LK.palaeoNeckE+LK.palaeoNeckAmp+0.01;
+    if (N) for (let r=0;r<gr;r++) for (let col=0;col<gc;col++) {
+      const u=col/gc, v=r/gr; if (Math.abs(u-gu)>0.09) continue;   // the old bridge's gorge window
+      const i=r*gc+col, dn=TG._distToSeg(u,v,N[0],N[1],N[2],N[3]);
+      const thin=thinAt(i);
+      let fc=(thin-LK.palaeoAxisCore)/(1-LK.palaeoAxisCore); fc=fc<0?0:fc>1?1:fc*fc*(3-2*fc);
+      const fing=fc>=0.5;                                                                  // the fingers' own core: the neck's ends lie in it, unlevelled
+      if (r+1<gr) { const d=Math.abs(thinAt(i+gc)-thin); if (d>jump) jump=d; }
+      if (col+1<gc) { const d=Math.abs(thinAt(i+1)-thin); if (d>jump) jump=d; }
+      if (dn<0.005 && Math.abs(u-gu)<=0.03) { if (H[i]<seaE) { cn++; cw++; } else if (!fing) { cn++; if (H[i]>=0.22) ch++; else cs++; } }
+      else if (dn>LK.palaeoBridgeW && C3.wMDist[i]<0.02 && thin<0.3) { rn++; if (H[i]<seaE) rs++; }
+      if (dn<0.5*LK.palaeoBridgeW && fc<0.02 && H[i]>=seaE) { kn++; if (H[i]>neckTop) kh++; }
+    }    chk(cn>0 && cw===0 && cs>=0.9*cn, `4 Ma: a low neck of land crosses the gap on the crest-to-crest line (${cs}/${cn} centre cells between the fingers land and low; ${cw} sea, ${ch} high)`);
+    chk(rn>0 && rs>=0.9*rn, `4 Ma: the gap's land does not follow the river's line (${rs}/${rn} river-line cells off the neck are sea)`);
+    // 2026-11-03: the crest closeness flipped from one range to the other where their margins met (a one-cell
+    // step in the thin finger, painted as a striped wall), and the neck's level faded out before its shore
+    // drowned (a rim of raw relief along the south shore, painted as a pale sheer face)
+    chk(jump<0.12, `4 Ma: the thin finger's mass has no one-cell step in the gap (largest neighbour step ${jump.toFixed(3)})`);
+    chk(kn>0 && kh<=0.02*kn, `4 Ma: the neck stands under its ceiling across its dry width, shore included (${kh}/${kn} dry cells above ${neckTop.toFixed(3)})`);
   }
   // THE EAST fills out as a front sweeping east from the axis (1.75 → 1.3 Ma), not all at once
   {

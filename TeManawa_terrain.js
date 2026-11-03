@@ -252,10 +252,11 @@ const LOOK = {
   // GEO_EPOCHS.palaeo* (Trewick & Bland 2012, Fig. 4A–D); these are the SHAPES. Every term is exactly 0
   // at any date inside the window (≤ 1 Ma), so the sim's land is untouched — the harness asserts it.
   palaeoAxisCore:      0.4,   // the basin flood keeps off the axis CORE: range mass (× the dated spine thinning, palaeoFingerNarrow) below this drowns fully, 1 stays dry, smoothstep between — "an emergent finger of basement" (4 Ma), continuous across the gorge saddle. The band from here to 1 is the finger's SHORE: wide (0.4) so it shelves under over most of the flank; higher = a narrower finger with a steeper shore the relief bake paints as a stepped cliff. Tune live (press B/G/N).
-  palaeoBridgeW:       0.09,  // the early land bridge across the gorge saddle: its half-width as a fraction of the map width (wMDist is in map units; the authored main channel is 0.05 wide, so this is a broad, gently shelving isthmus either side of the river, inside the gorge window — "no seaway across the gorge area" at 4 Ma)
-  palaeoBridgeWobble:  0.03,  // meander the isthmus's shores off the river's line with the cached wobble (map-width fraction), so it reads as a saddle of land, not a causeway that copies the channel
-  palaeoBridgeFlat:    1,     // how far the isthmus is levelled to the finger's floor (palaeoAxisFloorE ± the wobble), both ways. Its base height is the gorge saddle's (~0.28 at 4 Ma), and a causeway that high between two drowned flanks painted as a sheer ridge with the river along its crest (2026-11-02). 0 = the old lift-only floor
-  palaeoBridgeChannel: 0.035, // the river's bed across the levelled isthmus sits this far under it (never under the 0.10 waterline), so the channel is cut INTO the saddle instead of standing on top of it. Scaled by the main mask, so dormant while GEO_EPOCHS.palaeoRiver is 0 (no drainage before ~1.6 Ma)
+  palaeoBridgeW:       0.09,  // the early finger's NECK across the gap: its half-width as a fraction of the map width either side of the straight segment from the Tararua's crest tip to the Ruahine's (_palaeoNeck), smoothstepped, so ~0.05 of it stands as land — "no seaway across the gorge area" at 4 Ma. (Until 2026-11-03 it rode the main stem's line and took the river's shape)
+  palaeoBridgeWobble:  0.03,  // meander the neck's shores with the cached wobble (map-width fraction), so it reads as a saddle of land, not a ruled causeway
+  palaeoBridgeFlat:    1,     // how far the neck is held under its ceiling (palaeoNeckE ± palaeoNeckAmp), off the fingers' own core. A neck at the gorge saddle's base height (~0.28 at 4 Ma) between two drowned flanks painted as a sheer ridge (2026-11-02). 0 = the old lift-only floor
+  palaeoNeckE:         0.125, // the neck's CEILING: just above the waterline (the sea is < 0.10), where the relief bake barely lifts the ground (bakeLift ≈ 0.02), so its south shore — the one that faces the viewer — has no face to paint. Applied over the WHOLE dry neck, shore band included: a level that faded out before the drowning did left a rim of raw relief along the shore, painted as a pale sheer face (2026-11-03)
+  palaeoNeckAmp:       0.008, // the wobble on that ceiling (elevation): a little mottle, never enough to sink the neck under the sea
   palaeoFingerNarrow:  0.8,   // how much the finger thins to its crest lines while GEO_EPOCHS.palaeoFingerNarrow is 1 (early): the mass is scaled by 1 − this × (1 − spine closeness), so at the flanks it falls under palaeoAxisCore and shelves under. 0 = the whole footprint at every date
   palaeoAxisLow:       0.75,  // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by this much × (1 − uplift/upliftStart), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma)
   palaeoAxisLowE:      0.22,  // … the level it is cut toward (lowland)
@@ -2426,16 +2427,23 @@ class TerrainGenerator {
       const v = row * invr, wy = row * scale;
       for (let col = 0; col < gc; col++) {
         const u = col * invc, wx = col * scale;
-        let bm = 0, bh = 0, br = null;
-        for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > bm) { bm = m; bh = R[i].height; br = R[i]; } }
+        let bm = 0, bh = 0, br = null, bms = 0;
+        for (let i = 0; i < R.length; i++) {
+          const m = this._rangeMass(R[i], u, v);
+          if (m > bm) { bm = m; bh = R[i].height; br = R[i]; }
+          if (m > 0) { const ms = m * TerrainGenerator._spineHeight(R[i], u, v, 1); if (ms > bms) bms = ms; }
+        }
         rMaskR[idx] = bm;
         const mf = this._mainField(u, v);
         if (mf && gSad > 0) { const sm = TerrainGenerator._gorgeSaddle(u, Math.abs(mf.s)); if (sm > bm) { bm = sm; bh = gSadH; br = null; } }   // Te Āpiti: the ranges meet at the river
         rMask[idx] = bm;
         rH[idx] = (bm > 0 && br) ? bh * TerrainGenerator._spineHeight(br, u, v, spine) : bh;
-        rSp[idx] = (bm > 0 && br) ? TerrainGenerator._spineHeight(br, u, v, 1) : (bm > 0 ? 1 : 0);
-        // The saddle cells' spine closeness is their nearest RANGE's (continuous across the class boundary).
-        if (bm > 0 && !br) { let bR = 0, brR = null; for (let i = 0; i < R.length; i++) { const m = this._rangeMass(R[i], u, v); if (m > bR) { bR = m; brR = R[i]; } } rSp[idx] = brR ? TerrainGenerator._spineHeight(brR, u, v, 1) : 0; }
+        // Spine closeness, as max(mass × spine) over the ranges ÷ the range mass, so the thin finger
+        // (rMaskR × (1 − k(1 − rSp)) = a blend of two maxes) is continuous. Taking the spine of the
+        // range with the most mass flipped from one range's crest to the other's where their spread
+        // margins meet in the gap, and the relief bake painted the one-cell step as a sheer striped
+        // face across the palaeo neck (2026-11-03). Saddle cells read the ranges' too (rMaskR is range-only).
+        rSp[idx] = rMaskR[idx] > 0 ? bms / rMaskR[idx] : 0;
         rSad[idx] = (bm > 0 && !br) ? 1 : 0;
         if (bm > 0) { this._rangeFbm(wx, wy, rf); ridge[idx] = rf.ridge; detail[idx] = rf.detail * fbmD; crest[idx] = rf.crest * fbmC; }
         if (mf) { wMDist[idx] = mf.d; wMBaseW[idx] = mf.w; wMPos[idx] = mf.p; wMDepth[idx] = mf.depth; wMS[idx] = mf.s; wME[idx] = mf.e; }
@@ -2447,8 +2455,33 @@ class TerrainGenerator {
       }
     }
     this._geoCache = { rMask, rH, ridge, detail, crest, rSp, rSad, rMaskR, wMDist, wMBaseW, wMPos, wMDepth, wMS, wME, tJ, tS, tS0: tS.slice(), tP, tE,
-                       tJ2, tS2, tS02: tS2.slice(), tP2, tE2 };
+                       tJ2, tS2, tS02: tS2.slice(), tP2, tE2, palaeoNeck: TerrainGenerator._palaeoNeck(R) };
     this._meanderKey = null;   // a fresh cache holds the un-meandered lines: re-apply on the next combine
+  }
+
+  // The early finger's NECK across the gap (before the window): the segment [ax, ay, bx, by] (u, v) from
+  // the crest-line tip of the range nearest the gorge on its west to the tip of the one nearest on its
+  // east — each tip where the range's spine axis leaves its polygon, toward the other range. The thin
+  // finger is a strip along each crest line, and the neck joins the two strips straight, along the axis.
+  // (Until 2026-11-03 the isthmus rode the main stem's line, so the gap's land took the river's shape,
+  // lobe and all.) null without a range either side. Pure/static.
+  static _palaeoNeck(R) {
+    const gu = (typeof LOOK !== 'undefined' && LOOK.straitGorgeU != null) ? LOOK.straitGorgeU : 0.50;
+    let w = null, e = null;
+    for (const r of R) {
+      if (r.cx < gu) { if (!w || r.cx > w.cx) w = r; }
+      else if (!e || r.cx < e.cx) e = r;
+    }
+    if (!w || !e) return null;
+    const tip = (r, o) => {
+      let ax = -r.perpY, ay = r.perpX;                                   // the spine axis
+      if ((o.cx - r.cx) * ax + (o.cy - r.cy) * ay < 0) { ax = -ax; ay = -ay; }
+      let lo = 0, hi = 2;
+      for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (TerrainGenerator._pointInPoly(r.poly, r.cx + ax * m, r.cy + ay * m)) lo = m; else hi = m; }
+      return [r.cx + ax * lo, r.cy + ay * lo];
+    };
+    const a = tip(w, e), b = tip(e, w);
+    return [a[0], a[1], b[0], b[1]];
   }
 
   // Distance + position of the nearest MAIN stem at (u,v), with the per-seed meander wobble and
@@ -3349,7 +3382,8 @@ class TerrainGenerator {
     const pEWob = (LKp.palaeoEastFrontWobble != null) ? LKp.palaeoEastFrontWobble : 0.06;
     const pBridgeWob = (LKp.palaeoBridgeWobble != null) ? LKp.palaeoBridgeWobble : 0.03;
     const pBridgeFlat = (LKp.palaeoBridgeFlat != null) ? LKp.palaeoBridgeFlat : 1;
-    const pBridgeChan = (LKp.palaeoBridgeChannel != null) ? LKp.palaeoBridgeChannel : 0.035;
+    const pNeckE = (LKp.palaeoNeckE != null) ? LKp.palaeoNeckE : 0.125;
+    const pNeckAmp = (LKp.palaeoNeckAmp != null) ? LKp.palaeoNeckAmp : 0.008;
     // The axis before the rapid uplift sits low: its height above pAxisLowE is cut by pAxisLow × how far
     // the pre-window uplift still has to go (0 at the opening, where uplift = upliftStart).
     const pUpStart = TerrainGenerator.GEO_EPOCHS.upliftStart;
@@ -3359,7 +3393,8 @@ class TerrainGenerator {
     const pAxisFloorE = (LKp.palaeoAxisFloorE != null) ? LKp.palaeoAxisFloorE : 0.15;
     const pNarrow = ((LKp.palaeoFingerNarrow != null) ? LKp.palaeoFingerNarrow : 0.8) * (PL.narrow || 0);   // the dated thinning of the finger
     const rSpArr = c.rSp, rMaskRArr = c.rMaskR;
-    const pBridgeW = (LKp.palaeoBridgeW > 0) ? LKp.palaeoBridgeW : 0.06;   // the early land bridge across the saddle: half-width, map-width units (wMDist's)
+    const pBridgeW = (LKp.palaeoBridgeW > 0) ? LKp.palaeoBridgeW : 0.09;   // the early neck across the gap: half-width, map-width units
+    const pNeck = c.palaeoNeck;                                             // its centre line, crest tip to crest tip (_palaeoNeck)
     const pGorgeU = (LKp.straitGorgeU != null) ? LKp.straitGorgeU : 0.50;
     const pShoal = ((LKp.palaeoShoal != null) ? LKp.palaeoShoal : 0.85) * PL.axis;
     const pShoalV = (LKp.palaeoShoalV != null) ? LKp.palaeoShoalV : 0.52;
@@ -3568,26 +3603,30 @@ class TerrainGenerator {
             // gorge area" at 4 Ma), shelving under across the spread margin outside them. And it is
             // EMERGENT: the core stands at least pAxisFloorE even where its footprint lies on today's
             // shelf (the southern Tararua), fading with the basin so it is 0 at the opening.
-            // Early, the finger is thin — a strip along each range's crest line and the river
-            // bridge across the saddle (T&B Fig. 4A); it broadens to the whole footprint as the
+            // Early, the finger is thin — a strip along each range's crest line and a neck joining
+            // them across the gap (T&B Fig. 4A); it broadens to the whole footprint as the
             // uplift starts (GEO_EPOCHS.palaeoFingerNarrow).
-            let mass = rMask[i];
+            let mass = rMask[i], fingerCore = 1;
             const nw = PL.narrow || 0;
             if (nw > 0 && rSpArr && rMaskRArr) {
               // THE THIN FINGER, built from CONTINUOUS fields only (every branch on which range or saddle
               // "owns" a cell left a one-cell step at the class boundary that the relief bake painted as
-              // a striped wall — twice): the RANGE-only mass thinned to its crest lines, the land bridge
-              // along the main stem across the gap (pBridgeW of the map width either side, its shores
-              // meandered, smoothstepped, inside the gorge window), and the whole footprint (ranges +
-              // saddle) fading in as the finger broadens. The max of the three; each is continuous, so the mass is.
+              // a striped wall — twice): the RANGE-only mass thinned to its crest lines, the neck across
+              // the gap (pBridgeW of the map width either side of the segment from one crest tip to the
+              // other, its shores meandered, smoothstepped), and the whole footprint (ranges + saddle)
+              // fading in as the finger broadens. The max of the three; each is continuous, so the mass is.
+              // The neck is NOT the river's line: on the main stem it took the channel's dog-leg and the
+              // lobe where the river bends south past the gorge (2026-11-03).
               const thin = rMaskRArr[i] * (1 - pNarrow * (1 - rSpArr[i]));
               mass = mass * (1 - nw);
               if (thin > mass) mass = thin;
-              if (wMDistArr) {
-                let bm = 1 - (wMDistArr[i] + wv * pBridgeWob) / pBridgeW;
+              fingerCore = (mass - pAxisCore) / (1 - pAxisCore);                                  // the fingers' own core, without the neck
+              fingerCore = fingerCore < 0 ? 0 : fingerCore > 1 ? 1 : fingerCore * fingerCore * (3 - 2 * fingerCore);
+              if (pNeck) {
+                let bm = 1 - (TerrainGenerator._distToSeg(u, v, pNeck[0], pNeck[1], pNeck[2], pNeck[3]) + wv * pBridgeWob) / pBridgeW;
                 if (bm > 0) {
                   if (bm > 1) bm = 1;
-                  bm = bm * bm * (3 - 2 * bm) * (1 - TerrainGenerator._gorgeOpen(u)) * nw;
+                  bm = bm * bm * (3 - 2 * bm) * nw;
                   if (bm > mass) mass = bm;
                   bridge = bm;
                 }
@@ -3598,10 +3637,10 @@ class TerrainGenerator {
             basinSub = basinL * (1 - core);
             fingerLift = basin * core;
             if (eastCap < 1.1) { const ec = eastCap + (1.1 - eastCap) * core; if (ec < axisCap) axisCap = ec; }   // the finger stands clear of the east shelf too
-            if (bridge > 0 && pBridgeFlat > 0) {                                                   // how far the isthmus levels this cell (its own core)
-              let bc = (bridge - pAxisCore) / (1 - pAxisCore);
-              bc = bc < 0 ? 0 : bc > 1 ? 1 : bc * bc * (3 - 2 * bc);
-              bridgeK = basin * bc * pBridgeFlat;
+            if (bridge > 0 && pBridgeFlat > 0) {                                                   // how far the neck's ceiling holds this cell: all of its dry width (mass ≥ the core edge), off the fingers' core (its ends lie inside them)
+              let bc = bridge / pAxisCore;
+              bc = bc > 1 ? 1 : bc * bc * (3 - 2 * bc);
+              bridgeK = basin * bc * (1 - fingerCore) * pBridgeFlat;
             }
           }
           if (pStraitHW > 0) {
@@ -3633,17 +3672,14 @@ class TerrainGenerator {
         let e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, 1, up, inc, relief, incise, sea, 1, 1, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat, crestArr ? crestArr[i] : 0,
                                              basinSub, axisCap, shoalSub, shoalE, pAxisLow, pAxisLowE,
                                              fingerLift, pAxisFloorE + wv * 0.02);
-        // THE ISTHMUS (before the window): level the saddle to the finger's floor, both ways, and cut the
-        // river's bed into it, so the river crosses a low neck of land instead of riding a causeway's crest.
-        // bridgeK shelves off with the isthmus's own core, so its shore is the slope down to the basin.
+        // THE NECK (before the window): a CEILING just above the waterline, so the gap is crossed by a low
+        // neck of land, not a causeway at the saddle's height. It holds across the neck's whole dry width
+        // (the core floors it from below, so the crest line sits at the ceiling and the shore is the
+        // drowning slope under it), and fades off with the fingers' core so it meets them without
+        // levelling their tips. No river crosses it: the drainage (palaeoRiver) is 0 while it stands.
         if (bridgeK > 0) {
-          const fl = pAxisFloorE + wv * 0.02;
-          e += (fl - e) * bridgeK;
-          if (wMaskM > 0) {
-            let bed = fl - pBridgeChan;
-            if (bed < 0.105) bed = 0.105;                                                          // above the waterline: a river, not a seaway
-            if (e > bed) e += (bed - e) * wMaskM * bridgeK;
-          }
+          const ne = pNeckE + wv * pNeckAmp;
+          if (e > ne) e += (ne - e) * bridgeK;
           if (e > axisCap) e = axisCap;
         }
         // DROWNED-VALLEY ESTUARY: at a warm highstand the sea backs up the main-stem valley. Drown

@@ -10,6 +10,37 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## The neck painted as a sheer face: a field that picked one range per cell
+
+- **What happened.** With the neck moved onto the crest-to-crest line, the 4 Ma land across the gap
+  still showed a sheer, striped face where it met the Ruahine and a pale wall along its south shore,
+  right where visitors watch the strait open and close.
+- **Root cause.** Two. The crest closeness `rSp` took the spine of whichever range had the most mass
+  at a cell; in the gap both ranges' spread margins are ~0.86, so the choice flipped from the
+  Ruahine's crest (0.68) to the Tararua's (0.16) between neighbouring cells, and the thin finger, the
+  neck's weight and the land all stepped there. The same kind of argmax ownership had already left
+  striped walls twice (PALAEO_ATTRACT as-built row 24). Then the neck's level faded out with its core
+  before its shore drowned, so a rim of raw relief stood along the south shore, the shore that faces
+  the viewer, and the relief bake painted it as a face.
+- **Rule.** A field read by a smooth blend must never come from an argmax over ranges. Take a max of
+  continuous terms instead (`rSp` = max(mass × spine) ÷ mass). A level that is meant to hold a strip
+  of land down is a ceiling over its whole dry width, shore included, never a weight that fades
+  before the drowning does. The harness asserts both at 4 Ma (2026-11-03).
+
+## The land across the gap took the river's shape before there was a river
+
+- **What happened.** In the attract sequence, 4–2.75 Ma, the land joining the two basement fingers
+  across the gorge read as an artefact: a dog-leg from the Tararua's tip under the Ruahine, with a
+  cliffed lobe hanging south of it.
+- **Root cause.** The land bridge was the main stem's line widened (`wMDist` < `palaeoBridgeW`). The
+  river itself was hidden before the drainage develops (2026-11-02, `palaeoRiver`), but the bridge
+  still followed the river's line, including the bend south past the gorge, so the channel's shape
+  showed up in the land.
+- **Rule.** Land drawn before the drainage exists must not be built from the river's line, any more
+  than the channel or estuary is. The neck is the straight segment from one range's crest tip to the
+  other's (`TerrainGenerator._palaeoNeck`). The harness asserts that the river's line off the neck is
+  sea at 4 Ma (2026-11-03).
+
 ## A half-drowned shelf painted as spikes
 
 - **What happened.** In the attract sequence the closing Manawatū Strait (2.1 → 1.63 Ma) painted as a
