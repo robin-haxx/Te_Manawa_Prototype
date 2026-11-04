@@ -124,4 +124,7 @@ Kept as the design record. Each carries a banner saying what changed; the curren
 - `../secondscreen/README.md` — the console page: files, input bindings, content still to supply
 - `../exports/*/README.md` — how each terrain snapshot set was made
 - `../Avian_Age_TeManawa_Proposal.docx` — the proposal as sent
+- `PONEKE_PLAN_V1.md` — **a sibling project, not a Te Manawa plan:** the build plan for *Avian Age: Ancient Pōneke*,
+  the Kinect-driven Wellington fork (two land frames, a proximity zoom, presence-driven time). Written 2026-11-04;
+  it moves to the fork's repository as that project's spine
 - `../research/*.pdf` — primary sources
