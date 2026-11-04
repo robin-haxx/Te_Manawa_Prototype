@@ -181,6 +181,15 @@ once, ~4 MB per terrain reseed. See `md/TEMANAWA_BUILD_V3.md` §2.3.
 **Never allocate in `draw()`, and never in a reset.** `p5.Vector` churn in boid code is a
 known GC source.
 
+**p5's Friendly Error System stays off.** `p5.min.js` 1.11.11 ships it live, and it roughly
+doubled every terrain bake and cost ~1.5 ms a frame. `applyFriendlyErrorsFromURL()` (sketch.js)
+disables it at script load; `?fes=1` turns it back on for authoring.
+
+**A sliced job's chunks are sized in cells, not rows.** `morphStep` checks its deadline only
+between chunks, so one chunk is the real per-frame floor (`TerrainGenerator.MORPH_CHUNK_CELLS`).
+Boot and morphs bake at one scale (`LOOK.bakeScale`; `CONFIG.morphBakeScale: null`). A
+mismatch rebuilds the paint grid and noise fields on the first morph after every boot.
+
 **No emoji in visitor-facing UI** — drawn glyphs only. Emoji render differently per
 platform and carry no colourblind-safe guarantee.
 
@@ -197,7 +206,7 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 | Live fauna | ≤ 300 |
 | `image()` calls per frame | ≤ 1,500 |
 | `pixelDensity` | **1** — never raise it; use `CONFIG.spriteSupersample` instead (below) |
-| Soft reset | the attract landing (`resetEcosystem()`): **10–25 ms** budget (17–31 when last measured). A reset must never touch the network |
+| Soft reset | the attract landing (`resetEcosystem()`): **10–25 ms** budget (11–36 ms, Chrome, 2026-11-04). A reset must never touch the network |
 | Photosensitivity | ≤ 3 luminance transitions/sec; large changes ramped ≥ 500 ms |
 
 `CONFIG.mapGrid` is a **cell budget**, not a width — both terrain footprint modes spend
@@ -207,7 +216,8 @@ From `md/TEMANAWA_BUILD_V3.md` §5.2, and shown live in the debug overlay:
 The backing canvas is `spriteSupersample×` the logical 1080 size and a single `scale(SS)`
 in `draw()` renders sprites + HUD at that higher resolution (the source PNGs carry 2–4×
 the detail). The **terrain opts out**: it is composited into a 1080 offscreen buffer
-(`Game._terrainLayer`) — the season-buffer blit, water decals, the frost/ash/haze washes'
+(`Game._terrainLayer`; its `pixelDensity` is currently **.5**, so the backing is 960×540 at
+16:9) — the season-buffer blit, water decals, the frost/ash/haze washes'
 source, and the `saturate()` health filter all run at 1080 — then blitted up as one quad,
 so the ground stays cheap while the cast is crisp. `pixelDensity` must stay **1** (a p5
 density of 2 would 4×-back the *whole* frame, terrain included, defeating the split).
@@ -222,7 +232,7 @@ pixels, so `mousePressed`/`mouseReleased` divide by `SS`. See `Game._composeTerr
 |---|---|---|
 | Trigger | the attract landing (idle, end-of-window); error recovery | watchdog stall, crash, nightly 03:00 |
 | Path | landing: `Kiosk.landAttract()` → `Game.resetEcosystem()` · recovery: `Kiosk.resetToAttract()` → `Game.applyEruptionAt()` (a terrain morph) | `location.reload()` |
-| Cost | landing **17–31 ms** (last measured) · recovery ~1.2 s browser, 3.2–4.1 s harness | several seconds: preload plus a full `init()` |
+| Cost | landing **11–36 ms** · recovery **~1.3 s** (Chrome, 1920×1080, 2026-11-04) | several seconds: preload plus a full `init()` (~6.5 s, Chrome) |
 | Frequency | hundreds a day | ideally once a day |
 
 The harness's "soft resets" line times `resetToAttract()`, the recovery path, so it reads in seconds.
@@ -266,6 +276,7 @@ skips a running attract). Anything that polls a key itself must ask `Kiosk.keyAl
 | `?art=low\|high` | Sprite artwork set (which PNGs load), startup only |
 | `?terrain=square\|fit` | Terrain footprint, startup only |
 | `?sprites=1\|2\|3` | Backing-canvas supersample for sprites+HUD (default 2); terrain stays 1080. Startup only |
+| `?fes=1` | Turn p5's Friendly Error System back on (off by default because it roughly doubles every terrain bake). Authoring only, startup only |
 | `?render=2d` | Opt OUT of the WebGL renderer (aliases: `canvas`, `off`). The DOM-stacked WebGL entity layer (`TeManawa_glbatch.js`) is the **default**: it draws the sprite cast + shadows as batched GPU quads from the atlas, on a canvas stacked between the terrain (bottom) and HUD (top) — ~7× faster render at 4K. It falls back to 2D automatically if WebGL is unavailable or the context is lost. The debug overlay's PERF panel shows the live `render mode` (WebGL / 2D canvas). Startup only. Known GL-mode look compromises: water/washes render at 1080, shadows/halos via a GL disc. See the perf notes |
 
 ## Current phase

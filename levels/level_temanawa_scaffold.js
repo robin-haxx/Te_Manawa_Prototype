@@ -46,9 +46,9 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   // morph re-bake transfers, but it also halves the RESTING paint/elevation resolution
   // (softer ground) AND doubles viewZoom (canvasWidth/mapWidth), which scales every
   // world-space sprite up — both visible all the time, not just during a morph. A real
-  // drop to 256 needs sprite sizing decoupled from cell size first. See morphBakeScale
-  // in TeManawa_sketch.js for the change that cuts the morph transfer cost without either
-  // side effect.
+  // drop to 256 needs sprite sizing decoupled from cell size first. See LOOK.bakeScale
+  // (TeManawa_terrain.js) and CONFIG.morphBakeScale (TeManawa_sketch.js) for the bake-scale
+  // choice that sets the morph cost without either side effect.
 
   terrain: {
     noiseScale: 0.007, octaves: 3, persistence: 0.35, lacunarity: 3.0,

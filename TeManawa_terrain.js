@@ -41,11 +41,18 @@ const LOOK = {
   facetDetail:   0.6,   // FACET: weight of a 2nd (high-freq) octave that frays facet edges into
                         //   cracks (0 = smooth wander; ~0.4 = ragged rock edges). Fraction of octave 1.
   facetDetailFreq: 2.0, // FACET: frequency multiple of that crack octave over facetFreq.
-  bakeScale:     4,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. render() draws
-                         //   it under the 2.5× camera, so N>2.5 MINIFIES it — that downsample is
-                         //   what anti-aliases ink+fill into curves (needs smoothScale). 3 is the
-                         //   sweet spot. Higher is sharper but memory grows as N² and is HARD-CAPPED
-                         //   by bakeMaxPixels below (a kiosk must never OOM), so raising it may no-op.
+  bakeScale:     2,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. ONE scale for the
+                         //   boot bake, the reseed, every morph and every eruption (CONFIG.morphBakeScale
+                         //   null = follow this). Was 4 (capped to 3) at boot with morphs at 2. The
+                         //   first morph after every boot then reallocated the paint grid and rebuilt
+                         //   the wobble + facet noise fields (~0.9 s of freezes, Chrome), and the land's
+                         //   look changed at that first morph. At 16:9 the whole map spans ~1425
+                         //   backing px of the half-density ground layer (cover zoom ~4.2;
+                         //   Game._ensureTerrainLayer). So 2× (1364 px) is drawn ~1.04× MAGNIFIED,
+                         //   nearest-neighbour, and its coast/river edges step. 3× (2046 px) is
+                         //   MINIFIED, and with smoothScale that downsample anti-aliases ink+fill into
+                         //   curves, but every morph then bakes ~2.25× longer. Memory grows as N² and is
+                         //   HARD-CAPPED by bakeMaxPixels below (a kiosk must never OOM).
   bakeMaxPixels: 2200000,// per-season-buffer pixel cap: bakeScale auto-reduces so a bake buffer never
                          //   exceeds this (there are 4 of them). Guards the OOM at large grids / high
                          //   bakeScale — esp. Firefox, which is stricter than the Chrome kiosk. Press B.
@@ -4333,6 +4340,13 @@ class TerrainGenerator {
 
   get morphInProgress() { return !!this._morphJob; }
 
+  // Rows (or columns) per morph chunk: the whole lines that fit in `cells`, never fewer than one.
+  // `span` is the line length (paint width for row bands, height for column bands). Pure, so
+  // tools/bootcheck.js asserts it.
+  static morphChunk(cells, span) {
+    return Math.max(1, Math.floor(cells / Math.max(1, span | 0)));
+  }
+
   // Which glacial-phase buffers this morph re-bakes, current first (so the visible
   // land updates soonest). The incremental visitor-path morph re-bakes ONLY the
   // pair that render() can put on screen — currentKey (drawn full) + nextKey (the
@@ -4361,7 +4375,13 @@ class TerrainGenerator {
     const nowFn = (typeof performance !== 'undefined' && performance.now)
       ? () => performance.now() : () => Date.now();
     const deadline = nowFn() + budgetMs;
-    const ROWS = 32, COLS = 48;   // per-slice chunk sizes (time re-checked between chunks)
+    // Per-slice chunk sizes, in CELLS rather than fixed rows/columns, so a chunk costs about the same
+    // whatever the paint width. The time is re-checked between chunks, so a frame overshoots
+    // budgetMs by at most one chunk. A fixed 32 rows was ~44K pass-1 cells at the 16:9 paint
+    // width: 17–26 ms per slice against a 3 ms budget (66–84 ms with FES on), 23 frames running.
+    // Measured costs per cell (Chrome, FES off): pass 1 ~0.4 µs, pass 2 ~0.02 µs, bake ~0.05 µs.
+    // Sized inside each phase: phase 1 can change the paint grid within this same call.
+    const MC = TerrainGenerator.MORPH_CHUNK_CELLS;
 
     do {
       if (job.phase === 0) {
@@ -4386,12 +4406,12 @@ class TerrainGenerator {
         this._bakeScaleOverride = null;
         job.phase = 2; job.row = 0;
       } else if (job.phase === 2) {
-        const r1 = Math.min(this._paintH, job.row + ROWS);
+        const r1 = Math.min(this._paintH, job.row + TerrainGenerator.morphChunk(MC.pass1, this._paintW));
         this._paintGridPass1(job.row, r1);
         job.row = r1;
         if (job.row >= this._paintH) { job.phase = 3; job.row = 0; }
       } else if (job.phase === 3) {
-        const r1 = Math.min(this._paintH, job.row + ROWS);
+        const r1 = Math.min(this._paintH, job.row + TerrainGenerator.morphChunk(MC.pass2, this._paintW));
         this._paintGridPass2(job.row, r1);
         job.row = r1;
         if (job.row >= this._paintH) { job.phase = 4; job.col = 0; }
@@ -4400,7 +4420,7 @@ class TerrainGenerator {
           job.st = this._bakeSeasonBegin(job.seasons[job.seasonIdx]);
           job.col = 0;
         }
-        const c1 = Math.min(this._paintW, job.col + COLS);
+        const c1 = Math.min(this._paintW, job.col + TerrainGenerator.morphChunk(MC.bake, this._paintH));
         this._bakeSeasonColumns(job.st, job.col, c1);
         job.col = c1;
         if (job.col >= this._paintW) {
@@ -5154,21 +5174,24 @@ class TerrainGenerator {
     // global canvas and any legacy caller keeps working.
     const R = g || (typeof window !== 'undefined' ? window : this);
     // Anti-alias the baked ground as it scales to the panel. The buffer is baked
-    // at bakeScale× and drawn under the 2.5× camera, so bakeScale>2.5 minifies it;
-    // with smoothing that downsample turns the raster ink+fill into curved edges.
+    // at bakeScale× and drawn under the camera zoom into the ground layer; when that
+    // shrinks it, smoothing turns the raster ink+fill into curved edges.
     // smoothScale=false → crisp nearest-neighbour (the pixel look). Saved/restored
     // so sprites and HUD keep whatever the frame set.
     const _dc = R.drawingContext, _ps = _dc.imageSmoothingEnabled, _pq = _dc.imageSmoothingQuality;
     // Smooth a buffer ONLY while it is being MINIFIED (baked LARGER than its on-screen
-    // size) — that anti-aliased downsample is the resting look (LOOK.bakeScale 3 bakes
-    // above the ~2.5x camera zoom). A buffer baked BELOW the camera zoom — a cheap morph
-    // re-bake at CONFIG.morphBakeScale — is MAGNIFIED, and smoothing a magnified raster is
-    // exactly what turned it BLURRY after the first morph; draw those NEAREST-NEIGHBOUR
-    // (crisp) instead. So the resting ground stays smooth and the post-morph land stays
-    // sharp. Set inline before each draw below (no per-frame closure — CLAUDE.md).
-    // LOOK.smoothScale=false still forces nearest everywhere (the chunky pixel look).
+    // size) — that anti-aliased downsample is the resting look. A buffer baked BELOW its
+    // on-screen size is MAGNIFIED, and smoothing a magnified raster turns it BLURRY; draw
+    // those NEAREST-NEIGHBOUR (crisp) instead. Set inline before each draw below (no
+    // per-frame closure — CLAUDE.md). LOOK.smoothScale=false still forces nearest everywhere
+    // (the chunky pixel look).
+    //   On-screen size is in the target's BACKING pixels, not its logical size: the ground
+    // layer is pixelDensity .5 (Game._ensureTerrainLayer). At 16:9 the map's footprint is
+    // ~2850 logical but ~1425 backing px. Comparing against the logical width drew a 3× bake
+    // (2046 px) nearest-neighbour while the layer was in fact shrinking it, which aliases the ink.
     const _sm = (typeof LOOK === 'undefined') ? true : LOOK.smoothScale !== false;
-    const _screenW = this.mapWidth * ((typeof CONFIG !== 'undefined' && CONFIG.viewZoom) || 1);
+    const _dens = (_dc.canvas && _dc.canvas.width > 0 && R.width > 0) ? _dc.canvas.width / R.width : 1;
+    const _screenW = this.mapWidth * ((typeof CONFIG !== 'undefined' && CONFIG.viewZoom) || 1) * _dens;
     if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = 'high';
 
     // Morph crossfade: when the incremental morph swapped the on-screen bake,
@@ -5266,3 +5289,11 @@ class TerrainGenerator {
     };
   }
 }
+
+// Morph chunk budgets in cells (see morphStep). A frozen constant, not a static getter, because
+// morphStep reads it every frame and a getter would allocate a fresh object each time.
+TerrainGenerator.MORPH_CHUNK_CELLS = Object.freeze({
+  pass1: 4096,    // paint pass 1: ~0.4 µs/cell → ~1.6 ms
+  pass2: 65536,   // paint pass 2 (edge flags): ~0.02 µs/cell → ~1.3 ms
+  bake:  40960    // season bake columns: ~0.05 µs/cell → ~2 ms
+});

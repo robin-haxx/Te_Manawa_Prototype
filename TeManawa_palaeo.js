@@ -308,10 +308,13 @@ const Palaeo = {
 
   // The landing bake: the last keyframe, all four buffers. Issued here if play left it undone (a skip
   // can reach 1 Ma with a travel bake still in flight), stepped, and waited for. True once it is in.
+  // Like _paceBakes, it waits out a live crossfade before issuing: a travel bake that lands just before
+  // the landing arms a fade, and a quick landing bake (a fast machine, a small paint grid) would swap the
+  // visible buffer under it, which is a cut (TerrainGenerator._morphCuts; harness "palaeo attract").
   _landingBake(T) {
     const y = this._last()[0];
     if (T.morphInProgress) { if (T.morphStep(TM_PALAEO.firstBudgetMs)) this._onBaked(this._pendingYear, this._pendingAll); }
-    else if (!(this._bakedYear === y && this._bakedAll)) this._issueBake(T, y, true);
+    else if (!(this._bakedYear === y && this._bakedAll) && !T._morphFade) this._issueBake(T, y, true);
     return !T.morphInProgress && this._bakedYear === y && this._bakedAll;
   },
 

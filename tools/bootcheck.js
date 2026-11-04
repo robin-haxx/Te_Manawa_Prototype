@@ -1279,7 +1279,11 @@ try{
 
 try{
   const K=vm.runInContext('Kiosk',ctx);
-  const t=[]; for(let n=0;n<6;n++){ const a=Date.now(); K.resetToAttract(K.game,'test'); t.push(Date.now()-a); for(let i=0;i<5;i++) FRAME(ctx.draw); }
+  // Each reset must re-stamp the heartbeat after its rebuild. The rebuild runs inside draw(), and a
+  // reseed init() can outlast watchdogSeconds, so the watchdog would hard-reload a live kiosk.
+  let beatFail=0;
+  const t=[]; for(let n=0;n<6;n++){ K.lastHeartbeat=0; const a=Date.now(); K.resetToAttract(K.game,'test'); t.push(Date.now()-a); if(!(K.lastHeartbeat>=a)) beatFail++; for(let i=0;i<5;i++) FRAME(ctx.draw); }
+  if(beatFail) console.log(`  FAIL resetToAttract must Kiosk.beat() after its rebuild (${beatFail}/6 left the heartbeat stale)`);
   console.log('soft resets (ms, harness):', t.join(', '));
   const a=Date.now(); K.game.init(); const full=Date.now()-a;
   console.log('full init() for comparison:', full+'ms  -> soft is ~'+(full/Math.max(1,t[t.length-1])).toFixed(0)+'x cheaper');
@@ -3515,6 +3519,44 @@ try{
   chk(TG.bakeScaleFor(4000, 4000, 5, 2200000) >= 1, 'even an absurd grid never returns < 1');
   chk(TG.bakeScaleFor(683, 342, 1, 10) === 1, 'S floors at 1 under an absurd cap');
   console.log(fail ? `bake cap: ${fail} FAILURES` : 'bake cap: bakeScale auto-caps to the memory budget (no OOM)');
+}
+
+// ---- frame-budget guards: morph chunks, one bake scale, FES off ----------------
+// Measured in Chrome (2026-11-04): fixed 32-row morph chunks cost 17–26 ms a slice against a
+// 3 ms budget; a boot bake at a different scale from the morphs made the first morph rebuild
+// the paint grid + noise fields (~0.9 s); p5's FES roughly doubled every bake. See MISTAKES.md.
+{
+  const TG = vm.runInContext('TerrainGenerator', ctx), G = vm.runInContext('game', ctx);
+  const C = vm.runInContext('CONFIG', ctx), DT = vm.runInContext('DeepTime', ctx);
+  let fail = 0; const chk = (c, m) => { if (!c) { console.log('  FAIL', m); fail++; } };
+  const MC = TG.MORPH_CHUNK_CELLS;
+  chk(MC && Object.isFrozen(MC), 'MORPH_CHUNK_CELLS is a frozen constant (morphStep reads it every frame; no getter allocation)');
+  chk(TG.morphChunk(4096, 1364) === 3, 'a chunk is the whole lines that fit in its cell budget');
+  chk(TG.morphChunk(4096, 10000) === 1 && TG.morphChunk(4096, 0) >= 1, 'a chunk is never less than one line');
+
+  // A sliced morph at budget 0 runs exactly one chunk per step, so the pass-1 step count shows the
+  // chunk size. It must re-bake at the boot scale: same paint arrays, no rebuild on the first morph.
+  const t = G.terrain, elev0 = t._paintElev, s0 = t._paintScale;
+  t.morphBegin(DT.yearsBP, C.morphBakeScale);
+  let p1 = 0, guard = 0;
+  while (t.morphInProgress && guard++ < 200000) { const ph = t._morphJob.phase; t.morphStep(0); if (ph === 2) p1++; }
+  chk(!t.morphInProgress, 'the sliced morph completes');
+  const rows = TG.morphChunk(MC.pass1, t._paintW);
+  chk(rows * t._paintW <= Math.max(MC.pass1, t._paintW), `a pass-1 chunk stays inside its cell budget (${rows} rows × ${t._paintW})`);
+  chk(p1 === Math.ceil(t._paintH / rows), `pass 1 ran in cell-sized chunks (${p1} steps, want ${Math.ceil(t._paintH / rows)})`);
+  chk(t._paintScale === s0 && t._paintElev === elev0,
+      `a morph re-bakes at the boot scale (S ${s0} -> ${t._paintScale}); CONFIG.morphBakeScale should be null (follow LOOK.bakeScale)`);
+
+  // FES: off by default, ?fes=1 opts back in. The harness has no p5, so give it a stand-in.
+  const loc = ctx.location.search, hadP5 = ('p5' in ctx), p5Was = ctx.p5;
+  ctx.p5 = {};
+  ctx.location.search = ''; vm.runInContext('applyFriendlyErrorsFromURL()', ctx);
+  chk(ctx.p5.disableFriendlyErrors === true, 'p5 FES is disabled by default');
+  ctx.location.search = '?fes=1'; vm.runInContext('applyFriendlyErrorsFromURL()', ctx);
+  chk(ctx.p5.disableFriendlyErrors === false, '?fes=1 turns p5 FES back on');
+  ctx.location.search = loc; if (hadP5) ctx.p5 = p5Was; else delete ctx.p5;
+  console.log(fail ? `frame budget: ${fail} FAILURES`
+    : 'frame budget: morph chunks sized by cells, morphs re-bake at the boot scale, p5 FES off unless ?fes=1');
 }
 
 // ---- geography skeleton: river carves, ranges lift, deep-time factors --------
