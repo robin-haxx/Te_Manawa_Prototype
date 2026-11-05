@@ -1,13 +1,23 @@
-// Boost-composition probe: how right / wrong boosts move flora and fauna over a visitor session.
+// The health benchmark: how each kind of interaction moves the bar on the wall and the plants and birds
+// actually on the land over a visitor session, and how far populations wander with nobody touching it.
 // Boots the real scripts headless (the bootcheck stubs), with a p5-faithful Perlin noise() so the land
 // has real habitats (the harness's noise is white), a BroadcastChannel stub and frame-clocked timers so
-// the bus behaves as in the browser (its heartbeat ends timelapses and fires pending eruptions).
-//   node tools/boostprobe.js <scenario> [out.json]    scenarios: idle | right | wrong | mixed | answer | same | dial | storm | health | smoke
-//   node tools/boostprobe.js --report a.json [b.json ...]   the per-boost table for saved runs
-// One scenario is ~6 min of wall time (12 boosts); run several in parallel. SEED=n picks the land.
+// the bus behaves as in the browser (its heartbeat ends timelapses and fires pending eruptions). One frame
+// is 16 ms on the page's clock, so the "seconds" below are real seconds at ~60 fps.
+//   node tools/boostprobe.js --bench <dir> [jobs]     the whole benchmark: every scenario below across seeds,
+//                                                     one JSON each (a finished run is skipped), then --summary
+//   node tools/boostprobe.js --summary <dir>          the tables for a finished --bench
+//   node tools/boostprobe.js <scenario> [out.json]    one run. SEED=n picks the land
+//   node tools/boostprobe.js --report a.json [...]    the per-boost table for saved runs
+// Sessions: answers | matched | wrong | recover | alternate | typical | stormspam | stormwait | stormpaced |
+//           eruption | eruptbutton | dialmax. No input: idle (1 Ma) | idleinter (122 ka) | idleglacial (150 ka) |
+//           clock (the dial at the clock's own ~500 yr/s). Older: right | mixed | answer | same | dial | storm |
+//           health | smoke. Sessions take 2–4 min of wall time, the no-input runs ~6.
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const dir = path.resolve(__dirname, '..');
 if (process.argv[2] === '--report') { for (const f of process.argv.slice(3)) report(JSON.parse(fs.readFileSync(f, 'utf8'))); process.exit(0); }
+if (process.argv[2] === '--summary') { summary(process.argv[3]); process.exit(0); }
+if (process.argv[2] === '--bench') { bench(process.argv[3], Number(process.argv[4]) || 5); return; }
 const SCEN = process.argv[2] || 'right', OUT = process.argv[3] || path.join(require('os').tmpdir(), 'boostprobe_' + SCEN + '.json');
 const files = fs.readFileSync(path.join(dir, 'index.html'), 'utf8')
   .match(/src="([^"]+\.js)"/g).map(s => s.slice(5, -1)).filter(f => !f.startsWith('p5'));
@@ -183,8 +193,10 @@ function sample(tag) {
     rich: +(sim.ecoEarned || 0).toFixed(3),           // the ledger's upper half, 0..1 (Simulation.ecoEarned)
     hh: +(G._habitatHealth ?? 1).toFixed(3), fit: +(G._regimeFit ?? 1).toFixed(3), rec: +(G._recruitment ?? 1).toFixed(3),
     ash: +(G._ashCover || 0).toFixed(3), sat: +(G._sceneSat ?? 1).toFixed(3),
-    hudBar: +sim.ecoHealth.toFixed(3),                // the HUD meter's length: the ledger itself (Simulation.ecoHealth)
+    hudBar: +sim.ecoHealth.toFixed(3),                // the ledger itself (Simulation.ecoHealth): where the bar is heading
+    barDrawn: HUDK._eco ? +HUDK._eco.v.toFixed(3) : null, glow: +HUDK.healthGlow().toFixed(2),   // the bar as drawn, eased, and its glow
     shock: sim._fauna ? +sim._fauna.shock.toFixed(2) : 1, culls: sim.stats.homeoCulls || 0, recruits: sim.stats.homeoRecruits || 0,
+    births: sim.stats.births || 0, deaths: sim.stats.deaths || 0, starved: sim.stats.starvations || 0, refounds: sim.stats.refounds || 0,
     faunaTarget: sim._fauna ? Object.values(sim._fauna.targets).reduce((a, b) => a + b, 0) : null,
     targets: sim._fauna ? Object.assign({}, sim._fauna.targets) : null, overuse: !!G._stormOveruse,
     boostsOk: DT.boostsOk | 0, goals: DT.goalsSolved | 0,
@@ -221,8 +233,33 @@ function line(label) {
   console.log(pad(label, 30) + pad(s.hudBar.toFixed(3), 8) + pad(s.faunaN + '/' + s.faunaTarget, 9) + pad(s.plants, 8) + pad(s.sat.toFixed(2), 7) + (s.glacial ? 'G' : 'I') + ' ' + Math.round(s.yr / 1000) + 'k');
 }
 function stormPress() { HUDK.press(G, 'storm'); run(60 * 3, 60, 'storm'); }
+// the right climate and not the live goal's answer
+function pickMatched() {
+  const L = TG.live && TG.live();
+  for (let i = 0; i < cardKeys.length; i++) { const k = pick('right'); if (!L || !L.answer || L.answer.indexOf(k) < 0) return k; }
+  return pick('right');
+}
+const hold = (seconds, tag = 'hold') => run(Math.round(seconds * 1000 / 16), 60, tag);   // real seconds, nobody touching it
+const mark = (kind, key) => events.push({ f: ctx.frameCount, s: +(_t / 1000).toFixed(1), key, kind, fit: '-', yr: Math.round(DT.yearsBP), glacial: TG.glacialNow() });
+const storm = (gapSeconds) => { mark('storm', 'STORM'); HUDK.press(G, 'storm'); sample('storm'); hold(gapSeconds, 'storm'); };
+const eruptNext = () => { const er = DT.ERUPTIONS.find(e => e.yearsBP < DT.yearsBP); if (er) G._fireEruptionInPlace(er); sample('erupted'); return er; };
+// A land at this date with a fresh world on it, the clock at rest there: where an unattended wall could be standing.
+function standAt(yr) {
+  DT.seekTo(yr); G.terrain.morphTo(yr, 1); G._bakedYearsBP = yr; G._lastMorphMs = _t;
+  if (G.water) G.water.build(G.terrain, yr);
+  G.resetEcosystem(); DT.seekTo(yr); G._autoPrevYear = yr; G.seasonManager.update(1);
+  samples.length = 0; events.length = 0;
+  run(60, 60, 'settle');
+}
+// Every eruption shows in the log, whatever fired it: a boost's time-lapse landing on one, the dial, the button.
+const applyAshReal = G.applyAsh;
+G.applyAsh = function (er) { mark('eruption', er ? er.name : 'eruption'); return applyAshReal.call(this, er); };
+// A visitor's draw for `typical`, from its own stream so it cannot disturb the sim's.
+let visitorSeed = (Number(process.env.SEED || 12345) >>> 0) || 1;
+const visitorRoll = () => { visitorSeed = (Math.imul(visitorSeed, 1664525) + 1013904223) >>> 0; return visitorSeed / 4294967296; };
 function boost(kind) {
-  const key = kind === 'answer' ? pickAnswer() : kind === 'same' ? (TG.glacialNow() ? 'tussock' : 'tawa') : kind === 'totallyWrong' ? pickTotallyWrong() : pick(kind);
+  const key = kind === 'answer' ? pickAnswer() : kind === 'same' ? (TG.glacialNow() ? 'tussock' : 'tawa')
+            : kind === 'totallyWrong' ? pickTotallyWrong() : kind === 'matched' ? pickMatched() : pick(kind);
   const before = { yr: Math.round(DT.yearsBP), glacial: TG.glacialNow() };
   const live = TG.live && TG.live();
   BUS.boost({ type: 'boost', plantKey: key, plantName: key });
@@ -266,13 +303,173 @@ const plans = {
     if (er) { G._fireEruptionInPlace(er); line('an eruption'); line('…as the ash clears'); const lv = TG.live(); console.log('  the goal now: ' + (lv ? lv.id : 'none')); boost('answer'); line('the post-eruption answer'); }
   },
   smoke:  () => { boost('right'); boost('wrong'); },
+
+  // ---- SESSIONS: one kind of play each. 30 s to settle first; the last hold is the most a visitor's state can
+  // stand on a real wall (the idle timer lands the attract sequence at 180 s). ----
+  answers:    () => { hold(30); for (let i = 0; i < 8; i++) boost('answer'); hold(180); },
+  matched:    () => { hold(30); for (let i = 0; i < 8; i++) boost('matched'); hold(60); },
+  wrong:      () => { hold(30); for (let i = 0; i < 8; i++) boost('totallyWrong'); hold(180); },
+  recover:    () => { hold(30); for (let i = 0; i < 4; i++) boost('totallyWrong'); for (let i = 0; i < 4; i++) boost('answer'); hold(60); },
+  alternate:  () => { hold(30); for (let i = 0; i < 6; i++) { boost('answer'); boost('totallyWrong'); } hold(60); },
+  typical:    () => { hold(30); for (let i = 0; i < 12; i++) { const r = visitorRoll(); boost(r < 0.4 ? 'answer' : r < 0.8 ? 'matched' : 'totallyWrong'); } hold(60); },
+  stormspam:  () => { hold(30); for (let i = 0; i < 5; i++) storm(3); hold(90); for (let i = 0; i < 4; i++) boost('answer'); hold(30); },
+  stormwait:  () => { hold(30); for (let i = 0; i < 5; i++) storm(25); hold(90); },   // each left to all but play out (a storm is 20 s)
+  stormpaced: () => { hold(30); for (let i = 0; i < 6; i++) storm(60); },             // a calm between: each one a first storm
+  eruption:   () => { hold(30); boost('answer'); boost('answer'); eruptNext(); hold(60); boost('answer'); hold(30); boost('answer'); hold(60); },
+  eruptbutton:() => { hold(30); for (let i = 0; i < 4; i++) boost('answer'); HUDK.fireEruptionReseed(G); sample('button'); hold(180); },
+  // the dial wound right up and held there to the end of the window, wound up again after each eruption halts it
+  dialmax:    () => { hold(30); windDial(DT.dialSteps, 20, 60 * 60 * 10); },
+
+  // ---- NO INPUT: real time, the clock at rest, unless it says otherwise. 20 min: far longer than a wall stands
+  // unattended (180 s), so a slow drift shows if there is one. ----
+  idle:        () => hold(1200, 'idle'),
+  idleinter:   () => { standAt(122000); hold(1200, 'idle'); },
+  idleglacial: () => { standAt(150000); hold(1200, 'idle'); },
+  // the clock running by itself at its own pace (~500 yr/s: 32 min for the window); eruptions halt it, as the dial
+  clock:       () => { let s = 1; while (DT.dialTargetRate(s) < DT.yrPerSec && s < DT.dialSteps) s++; windDial(s, 30, 60 * 60 * 40, 120); },
 };
+// Turn the dial to `step` and let it run to the end of the window (the attract sequence starts) or maxFrames.
+// An eruption halts the dial; the visitor (or whoever set it) waits `afterEruptionS`, then turns it back.
+function windDial(step, afterEruptionS, maxFrames, every = 60) {
+  const P = R('Palaeo');
+  DT.dialSet(step);
+  let waited = 0;
+  for (let i = 0; i < maxFrames && !P.active; i++) {
+    FRAME();
+    if (i % every === every - 1) sample('dial');
+    if (DT.dialStep === 0 && !G._tmAutoErAt) { if (++waited >= afterEruptionS * 62.5) { DT.dialSet(step); waited = 0; } }
+  }
+}
 plans[SCEN]();
 sample('end');
-fs.writeFileSync(OUT, JSON.stringify({ scen: SCEN, bootMs, wallMs: Date.now() - t0, cardKeys: cardKeys.map(k => [k, fitOf(k)]),
+fs.writeFileSync(OUT, JSON.stringify({ scen: SCEN, seed: Number(process.env.SEED || 12345), bootMs, wallMs: Date.now() - t0, cardKeys: cardKeys.map(k => [k, fitOf(k)]),
   faunaClimate: G.simulation._fauna ? G.simulation._fauna.clim : null, faunaBase: G.simulation._fauna ? G.simulation._fauna.base : null, events, samples }));
 report(JSON.parse(fs.readFileSync(OUT, 'utf8')));
 console.log('\n' + SCEN, 'done', OUT, ((Date.now() - t0) / 1000).toFixed(0) + 's', samples.length, 'samples', events.length, 'boosts');
+
+// ---- the whole benchmark ------------------------------------------------------------------------
+function benchLists() {
+  return { sessions: ['answers', 'matched', 'wrong', 'recover', 'alternate', 'typical', 'stormspam', 'stormwait', 'stormpaced', 'eruption', 'eruptbutton', 'dialmax'],
+           idle: ['idle', 'idleinter', 'idleglacial'] };
+}
+function bench(outDir, jobs) {
+  const { spawn } = require('child_process');
+  fs.mkdirSync(outDir, { recursive: true });
+  const L = benchLists(), list = [];
+  for (const sc of L.idle) for (const seed of [12345, 777, 4242]) list.push([sc, seed]);
+  for (const sc of L.sessions) for (const seed of [12345, 777]) list.push([sc, seed]);
+  list.push(['clock', 12345]);
+  const jsonOf = (sc, seed) => path.join(outDir, sc + '_' + seed + '.json');
+  const todo = list.filter(([sc, seed]) => !fs.existsSync(jsonOf(sc, seed)));
+  console.log(todo.length + ' runs to do of ' + list.length + ', ' + jobs + ' at a time');
+  let running = 0, failed = 0;
+  const startOne = () => {
+    while (running < jobs && todo.length) {
+      const [sc, seed, tries = 0] = todo.shift();
+      running++;
+      const t0 = Date.now();
+      const log = fs.openSync(path.join(outDir, sc + '_' + seed + '.txt'), 'w');
+      const p = spawn(process.execPath, [__filename, sc, jsonOf(sc, seed)], { env: Object.assign({}, process.env, { SEED: String(seed) }), stdio: ['ignore', log, log] });
+      p.on('close', (code) => {
+        running--; fs.closeSync(log);
+        const ok = code === 0 && fs.existsSync(jsonOf(sc, seed));
+        console.log((ok ? 'done ' : 'FAIL ') + sc + ' seed ' + seed + ' in ' + ((Date.now() - t0) / 1000).toFixed(0) + ' s (' + todo.length + ' waiting, ' + running + ' running)');
+        if (!ok) { if (tries < 1) todo.push([sc, seed, tries + 1]); else failed++; }   // a transient ENOSPC has killed a run before
+        if (!todo.length && !running) { if (failed) console.log(failed + ' runs failed twice'); summary(outDir); }
+        else startOne();
+      });
+    }
+  };
+  if (todo.length) startOne(); else summary(outDir);
+}
+
+// ---- the tables ----------------------------------------------------------------------------------
+function statsOf(v) {
+  const n = v.length, mean = n ? v.reduce((a, b) => a + b, 0) / n : 0;
+  const sd = n ? Math.sqrt(v.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n) : 0;
+  return { n, mean, sd, min: n ? Math.min(...v) : 0, max: n ? Math.max(...v) : 0, cv: mean ? sd / mean : 0 };
+}
+function pearson(a, b) {
+  const A = statsOf(a), B = statsOf(b);
+  if (!A.sd || !B.sd) return 0;
+  let c = 0; for (let i = 0; i < a.length; i++) c += (a[i] - A.mean) * (b[i] - B.mean);
+  return c / a.length / A.sd / B.sd;
+}
+function slopePerMin(S, key) {   // least squares, per real minute
+  const xs = S.map(x => x.s / 60), ys = S.map(key), X = statsOf(xs), Y = statsOf(ys);
+  let c = 0; for (let i = 0; i < xs.length; i++) c += (xs[i] - X.mean) * (ys[i] - Y.mean);
+  return X.sd ? c / xs.length / (X.sd * X.sd) : 0;
+}
+function summary(outDir) {
+  const L = benchLists();
+  const runs = fs.readdirSync(outDir).filter(f => f.endsWith('.json')).map(f => JSON.parse(fs.readFileSync(path.join(outDir, f), 'utf8')));
+  const by = {}; for (const r of runs) (by[r.scen] = by[r.scen] || []).push(r);
+  console.log('\n######## SESSIONS: what each interaction did. After each step: the bar as drawn, the birds on the land / their');
+  console.log('target (lowest in the step), the plants alive / their target, the ground saturation. settled = seconds until the birds hold within 2 of target; ~ = not by the end of the step. E = an eruption fired in the step.');
+  for (const sc of L.sessions) for (const r of (by[sc] || [])) sessionTable(r);
+  console.log('\n######## SESSIONS AT A GLANCE (per run)');
+  console.log(pad('scenario', 13) + pad('seed', 7) + pad('min', 5) + pad('bar start>end', 15) + pad('bar range', 12) + pad('birds s>e', 11) + pad('range', 8) + pad('plants s>e', 12) + pad('range', 10) + pad('r(bar,tgt)', 11) + pad('r(bar,birds)', 13) + pad('r(bar,plants)', 14) + 'eruptions');
+  for (const sc of L.sessions) for (const r of (by[sc] || [])) {
+    const S = r.samples.filter(x => x.barDrawn != null), a = S[0], b = S[S.length - 1];
+    const bar = S.map(x => x.barDrawn), fa = S.map(x => x.faunaN), pl = S.map(x => x.plants), tg = S.map(x => x.faunaTarget ?? 0);
+    console.log(pad(sc, 13) + pad(r.seed, 7) + pad((b.s / 60).toFixed(0), 5) + pad(a.barDrawn.toFixed(2) + '>' + b.barDrawn.toFixed(2), 15) + pad(Math.min(...bar).toFixed(2) + '-' + Math.max(...bar).toFixed(2), 12) +
+      pad(a.faunaN + '>' + b.faunaN, 11) + pad(Math.min(...fa) + '-' + Math.max(...fa), 8) + pad(a.plants + '>' + b.plants, 12) + pad(Math.min(...pl) + '-' + Math.max(...pl), 10) +
+      pad(pearson(bar, tg).toFixed(2), 11) + pad(pearson(bar, fa).toFixed(2), 13) + pad(pearson(bar, pl).toFixed(2), 14) + r.events.filter(e => e.kind === 'eruption').length);
+  }
+  console.log('\n######## NO INPUT: real time, the clock at rest. Birds and plants, across seeds.');
+  for (const sc of L.idle) if (by[sc]) idleTable(sc, by[sc]);
+  for (const sc of ['clock', 'dialmax']) for (const r of (by[sc] || [])) climateTable(r);
+}
+function sessionTable(r) {
+  const S = r.samples, ev = r.events, plan = ev.filter(e => e.kind !== 'eruption');
+  console.log('\n== ' + r.scen + '  seed ' + r.seed + '   (' + (S[S.length - 1].s / 60).toFixed(1) + ' min)');
+  console.log(pad('#  did', 17) + pad('verdict', 10) + pad('clock', 10) + pad('bar', 7) + pad('glow', 6) + pad('birds/tgt', 11) + pad('low', 5) + pad('plants', 8) + pad('tgt', 6) + pad('sat', 6) + 'settled');
+  const row = (label, verdict, from, to) => {
+    const win = S.filter(x => x.f >= from && x.f <= to); if (!win.length) return;
+    const z = win[win.length - 1];
+    const ptgt = Object.values(z.target || {}).reduce((a, b) => a + b, 0);
+    let settled = null; for (let i = win.length - 1; i >= 0; i--) { if (Math.abs(win[i].faunaN - win[i].faunaTarget) > 2) break; settled = win[i].s - win[0].s; }
+    const erup = ev.some(x => x.kind === 'eruption' && x.f >= from && x.f <= to) ? ' E' : '';
+    console.log(pad(label, 17) + pad(verdict || '', 10) + pad(Math.round(z.yr / 1000) + 'k ' + (z.glacial ? 'G' : 'I'), 10) + pad(z.barDrawn != null ? z.barDrawn.toFixed(2) : '-', 7) + pad(z.glow.toFixed(1), 6) +
+      pad(z.faunaN + '/' + z.faunaTarget, 11) + pad(Math.min(...win.map(x => x.faunaN)), 5) + pad(z.plants, 8) + pad(ptgt, 6) + pad(z.sat.toFixed(2), 6) + (settled == null ? '~' : settled.toFixed(0) + ' s') + erup);
+  };
+  row('   start', '', 0, plan.length ? plan[0].f - 1 : S[S.length - 1].f);
+  plan.forEach((e, i) => row(pad(i + 1, 3) + e.kind.slice(0, 12), e.verdict, e.f, plan[i + 1] ? plan[i + 1].f - 1 : S[S.length - 1].f));
+}
+function idleTable(sc, rs) {
+  const WALL = 180;   // what a real wall stands for, unattended, before the attract sequence lands a fresh world
+  const yr = rs[0].samples[0].yr, gla = rs[0].samples[0].glacial;
+  console.log('\n== ' + sc + '  (' + Math.round(yr / 1000) + ' ka, ' + (gla ? 'glacial' : 'interglacial') + ', ' + rs.length + ' seeds, ' + (rs[0].samples[rs[0].samples.length - 1].s / 60 - rs[0].samples[0].s / 60).toFixed(0) + ' min each). Bar at the end: ' + rs.map(r => r.samples[r.samples.length - 1].barDrawn).join(' '));
+  console.log(pad('', 30) + pad('start', 12) + pad('live tgt', 12) + '| first ' + WALL + ' s: ' + pad('mean', 7) + pad('sd', 6) + pad('range', 9) + '| whole run: ' + pad('mean', 7) + pad('sd', 6) + pad('cv', 6) + pad('range', 9) + 'drift/min');
+  const line = (label, get, tgtOf) => {
+    const per = rs.map(r => { const t0 = r.samples[0].s, S = r.samples; return { all: S.map(get), wall: S.filter(x => x.s - t0 <= WALL).map(get), drift: slopePerMin(S, get), tgt: tgtOf ? tgtOf(S[S.length - 1]) : null, start: get(S[0]) }; });
+    const avg = f => per.reduce((a, p) => a + f(p), 0) / per.length, A = per.map(p => statsOf(p.all)), W = per.map(p => statsOf(p.wall));
+    console.log(pad(label, 30) + pad(per.map(p => p.start).join('/'), 12) + pad(tgtOf ? per.map(p => p.tgt).join('/') : '', 12) + '|           ' +
+      pad(avg(p => statsOf(p.wall).mean).toFixed(1), 7) + pad(avg(p => statsOf(p.wall).sd).toFixed(1), 6) + pad(Math.min(...W.map(x => x.min)) + '-' + Math.max(...W.map(x => x.max)), 9) + '|            ' +
+      pad(avg(p => statsOf(p.all).mean).toFixed(1), 7) + pad(avg(p => statsOf(p.all).sd).toFixed(1), 6) + pad(avg(p => statsOf(p.all).cv).toFixed(2), 6) + pad(Math.min(...A.map(x => x.min)) + '-' + Math.max(...A.map(x => x.max)), 9) + avg(p => p.drift).toFixed(2));
+  };
+  line('ALL BIRDS', x => x.faunaN, x => x.faunaTarget);
+  const kinds = [...new Set(rs.flatMap(r => Object.keys(r.samples[r.samples.length - 1].fauna)))].sort();
+  for (const k of kinds) line('  ' + k + ' (' + ((rs[0].faunaClimate || {})[k] || '-').slice(0, 1) + ')', x => x.fauna[k] || 0, x => (x.targets || {})[k] ?? '-');
+  line('ALL PLANTS', x => x.plants, x => Object.values(x.target || {}).reduce((a, b) => a + b, 0));
+  const biomes = [...new Set(rs.flatMap(r => Object.keys(r.samples[r.samples.length - 1].byBiome)))].sort();
+  for (const b of biomes) line('  ' + b, x => x.byBiome[b] || 0, x => (x.target || {})[b] ?? '-');
+  const mins = r => (r.samples[r.samples.length - 1].s - r.samples[0].s) / 60;
+  const flow = (k) => rs.map(r => ((r.samples[r.samples.length - 1][k] - r.samples[0][k]) / mins(r)).toFixed(1)).join('/');
+  console.log('per minute, each seed:  births ' + flow('births') + '  deaths ' + flow('deaths') + '  starved ' + flow('starved') + '  census retired ' + flow('culls') + '  newcomers ' + flow('recruits') + '  refounds ' + flow('refounds'));
+}
+function climateTable(r) {
+  const clim = r.faunaClimate || {}, S = r.samples.filter(x => x.tag === 'dial');
+  if (!S.length) return;
+  const bird = (x, want) => Object.keys(x.fauna).reduce((a, k) => a + (clim[k] === want ? x.fauna[k] : 0), 0);
+  console.log('\n== ' + r.scen + '  seed ' + r.seed + ': the clock running with no boosts. ' + r.events.filter(e => e.kind === 'eruption').map(e => e.key + ' at ' + (e.s / 60).toFixed(1) + ' min').join(', '));
+  console.log(pad('min', 6) + pad('clock', 11) + pad('bar', 6) + pad('birds/tgt', 11) + pad('warm', 6) + pad('cold', 6) + pad('plants', 8) + pad('warm', 6) + pad('cold', 6) + 'sat');
+  const step = Math.max(1, Math.floor(S.length / 18));
+  for (let i = 0; i < S.length; i += step) { const x = S[i];
+    console.log(pad((x.s / 60).toFixed(1), 6) + pad(Math.round(x.yr / 1000) + 'k ' + (x.glacial ? 'G' : 'I'), 11) + pad(x.barDrawn.toFixed(2), 6) + pad(x.faunaN + '/' + x.faunaTarget, 11) + pad(bird(x, 'warm'), 6) + pad(bird(x, 'cold'), 6) + pad(x.plants, 8) + pad(x.warmN, 6) + pad(x.coldN, 6) + x.sat.toFixed(2)); }
+  const reg = (g) => { const T = S.filter(x => x.glacial === g); return T.length ? 'birds ' + statsOf(T.map(x => x.faunaN)).mean.toFixed(0) + ' (warm ' + statsOf(T.map(x => bird(x, 'warm'))).mean.toFixed(0) + ', cold ' + statsOf(T.map(x => bird(x, 'cold'))).mean.toFixed(0) + '), plants ' + statsOf(T.map(x => x.plants)).mean.toFixed(0) + ' (warm ' + statsOf(T.map(x => x.warmN)).mean.toFixed(0) + ', cold ' + statsOf(T.map(x => x.coldN)).mean.toFixed(0) + ')' : 'none'; };
+  console.log('interglacial means: ' + reg(false)); console.log('glacial means:      ' + reg(true));
+}
 
 // ---- the report: per boost, what the flora and fauna did, and the candidate health signals ----
 function pad(s, n) { return String(s).padEnd(n); }
@@ -292,7 +489,7 @@ function report(d) {
     const win = S.filter(x => x.f >= e.f && x.f <= next);
     const hhMin = Math.min(...win.map(x => x.hh)), faMin = Math.min(...win.map(x => x.faunaN)), shMin = Math.min(...win.map(x => x.shock ?? 1));
     const lift = Object.values(b.lift).reduce((p, c) => p + c, 0);
-    console.log(pad(i + 1, 3) + pad(e.kind, 7) + pad(e.key, 13) + pad(e.glacial ? 'G' : 'I', 5) + pad(e.verdict || '-', 9) + pad(Math.round(e.yr / 1000) + 'k', 8) +
+    console.log(pad(i + 1, 3) + pad(e.kind.slice(0, 6), 7) + pad(e.key, 13) + pad(e.glacial ? 'G' : 'I', 5) + pad(e.verdict || '-', 9) + pad(Math.round(e.yr / 1000) + 'k', 8) +
       pad(a.plants + '→' + b.plants, 12) + pad(b.warmN + '/' + b.coldN, 13) +
       pad(a.faunaN + '→' + b.faunaN, 11) + pad(faMin, 7) + pad((a.faunaTarget ?? '-') + '→' + (b.faunaTarget ?? '-'), 10) + pad(num(shMin), 7) +
       pad(num(a.rich) + '→' + num(b.rich), 12) + pad(num(hhMin), 6) + pad(num(a.hudBar) + '→' + num(b.hudBar), 12) + lift);
