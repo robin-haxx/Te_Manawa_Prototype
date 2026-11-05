@@ -2517,8 +2517,20 @@ function updateFPS() {
 // mouseX/mouseY are in the MAIN canvas's backing pixels (logical × mainCanvasSS); all
 // hit-testing is in 1080-space, so divide back before handing coordinates to the game.
 // In GL mode mainCanvasSS is 1 (main canvas is already 1080), so this is a no-op there.
-function mousePressed() { const s = mainCanvasSS(); game.handleClick(mouseX / s, mouseY / s); }
-function mouseReleased() { const s = mainCanvasSS(); game.handleClickUp(mouseX / s, mouseY / s); }
+// The wheel PRESS (middle button) is the time dial's push: back to paused. It goes through handleKey as
+// the dial's reset key, so the wall lockdown and the attract sequence (push = ×1 forward) treat it
+// exactly like that key. Returning false stops the browser's middle-click autoscroll.
+function mousePressed() {
+  if (typeof mouseButton !== 'undefined' && mouseButton === CENTER && typeof DeepTime !== 'undefined' && DeepTime.DIAL_KEYS) {
+    game.handleKey(DeepTime.DIAL_KEYS.reset[0]);
+    return false;
+  }
+  const s = mainCanvasSS(); game.handleClick(mouseX / s, mouseY / s);
+}
+function mouseReleased() {
+  if (typeof mouseButton !== 'undefined' && mouseButton === CENTER) return false;
+  const s = mainCanvasSS(); game.handleClickUp(mouseX / s, mouseY / s);
+}
 function keyPressed() { game.handleKey(key); }
 function keyReleased() { game.handleKeyUp(key); }
 

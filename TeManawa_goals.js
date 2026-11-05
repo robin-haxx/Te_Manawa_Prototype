@@ -111,10 +111,10 @@ const TM_GOALS = {
       answer: ['coprosma'] },
     // Both scrub cards (giant moa): "The females were far bigger than the males … nearly three times as heavy!"
     { id: 'giant-moa-females', group: 'moa', off: true,
-      prompt: 'Boost a scrub that fed a moa whose females were far bigger than males!',
+      prompt: 'Boost a scrub that fed a moa whose females were up to 3 metres tall!',
       cond:   'food for a moa whose females were far bigger than the males',
       answer: ['coprosma'],
-      text:   { answer: '{plant} fed the giant moa, whose females were nearly three times as heavy as the males!' } },
+      text:   { answer: '{plant} fed the giant moa, whose females could stretch to 3 metres tall, more than twice as big as the males!' } },
     // Mānuka: "New Zealand mānuka has evolved apart from Australia's for about ten million years."
     { id: 'manuka-apart', group: 'moa', off: true,
       prompt: "Boost a plant that has evolved apart from Australia's for 10 million years!",
@@ -167,15 +167,15 @@ const TM_GOALS = {
       answer: ['Totara'] },
     // Tōtara (Eyles' harrier): "The North Island had no Haast's eagle, so here the harrier was the top predator."
     { id: 'top-predator', group: 'harrier',
-      prompt: "Boost a tree for the North Island's top predator!",
+      prompt: "Boost the tree for the North Island's apex predator!",
       cond:   "home to the North Island's top predator",
       answer: ['Totara'],
-      text:   { answer: "{plant} was home to Eyles' harrier, the top predator of the North Island!" } },
+      text:   { answer: "{plant} was home to the giant Eyles' harrier, which hunted the other birds in the ancient North Island!" } },
 
     // ---- LOWLAND ANIMALS: pūrei (mōho/takahē), tussock (goose), tī kōuka (Finsch's duck) -----------
     // The both-worlds plants: the cards' neutral coldTolerance (0.65 < ct < 0.75), the ones the boost
     // gate matches in EITHER climate. Bootcheck holds this list to exactly those card plants.
-    { id: 'both-worlds', group: 'lowland', off: true,
+    { id: 'both-worlds', group: 'lowland', 
       prompt: 'Boost a plant that is suited to cold and warm habitats!',
       cond:   'suited to cold and warm habitats',
       answer: ['kowhai', 'cabbagetree', 'flax', 'manuka', 'sedge', 'wharariki'],
@@ -197,7 +197,7 @@ const TM_GOALS = {
       cond:   'the grass that covered the ice-age plains',
       answer: ['tussock'] },
     // Pūrei (mōho): "The mōho was the North Island's takahē, a big flightless rail that grazed grass and swamp plants."
-    { id: 'moho-food', group: 'lowland', off: true,
+    { id: 'moho-food', group: 'lowland', 
       prompt: "Boost a swamp plant that fed the North Island's takahē!",
       cond:   "food for the mōho, the North Island's takahē",
       answer: ['sedge'] },
@@ -225,7 +225,7 @@ const TM_GOALS = {
       requires: { birds: { north_island_brown_kiwi: 1 } } },
     // Cards that stand for a group of close relatives: tree ferns (mamaku, ponga), beech, Dracophyllum,
     // kōwhai (8 species), Coprosma, tussock. Live in either climate.
-    { id: 'similar-species', group: 'forest', off: true,
+    { id: 'similar-species', group: 'forest', 
       prompt: 'Boost a plant that comes in several similar species!',
       cond:   'a plant with several similar species',
       answer: ['fern', 'beech', 'dracophyllum', 'kowhai', 'coprosma', 'tussock'] },
@@ -235,11 +235,11 @@ const TM_GOALS = {
       cond:   'a plant that dies back when it gets colder',
       answer: ['fern', 'nikau', 'tawa'] },
     // Tōtara and kahikatea "berries" are fleshy red stalks under the seed; nīkau's are true fruit.
-    { id: 'red-berries', group: 'forest', off: true,
+    { id: 'red-berries', group: 'forest', 
       prompt: 'Boost a plant with red berries!',
       cond:   'a plant with red berries',
       answer: ['nikau', 'Totara', 'kahikatea'] },
-    { id: 'yellow-flowers', group: 'forest', off: true,
+    { id: 'yellow-flowers', group: 'forest', 
       prompt: 'Boost a plant with yellow flowers!',
       cond:   'a plant with yellow flowers',
       answer: ['kowhai', 'wharariki'] },
@@ -299,14 +299,14 @@ const TM_GOALS = {
       answer: ['beech'] },
     // Mountain beech (huia): "They hunted huhu grubs, fat beetle larvae that live in rotting wood."
     { id: 'huhu-grubs', group: 'forest', 
-      prompt: 'Boost a tree where huia hunted fat huhu grubs!',
-      cond:   'a tree where huia hunted huhu grubs',
+      prompt: 'Boost a tree where huia foraged for fat huhu grubs!',
+      cond:   'a tree where huia foraged for huhu grubs',
       answer: ['beech'] },
     // Wharariki: "Its seeds blow away on the wind." Wharariki grows only on the subalpine tops, so it
     // waits for the ranges like the Dracophyllum goal (most-kinds-here).
     { id: 'wind-seeds', group: 'forest',
-      prompt: 'Boost a plant whose seeds blow away on the wind!',
-      cond:   'a plant whose seeds blow away on the wind',
+      prompt: 'Boost a plant whose seeds blow away on the wind, and can cross with harakeke!',
+      cond:   'a plant whose seeds blow away on the wind, and can cross with harakeke',
       answer: ['wharariki'],
       fromYearsBP: 500000 },
     // Wharariki: "it crosses with harakeke where the two meet."
@@ -325,11 +325,11 @@ const TM_GOALS = {
       prompt: 'Boost a tree that needs a flood to grow!',
       cond:   'a tree that needs a flood to grow',
       answer: ['kahikatea'] },
-    { id: 'no-wings', group: 'moa', off: true,                // trait: moa had no wings at all
-      prompt: 'Boost a plant that fed a bird with no wings at all!',
-      cond:   'food for a bird with no wings at all',
+    { id: 'no-wings', group: 'moa',                 // trait: moa had no wings at all
+      prompt: 'Boost a plant that fed a bird with no wing bones at all!',
+      cond:   'food for a bird with no wing bones at all',
       answer: ['kahikatea', 'flax', 'coprosma', 'manuka'],
-      text:   { answer: '{plant} fed a moa, a bird with no wings at all!' } },
+      text:   { answer: '{plant} fed a moa, a bird with no wings at all! Even the kiwi has traces of wing bones.' } },
     { id: 'tangled-shrub', group: 'moa', off: true,           // trait: divaricating shrubs vs moa browsing
       prompt: 'Boost a tangled shrub that may have grown that way to keep moa off!',
       cond:   'a tangled shrub that may have kept moa off',
@@ -371,7 +371,7 @@ const TM_GOALS = {
       cond:   'a plant that rides out storms',
       answer: ['tussock', 'flax', 'manuka', 'coprosma', 'dracophyllum', 'sedge', 'wharariki'] },
     // Forest birds
-    { id: 'huia-beaks', group: 'forest', off: true,           // trait: male and female huia beaks differed
+    { id: 'huia-beaks', group: 'forest',           // trait: male and female huia beaks differed
       prompt: 'Boost a tree for the bird whose male and female had different beaks!',
       cond:   'a tree for the bird whose male and female had different beaks',
       answer: ['beech'],
@@ -382,7 +382,7 @@ const TM_GOALS = {
       answer: ['wharariki', 'kowhai'],
       requires: { birds: { tui: 1 } },
       text:   { answer: '{plant} feeds the tūī, a bird with two voice boxes!' } },
-    { id: 'blue-wattles', group: 'forest', off: true,         // trait: the North Island kōkako's blue wattles
+    { id: 'blue-wattles', group: 'forest',          // trait: the North Island kōkako's blue wattles
       prompt: 'Boost a plant for the bird with bright blue wattles!',
       cond:   'a plant for the bird with bright blue wattles',
       answer: ['nikau'],

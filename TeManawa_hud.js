@@ -165,7 +165,7 @@ const InstallHUD = {
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
                          InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
                        } else {
-                         if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
+                         InstallHUD._wrongBoost(g);                                       // wrong guess → every habitat back to its floor, the birds shocked
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // wrong boost for the climate → grey pulse, and no growth (gated in update)
                        } },
       isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
@@ -178,7 +178,7 @@ const InstallHUD = {
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
                          InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
                        } else {
-                         if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
+                         InstallHUD._wrongBoost(g);                                       // wrong guess → every habitat back to its floor, the birds shocked
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // grey pulse, no growth
                        } },
       isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
@@ -203,6 +203,14 @@ const InstallHUD = {
       isActive: (g) => (g._tmErDownAt && !g._tmErFired) ||
                        (g._tmAshUntil && millis() < g._tmAshUntil) }
   ],
+
+  // A wrong FOREST / TUSSOCK press: the same consequence as a wrong console boost (Simulation.onWrongBoost).
+  _wrongBoost(g) {
+    const s = g && g.simulation;
+    if (!s) return;
+    if (s.onWrongBoost) s.onWrongBoost();
+    else if (s.resetHabitatLift) s.resetHabitatLift();
+  },
 
   press(g, id) {
     const b = this.BUTTONS.find(x => x.id === id);
@@ -806,34 +814,37 @@ const InstallHUD = {
   TL_MARKER_H: 30,       // event-marker pin height (38×54 art; its tip rests on the bar)
   _tlOK(img) { return !!(img && img.width > 0 && img.height > 0); },
 
-  // The bar/track sprite stretched across [x0, x0+w], centred on the axis at `ay`. → true if drawn.
-  _tlBarSprite(x0, w, ay) {
+  // The bar/track sprite stretched across [x0, x0+w], centred on the axis at `ay`; `h` overrides the
+  // thickness (the visitor bar is thicker, so the climate ribbon fits inside it). → true if drawn.
+  _tlBarSprite(x0, w, ay, h) {
     if (!this._tlOK(this._tlBar)) return false;
-    const h = this.TL_BAR_H;
+    if (!(h > 0)) h = this.TL_BAR_H;
     noTint(); imageMode(CORNER);
     image(this._tlBar, x0, ay - h / 2, w, h);
     return true;
   },
-  // The playhead token centred on the axis at (px, ay). → true if drawn.
-  _tlPlayheadSprite(px, ay) {
+  // The playhead token centred on the axis at (px, ay); `h` overrides its height. → true if drawn.
+  _tlPlayheadSprite(px, ay, h) {
     const ph = this._tlPlayhead;
     if (!this._tlOK(ph)) return false;
-    const h = this.TL_PLAYHEAD_H, wd = h * (ph.width / ph.height);
+    if (!(h > 0)) h = this.TL_PLAYHEAD_H;
+    const wd = h * (ph.width / ph.height);
     noTint(); imageMode(CENTER);
     image(ph, px, ay, wd, h);
     imageMode(CORNER);
     return true;
   },
-  // The event-marker pin for eruption `idx` (0-based), its downward tip resting on the bar at
-  // (mx, ay) so the pin body floats above the axis; `h` overrides the height (the visitor
-  // timeline sizes pins by tier). → true if drawn.
-  _tlMarkerSprite(idx, mx, ay, h) {
+  // The event-marker pin for eruption `idx` (0-based), its tip at (mx, ay): by default pointing down
+  // so the pin body floats above the axis; `below` flips it to hang UNDER the bar, tip up. `h`
+  // overrides the height (the visitor timeline sizes pins by tier). → true if drawn.
+  _tlMarkerSprite(idx, mx, ay, h, below) {
     const arr = this._tlMarkers, mk = arr && arr[idx % arr.length];
     if (!this._tlOK(mk)) return false;
     if (!(h > 0)) h = this.TL_MARKER_H;
     const wd = h * (mk.width / mk.height);
     noTint(); imageMode(CENTER);
-    image(mk, mx, ay - h / 2, wd, h);   // centre half a pin-height up → its bottom tip sits on the axis
+    if (below) { push(); translate(mx, ay + h / 2); scale(1, -1); image(mk, 0, 0, wd, h); pop(); }
+    else image(mk, mx, ay - h / 2, wd, h);   // centre half a pin-height up → its bottom tip sits on the axis
     imageMode(CORNER);
     return true;
   },
@@ -928,7 +939,7 @@ const InstallHUD = {
   // On the wall the five buttons are physical, so their on-screen twins only appear in debug —
   // this is the clean, uncluttered visitor layout.
   VIS_STRIP_H: 64,
-  VIS_AXIS_UP: 168,          // px from the top of the bottom strip up to the timeline axis (was 128)
+  VIS_AXIS_UP: 136,          // px from the top of the bottom strip up to the timeline axis (only the eruption names sit under it)
   VIS_INSET: 0.10,           // horizontal inset each side, as a fraction of canvas width (compacted from the debug strip)
   _visAxisY(H) { return (H - this.VIS_STRIP_H) - this.VIS_AXIS_UP; },
   renderVisitorTimeline(g, W, H) {
@@ -945,30 +956,36 @@ const InstallHUD = {
     pop();
   },
 
-  // The VISITOR timeline body: one bar, coloured as the CLIMATE RIBBON (green interglacial, blue
-  // glacial, baked once from Climate), so a goal's "the next glacial" is visible ahead of the
-  // playhead. Uplift stays a faint white wedge riding on it, so the "river older than the mountains"
-  // takeaway survives. The two eruptions that open and close the window are carried by the bar's END
-  // LABELS (date + eruption) instead of pins, which also keeps the start pin out from under the
-  // playhead. The two mid-window eruptions are pins sized by tier, each with a volcano glyph and a
-  // readable name; the pin of an eruption the caption is announcing grows. A trail streams behind the
-  // playhead while geology moves. Assumes an active push().
+  // The VISITOR timeline body: the bar sprite, with the CLIMATE RIBBON (green interglacial, blue
+  // glacial, baked once from Climate) laid in its inner channel so the bar's outline and rim still
+  // show, and a goal's "the next glacial" is visible ahead of the playhead. Uplift stays a faint white
+  // wedge riding on it, so the "river older than the mountains" takeaway survives. Every eruption is a
+  // pin hanging UNDER the bar, sized by tier, with its name beneath; the two that open and close the
+  // window sit on the bar's ends, their name and date on a lower row (Kaukatea is too close to
+  // Kidnappers for the two to share one). The pin of an eruption the caption is announcing grows. A
+  // trail streams behind the playhead while geology moves. Assumes an active push().
+  VIS_BAR_H: 24,             // the visitor bar's thickness (the debug strip keeps TL_BAR_H)
+  VIS_PLAYHEAD_H: 32,        // …and its playhead token, a little proud of the bar
   PIN_TIER_SCALE: { minor: 0.95, major: 1.2, catastrophic: 1.4 },
-  PIN_GROW: 0.3,             // extra pin scale while its eruption's caption is fully up (VIS_GOAL_GAP clears the largest)
-  TL_LABEL_SIZE: 22,         // the pin and end labels (were 11 px: unreadable past ~2 m)
-  TL_END_BELOW: 20,          // px from the axis down to the top of the end labels
-  TL_END_LINE_H: 30,         // between an end label's date and its eruption line
+  PIN_GROW: 0.2,             // extra pin scale while its eruption's caption is fully up
+  PIN_TUCK: 3,               // px a pin's tip tucks up under the bar's lower edge
+  TL_LABEL_SIZE: 22,         // the eruption names and end dates (were 11 px: unreadable past ~2 m)
+  TL_LABEL_GAP: 8,           // px from a pin's foot to the top of its name
+  TL_END_BELOW: 104,         // px from the axis down to the end eruptions' names (below the mid names, a grown pin's too)
+  TL_END_LINE_H: 28,         // between an end eruption's name and its date
   TRAIL_MAX_PX: 110,         // the playhead's trail at DeepTime.tlMaxRate
   TRAIL_COL: [255, 214, 130],
   _TL_COL: [255, 255, 255, 235],
   _trailRate: 0,
+  // px from the axis down to a mid-window eruption's name centre, for a pin `ph` tall.
+  _tlNameY(ph) { return this.VIS_BAR_H / 2 - this.PIN_TUCK + ph + this.TL_LABEL_GAP + this.TL_LABEL_SIZE * 0.675; },
   _visitorTimelineBody(g, x0, w, ay) {
-    const yr = DeepTime.yearsBP;
-    // ---- the bar/track (sprite, or the single white line as fallback), then the climate ribbon on it ----
-    if (!this._tlBarSprite(x0, w, ay)) {
+    const yr = DeepTime.yearsBP, bh = this.VIS_BAR_H;
+    // ---- the bar/track (sprite, or the single white line as fallback), then the climate ribbon in it ----
+    if (!this._tlBarSprite(x0, w, ay, bh)) {
       stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
     }
-    this._climateRibbon(x0, w, ay);
+    this._climateRibbon(x0, w, ay, bh);
     // ---- uplift: a faint white wedge on the line (no backing bar) ----
     const upNow = DeepTime.yearToX(yr, x0, w);
     const upH = 6;
@@ -978,25 +995,23 @@ const InstallHUD = {
     vertex(upNow, ay);
     vertex(upNow, ay - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the eruptions: mid-window pins + the two end labels ----
+    // ---- the eruptions: every pin hangs under the bar, its name beneath ----
     const ER = DeepTime.ERUPTIONS, labs = this._erLabels(), s = this.TL_LABEL_SIZE, C = this._cap;
+    const tipY = ay + bh / 2 - this.PIN_TUCK;
     for (let i = 0; i < ER.length; i++) {
       const e = ER[i], L = labs[i];
-      if (L.end) {
-        const left = e.yearsBP >= DeepTime.yearsStart, xA = left ? x0 : x0 + w, al = left ? LEFT : RIGHT;
-        const y1 = ay + this.TL_END_BELOW + s * 0.675;
-        this._haloText(L.date, OpenDyslexic, 'dys', s, al, CENTER, xA, y1, this._TL_COL);
-        this._glyphLabel(L.text, L.w, xA, y1 + this.TL_END_LINE_H, al);
-        continue;
-      }
-      const mx = DeepTime.yearToX(e.yearsBP, x0, w);
+      const mx = L.end ? (L.start ? x0 : x0 + w) : DeepTime.yearToX(e.yearsBP, x0, w);
       let sc = this.PIN_TIER_SCALE[e.tier] || 1;
       if (C.e === e) sc *= 1 + this.PIN_GROW * C.a;
       const ph = this.TL_MARKER_H * sc;
-      const drewPin = this._tlMarkerSprite(i, mx, ay, ph);
-      if (!drewPin) { stroke(255); strokeWeight(2); line(mx, ay - 5, mx, ay + 5); }
-      const labelCy = (drewPin ? ay - ph - 6 : ay - 10) - s * 0.675;
-      this._glyphLabel(L.text, L.w, mx, labelCy, CENTER);
+      if (!this._tlMarkerSprite(i, mx, tipY, ph, true)) { stroke(255); strokeWeight(2); line(mx, tipY, mx, tipY + 12); }
+      if (L.end) {
+        const al = L.start ? LEFT : RIGHT, ny = ay + this.TL_END_BELOW;
+        this._haloText(L.text, OpenDyslexic, 'dys', s, al, CENTER, mx, ny, this._TL_COL);
+        this._haloText(L.date, OpenDyslexic, 'dys', s, al, CENTER, mx, ny + this.TL_END_LINE_H, this._TL_COL);
+      } else {
+        this._haloText(L.text, OpenDyslexic, 'dys', s, CENTER, CENTER, mx, ay + this._tlNameY(ph), this._TL_COL);
+      }
     }
     // ---- the speed trail, behind (older than) the playhead ----
     const px = DeepTime.yearToX(yr, x0, w);
@@ -1007,59 +1022,69 @@ const InstallHUD = {
     if (len > 3) {
       const N = 8, seg = len / N, T = this.TRAIL_COL;
       noStroke();
-      // taller than the ribbon (RIBBON_H) so it reads as a streak over it, not a tint of it
+      // taller than the ribbon (the bar's inner channel) so it reads as a streak over it, not a tint of it
       for (let i = 0; i < N; i++) { fill(T[0], T[1], T[2], 190 * (1 - i / N)); rect(px - seg * (i + 1), ay - 8, seg + 0.5, 16, 3); }
     }
     // ---- playhead (token sprite, or the white dot fallback) ----
-    if (!this._tlPlayheadSprite(px, ay)) {
+    if (!this._tlPlayheadSprite(px, ay, this.VIS_PLAYHEAD_H)) {
       stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
       stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
     }
   },
 
-  // The climate ribbon: the glacial index across the window, green → blue through the regime cut,
-  // baked ONCE into a buffer (the curve is fixed and Climate is pure) and rebuilt only when the bar's
-  // width changes, remove()ing the old buffer (the createGraphics-leak rule). → true if drawn.
-  RIBBON_H: 10,
+  // The climate ribbon: the glacial index across the window, green → blue through the regime cut, laid
+  // in the bar sprite's INNER CHANNEL (RIBBON_IN_*: where Timeline_Bar.png's dark interior runs), so
+  // the bar's outline and gold rim still frame it. Baked ONCE into a buffer at the size it is drawn
+  // (the curve is fixed and Climate is pure; the rounded ends need the true size), rebuilt only when
+  // the bar's size changes, remove()ing the old buffer (the createGraphics-leak rule). → true if drawn.
+  RIBBON_IN_TOP: 15 / 44,     // the channel's top row, as a fraction of the bar's height (44 px art)
+  RIBBON_IN_BOT: 29 / 44,     // …and the row below its bottom
+  RIBBON_IN_END: 20 / 3586,   // its inset from each end, as a fraction of the bar's width (3586 px art)
+  RIBBON_ALPHA: 225,
   RIBBON_SOFT: 0.12,          // ± glacial index over which the colour blends at the regime cut
-  _ribbon: null,              // { buf, w }
-  _climateRibbon(x0, w, ay) {
+  _ribbon: null,              // { buf, w, h }
+  _climateRibbon(x0, w, ay, bh) {
     if (typeof Climate === 'undefined' || !Climate.glacialIndexAt || typeof createGraphics !== 'function') return false;
-    const wi = Math.max(1, Math.round(w));
+    const top = bh * this.RIBBON_IN_TOP, rh = Math.max(2, Math.round(bh * (this.RIBBON_IN_BOT - this.RIBBON_IN_TOP)));
+    const inset = Math.max(1, w * this.RIBBON_IN_END), wi = Math.max(1, Math.round(w - 2 * inset));
     let R = this._ribbon;
-    if (!R || R.w !== wi) {
+    if (!R || R.w !== wi || R.h !== rh) {
       if (R && R.buf && R.buf.remove) R.buf.remove();
-      const h = this.RIBBON_H, buf = createGraphics(wi, h);
+      const buf = createGraphics(wi, rh);
       const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null;
       const warm = TG ? TG.climateColor(false) : [84, 210, 96], cold = TG ? TG.climateColor(true) : [150, 205, 236];
       const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5, soft = this.RIBBON_SOFT;
-      const span = DeepTime.yearsStart - DeepTime.yearsEnd;
+      const span = DeepTime.yearsStart - DeepTime.yearsEnd, A = this.RIBBON_ALPHA;
       buf.clear(); buf.noStroke();
       for (let x = 0; x < wi; x++) {
-        const gi = Climate.glacialIndexAt(DeepTime.yearsStart - ((x + 0.5) / wi) * span);
+        // the ribbon's columns map back onto the whole bar, so a date sits under its own x on the axis
+        const gi = Climate.glacialIndexAt(DeepTime.yearsStart - ((inset + x + 0.5) / w) * span);
         let t = (gi - (thr - soft)) / (2 * soft); t = t < 0 ? 0 : t > 1 ? 1 : t; t = t * t * (3 - 2 * t);
-        buf.fill(warm[0] + (cold[0] - warm[0]) * t, warm[1] + (cold[1] - warm[1]) * t, warm[2] + (cold[2] - warm[2]) * t, 235);
-        buf.rect(x, 0, 1, h);
+        buf.fill(warm[0] + (cold[0] - warm[0]) * t, warm[1] + (cold[1] - warm[1]) * t, warm[2] + (cold[2] - warm[2]) * t, A);
+        buf.rect(x, 0, 1, rh);
       }
-      R = this._ribbon = { buf, w: wi };
+      // round the ends to follow the channel's own rounded caps
+      const dc = buf.drawingContext;
+      if (dc && dc.roundRect) {
+        dc.save(); dc.globalCompositeOperation = 'destination-in'; dc.fillStyle = '#000';
+        dc.beginPath(); dc.roundRect(0, 0, wi, rh, rh / 2); dc.fill(); dc.restore();
+      }
+      R = this._ribbon = { buf, w: wi, h: rh };
     }
     imageMode(CORNER); noTint();
-    image(R.buf, x0, ay - this.RIBBON_H / 2, w, this.RIBBON_H);
+    image(R.buf, Math.round(x0 + inset), Math.round(ay - bh / 2 + top), wi, rh);
     return true;
   },
 
-  // Per-eruption label records, built once: { end, text, w, date }. `end` marks the two that open and
-  // close the window (drawn as the bar's end labels). Widths are measured here, not per frame.
+  // Per-eruption label records, built once: { end, start, text, date }. `end` marks the two that open
+  // and close the window (their names sit on the lower row, with the date), `start` the opening one.
   _erLabelCache: null,
   _erLabels() {
     if (this._erLabelCache) return this._erLabelCache;
-    const s = this.TL_LABEL_SIZE;
-    push(); textFont(OpenDyslexic); textSize(s);
     this._erLabelCache = DeepTime.ERUPTIONS.map(e => {
-      const text = e.name + ' eruption';
-      return { end: e.yearsBP >= DeepTime.yearsStart || !!e.terminal, text, w: textWidth(text), date: this._yearsAgo(e.yearsBP) };
+      const start = e.yearsBP >= DeepTime.yearsStart;
+      return { end: start || !!e.terminal, start, text: e.name + ' eruption', date: this._yearsAgo(e.yearsBP) };
     });
-    pop();
     return this._erLabelCache;
   },
   _yearsAgo(yr) {
@@ -1067,55 +1092,34 @@ const InstallHUD = {
     return Math.round(yr).toLocaleString() + ' years ago';
   },
 
-  // A drawn volcano glyph (no emoji: CLAUDE.md) — a cone with an ash plume — left edge at x, centred
-  // on cy, `h` tall; its width is h·GLYPH_ASPECT. Reads as "eruption" ahead of every eruption name.
-  GLYPH_ASPECT: 1.1,
-  _volcanoGlyph(x, cy, h) {
-    const w = h * this.GLYPH_ASPECT, by = cy + h * 0.5, ty = cy + h * 0.02;
-    noStroke();
-    fill(8, 14, 12, 170);                                                     // halo
-    quad(x + 2, by + 2, x + w * 0.36 + 2, ty + 2, x + w * 0.64 + 2, ty + 2, x + w + 2, by + 2);
-    fill(224, 138, 92);                                                       // the cone
-    quad(x, by, x + w * 0.36, ty, x + w * 0.64, ty, x + w, by);
-    fill(214, 214, 206, 235);                                                 // the plume
-    circle(x + w * 0.48, cy - h * 0.2, h * 0.38);
-    circle(x + w * 0.66, cy - h * 0.38, h * 0.3);
-    circle(x + w * 0.34, cy - h * 0.36, h * 0.24);
-  },
-  // Glyph + label as one unit, aligned (LEFT / CENTER / RIGHT) on x, centred on cy. tw = the text's width.
-  _glyphLabel(str, tw, x, cy, align) {
-    const s = this.TL_LABEL_SIZE, gw = s * this.GLYPH_ASPECT, gap = 7, total = gw + gap + tw;
-    const sx = align === CENTER ? x - total / 2 : align === RIGHT ? x - total : x;
-    this._volcanoGlyph(sx, cy, s);
-    this._haloText(str, OpenDyslexic, 'dys', s, LEFT, CENTER, sx + gw + gap, cy, this._TL_COL);
-  },
   // Text with the HUD's soft dark halo under it (the goal / year format).
   _haloText(str, font, tag, size, ah, av, x, y, col) {
     this._blitText(str, font, tag, size, ah, av, x + 2, y + 3, this._GOAL_HALO);
     this._blitText(str, font, tag, size, ah, av, x, y, col);
   },
 
-  // VISITOR year — the one always-on readout, centred just BELOW the timeline axis, so the
-  // timeline reads goal (above) → axis → date (below). Clears the playhead token (TL_PLAYHEAD_H).
-  // A soft dark halo keeps it legible over the busy scene; no strip behind it.
+  // VISITOR year: the one always-on readout, centred ABOVE the timeline between the goal and the
+  // climate line, so the stack reads goal → year → climate → axis, with only the eruption pins and
+  // names under the bar. A soft dark halo keeps it legible over the busy scene; no strip behind it.
+  // The climate line is drawn from here too, so the two readouts move as one.
   VIS_YEAR_SIZE: 42,
-  VIS_YEAR_BELOW: 46,        // px from the timeline axis down to the year's centre
+  VIS_YEAR_ABOVE: 100,       // px from the year's centre down to the timeline axis
   renderVisitorYear(g, W, H) {
-    const label = DeepTime.label();
-    const cx = W / 2, cy = this._visAxisY(H) + this.VIS_YEAR_BELOW;
+    const label = DeepTime.label(), ay = this._visAxisY(H);
+    const cx = W / 2, cy = ay - this.VIS_YEAR_ABOVE;
     push();
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
-    this._renderClimateLine(cx, cy + this.VIS_CLIMATE_BELOW);
+    this._renderClimateLine(cx, ay - this.VIS_CLIMATE_ABOVE);
     pop();
   },
 
-  // "The climate is INTERGLACIAL / GLACIAL" under the year: the state in the climate boost colours
-  // (green / blue, as the goal verdicts and boost outlines). The same regime cut as the boost gate
-  // (TMGoals.glacialNow → Climate.regimeThreshold). Centred as one line, so the two parts' widths are
-  // measured once per regime change, never per frame.
+  // "The climate is INTERGLACIAL / GLACIAL" ABOVE the timeline, under the year: the state in the climate
+  // boost colours (green / blue, as the goal verdicts and boost outlines). The same regime cut as the
+  // boost gate (TMGoals.glacialNow → Climate.regimeThreshold). Centred as one line, so the two parts'
+  // widths are measured once per regime change, never per frame.
   VIS_CLIMATE_SIZE: 28,
-  VIS_CLIMATE_BELOW: 42,     // px from the year's centre down to this line's centre
+  VIS_CLIMATE_ABOVE: 50,     // px from this line's centre down to the timeline axis
   CLIMATE_PREFIX: 'The climate is ',
   _climateLine: null,        // { glacial, word, col, prefixW, wordW }
   _renderClimateLine(cx, cy) {
@@ -1135,65 +1139,61 @@ const InstallHUD = {
     this._blitText(this.CLIMATE_PREFIX, FreckleFace, 'freckle', s, LEFT, CENTER, x0, cy, this._GOAL_COL);
     this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW + 2, cy + 2, this._GOAL_HALO);
     this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW, cy, c.col);
-    this._renderSpeed(cx, cy + this.VIS_SPEED_BELOW);
   },
 
-  // The SPEED readout under the climate line (the boost tally that sat here moved to the top band).
-  // It reads the LIVE rate, DeepTime.geoRate: a boost's time-lapse, the dial or a deep burst, whichever
-  // is playing. That way the biggest fast-forward in the experience, a boost's time-lapse at the dial's
-  // rest, is named too. Drawn chevrons (1–4 by speed band) read without reading the number. The rate
-  // snaps to a short list of round numbers and a new number holds SPEED_HOLD_MS, so the text cache
-  // sees ~18 strings, never a per-frame value. At rest (geology paused, the default) it invites the dial.
-  VIS_SPEED_SIZE: 36,
-  VIS_SPEED_PAUSED_SIZE: 28,
-  VIS_SPEED_BELOW: 46,        // px from the climate line's centre down to this line's centre
+  // The SPEED readout, top-centre between the two top-band corners: "Time travelling forward!" over the
+  // rate in a larger line ("5,000 years per second"). It reads the LIVE rate, DeepTime.geoRate: a
+  // boost's time-lapse, the dial or a deep burst, whichever is playing, so a boost's time-lapse at the
+  // dial's rest is named too. Paused (the default) it shows nothing. The rate snaps to a short list of
+  // round numbers and a new number holds SPEED_HOLD_MS, so the text cache sees ~18 strings, never a
+  // per-frame value. It fades in and out over SPEED_FADE_MS, and yields its slot to the eruption
+  // caption while that is up (the two share the top centre; neither ever draws over the other).
+  SPEED_TOP: 36,              // px from the top edge to the head line's top
+  SPEED_HEAD: 'Time travelling forward!',
+  SPEED_HEAD_SIZE: 30,
+  SPEED_RATE_SIZE: 52,
+  SPEED_LINE_GAP: 10,         // px between the two lines' boxes
+  SPEED_HALF_W: 300,          // half the block's width at its widest, for the keep-out
   SPEED_STEPS: [1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000],
   SPEED_HOLD_MS: 400,
-  SPEED_PAUSED: 'Time is paused. Turn the dial to travel!',
+  SPEED_FADE_MS: 500,         // ≥ 500 ms (photosensitivity)
   SPEED_COL: [255, 210, 120],
-  _SPEED_PAUSED_COL: [236, 244, 240, 215],
-  _speed: null,               // { step, label, w, size, at }
-  _speedLabelFor(step) { return '1 second = ' + step.toLocaleString() + (step === 1 ? ' year' : ' years'); },
+  _speed: null,               // { step, label, at, a, last }
+  _speedLabelFor(step) { return step.toLocaleString() + (step === 1 ? ' year per second' : ' years per second'); },
   _speedStep(rate) {
     const S = this.SPEED_STEPS, lr = Math.log(rate);
     let best = S[0], bd = Infinity;
     for (let i = 0; i < S.length; i++) { const d = Math.abs(Math.log(S[i]) - lr); if (d < bd) { bd = d; best = S[i]; } }
     return best;
   },
-  _speedChevrons(step) { return step <= 20 ? 1 : step <= 300 ? 2 : step <= 2000 ? 3 : 4; },
-  _renderSpeed(cx, cy) {
+  // The two lines' centres, from the top edge.
+  _speedHeadY() { return this.SPEED_TOP + this.SPEED_HEAD_SIZE * 0.675; },
+  _speedRateY() { return this.SPEED_TOP + this.SPEED_HEAD_SIZE * 1.35 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 0.675; },
+  _speedBot()   { return this.SPEED_TOP + this.SPEED_HEAD_SIZE * 1.35 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 1.35; },
+  _renderSpeed(W) {
     if (typeof DeepTime === 'undefined') return;
     const rate = DeepTime.geoRate > 0 ? DeepTime.geoRate : 0, now = millis();
-    const S = this._speed || (this._speed = { step: -1, label: null, w: 0, size: 0, at: -1e9 });
+    const S = this._speed || (this._speed = { step: 0, label: null, at: -1e9, a: 0, last: 0 });
     const step = rate > 0.5 ? this._speedStep(rate) : 0;
-    // a start or a stop shows at once; a change of speed waits out the hold (no number flicker on a ramp)
-    if (step !== S.step && (S.step <= 0 || step === 0 || now - S.at >= this.SPEED_HOLD_MS)) {
-      S.step = step; S.at = now;
-      S.label = step ? this._speedLabelFor(step) : this.SPEED_PAUSED;
-      S.size = step ? this.VIS_SPEED_SIZE : this.VIS_SPEED_PAUSED_SIZE;
-      push(); textFont(FreckleFace); textSize(S.size); S.w = textWidth(S.label); pop();
+    // a start shows its number at once; a change of speed waits out the hold (no number flicker on a
+    // ramp); a stop keeps the last number while it fades out
+    if (step > 0 && step !== S.step && (S.step <= 0 || now - S.at >= this.SPEED_HOLD_MS)) {
+      S.step = step; S.at = now; S.label = this._speedLabelFor(step);
     }
-    const gh = S.size * 0.62, gap = 14;
-    const n = S.step > 0 ? this._speedChevrons(S.step) : 0;
-    const cw = gh * 0.62, cg = gh * 0.18;                             // one chevron's width, the gap between
-    const gw = n ? n * cw + (n - 1) * cg : gh * 0.7;                  // chevrons, or the pause glyph
-    const x = cx - (gw + gap + S.w) / 2, top = cy - gh / 2, bot = cy + gh / 2;
-    noStroke();
-    if (n) {
-      const C = this.SPEED_COL, ph = now / 1000 * Math.PI * 2 * 1.2;   // a slow 1.2 Hz ripple, left to right
-      for (let i = 0; i < n; i++) {
-        const lx = x + i * (cw + cg);
-        fill(8, 14, 12, 150); triangle(lx + 2, top + 3, lx + cw + 2, cy + 3, lx + 2, bot + 3);
-        fill(C[0], C[1], C[2], 255 * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(ph - i * 1.1))));
-        triangle(lx, top, lx + cw, cy, lx, bot);
-      }
-      this._haloText(S.label, FreckleFace, 'freckle', S.size, LEFT, CENTER, x + gw + gap, cy, C);
-    } else {
-      const bw = gh * 0.24, P = this._SPEED_PAUSED_COL;
-      fill(8, 14, 12, 150); rect(x + 2, top + 3, bw, gh); rect(x + gh * 0.46 + 2, top + 3, bw, gh);
-      fill(P[0], P[1], P[2], P[3]); rect(x, top, bw, gh); rect(x + gh * 0.46, top, bw, gh);
-      this._haloText(S.label, FreckleFace, 'freckle', S.size, LEFT, CENTER, x + gw + gap, cy, P);
-    }
+    let d = S.last ? (now - S.last) / this.SPEED_FADE_MS : 0;
+    if (d > 0.1) d = 0.1;                                           // a long frame gap never jumps the fade
+    S.last = now;
+    S.a += step > 0 ? d : -d;
+    if (S.a > 1) S.a = 1;
+    if (S.a <= 0) { S.a = 0; S.step = 0; return; }                  // gone: a restart shows its own number at once
+    const capA = (this._cap && this._cap.e) ? this._cap.a : 0;      // the eruption caption takes the slot
+    const a = S.a * S.a * (3 - 2 * S.a) * (1 - capA);
+    if (a <= 0.004 || !S.label) return;
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    dc.globalAlpha = a0 * a;                                        // the fade rides globalAlpha, never a per-frame tint
+    this._haloText(this.SPEED_HEAD, FreckleFace, 'freckle', this.SPEED_HEAD_SIZE, CENTER, CENTER, W / 2, this._speedHeadY(), this._GOAL_COL);
+    this._haloText(S.label, FreckleFace, 'freckle', this.SPEED_RATE_SIZE, CENTER, CENTER, W / 2, this._speedRateY(), this.SPEED_COL);
+    dc.globalAlpha = a0;
   },
 
   // VISITOR goal — floated ABOVE the bottom timeline in the SAME format as the year (FreckleFace,
@@ -1204,7 +1204,7 @@ const InstallHUD = {
   // verdict never runs into the timeline. A change of line CROSSFADES (GOAL_FADE_MS, above the
   // 500 ms photosensitivity floor) via globalAlpha, never a per-frame tint (see per-frame tint stutter).
   VIS_GOAL_SIZE: 50,          // the year's format (FreckleFace), a touch larger than the year itself
-  VIS_GOAL_GAP: 124,          // px above the timeline axis — clears the largest eruption pin (a catastrophic one, grown) + its label
+  VIS_GOAL_GAP: 160,          // px above the timeline axis to the goal's last line — clears the year and climate lines under it
   GOAL_WRAP: 0.88,            // max line width, as a fraction of the canvas width
   GOAL_LINE_H: 1.12,          // line spacing, × VIS_GOAL_SIZE
   GOAL_FADE_MS: 800,          // crossfade between successive lines (goal → verdict → next goal)
@@ -1265,14 +1265,13 @@ const InstallHUD = {
   // Where the HUD stands over the world, for overlays lettered over it (RiverNames) to keep clear of:
   // { top, bottom, rects: [[x0, y0, x1, y1], …] } in 1080-space px. The top strip's height is kept
   // clear in both modes. Visitor: the goal (held at LABEL_GOAL_LINES lines, or more while a longer one
-  // shows) and the timeline with its pins as one full-width band, the year, climate line and speed
-  // readout as a centred block, the bar's two end labels, and the two top-band panels at their largest
-  // (a full row of solved plants), so the keep-out never changes as the tallies grow; the map shows
-  // round the blocks. The eruption caption is transient and draws its own card, so it is not kept out.
-  // Debug: its top strip and button bar. Allocates, so call it when labelSig() changes, not per frame.
+  // shows), the year, the climate line, the timeline and the mid-window pins with their names as one
+  // full-width band, the bar's two end labels, the two top-band corners at their largest (a full row of
+  // solved plants) and the top-centre slot the speed readout and the eruption caption share, so the
+  // keep-out never changes as the tallies grow or time starts and stops; the map shows round the
+  // blocks. Debug: its top strip and button bar. Allocates, so call it when labelSig() changes, not per frame.
   LABEL_GOAL_LINES: 2,
-  LABEL_YEAR_HALF_W: 330,     // half the widest of the year / climate / speed lines (the paused invitation)
-  LABEL_END_W: 300,           // the bar's end labels (date + glyph + eruption)
+  LABEL_END_W: 300,           // the bar's end labels (eruption name + date)
   _labelGoalLines() {
     const F = this._goalFade, cur = (F && F.cur.lines) ? F.cur.lines.length : 0;
     return Math.max(this.LABEL_GOAL_LINES, cur);
@@ -1284,13 +1283,16 @@ const InstallHUD = {
     const ay = this._visAxisY(H), lines = this._labelGoalLines();
     const goalTop = ay - this.VIS_GOAL_GAP - (lines - 1) * this.VIS_GOAL_SIZE * this.GOAL_LINE_H
                   - this.VIS_GOAL_SIZE * 0.7;          // the top line's upper half (_blitText's box is 1.35 em)
-    const yearBot = ay + this.VIS_YEAR_BELOW + this.VIS_CLIMATE_BELOW + this.VIS_SPEED_BELOW + this.VIS_SPEED_SIZE * 0.7;
     const inset = Math.round(W * this.VIS_INSET), xEnd = W - inset;
-    const endBot = ay + this.TL_END_BELOW + this.TL_END_LINE_H + this.TL_LABEL_SIZE * 1.4;
+    const endBot = ay + this.TL_END_BELOW + this.TL_END_LINE_H + this.TL_LABEL_SIZE * 0.7;
+    // the deepest mid-window name: the largest tier's pin, grown
+    let tmax = 1;
+    for (const k in this.PIN_TIER_SCALE) tmax = Math.max(tmax, this.PIN_TIER_SCALE[k]);
+    const pinsBot = ay + this._tlNameY(this.TL_MARKER_H * tmax * (1 + this.PIN_GROW)) + this.TL_LABEL_SIZE * 0.7;
     const G = this._tbGeom(W);
     return { top: this.TOP_H, bottom: H, rects: [
-      [0, goalTop, W, ay + this.TL_PLAYHEAD_H / 2],                              // goal + timeline + pins
-      [W / 2 - this.LABEL_YEAR_HALF_W, ay, W / 2 + this.LABEL_YEAR_HALF_W, yearBot],   // year, climate, speed
+      [0, goalTop, W, pinsBot],                                                  // goal, year, climate, timeline, pins
+      [W / 2 - this.SPEED_HALF_W, 0, W / 2 + this.SPEED_HALF_W, this._speedBot()],   // the speed readout / eruption caption slot
       [inset - 8, ay, inset + this.LABEL_END_W, endBot],                         // the bar's start label
       [xEnd - this.LABEL_END_W, ay, xEnd + 8, endBot],                           // …and its end label
       [0, 0, G.lx + G.lwMax, G.lyMax],                                           // the tallies, at their largest
@@ -1309,21 +1311,23 @@ const InstallHUD = {
   // least map (the west edge is mostly sea). Top-left, the TALLIES: big numerals for successful boosts
   // and goals solved, with the solved goals' plants drawn as their own sprites. That keeps it a
   // collection, not a score (CLAUDE.md: a goal is "a question a plant answers"). Top-right, ECOSYSTEM
-  // HEALTH: a bar filled by the plant stock the visitor has earned (Simulation.ecoRichness), dented and
-  // greyed by habitat health (Game._habitatHealth: ash, a wrong-climate boost, storm overuse, dune
-  // burial), a word for its state, and how many of the bird kinds are alive. Every change eases
-  // (≥500 ms) or pops in SIZE, never in brightness (photosensitivity). The layout is computed once per
-  // width (_tbGeom), so a frame allocates nothing; the strings are small integers and a few labels.
-  TB_MARGIN: 36,             // px from the screen edge to each panel
-  TB_PAD: 22,                // panel padding
-  TB_PANEL_ALPHA: 120,       // the soft dark backing behind each panel (0 = none)
-  TB_RADIUS: 18,
+  // HEALTH: one bar whose LENGTH is the stock the visitor has earned. An unattended land reads
+  // HEALTH_FLOOR (half full); the other half is earned by right boosts (Simulation.ecoEarned, the
+  // habitats' homeostasis lift) and lost at once by a wrong one. Habitat health (Game._habitatHealth:
+  // ash, a wrong-climate boost, storm overuse, dune burial) only GREYS the bar's colour, as it greys the
+  // scene; it no longer shortens it, which double-counted a wrong boost (tools/boostprobe.js). Top-centre,
+  // the speed readout (_renderSpeed). No backing panels: the text carries the HUD's dark halo, as the
+  // goal and year do. Every change eases (≥500 ms) or pops in SIZE, never in brightness
+  // (photosensitivity). The layout is computed once per width (_tbGeom), so a frame allocates nothing;
+  // the strings are small integers and a few labels.
+  TB_MARGIN: 36,             // px from the screen edge to each corner's block
+  TB_PAD: 22,                // inner margin of each block
   TALLY_NUM_SIZE: 80,
   TALLY_LABEL_SIZE: 30,
   TALLY_NUM_COL_W: 96,       // the numerals right-align in this column, so 7 and 12 line up
   TALLY_ROW_H: 86,
   TALLY_ICON_H: 76,
-  TALLY_ICON_MAX: 5,         // most solved plants drawn (the newest); keeps the panel clear of the caption card
+  TALLY_ICON_MAX: 5,         // most solved plants drawn (the newest); keeps the row clear of the eruption caption
   TALLY_POP_MS: 650,
   TALLY_POP: 0.2,            // extra numeral scale at the crest of a pop
   TALLY_SHOW_ZERO: true,     // false: the tallies stay hidden until the first boost
@@ -1334,15 +1338,11 @@ const InstallHUD = {
   HEALTH_W: 400,
   HEALTH_BAR_H: 30,
   HEALTH_TITLE_SIZE: 30,
-  HEALTH_WORD_SIZE: 36,
-  HEALTH_BIRD_SIZE: 26,
-  HEALTH_ASH_FLOOR: 0.4,     // a fully grey habitat (health 0) still shows this share of the earned bar
+  HEALTH_FLOOR: 0.5,         // the bar an unattended land shows: the rest (50–100 %) has to be earned
   HEALTH_EASE: 0.02,         // per-frame ease of the bar toward its target (~0.8 s at 60 fps)
   HEALTH_COL_EASE: 0.04,     // per-frame ease of the bar colour (climate hue, greyed by health)
-  HEALTH_WORDS: [[0.80, 'Thriving'], [0.62, 'Growing'], [0.42, 'Steady'], [0, 'Struggling']],
-  HEALTH_HYST: 0.025,        // a word changes only once the bar is this far past its line
   _tally: null,              // { b, bAt, g, gAt, nb, ng, sB, sG }
-  _eco: null,                // { v, r, g, b, word, bk, bt, bird }
+  _eco: null,                // { v, r, g, b }
 
   _tbG: null,
   _tbGeom(W) {
@@ -1361,18 +1361,15 @@ const InstallHUD = {
     G.row2 = G.row1 + this.TALLY_ROW_H;
     G.iconBot = G.row2 + this.TALLY_NUM_SIZE * 0.5 + 6 + this.TALLY_ICON_H;
     G.slotW = this.TALLY_ICON_H * 1.1 + 10;          // one solved plant's slot
-    G.lw = (G.labX + lw + P) - M;                    // panel width: numerals + labels
+    G.lw = (G.labX + lw + P) - M;                    // block width: numerals + labels
     G.lwMax = Math.max(G.lw, 2 * P + this.TALLY_ICON_MAX * G.slotW);
-    G.lyNoIcons = G.row2 + this.TALLY_NUM_SIZE * 0.55 + P;
     G.lyMax = G.iconBot + P;
-    G.rR = W - M;                                    // the health panel's right edge
+    G.rR = W - M;                                    // the health block's right edge
     G.rx = G.rR - this.HEALTH_W - 2 * P;             // …and its left edge
     G.barX = G.rx + P;
     G.hTitle = M + P + this.HEALTH_TITLE_SIZE * 0.6;
     G.barTop = G.hTitle + this.HEALTH_TITLE_SIZE * 0.6 + 10;
-    G.hWord = G.barTop + this.HEALTH_BAR_H + 12 + this.HEALTH_WORD_SIZE * 0.6;
-    G.hBird = G.hWord + this.HEALTH_WORD_SIZE * 0.6 + 8 + this.HEALTH_BIRD_SIZE * 0.6;
-    G.ry1 = G.hBird + this.HEALTH_BIRD_SIZE * 0.6 + P;
+    G.ry1 = G.barTop + this.HEALTH_BAR_H + P;
     return G;
   },
 
@@ -1382,6 +1379,7 @@ const InstallHUD = {
     push();
     this._renderTallies(G, now);
     this._renderHealth(g, G);
+    this._renderSpeed(W);
     pop();
   },
 
@@ -1403,11 +1401,6 @@ const InstallHUD = {
     if (T.nb !== nB) { T.nb = nB; T.sB = String(nB); }        // strings only on a change
     if (T.ng !== nG) { T.ng = nG; T.sG = String(nG); }
     const P = this.TB_PAD, nIcons = Math.min(keys.length, this.TALLY_ICON_MAX);
-    if (this.TB_PANEL_ALPHA > 0) {
-      const pw = nIcons ? Math.max(G.lw, 2 * P + nIcons * G.slotW) : G.lw;
-      noStroke(); fill(8, 14, 12, this.TB_PANEL_ALPHA);
-      rect(G.lx, G.ly, pw, (nIcons ? G.lyMax : G.lyNoIcons) - G.ly, this.TB_RADIUS);
-    }
     const NS = this.TALLY_NUM_SIZE, LS = this.TALLY_LABEL_SIZE;
     this._popText(T.sB, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row1, this._TALLY_NUM_COL, this._popScale(T.bAt, now));
     this._haloText(this.TALLY_BOOSTS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row1 + NS * 0.06, this._GOAL_COL);
@@ -1443,10 +1436,11 @@ const InstallHUD = {
 
   _renderHealth(g, G) {
     const sim = g && g.simulation;
-    const rich = (sim && sim.ecoRichness != null) ? sim.ecoRichness : 0.5;
+    let earned = (sim && sim.ecoEarned != null) ? sim.ecoEarned : 0;
+    earned = earned < 0 ? 0 : earned > 1 ? 1 : earned;
     let hh = (g && g._habitatHealth != null) ? g._habitatHealth : 1;
     hh = hh < 0 ? 0 : hh > 1 ? 1 : hh;
-    const F = this.HEALTH_ASH_FLOOR, target = rich * (F + (1 - F) * hh);
+    const F = this.HEALTH_FLOOR, target = F + (1 - F) * earned;     // half for free, the rest earned
     const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null;
     const glacial = TG ? TG.glacialNow() : false;
     const base = TG ? TG.climateColor(glacial) : (glacial ? [150, 205, 236] : [84, 210, 96]);
@@ -1454,23 +1448,11 @@ const InstallHUD = {
     const grey = EG ? EG.grey : [122, 130, 132], dz = (1 - hh) * (EG ? EG.desatMax : 0.8);
     const tr = base[0] + (grey[0] - base[0]) * dz, tg = base[1] + (grey[1] - base[1]) * dz, tb = base[2] + (grey[2] - base[2]) * dz;
     let E = this._eco;
-    if (!E) E = this._eco = { v: target, r: tr, g: tg, b: tb, word: -1, bk: -1, bt: -1, bird: null };
+    if (!E) E = this._eco = { v: target, r: tr, g: tg, b: tb };
     else {
       E.v += (target - E.v) * this.HEALTH_EASE;
       const ce = this.HEALTH_COL_EASE;
       E.r += (tr - E.r) * ce; E.g += (tg - E.g) * ce; E.b += (tb - E.b) * ce;
-    }
-    // the state word, with a hysteresis band so it never flickers on a line
-    const WD = this.HEALTH_WORDS;
-    let idx = WD.length - 1;
-    for (let i = 0; i < WD.length; i++) if (E.v >= WD[i][0]) { idx = i; break; }
-    if (E.word < 0) E.word = idx;
-    else if (idx < E.word && E.v >= WD[idx][0] + this.HEALTH_HYST) E.word = idx;
-    else if (idx > E.word && E.v < WD[E.word][0] - this.HEALTH_HYST) E.word = idx;
-    const P = this.TB_PAD;
-    if (this.TB_PANEL_ALPHA > 0) {
-      noStroke(); fill(8, 14, 12, this.TB_PANEL_ALPHA);
-      rect(G.rx, G.ly, G.rR - G.rx, G.ry1 - G.ly, this.TB_RADIUS);
     }
     this._haloText(this.HEALTH_TITLE, FreckleFace, 'freckle', this.HEALTH_TITLE_SIZE, LEFT, CENTER, G.barX, G.hTitle, this._GOAL_COL);
     const bw = this.HEALTH_W, bh = this.HEALTH_BAR_H;
@@ -1479,63 +1461,36 @@ const InstallHUD = {
     noStroke();
     const fw = (bw - 6) * (E.v < 0 ? 0 : E.v > 1 ? 1 : E.v);
     if (fw > 1) { fill(E.r, E.g, E.b); rect(G.barX + 3, G.barTop + 3, fw, bh - 6, (bh - 6) / 2); }
-    const wcol = E.word <= 1 ? base : E.word === 2 ? this._GOAL_COL
-               : ((typeof TM_GOALS !== 'undefined' && TM_GOALS.colWrong) || [150, 155, 152]);
-    this._haloText(WD[E.word][1], FreckleFace, 'freckle', this.HEALTH_WORD_SIZE, LEFT, CENTER, G.barX, G.hWord, wcol);
-    const bk = sim ? (sim.ecoBirdKinds | 0) : 0, bt = sim ? (sim.ecoBirdTotal | 0) : 0;
-    if (bt > 0) {
-      if (bk !== E.bk || bt !== E.bt) { E.bk = bk; E.bt = bt; E.bird = 'Birds: ' + Math.min(bk, bt) + ' of ' + bt + ' kinds'; }
-      this._haloText(E.bird, FreckleFace, 'freckle', this.HEALTH_BIRD_SIZE, LEFT, CENTER, G.barX, G.hBird, this._GOAL_COL);
-    }
   },
 
   // ---- the ERUPTION CAPTION -----------------------------------------------------------------------
-  // Context for the timeline's eruptions as a story beat, not text that is always on screen: a card
-  // top-centre, between the two top-band panels, naming the eruption, its date and what it did. It
-  // fades in as the playhead approaches one (within CAPTION_LEAD_S real seconds at the live rate),
-  // holds through the eruption's charge and ash cloud (GameUI draws it AFTER the cloud), and fades out.
-  // A button eruption (which seeks onto the year) and the attract's landing on Kidnappers show it under
-  // their ash cloud too. One card at a time: a new eruption waits for the old card to fade.
-  // ERUPTION_NOTES is co-design placeholder copy; the names and dates come from DeepTime.ERUPTIONS.
-  ERUPTION_NOTES: {
-    Kidnappers: 'Ash from a supervolcano in the central North Island blankets the land.',
-    Kaukatea:   'A smaller eruption dusts the land with ash.',
-    Whakamaru:  'One of the largest eruptions in New Zealand’s history buries the land in ash.',
-    Oruanui:    'Taupō’s Oruanui eruption: the most recent supereruption on Earth.'
-  },
-  CAPTION_LEAD_S: 7,
-  CAPTION_FADE_MS: 700,
-  CAPTION_W: 900,
+  // The eruption named as a story beat, not text that is always on screen: its name and date,
+  // top-centre between the two top-band corners, in the HUD's halo text (no card). It fades in the
+  // moment an eruption is INITIATED: a timeline eruption's charge (the playhead crossing it), a button
+  // eruption or the attract's landing on Kidnappers as their ash cloud opens. It holds through the
+  // charge and the cloud (GameUI draws it AFTER the cloud) and then fades out. One at a time: a new
+  // eruption waits for the old caption to fade. The names and dates come from DeepTime.ERUPTIONS.
+  CAPTION_FADE_MS: 700,       // ≥ 500 ms (photosensitivity)
   CAPTION_TOP: 36,
-  CAPTION_PAD: 22,
   CAPTION_TITLE_SIZE: 46,
   CAPTION_DATE_SIZE: 28,
-  CAPTION_NOTE_SIZE: 28,
   _CAP_TITLE_COL: [255, 214, 150],
-  _cap: { e: null, a: 0, until: 0, last: 0, title: null, date: null, lines: null, W: 0 },
+  _cap: { e: null, a: 0, until: 0, last: 0, title: null, date: null, W: 0 },
 
   _updateCaption(g, now, W) {
     const C = this._cap, ER = DeepTime.ERUPTIONS, y = DeepTime.yearsBP;
-    const rate = DeepTime.geoRate > 0 ? DeepTime.geoRate : 0;
     let want = null, until = 0;
-    // approaching: the nearest eruption ahead, within the lead time at the live rate
-    if (rate > 0) {
-      for (let i = 0; i < ER.length; i++) {
-        const e = ER[i];
-        if (e.yearsBP < y && (y - e.yearsBP) <= rate * this.CAPTION_LEAD_S && (!want || e.yearsBP > want.yearsBP)) want = e;
-      }
-      if (want) until = now + 400;
-    }
-    // firing: a timeline eruption's charge (Game._tmAutoErupt); the hold covers the ash cloud after it
-    if (!want && g && g._tmAutoErAt && g._tmAutoErupt) {
+    // a timeline eruption's charge (Game._tmAutoErupt), from its first frame; the hold covers the cloud after it
+    if (g && g._tmAutoErAt && g._tmAutoErupt) {
       want = g._tmAutoErupt; until = now + TM_TIME.cloudMillis + 1500;
     }
     // an ash cloud over an eruption year: a button eruption (it seeks onto the year), the attract landing
-    if (!want && g && g._ashCloudUntil && now < g._ashCloudUntil) {
+    // (a caption still holding from its charge keeps the cloud: the clock may have run on past its year)
+    if (!want && g && g._ashCloudUntil && now < g._ashCloudUntil && !(C.e && now < C.until)) {
       for (let i = 0; i < ER.length; i++) if (Math.abs(y - ER[i].yearsBP) <= 25000) { want = ER[i]; break; }
       if (want) until = g._ashCloudUntil + 1200;
     }
-    if (want && C.e && want !== C.e) C.until = 0;                  // fade the old card out first
+    if (want && C.e && want !== C.e) C.until = 0;                  // fade the old caption out first
     else if (want) {
       if (!C.e || C.W !== W) this._captionLayout(want, W);
       C.until = Math.max(C.until, until);
@@ -1549,24 +1504,12 @@ const InstallHUD = {
     if (C.a <= 0) { C.a = 0; if (!on) C.e = null; }
   },
 
-  // Once per caption (not per frame): its title, date and the note wrapped to the card.
+  // Once per caption (not per frame): its title and date strings.
   _captionLayout(e, W) {
     const C = this._cap;
     C.e = e; C.W = W;
     C.title = 'The ' + e.name + ' eruption';
     C.date = this._yearsAgo(e.yearsBP);
-    const note = this.ERUPTION_NOTES[e.name] || '';
-    const maxW = Math.min(this.CAPTION_W, W * 0.5) - 2 * this.CAPTION_PAD;
-    push(); textFont(FreckleFace); textSize(this.CAPTION_NOTE_SIZE);
-    const lines = [];
-    let line = '';
-    for (const word of note.split(' ')) {
-      const t = line ? line + ' ' + word : word;
-      if (line && textWidth(t) > maxW) { lines.push(line); line = word; } else line = t;
-    }
-    if (line) lines.push(line);
-    pop();
-    C.lines = lines;
   },
 
   renderEruptionCaption(g, W, H) {
@@ -1574,24 +1517,16 @@ const InstallHUD = {
     const now = millis();
     this._updateCaption(g, now, W);
     const C = this._cap;
-    if (!C.e || C.a <= 0.004 || !C.lines) return;
+    if (!C.e || C.a <= 0.004 || !C.title) return;
     const a = C.a * C.a * (3 - 2 * C.a);
-    const P = this.CAPTION_PAD, TS = this.CAPTION_TITLE_SIZE, DS = this.CAPTION_DATE_SIZE, NS = this.CAPTION_NOTE_SIZE;
-    const cw = Math.min(this.CAPTION_W, W * 0.5), cx = W / 2, top = this.CAPTION_TOP, lh = NS * 1.25;
-    const h = P + TS * 1.15 + DS * 1.35 + C.lines.length * lh + P * 0.6;
+    const TS = this.CAPTION_TITLE_SIZE, DS = this.CAPTION_DATE_SIZE, cx = W / 2;
     push();
-    noStroke(); fill(8, 14, 12, 195 * a);
-    rect(cx - cw / 2, top, cw, h, 20);
     const dc = drawingContext, a0 = dc.globalAlpha;
-    dc.globalAlpha = a0 * a;
-    let y = top + P + TS * 0.55;
-    this._blitText(C.title, FreckleFace, 'freckle', TS, CENTER, CENTER, cx, y, this._CAP_TITLE_COL);
-    y += TS * 0.6 + DS * 0.75;
-    this._blitText(C.date, FreckleFace, 'freckle', DS, CENTER, CENTER, cx, y, this._GOAL_COL);
-    y += DS * 0.6 + lh * 0.6;
-    for (let i = 0; i < C.lines.length; i++, y += lh) {
-      this._blitText(C.lines[i], FreckleFace, 'freckle', NS, CENTER, CENTER, cx, y, this._GOAL_COL);
-    }
+    dc.globalAlpha = a0 * a;              // the fade rides globalAlpha, never a per-frame tint
+    let y = this.CAPTION_TOP + TS * 0.7;
+    this._haloText(C.title, FreckleFace, 'freckle', TS, CENTER, CENTER, cx, y, this._CAP_TITLE_COL);
+    y += TS * 0.6 + DS * 0.85;
+    this._haloText(C.date, FreckleFace, 'freckle', DS, CENTER, CENTER, cx, y, this._GOAL_COL);
     dc.globalAlpha = a0;
     pop();
   },

@@ -450,8 +450,32 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
       kereru:              { target: 10, floor: 3 },
       kokako:              { target: 6, floor: 2 },
       huia:                { target: 6, floor: 2 },
-      tui:                 { target: 8, floor: 2 }
+      tui:                 { target: 8, floor: 2 },
+      eyles_harrier:       { target: 6, floor: 2 }    // fauna homeostasis only (the harrier keeps its own breeding cap)
     },
+
+    // FAUNA HOMEOSTASIS (Simulation._updateFaunaHomeostasis, 2026-11-05) — the birds, like the plants,
+    // are held at a level the visitor EARNS. With it on, `target` above is the earned-in-full level;
+    // the live target is:
+    //   (founding number → target, by the earned health ecoEarned  +  faunaLinkStep·target per banked
+    //    link step)  ×  the climate prominence  ×  the shock          — never below `floor`.
+    // Unattended the birds hold at their founding numbers (they do not multiply without boosts);
+    // above target + faunaBand the census retires the hungriest, below it a newcomer arrives now and
+    // then (faunaRecruitRate), so each kind follows its target both ways. tools/boostprobe.js measures it.
+    faunaHomeostasis:    true,
+    faunaIntervalFrames: 60,     // census cadence, real frames
+    faunaBand:           0,      // birds a species may sit over its live target before the census retires any. 0: with
+    faunaShockBand:      0,      // targets of 2–6, a bird's grace each swallowed both the climate swing and the crash
+    faunaRecruitRate:    0.1,    // below target: chance per census of a newcomer = this × the shortfall (none in a shock)
+    faunaLinkStep:       0.15,   // a matched boost of a plant linked to a bird (TM_BOOST.faunaLinks): + this share of its target…
+    faunaLinkMaxSteps:   3,      // …banked up to this many steps (the goal's answer banks two); a wrong boost clears them
+    faunaClimateWarm:    { interglacial: 1.3, glacial: 0.6 },   // forest birds (kererū, kōkako, huia, tūī, the warm moa, kiwi)
+    faunaClimateCold:    { interglacial: 0.7, glacial: 1.4 },   // open-country grazers (goose, mōho, duck, the cold moa)
+    faunaShockFloor:     0.4,    // a WRONG boost or storm OVERUSE drops every live target to this share of itself…
+    faunaShockRecoverS:  45,     // …easing back over this many real seconds (held down while the overuse lasts)
+    faunaCullRate:       0.12,   // share of a species' surplus retired per census, settling (a climate turn, a lost lift)
+    faunaShockCullRate:  0.4,    // …and in a shock: the crash the visitor sees
+    faunaCullMaxPerTick: 3,      // per species, per census
 
     autoRefound:          true,
     refoundCheckInterval: 300,   // check cadence (sim-clock dt)

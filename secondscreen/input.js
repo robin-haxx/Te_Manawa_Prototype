@@ -13,7 +13,8 @@
 //   storm                             : station 2 storm button
 //   boost                             : station 3 boost button
 //   eruptionDown, eruptionUp          : station 3 eruption (press/release → tap vs hold)
-//   dialTurn (payload ±detents), dialReset : the macro pad's TIME DIAL (relayed to the sim's DeepTime)
+//   dialTurn (payload ±detents), dialReset : the macro pad's TIME DIAL (relayed to the sim's DeepTime);
+//                                     dialReset also comes from the wheel PRESS (middle button)
 // ============================================================
 
 const TMInput = (function () {
@@ -111,6 +112,14 @@ const TMInput = (function () {
     if (n !== 0) { wheelAcc -= n * DIAL_WHEEL_STEP; emit('dialTurn', -n); }
     e.preventDefault();
   }
+  // The wheel PRESS (middle button) is the dial's push: back to paused, like the reset key. Taken on
+  // mousedown so the browser's middle-click autoscroll never starts.
+  function onMouseDown(e) {
+    if (e.button !== 1) return;
+    wheelAcc = 0;
+    emit('dialReset');
+    e.preventDefault();
+  }
 
   return {
     // app.js registers one handler: (action, payload) => { … }
@@ -121,6 +130,7 @@ const TMInput = (function () {
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
       window.addEventListener('wheel', onWheel, { passive: false });
+      window.addEventListener('mousedown', onMouseDown);
     },
     switchMode() { return SWITCH_MODE; }
   };

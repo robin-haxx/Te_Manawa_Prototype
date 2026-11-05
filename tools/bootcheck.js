@@ -1986,6 +1986,14 @@ try{
   run(600); DT.dialReset(); run(1); chk(DT.geoRate>0,'turning back to 0 eases down (not an instant stop)');
   run(600); const yS=DT.yearsBP; run(30);
   chk(DT.geoRate===0 && DT.yearsBP===yS,'...and comes to a dead stop (geology paused again)');
+  // the wheel PRESS (middle button) is the push: back to paused, and it never reaches a click handler
+  {
+    const clicks0=G.handleClick; let clicked=false; G.handleClick=function(){ clicked=true; return clicks0.apply(this,arguments); };
+    DT.dialSet(15); ctx.mouseButton=ctx.CENTER;
+    const ret=ctx.mousePressed(); ctx.mouseReleased();
+    chk(DT.dialStep===0 && ret===false && !clicked,`the wheel press pushes the dial back to paused (step ${DT.dialStep}), browser default stopped`);
+    ctx.mouseButton=ctx.LEFT; G.handleClick=clicks0;
+  }
 
   // the HUD readout draws through both timelines without throwing
   const HUD=vm.runInContext('InstallHUD',ctx);
@@ -1994,17 +2002,23 @@ try{
          HUD.renderVisitorYear(G,1080,1920); HUD.renderVisitorTopBand(G,1080,1920); HUD.renderEruptionCaption(G,1080,1920); } }
   catch(e){ threw=e.message; }
   chk(!threw,'the dial readout renders on both timelines, with the speed line, top band and caption'+(threw?` (${threw})`:''));
-  // the eruption caption: it comes up as the playhead nears an eruption at the live rate, names it, and fades
+  // the eruption caption: nothing while the playhead only nears an eruption; it comes up the moment the
+  // eruption is initiated (the timeline charge), names it, and fades once the charge and cloud are over
   try{
     const C=HUD._cap, wh=DT.ERUPTIONS.find(e=>e.name==='Whakamaru');
     C.e=null; C.a=0; C.until=0; C.last=0;
     DT.dialSet(0); DT.seekTo(wh.yearsBP+3*5000); DT.geoRate=5000;
+    G._tmAutoErAt=0; G._tmAutoErupt=null; G._ashCloudUntil=0;
     for(let i=0;i<3;i++) HUD.renderEruptionCaption(G,1920,1080);
-    chk(C.e===wh && C.title==='The Whakamaru eruption' && C.date==='349,000 years ago' && C.lines && C.lines.length>0,
-        `the caption names the eruption ahead (${C.title} · ${C.date})`);
-    DT.geoRate=0; DT.seekTo(wh.yearsBP+400000); C.until=0;
+    chk(C.e===null, 'the caption stays down while the playhead only approaches an eruption');
+    DT.seekTo(wh.yearsBP); DT.geoRate=0;
+    G._tmAutoErAt=ctx.millis(); G._tmAutoErupt=wh;
+    HUD.renderEruptionCaption(G,1920,1080);
+    chk(C.e===wh && C.title==='The Whakamaru eruption' && C.date==='349,000 years ago' && C.until>ctx.millis(),
+        `…and comes up on the charge's first frame, naming it (${C.title} · ${C.date})`);
+    G._tmAutoErAt=0; G._tmAutoErupt=null; DT.seekTo(wh.yearsBP+400000); C.until=0;
     HUD._updateCaption(G, C.last+10000, 1920);
-    chk(C.e===null && C.a===0, '…and lets it go once nothing is near');
+    chk(C.e===null && C.a===0, '…and lets it go once the eruption is over');
   }catch(e){ chk(false,'eruption caption threw: '+e.message); }
   chk(HUD._dialLabel(5000)==='>> 5,000 yrs/s' && HUD._dialLabel(DT.dialTargetRate(1))==='>> 6 yrs/s','the readout names the detent rate, rounded');
 
@@ -2276,6 +2290,103 @@ try{
   console.log(fail? `plant homeostasis: ${fail} FAILURES`
     : 'plant homeostasis: habitats hold steady unattended; correct boosts lift (capped), a wrong one fades back to the floor; lightning fades');
 }catch(e){ console.log('HOMEOSTASIS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- earned health + fauna homeostasis ----------------------------------------------------------
+// The meter: half full on an unattended land, the other half earned (Simulation.ecoEarned, the banked
+// habitat lift), greyed but never shortened by habitat health. The birds: held at their founding
+// numbers unattended (they must not multiply without boosts), raised as health is earned and by a
+// linked plant's boost, led by the climate (forest birds in the interglacial, open country in the
+// glacial), and CRASHED by a wrong boost or storm overuse, never below a floor, recovering on the real
+// clock. tools/boostprobe.js measured the gap this closes (unattended birds doubled in 4 min).
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), TB=vm.runInContext('TMBus',ctx),
+        M=vm.runInContext('LEVEL_MECHANICS',ctx), IH=vm.runInContext('InstallHUD',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  G.resetEcosystem(); DT.seekTo(122000); G.seasonManager.update(1);    // an interglacial
+  const sim=G.simulation;
+  const step=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(1); sim.update(1,1); } };
+  step(61);
+  const F=sim._fauna;
+  chk(M.faunaHomeostasis && F && F.ready && F.keys.length>=12, `every founded kind is tracked (${F?F.keys.length:0})`);
+  const count=(k)=>sim._faunaCount(k), sum=(o)=>Object.values(o).reduce((a,b)=>a+b,0);
+  const allCounts=()=>F.keys.reduce((a,k)=>a+count(k),0);
+  chk(F.keys.every(k=>F.base[k]>=sim._speciesFloor(k)), 'each kind\'s unattended level is its founding number, at least its floor');
+  chk(sim.ecoEarned===0, 'nothing is earned on an unattended land');
+
+  // the meter: half for free, the rest earned; habitat health greys it but never shortens it
+  const meter=()=>{ IH._eco=null; IH.renderVisitorTopBand(G,1920,1080); return IH._eco.v; };
+  chk(Math.abs(meter()-IH.HEALTH_FLOOR)<1e-9, `unattended the meter reads its floor (${meter()})`);
+  sim.ecoEarned=1; G._habitatHealth=0;
+  chk(Math.abs(meter()-1)<1e-9, 'fully earned it reads full, even with the habitat greyed by ash or a wrong boost');
+  G._habitatHealth=1; sim.ecoEarned=0;
+
+  // 1. Unattended: the birds hold, they do not breed up past their targets
+  step(60*60);
+  const over=F.keys.filter(k=>count(k)>F.targets[k]+(M.faunaBand??1)+1);
+  chk(over.length===0, `a minute unattended: no kind above its live target (${over.map(k=>k+' '+count(k)+'/'+F.targets[k]).join(', ')||'none'})`);
+  chk(allCounts()<=sum(F.targets)+F.keys.length, `…the cast holds near its founding level (${allCounts()} birds, targets ${sum(F.targets)})`);
+
+  // 2. Earned health raises every target; a linked boost raises its bird's
+  const t0=sum(F.targets);
+  for(const k in sim._homeo.dens) sim._homeo.lift[k]=M.homeoLiftMaxSteps;
+  step(61);
+  chk(sim.ecoEarned>0.99, `every habitat at full lift reads fully earned (${sim.ecoEarned.toFixed(2)})`);
+  chk(sum(F.targets)>=t0*1.4, `earned health lifts the bird targets (${t0} → ${sum(F.targets)})`);
+  const kt=F.targets.kereru; sim.liftFauna(['kereru'],1);
+  chk(F.targets.kereru>kt, `a boost of the kererū's plant lifts its target (${kt} → ${F.targets.kereru})`);
+
+  // 3. The climate leads: forest birds in the interglacial, open country in the glacial
+  const warmKey=F.keys.find(k=>F.clim[k]==='warm'), coldKey=F.keys.find(k=>F.clim[k]==='cold');
+  const at=(yr,k)=>{ DT.seekTo(yr); G.seasonManager.update(1); return sim._faunaClimate(F,M,k); };
+  chk(warmKey && coldKey, `there are warm- and cold-leaning kinds (${warmKey}, ${coldKey})`);
+  if(warmKey && coldKey){
+    chk(at(122000,warmKey)>at(20000,warmKey) && at(20000,coldKey)>at(122000,coldKey),
+        `${warmKey} leads in the interglacial, ${coldKey} in the glacial`);
+  }
+  DT.seekTo(122000); G.seasonManager.update(1);
+
+  // 4. A wrong boost: nothing earned, the links gone, every target shocked — and the birds crash to it
+  const before=allCounts();
+  // the census itself must never take a kind under its floor (natural losses can; a newcomer then tops it up)
+  const culledBelow=[], cullOne=sim._faunaCullOne;
+  sim._faunaCullOne=function(kind,key){ const r=cullOne.call(this,kind,key); if(r && this._faunaCount(key)<this._speciesFloor(key)) culledBelow.push(key); return r; };
+  sim.onWrongBoost();
+  chk(sim.ecoEarned===0 && Object.keys(F.link).length===0 && F.shock<=M.faunaShockFloor+1e-9, 'a wrong boost clears the earned lift and the links and shocks the birds');
+  step(60*12);
+  sim._faunaCullOne=cullOne;
+  const high=F.keys.filter(k=>count(k)>F.targets[k]+1);
+  chk(high.length===0, `12 s on, every kind is down at its shocked target (${high.map(k=>k+' '+count(k)+'/'+F.targets[k]).join(', ')||'all'})`);
+  chk(culledBelow.length===0, `…and the crash never retires a bird under its kind's floor (${culledBelow.join(', ')||'none'})`);
+  chk(allCounts()<before, `the cast visibly crashes (${before} → ${allCounts()} birds)`);
+  //    a kind that natural losses take under its floor mid-shock is topped back up (the protected minimum)
+  const lowKey=F.keys.find(k=>F.kind[k]==='moa' && sim._speciesFloor(k)>=3);
+  if(lowKey){
+    let left=1; for(const m of sim.moas) if(m.alive && m.speciesKey===lowKey){ if(left>0) left--; else m.alive=false; }
+    sim._invalidateCache(); F.shock=M.faunaShockFloor; step(60*30);
+    chk(count(lowKey)>=2, `a ${lowKey} knocked to 1 in a shock gets a newcomer toward its floor (${count(lowKey)}/${sim._speciesFloor(lowKey)})`);
+  }
+  step(60*Math.ceil((M.faunaShockRecoverS??45)+2));
+  chk(F.shock===1, 'the shock eases off on the real clock');
+
+  // 5. Storm overuse holds the shock down while it lasts
+  G._stormOveruse=true; step(120);
+  chk(F.shock<=M.faunaShockFloor+1e-9, 'storm overuse shocks the birds and holds it while it lasts');
+  G._stormOveruse=false; step(120);
+  chk(F.shock>M.faunaShockFloor, '…and it starts to ease once the overuse is over');
+
+  // 6. The seams: a matched bus boost banks a link step for its bird; a wrong one shocks
+  F.shock=1;
+  TB.boost({ plantKey:'tawa' }); DT.endTimelapse();
+  chk((F.link.kereru||0)>=1, 'a matched tawa boost banks a step for the kererū');
+  TB.boost({ plantKey:'tussock' }); DT.endTimelapse();                // cold in the interglacial
+  chk(!F.link.kereru && F.shock<1, 'a wrong bus boost clears it and shocks the birds');
+  F.shock=1; G.handleKey('3');                                       // TUSSOCK in the interglacial: wrong
+  chk(F.shock<1, 'a wrong TUSSOCK press shocks them too');
+
+  G._stormOveruse=false; DT.reset(); G._boostHi=null; G.resetEcosystem();
+  console.log(fail? `fauna homeostasis: ${fail} FAILURES`
+    : 'fauna homeostasis: the meter is half free, half earned (greyed, not shortened, by habitat health); birds hold at their founding numbers unattended, rise with earned health and linked boosts, follow the climate, crash on a wrong boost or storm overuse (never below a floor) and recover');
+}catch(e){ console.log('FAUNA HOMEOSTASIS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- encyclopedia roster: every touchscreen card fits its screen's era ---------
 // The second screen (secondscreen/encyclopedia.js) puts two WARM (interglacial) habitats above the
@@ -2812,20 +2923,27 @@ try{
   G.resetEcosystem(); DT.seekTo(122000); tick();
   chk(!TG.verdict() && TG._stage===0 && TG._recent.length===1, 'a soft reset clears the verdict and restarts the sequence');
 
-  // 8. The climate line under the year: "The climate is INTERGLACIAL / GLACIAL", the state in green / blue.
+  // 8. The climate line above the timeline, under the goal: "The climate is INTERGLACIAL / GLACIAL", the state in green / blue.
   const drawn=[]; const bt=IH._blitText;
   IH._blitText=function(s,f,t,sz,ah,av,x,y,col){ drawn.push([s,col]); return bt.apply(this,arguments); };
   const lineAt=(yr)=>{ DT.seekTo(yr); drawn.length=0; IH.renderVisitorYear(G,1920,1080); return drawn; };
   let d=lineAt(122000);
   chk(d.some(([s])=>s===IH.CLIMATE_PREFIX) && d.some(([s,c])=>s==='INTERGLACIAL' && c===TBO.outlineInterglacial),
-      'under the year: "The climate is INTERGLACIAL", the state in green');
+      'above the timeline: "The climate is INTERGLACIAL", the state in green');
   d=lineAt(30000);
   chk(d.some(([s,c])=>s==='GLACIAL' && c===TBO.outlineGlacial), '…and "GLACIAL" in blue in a glacial');
-  //    …and under it the speed readout: the paused invitation at rest, the live rate in round numbers when moving.
-  DT.dialReset(); DT.geoRate=0; d=lineAt(122000);
-  chk(d.some(([s])=>s===IH.SPEED_PAUSED), 'under the climate line at rest: the paused invitation to turn the dial');
-  DT.geoRate=4870; drawn.length=0; IH._speed=null; IH.renderVisitorYear(G,1920,1080);
-  chk(drawn.some(([s])=>s==='1 second = 5,000 years'), 'moving: "1 second = 5,000 years" (the live rate, snapped to a round number)');
+  chk(d.some(([s])=>s===DT.label()), '…with the year drawn alongside it, above the timeline');
+  //    …and the speed readout, top-centre: nothing at all at rest; moving, "Time travelling forward!" over the
+  //    live rate in round numbers, faded in on the real clock (and out of the eruption caption's way).
+  const topAt=()=>{ drawn.length=0; IH.renderVisitorTopBand(G,1920,1080); return drawn; };
+  IH._cap.e=null; IH._cap.a=0; IH._cap.until=0;
+  DT.dialReset(); DT.geoRate=0; IH._speed=null; topAt(); ctx.__tick(40); d=topAt();
+  chk(!d.some(([s])=>s===IH.SPEED_HEAD || /per second/.test(s)), 'at rest the speed readout shows nothing (no paused text)');
+  DT.geoRate=4870; IH._speed=null; topAt(); ctx.__tick(40); d=topAt();
+  chk(d.some(([s])=>s===IH.SPEED_HEAD) && d.some(([s,c])=>s==='5,000 years per second' && c===IH.SPEED_COL),
+      'moving: "Time travelling forward!" over "5,000 years per second" (the live rate, snapped to a round number)');
+  DT.geoRate=1; IH._speed=null; topAt(); ctx.__tick(40); d=topAt();
+  chk(d.some(([s])=>s==='1 year per second'), '…and a single year reads "1 year per second"');
   DT.geoRate=0; IH._speed=null;
   // 9. The top band's tallies: right-for-the-climate boosts count, wrong ones do not, and a restarted
   //    timeline (DeepTime.reset, on every soft reset) starts them again at 0.
@@ -2836,8 +2954,7 @@ try{
   drawn.length=0; IH.renderVisitorTopBand(G,1920,1080);
   chk(DT.boostsOk===2 && drawn.some(([s])=>s==='2') && drawn.some(([s])=>s===IH.TALLY_BOOSTS),
       `the top band: "2 successful boosts" after two right boosts${coldKey?' and one wrong':''} (counted ${DT.boostsOk})`);
-  chk(drawn.some(([s])=>s===IH.HEALTH_TITLE) && drawn.some(([s])=>IH.HEALTH_WORDS.some(w=>w[1]===s)),
-      '…beside the ecosystem-health meter and its state word');
+  chk(drawn.some(([s])=>s===IH.HEALTH_TITLE), '…beside the ecosystem-health meter');
   G.resetEcosystem(); drawn.length=0; IH.renderVisitorTopBand(G,1920,1080);
   chk(DT.boostsOk===0 && DT.goalsSolved===0 && DT.solvedKeys.length===0 && drawn.some(([s])=>s==='0'),
       '…and a soft reset (timeline restart) zeroes both tallies');
@@ -2846,7 +2963,7 @@ try{
   } finally { TGL.list=realBook; TG._rand=realRand; TG.reset(); DT.reset(); G._boostHi=null; G.resetEcosystem(); }
   console.log(fail? `plant goals: ${fail} FAILURES`
     : 'plant goals: verdicts (answer / right climate / wrong climate) with a bigger answer boost; goals gated by climate, habitat, '+
-      'window and requires; drawn along the bird sequence with variance; macrons + line lengths; the climate line under the year');
+      'window and requires; drawn along the bird sequence with variance; macrons + line lengths; the climate line above the timeline');
 }catch(e){ console.log('GOALS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- biomes: one table, and the bands actually reachable --------------
@@ -4868,13 +4985,16 @@ try{
 
   // (0) the keep-out covers what the visitor HUD draws, and the debug layout swaps in its strips
   const ay=HUD._visAxisY(H), goalCy=ay-HUD.VIS_GOAL_GAP, lh=HUD.VIS_GOAL_SIZE*HUD.GOAL_LINE_H;
-  const hudPts=[[W/2,goalCy-lh-HUD.VIS_GOAL_SIZE*0.6,'goal (2nd line up)'],[W/2,goalCy,'goal'],[W*0.12,ay-HUD.TL_MARKER_H-10,'eruption pin label'],
-                [W*0.5,ay,'timeline axis'],[W/2,ay+HUD.VIS_YEAR_BELOW,'year'],[W/2-HUD.VIS_CLIMATE_SIZE*6,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW,'climate line'],
-                [W/2,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW+HUD.VIS_SPEED_BELOW,'speed readout'],
+  const whX=DT.yearToX(DT.ERUPTIONS.find(e=>e.name==='Whakamaru').yearsBP, W*HUD.VIS_INSET, W*(1-2*HUD.VIS_INSET));
+  const hudPts=[[W/2,goalCy-lh-HUD.VIS_GOAL_SIZE*0.6,'goal (2nd line up)'],[W/2,goalCy,'goal'],
+                [W/2-HUD.VIS_CLIMATE_SIZE*6,ay-HUD.VIS_CLIMATE_ABOVE,'climate line'],
+                [whX,ay+HUD._tlNameY(HUD.TL_MARKER_H*HUD.PIN_TIER_SCALE.catastrophic*(1+HUD.PIN_GROW)),'grown eruption pin name'],
+                [W*0.5,ay,'timeline axis'],[W/2+200,ay-HUD.VIS_YEAR_ABOVE,'year'],
+                [W/2+200,HUD._speedRateY(),'speed readout (top centre)'],[W/2-200,HUD._speedHeadY(),'speed head line'],
                 [W*HUD.VIS_INSET+40,ay+HUD.TL_END_BELOW+HUD.TL_END_LINE_H,'start end-label'],
                 [W*(1-HUD.VIS_INSET)-40,ay+HUD.TL_END_BELOW+HUD.TL_END_LINE_H,'end end-label'],
                 [HUD._tbGeom(W).numR-20,HUD._tbGeom(W).row1,'boost tally'],[HUD._tbGeom(W).lx+30,HUD._tbGeom(W).iconBot-20,'solved-plant row'],
-                [HUD._tbGeom(W).barX+30,HUD._tbGeom(W).barTop+10,'health bar'],[HUD._tbGeom(W).barX+30,HUD._tbGeom(W).hBird,'bird-kind line']];
+                [HUD._tbGeom(W).barX+30,HUD._tbGeom(W).barTop+10,'health bar']];
   for(const [x,y,what] of hudPts) chk(ko.rects.some(r=>inRect(x,y,r,0)),`the visitor keep-out covers the ${what} at (${x|0},${y|0})`);
   chk(ko.top>=HUD.TOP_H,'the top strip is kept clear in visitor mode too');
   const mode0=DBG.mode; DBG.mode='off'; const sigV=HUD.labelSig(); DBG.mode='compact'; const kd=RN.keepOut(W,H), sigD=HUD.labelSig(); DBG.mode=mode0;

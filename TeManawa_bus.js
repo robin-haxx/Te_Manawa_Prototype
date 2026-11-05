@@ -198,11 +198,13 @@ const TMBus = (function () {
     }
     // Plant homeostasis (Simulation._updateHomeostasis): a matched boost lifts the target of every
     // habitat this plant grows in (the answer by more), so correct boosts accumulate; a wrong one
-    // drops every habitat back to its original floor. Lift BEFORE seeding so the seedlings fit it.
+    // drops every habitat back to its original floor and shocks the birds (Simulation.onWrongBoost:
+    // fauna homeostasis). Lift BEFORE seeding so the seedlings fit it.
     const simH = g && g.simulation;
     if (simH && typeof simH.liftHabitats === 'function') {
       const LM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
       if (matched) simH.liftHabitats([key], 0, isAnswer ? (LM.homeoAnswerSteps ?? 2) : 1);
+      else if (typeof simH.onWrongBoost === 'function') simH.onWrongBoost();
       else simH.resetHabitatLift();
     }
     const seeder = (g && g.simulation && typeof g.simulation.seedSpecies === 'function')
@@ -213,9 +215,12 @@ const TMBus = (function () {
     // supports — founded on-screen so the visitor sees the animals answer the plant. A mismatched
     // boost recruits nothing (the birds don't thrive in the wrong climate either). Same link map as
     // the outline; a boost message may also carry m.fauna. `young_*` variants are skipped by boostFauna.
+    // Under fauna homeostasis the linked birds also bank a lasting step on their target (the answer
+    // two), raised BEFORE the recruits so they fit under it.
     if (matched && g && g.simulation && typeof g.simulation.boostFauna === 'function') {
       const faunaKeys = (Array.isArray(m.fauna) && m.fauna.length) ? m.fauna
                       : (TM_BOOST.faunaLinks && TM_BOOST.faunaLinks[key]);
+      if (faunaKeys && typeof g.simulation.liftFauna === 'function') g.simulation.liftFauna(faunaKeys, isAnswer ? 2 : 1);
       if (faunaKeys) g.simulation.boostFauna(faunaKeys, (isAnswer && GL.answerFauna) || TM_BOOST.faunaRecruit || 2);
     }
 

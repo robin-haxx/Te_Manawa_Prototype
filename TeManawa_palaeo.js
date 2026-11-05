@@ -76,7 +76,9 @@ const TM_PALAEO = {
   labelSize:   24,        // the region names' lettering (the river names' mainSize is 26)
   labelFadeMs: 700,       // a name's fade in / out (≥ 500)
   captionSize: 42,        // the date (InstallHUD.VIS_YEAR_SIZE)
+  captionUp:   186,       // px from the bottom edge up to the date's centre (the sequence draws no timeline, so it keeps its own spot)
   noteSize:    26,        // the note under it
+  noteBelow:   42,        // px from the date's centre down to the note's
   noteFadeMs:  800,       // the note's crossfade on change
   // The epochs' one-line notes, keyed by the OLDER bound (the first whose `from` ≥ the date wins).
   // Co-design placeholder copy — sourced in md/TEMANAWA_PALAEO_ATTRACT.md §1; cut with notes:false.
@@ -582,7 +584,7 @@ const Palaeo = {
   _renderCaption(W, H) {
     const HUD = (typeof InstallHUD !== 'undefined') ? InstallHUD : null;
     if (!HUD || !HUD._blitText || typeof FreckleFace === 'undefined') return;
-    const cx = W / 2, cy = (HUD._visAxisY ? HUD._visAxisY(H) : H - 232) + (HUD.VIS_YEAR_BELOW || 46);
+    const cx = W / 2, cy = H - TM_PALAEO.captionUp;
     const halo = [8, 14, 12, 170], ink = [236, 244, 240], size = TM_PALAEO.captionSize;
     const date = this.dateLabel();
     HUD._blitText(date, FreckleFace, 'freckle', size, CENTER, CENTER, cx + 2, cy + 3, halo);
@@ -603,7 +605,7 @@ const Palaeo = {
       c.out.a0 = shown; c.out.t0 = now;
       c.cur.text = note; c.cur.t0 = now;
     }
-    const ny = cy + (HUD.VIS_CLIMATE_BELOW || 42), ns = TM_PALAEO.noteSize;
+    const ny = cy + TM_PALAEO.noteBelow, ns = TM_PALAEO.noteSize;
     const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null, ga0 = dc ? dc.globalAlpha : 1;
     const aOut = c.out.a0 * (1 - Math.min(1, (now - c.out.t0) / fade)), aIn = Math.min(1, (now - c.cur.t0) / fade);
     if (c.out.text && aOut > 0.004) {
@@ -643,13 +645,13 @@ const Palaeo = {
       }
       if (buf && buf.push && typeof FreckleFace !== 'undefined') {
         const HUD = (typeof InstallHUD !== 'undefined') ? InstallHUD : null;
-        const cx = W / 2, cy = (HUD && HUD._visAxisY ? HUD._visAxisY(H) : H - 232) + ((HUD && HUD.VIS_YEAR_BELOW) || 46);
+        const cx = W / 2, cy = H - TM_PALAEO.captionUp;
         buf.push(); buf.textFont(FreckleFace); buf.textAlign(CENTER, CENTER); buf.noStroke();
         buf.textSize(TM_PALAEO.captionSize); buf.fill(8, 14, 12, 170); buf.text(this.dateLabel(), cx + 2, cy + 3);
         buf.fill(236, 244, 240); buf.text(this.dateLabel(), cx, cy);
         const note = TM_PALAEO.notes ? this.epochNote(y) : null;
         if (note) {
-          const ny = cy + ((HUD && HUD.VIS_CLIMATE_BELOW) || 42);
+          const ny = cy + TM_PALAEO.noteBelow;
           buf.textSize(TM_PALAEO.noteSize); buf.fill(8, 14, 12, 170); buf.text(note, cx + 2, ny + 2);
           buf.fill(236, 244, 240); buf.text(note, cx, ny);
         }

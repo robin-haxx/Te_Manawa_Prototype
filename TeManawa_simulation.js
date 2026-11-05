@@ -135,7 +135,8 @@ class Simulation {
 
     this.activeSpecies = { moa: [], eagle: [] };
     this.otherEntities = {};
-    this.ecoRichness = null; this.ecoBirdKinds = 0; this.ecoBirdTotal = 0;   // the HUD's ecosystem readout (_updateEcoReadout)
+    this.ecoEarned = 0;   // the HUD's ecosystem-health meter + the bird targets (_updateEcoReadout)
+    this._fauna = null;   // fauna homeostasis state (_updateFaunaHomeostasis), built on its first tick
     this._speciesStableTimes = {};
     this._speciesLastAlive = {};
 
@@ -680,14 +681,18 @@ class Simulation {
     const moaKeys   = (this.activeSpecies && this.activeSpecies.moa)   || [];
     const eagleKeys = (this.activeSpecies && this.activeSpecies.eagle) || [];
     let added = 0;
+    // Under fauna homeostasis the recruits fill the bird's LIVE target (already raised by liftFauna) up to
+    // its band, never past it, or the next census would retire them again; otherwise target + this burst.
+    const homeo = !!(M && M.faunaHomeostasis && this._fauna && this._fauna.ready);
     for (const key of keys) {
       if (!key || key.indexOf('young_') === 0) continue;   // outline-only juvenile variant, not a recruit target
       const isEagle = eagleKeys.indexOf(key) !== -1;
       const isMoa   = moaKeys.indexOf(key) !== -1;
-      const ceil = this._speciesTarget(key) + count;       // top up toward the comfortable target (+ this burst)
+      const ceil = this._speciesTarget(key) + (homeo ? (M.faunaBand ?? 1) : count);
       for (let i = 0; i < count; i++) {
         if (isEagle) {
           if (this.countAliveEagles() >= eagleCap) break;
+          if (homeo && this._faunaCount(key) >= ceil) break;
           this.spawnEagle(key);
         } else if (isMoa) {
           if (this.getSpeciesCount(key) >= ceil) break;
@@ -1077,57 +1082,224 @@ class Simulation {
   }
 
   // ---- the HUD's ecosystem readout (InstallHUD.renderVisitorTopBand) ----------------------------
-  // Two numbers, recomputed on the real clock once a second, never per frame:
-  //   ecoRichness  0..1, the plant stock the visitor has EARNED: the live count over every plant-bearing
-  //                habitat ÷ what those habitats would hold at full lift (homeoLiftMaxSteps), capped by
-  //                maxLivePlants. An unattended land sits near ½ (homeoBaseFrac is the open floor); correct
-  //                boosts lift it toward 1 as the seedlings actually grow in; a wrong boost resets the lift
-  //                and the surplus thins back out. It reads the census, so it lags the button by design.
-  //   ecoBirdKinds / ecoBirdTotal  how many of the founded bird kinds are alive now.
-  // ecoRichness stays null/undefined with plant homeostasis off (the HUD then reads ½).
+  // ecoEarned 0..1, recomputed on the real clock once a second: how much of the habitats' homeostasis
+  // lift the visitor has banked, Σ lift·step ÷ Σ maxSteps·step over every plant-bearing habitat (a big
+  // habitat counts for more). 0 on an unattended land, 1 with every habitat at full lift; a wrong boost
+  // resets it to 0 (resetHabitatLift). The HUD shows it as the earned half of the bar (HEALTH_FLOOR).
+  // It reads the TARGETS, not the census: the census ratio it replaced jittered as plants recruited and
+  // thinned, and stepped ±0.1 whenever a land morph changed a habitat's AREA (tools/boostprobe.js). The
+  // bird targets read it too (_updateFaunaHomeostasis). Stays 0 with plant homeostasis off.
   _updateEcoReadout(rdt) {
     this._ecoTimer = (this._ecoTimer || 0) + rdt;
-    if (this._ecoTimer < 60 && this._ecoSeen) return;
+    if (this._ecoTimer < 60) return;
     this._ecoTimer = 0;
-    // Earned plant stock.
     const H = this._homeo;
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
-    if (H && H.dens && M.plantHomeostasis !== false) {
-      const maxSteps = M.homeoLiftMaxSteps ?? 4;
-      let n = 0, full = 0;
-      for (const k in H.dens) {
-        const base = H.dens[k] * (H.cells[k] || 0);
-        if (!(base > 0)) continue;
-        const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
-        full += base + maxSteps * step;
-        n += H.count[k] || 0;
+    if (!H || !H.dens || M.plantHomeostasis === false) { this.ecoEarned = 0; return; }
+    const maxSteps = M.homeoLiftMaxSteps ?? 4;
+    let got = 0, full = 0;
+    for (const k in H.dens) {
+      const base = H.dens[k] * (H.cells[k] || 0);
+      if (!(base > 0)) continue;
+      const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
+      full += maxSteps * step;
+      got += Math.min(maxSteps, H.lift[k] || 0) * step;
+    }
+    this.ecoEarned = full > 0 ? Math.max(0, Math.min(1, got / full)) : 0;
+  }
+
+  // ============================================
+  // FAUNA HOMEOSTASIS — the birds are held at a level the visitor earns, like the plants (2026-11-05).
+  // ----------------------------------------------
+  // Unattended, each species is held at its FOUNDING number (or its floor, if that is higher), so the
+  // birds do not multiply on their own and the sim can run for hours without a visitor. Earned health
+  // (ecoEarned) raises every target toward the configured speciesTargets level; a matched boost of a
+  // plant a bird is linked to (TM_BOOST.faunaLinks / the card's m.fauna) adds a step on top for that
+  // bird. The climate sets each species' PROMINENCE: forest birds lead in the interglacial, the
+  // open-country grazers in the glacial (ClimateAffinity, from the same seasonalModifiers the sim keys
+  // off; the forest flyers carry none and count as warm). A WRONG boost or storm OVERUSE is a SHOCK:
+  // every target drops to faunaShockFloor of itself (held there while the overuse lasts) and recovers
+  // over faunaShockRecoverS real seconds. Breeding tapers to the target (the existing gates read
+  // _speciesTarget); above target + faunaBand the census retires the hungriest birds, slowly as a
+  // climate turn or a lost lift settles, fast in a shock, so the crash is plain to see; below it a
+  // newcomer arrives now and then (_faunaRecruit), so the favoured kinds rise too. Never below a floor.
+  // On the real clock, once a second, off the draw path.
+  // Knobs in the scaffold's ECOLOGY FEEDBACK; measured with tools/boostprobe.js.
+  // ============================================
+  _updateFaunaHomeostasis(rdt) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (!M || !M.faunaHomeostasis) return;
+    let F = this._fauna;
+    if (!F) F = this._fauna = { timer: 0, ready: false, keys: [], kind: {}, clim: {}, base: {}, link: {}, targets: {}, shock: 1 };
+    // the shock eases back on the real clock; storm overuse holds it down
+    const sFloor = M.faunaShockFloor ?? 0.4;
+    if (this.game && this.game._stormOveruse) F.shock = Math.min(F.shock, sFloor);
+    else if (F.shock < 1) F.shock = Math.min(1, F.shock + (1 - sFloor) * (rdt / 60) / Math.max(1, M.faunaShockRecoverS ?? 45));
+    F.timer += rdt;
+    if (F.ready && F.timer < (M.faunaIntervalFrames ?? 60)) return;
+    F.timer = 0;
+    if (!F.ready) this._faunaInit(F);
+    this._faunaRetarget(F, M);
+    this._faunaCull(F, M);
+    this._faunaRecruit(F, M);
+  }
+
+  // Below its target a kind takes in a newcomer now and then (from beyond the map), with a chance of
+  // faunaRecruitRate × its shortfall per census: so the climate's favoured kinds RISE to their
+  // prominence instead of waiting minutes on breeding, and a crash refills once the shock has passed.
+  // In a shock only a kind that natural losses have taken under its FLOOR is topped up (the floor is
+  // the protected minimum; the land is failing the rest). Never past the caps. Huia arrive as a pair.
+  _faunaRecruit(F, M) {
+    const rate = M.faunaRecruitRate ?? 0.1;
+    if (!(rate > 0)) return;
+    const shocked = F.shock < 0.999;
+    const moaCap = (typeof CONFIG !== 'undefined' && CONFIG.maxMoaPopulation) || 60;
+    const eagleCap = M.eagleMaxPopulation || 12;
+    let added = 0;
+    for (let i = 0; i < F.keys.length; i++) {
+      const key = F.keys[i], kind = F.kind[key];
+      const short = (shocked ? this._speciesFloor(key) : F.targets[key]) - this._faunaCount(key);
+      if (short < (key === 'huia' ? 2 : 1)) continue;
+      if (random() >= Math.min(1, short * rate)) continue;
+      if (kind === 'moa') {
+        if (this.getMoaPopulation() >= moaCap) continue;
+        this.spawnMoas(1, key);
+      } else if (kind === 'eagle') {
+        if (this.countAliveEagles() >= eagleCap) continue;
+        this.spawnEagle(key);
+      } else {
+        const sp = (typeof REGISTRY !== 'undefined') ? REGISTRY.getSpecies(key) : null;
+        const cap = (sp && sp.config && sp.config.maxPopulation) || M.kereruMaxPopulation || 16;
+        if (this._faunaCount(key) >= cap) continue;
+        this._spawnOtherEntities(key, key === 'huia' ? 2 : 1);
       }
-      const cap = M.maxLivePlants || 900;
-      if (full > cap) full = cap;
-      this.ecoRichness = full > 0 ? Math.max(0, Math.min(1, n / full)) : null;
+      added++;
     }
-    // Bird kinds alive: one pass over the cast into a reused flag table.
-    const seen = this._ecoSeen || (this._ecoSeen = {});
-    for (const k in seen) seen[k] = false;
-    const AS = this.activeSpecies || {};
-    let total = 0;
-    const lists = [AS.moa, AS.eagle];
-    for (let l = 0; l < lists.length; l++) {
-      const L = lists[l];
-      if (L) for (let i = 0; i < L.length; i++) { seen[L[i]] = false; total++; }
+    if (added) {
+      this.stats.homeoRecruits = (this.stats.homeoRecruits || 0) + added;
+      this._invalidateCache();
     }
-    for (const k in this.otherEntities) { if (Array.isArray(this.otherEntities[k])) { seen[k] = false; total++; } }
-    for (let i = 0; i < this.moas.length; i++) { const m = this.moas[i]; if (m.alive && m.speciesKey) seen[m.speciesKey] = true; }
-    for (let i = 0; i < this.eagles.length; i++) { const e = this.eagles[i]; if (e.alive && e.speciesKey) seen[e.speciesKey] = true; }
+  }
+
+  // First tick, once the founders are down: which kinds are tracked, each one's climate leaning, and
+  // its unattended level (the founding number, at least its floor).
+  _faunaInit(F) {
+    const add = (key, kind, cfg) => {
+      if (!key || F.kind[key]) return;
+      F.keys.push(key); F.kind[key] = kind;
+      const aff = (typeof ClimateAffinity !== 'undefined') ? ClimateAffinity.ofSpeciesConfig(cfg) : 'neutral';
+      // the forest flyers carry no seasonalModifiers (their hunger keys off fruit, not the phase): warm
+      F.clim[key] = (kind === 'other' && !(cfg && cfg.seasonalModifiers)) ? 'warm' : aff;
+      F.base[key] = Math.max(this._speciesFloor(key), this._faunaCount(key));
+    };
+    const cfgOf = (key) => { const sp = (typeof REGISTRY !== 'undefined') ? REGISTRY.getSpecies(key) : null; return sp && sp.config; };
+    for (const k of (this.activeSpecies.moa || [])) add(k, 'moa', cfgOf(k));
+    for (const k of (this.activeSpecies.eagle || [])) add(k, 'eagle', cfgOf(k));
     for (const k in this.otherEntities) {
       const L = this.otherEntities[k];
-      if (!Array.isArray(L)) continue;
-      for (let i = 0; i < L.length; i++) if (L[i] && L[i].alive) { seen[k] = true; break; }
+      if (!Array.isArray(L) || !L.length || !L[0].isFlyer) continue;
+      add(k, 'other', cfgOf(k));
     }
-    let kinds = 0;
-    for (const k in seen) if (seen[k]) kinds++;
-    this.ecoBirdKinds = kinds;
-    this.ecoBirdTotal = total;
+    F.ready = true;
+  }
+
+  // Live birds of one species (grazers, harriers or flyers).
+  _faunaCount(key) {
+    let n = 0;
+    const L = this.otherEntities[key];
+    if (Array.isArray(L)) { for (let i = 0; i < L.length; i++) if (L[i] && L[i].alive) n++; return n; }
+    for (let i = 0; i < this.moas.length; i++) { const m = this.moas[i]; if (m.alive && m.speciesKey === key) n++; }
+    for (let i = 0; i < this.eagles.length; i++) { const e = this.eagles[i]; if (e.alive && e.speciesKey === key) n++; }
+    return n;
+  }
+
+  // A species' prominence now: 1 for a neutral bird, else its leaning's factor for the REGIME (the same
+  // cut as the boost gate and the HUD's climate line). A hard split, not a blend: a boost's time-lapse
+  // lands just past the regime boundary, where any blend sits halfway and the contrast vanished in
+  // every visitor session (tools/boostprobe.js). The census still eases the birds over — the surplus
+  // goes at faunaCullRate, the favoured kinds breed up — so the target's step is never seen as a cut.
+  _faunaClimate(F, M, key) {
+    const c = F.clim[key];
+    if (c !== 'warm' && c !== 'cold') return 1;
+    const T = c === 'warm' ? (M.faunaClimateWarm || { interglacial: 1.3, glacial: 0.6 })
+                           : (M.faunaClimateCold || { interglacial: 0.7, glacial: 1.4 });
+    const sm = this.seasonManager, gi = (sm && sm.getWinterness) ? sm.getWinterness() : 0;
+    const thr = (typeof Climate !== 'undefined' && Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
+    return gi >= thr ? T.glacial : T.interglacial;
+  }
+
+  _faunaRetarget(F, M) {
+    const earned = this.ecoEarned || 0, linkStep = M.faunaLinkStep ?? 0.15;
+    for (let i = 0; i < F.keys.length; i++) {
+      const key = F.keys[i], base = F.base[key], full = Math.max(base, this._speciesFullTarget(key));
+      let t = base + (full - base) * earned + linkStep * full * (F.link[key] || 0);
+      t *= this._faunaClimate(F, M, key) * F.shock;
+      F.targets[key] = Math.max(this._speciesFloor(key), Math.round(t));
+    }
+  }
+
+  // Retire the surplus over target + band: the hungriest bird first (the one the land was failing).
+  _faunaCull(F, M) {
+    const shocked = F.shock < 0.999, maxPer = M.faunaCullMaxPerTick ?? 3;
+    // In a shock there is no band: with targets of 2–4 a bird's grace per species would swallow the crash.
+    const band = shocked ? (M.faunaShockBand ?? 0) : (M.faunaBand ?? 1);
+    const rate = shocked ? (M.faunaShockCullRate ?? 0.4) : (M.faunaCullRate ?? 0.12);
+    let culled = 0;
+    for (let i = 0; i < F.keys.length; i++) {
+      const key = F.keys[i], n = this._faunaCount(key), over = n - F.targets[key] - band;
+      if (over <= 0) continue;
+      const k = Math.min(maxPer, Math.ceil(over * rate));
+      for (let j = 0; j < k; j++) if (this._faunaCullOne(F.kind[key], key)) culled++;
+    }
+    if (culled) {
+      this.stats.homeoCulls = (this.stats.homeoCulls || 0) + culled;
+      this.stats.deaths += culled;
+      this._invalidateCache();
+    }
+  }
+
+  _faunaCullOne(kind, key) {
+    const L = kind === 'eagle' ? this.eagles : kind === 'other' ? (this.otherEntities[key] || []) : this.moas;
+    let pick = null;
+    for (let i = 0; i < L.length; i++) {
+      const o = L[i];
+      if (!o || !o.alive || (kind !== 'other' && o.speciesKey !== key)) continue;
+      if (!pick || (o.hunger || 0) > (pick.hunger || 0)) pick = o;
+    }
+    if (!pick) return false;
+    pick.alive = false;                    // the death fade arms on its own (see handleEagleCatch)
+    if (kind === 'eagle' && this.stats.eagleDeaths !== undefined) this.stats.eagleDeaths++;
+    return true;
+  }
+
+  // A matched boost of a plant these birds are linked to: a lasting step on their targets (capped),
+  // applied now so the recruits that follow (boostFauna) fit under it.
+  liftFauna(keys, steps = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const F = this._fauna;
+    if (!M || !M.faunaHomeostasis || !F || !F.ready || !Array.isArray(keys)) return 0;
+    const max = M.faunaLinkMaxSteps ?? 3;
+    let n = 0;
+    for (const key of keys) {
+      if (!key || key.indexOf('young_') === 0 || !F.kind[key]) continue;
+      F.link[key] = Math.min(max, (F.link[key] || 0) + steps); n++;
+    }
+    if (n) this._faunaRetarget(F, M);
+    return n;
+  }
+
+  // A WRONG-for-the-climate boost (the console's or the FOREST/TUSSOCK buttons'): every habitat drops
+  // to its floor, every bird loses its link steps, and the birds take the shock. The next census runs
+  // at once, so the bar and the crash start on the same beat.
+  onWrongBoost() {
+    this.resetHabitatLift();
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    this.ecoEarned = 0;
+    const F = this._fauna;
+    if (!M || !M.faunaHomeostasis || !F) return;
+    for (const k in F.link) delete F.link[k];
+    F.shock = Math.min(F.shock, M.faunaShockFloor ?? 0.4);
+    F.timer = Infinity;
   }
 
   // One seedling into habitat k: beside a standing plant of that habitat (seed rain from a parent,
@@ -1608,11 +1780,19 @@ class Simulation {
   // ----------------------------------------------
   // The comfortable population for a species (target) and the protected minimum
   // (floor). Drive the surplus-aware harrier (crop the abundant, spare the rare)
-  // and the grazer breeding gate (breed up to target, then trickle). Both are
-  // static, so resolve once and cache.
+  // and the grazer breeding gate (breed up to target, then trickle). With fauna
+  // homeostasis on, the target is the LIVE one the census sets (founding level →
+  // earned, by climate, shocked by a wrong boost); _speciesFullTarget is the
+  // authored, earned-in-full level, static, resolved once and cached.
   // ============================================
 
   _speciesTarget(key) {
+    const F = this._fauna;
+    if (F && F.ready && F.targets[key] != null) return F.targets[key];
+    return this._speciesFullTarget(key);
+  }
+
+  _speciesFullTarget(key) {
     const cache = this._targetCache || (this._targetCache = {});
     if (cache[key] !== undefined) return cache[key];
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
@@ -1813,7 +1993,8 @@ class Simulation {
     this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
     this._updateHomeostasis(rdt);       // hold each habitat at its (boost-lifted) target, on real time
-    this._updateEcoReadout(rdt);        // the HUD's ecosystem-health meter + bird-kind count, once a second
+    this._updateEcoReadout(rdt);        // the HUD's ecosystem-health meter, once a second
+    this._updateFaunaHomeostasis(rdt);  // hold each bird at its earned, climate-led target; the shock of a wrong boost
 
     if (this.seasonManager.justChanged) this.onSeasonChange();
     

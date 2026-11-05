@@ -114,7 +114,8 @@ TeManawa_devtools.js       LOOK / GEN console dev tools (B/G/N) — see TEMANAWA
 TeManawa_sketch.js         CONFIG, Game, and the p5 entry points
 TeManawa_bus.js            the console bus (BroadcastChannel 'temanawa'): intents in, telemetry out — loads after sketch.js
 secondscreen/              the touchscreen console page (static DOM) — see secondscreen/README.md
-tools/                     serve.js, bootcheck.js, svg2geo.js, export_frames.js, outline_plants.js, shot.js
+tools/                     serve.js, bootcheck.js, svg2geo.js, export_frames.js, outline_plants.js, shot.js,
+                           boostprobe.js (headless visitor sessions: how boosts move flora + fauna)
 geo/                       manawatu.svg (authored) + manawatu.geo.js (emitted)
 md/                        live docs — start at md/README.md; md/ecology/ research, md/archive/ built plans
 exports/                   terrain snapshot sets (dev reference, not needed on the wall)
