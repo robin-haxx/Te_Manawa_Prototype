@@ -76,8 +76,12 @@ class WaterLayer {
       fishCount:        5,
       fishSize:         22,
       fishAlpha:        0.85,
-      fishSpeed:        0.3,
+      fishSpeed:        0.15,   // was 0.3: half speed, an unhurried school
       fishAnimSpeed:    0.14,
+      fishFadeSecs:     5,      // each fish slowly fades down and back up over ~this many seconds (±15% per fish, its own phase), as if it sank and rose
+      fishFadeMin:      0.35,   // … to this fraction of fishAlpha at the bottom of the fade
+      fishBranchChance: 0.4,    // a fish passing a tributary's mouth turns up it this often (always, once a dead end has turned it back)
+      fishJoinMaxGap:   10,     // world px: a tributary links to its parent only if the parent's line passes this close to its mouth (a drowned parent reach does not)
       swimHop:          12,     // world px: a dry speck across a swimmer's line up to this long is hopped, not bounced off (islets, pinches); a longer dry stretch is a real end
       swimMinRun:       60,     // world px: a wet stretch shorter than this (hops bridged) is a pocket, not a reach; a swimmer in one moves to its path's longest reach
       maxDecals:        420,    // hard cap; counts toward the ≤1500 image()/frame budget
@@ -193,21 +197,25 @@ class WaterLayer {
     if (!this._on()) return;
     const D = this.decals;
     for (let i = 0; i < D.length; i++) D[i].animTime += dt;
-    this._stepSwimmers(this.eels, this.cfg.eelSpeed, dt);
-    this._stepSwimmers(this.fish, this.cfg.fishSpeed, dt);
+    this._stepSwimmers(this.eels, this.cfg.eelSpeed, dt, false);
+    this._stepSwimmers(this.fish, this.cfg.fishSpeed, dt, true);
   }
 
   // Advance a list of swimmers (tuna/eels, fish) along their polylines at `sp` world
   // px per tick. Shared by both, identical motion: bounce off both ends (the far end
   // may now be dry, so no wrap) and off any stretch that has dried to LAND. Writes
   // e._x/_y/_angle via _samplePath; allocation-free.
-  _stepSwimmers(E, sp, dt) {
+  // `net` (the fish): the rivers are one network (_buildNet). A fish reaching a tributary's mouth
+  // swims on into its parent instead of turning round there, and one passing a tributary's mouth on
+  // the parent turns up it sometimes (cfg.fishBranchChance), always once a dead end has turned it.
+  _stepSwimmers(E, sp, dt, net) {
     const t = this.terrain;
     for (let i = 0; i < E.length; i++) {
       const e = E[i];
       e.animTime += dt;
-      const prevD = e.d;
+      let prevD = e.d;
       e.d += sp * dt * e.dir;
+      if (net && this._junction(e, prevD)) prevD = e.d;   // moved onto another river: its own step starts here
       let turned = false;
       if (e.d <= 0) { e.d = 0; e.dir = 1; turned = true; }
       else if (e.d >= e.path.len) { e.d = e.path.len; e.dir = -1; turned = true; }
@@ -227,7 +235,36 @@ class WaterLayer {
       // Every turn checks the reach it turned in: the nearest wet point (_rescue, a seed) can be a
       // pocket a few px long between dry stretches, where a swimmer paced back and forth for good.
       if (turned && t) this._settle(e);
+      if (turned && net) e.seek = true;   // turned back by a dead end: the next mouth it passes, it takes
     }
+  }
+
+  // A fish at a junction this step (net paths only; see _buildNet): off a tributary's mouth into its
+  // parent, or from the parent up a tributary whose mouth it has just passed. Returns true if it moved
+  // to another path (e.d is then its place on that path). No allocation.
+  _junction(e, prevD) {
+    const path = e.path;
+    if (!path) return false;
+    if (e.d >= path.len && path.parent) {             // a tributary's mouth: on into the river it joins
+      e.path = path.parent; e.d = path.parentD;
+      e.dir = random() < 0.5 ? 1 : -1;
+      e.seek = false;
+      this._samplePath(e.path, e.d, e);
+      return true;
+    }
+    const B = path.branches;
+    if (!B || !B.length) return false;
+    const lo = prevD < e.d ? prevD : e.d, hi = prevD < e.d ? e.d : prevD;
+    for (let k = 0; k < B.length; k++) {
+      const b = B[k];
+      if (!(b.d > lo && b.d < hi)) continue;          // strict: a fish just set down on this mouth is not passing it
+      if (!e.seek && random() >= (this.cfg.fishBranchChance || 0)) continue;
+      e.path = b.child; e.d = b.child.len - 0.01; e.dir = -1;   // in at the mouth, heading upstream (just inside, or the end check turns it)
+      e.seek = false;
+      this._samplePath(e.path, e.d, e);
+      return true;
+    }
+    return false;
   }
 
   // The wet reach of `path` around arc-distance d, with dry gaps up to cfg.swimHop bridged (a
@@ -398,7 +435,12 @@ class WaterLayer {
       const s = e.dir < 0 ? -1 : 1, sz = e.size * mul;
       let vx = Math.cos(e._angle) * s;
       const vy = Math.sin(e._angle) * s * K;
-      dc.globalAlpha = e.alpha;
+      let a = e.alpha;
+      if (e.fadeP > 0) {   // the fish's slow fade down and up (cfg.fishFadeSecs); a cosine, so no step in it
+        const lo = this.cfg.fishFadeMin != null ? this.cfg.fishFadeMin : 0.35;
+        a *= lo + (1 - lo) * (0.5 + 0.5 * Math.cos((e.animTime / e.fadeP + e.fadePh) * 6.283185307179586));
+      }
+      dc.globalAlpha = a;
       R.push();
       R.translate(Projection.projX(e._x), Projection.groundY(e._y, elev));
       if (vx < 0) { R.scale(-1, 1); vx = -vx; }
@@ -536,22 +578,14 @@ class WaterLayer {
   // a wet stretch so a fish never starts on a dry bank.
   _buildFish(terrain) {
     this.fish.length = 0;
-    const mapW = terrain.mapWidth, mapH = terrain.mapHeight, cfg = this.cfg;
-    const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
-    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
-    const paths = [];
-    for (let r = 0; r < rivers.length; r++) {
-      const rv = rivers[r];
-      if (!rv.pts || rv.pts.length < 2) continue;
-      const isMain = rv.type !== 'tributary';
-      const path = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
-      path.rIdx = r;
-      if (path.len > 0) paths.push(path);
-    }
+    const cfg = this.cfg;
+    const paths = this._buildNet(terrain).filter(p => p && p.len > 0);
+    const fadeT = (cfg.fishFadeSecs > 0 ? cfg.fishFadeSecs : 0) * 60;   // update ticks (dt is in 60 fps frames)
     for (let i = 0; i < cfg.fishCount && paths.length; i++) {
       const path = paths[i % paths.length];
       const e = { path, d: random() * path.len, dir: random() < 0.5 ? 1 : -1, animTime: random(1000),
-                  size: cfg.fishSize, alpha: cfg.fishAlpha, _x: 0, _y: 0, _angle: 0 };
+                  size: cfg.fishSize, alpha: cfg.fishAlpha, _x: 0, _y: 0, _angle: 0, seek: false,
+                  fadeP: fadeT * (0.85 + 0.3 * random()), fadePh: random() };
       // Land on a wet stretch (a tributary can have a dry head): resample, then take
       // the nearest wet point as a last resort.
       this._samplePath(path, e.d, e);
@@ -568,28 +602,68 @@ class WaterLayer {
   // Rebuild each swimmer's path from its river's current (meandered) line, keeping its fraction along
   // it. One new path per river, shared; allocation is per morph, never per frame.
   _repathSwimmers(terrain) {
-    const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
-    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
-    const mapW = terrain.mapWidth, mapH = terrain.mapHeight, made = new Map();
-    const pathFor = (r) => {
-      if (made.has(r)) return made.get(r);
-      const rv = rivers[r];
-      if (!rv || !rv.pts || rv.pts.length < 2) return null;
-      const isMain = rv.type !== 'tributary';
-      const p = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
-      p.rIdx = r; made.set(r, p);
-      return p;
-    };
+    const net = this._buildNet(terrain);   // the fish's linked network; the eels ride the same main paths and ignore the links
     for (const list of [this.eels, this.fish]) {
       for (const e of list) {
         if (!e.path || e.path.rIdx == null) continue;
-        const np = pathFor(e.path.rIdx);
+        const np = net[e.path.rIdx];
         if (!np || !(np.len > 0)) continue;
         const frac = e.path.len > 0 ? e.d / e.path.len : 0;
         e.path = np; e.d = frac * np.len;
         this._samplePath(np, e.d, e);
       }
     }
+  }
+
+  // The rivers as ONE network, for the fish: a world path per river (indexed by river; null where a
+  // river has no line), each tributary linked to the river it joins. A tributary's drawn line ends at
+  // its junction (or where the sea cut it, TerrainGenerator._tribSeaCut), so its path's far end IS its
+  // mouth: `parent` + `parentD` (the arc distance on the parent nearest that mouth). The parent lists
+  // it in `branches` ({ d, child }, by d). A mouth the sea cut joins nothing: the fish turn there.
+  // Allocates; per build/morph only, never per frame.
+  _buildNet(terrain) {
+    const rivers = terrain.getRivers ? terrain.getRivers() : (terrain._geoRivers || []);
+    const flowRev = !!(terrain.mainFlowReversed && terrain.mainFlowReversed());
+    const mapW = terrain.mapWidth, mapH = terrain.mapHeight;
+    const paths = new Array(rivers.length).fill(null);
+    for (let r = 0; r < rivers.length; r++) {
+      const rv = rivers[r];
+      if (!rv || !rv.pts || rv.pts.length < 2) continue;
+      const isMain = rv.type !== 'tributary';
+      const p = this._buildPath(rv.pts, mapW, mapH, isMain, isMain && flowRev);
+      p.rIdx = r; p.parent = null; p.parentD = 0; p.branches = [];
+      paths[r] = p;
+    }
+    const geo = rivers.map(rv => (rv && rv.src) || rv);   // the views carry their geo river as .src
+    const Tr = terrain._geoTribs, endJ = terrain._tribEndJ, endW = terrain._tribEndW;
+    for (let r = 0; r < rivers.length; r++) {
+      const p = paths[r], g = geo[r];
+      if (!p || !(p.len > 0) || !g || g.type !== 'tributary' || !g.parent) continue;
+      const pr = geo.indexOf(g.parent), par = pr >= 0 ? paths[pr] : null;
+      if (!par || !(par.len > 0)) continue;
+      const j = Tr ? Tr.indexOf(g) : -1;
+      if (j >= 0 && endJ && endW && endW[j] < endJ[j] - 1e-4) continue;   // ends in the sea, short of its parent
+      const m = p.pts[p.pts.length - 1], pd = this._nearestD(par, m.x, m.y);
+      if (this._nearDist > (this.cfg.fishJoinMaxGap || 10)) continue;   // the parent is not there (the sea took its reach): no jump across land
+      p.parent = par; p.parentD = pd;
+      par.branches.push({ d: p.parentD, child: p });
+    }
+    for (const p of paths) if (p && p.branches.length > 1) p.branches.sort((a, b) => a.d - b.d);
+    return paths;
+  }
+
+  // Arc distance along `path` of its point nearest (x, y); that point's distance in this._nearDist.
+  _nearestD(path, x, y) {
+    const P = path.pts, C = path.cum;
+    let best = Infinity, bd = 0;
+    for (let i = 0; i + 1 < P.length; i++) {
+      const ax = P[i].x, ay = P[i].y, dx = P[i + 1].x - ax, dy = P[i + 1].y - ay, l2 = dx * dx + dy * dy;
+      let t = l2 > 0 ? ((x - ax) * dx + (y - ay) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const d = Math.hypot(x - ax - dx * t, y - ay - dy * t);
+      if (d < best) { best = d; bd = C[i] + (C[i + 1] - C[i]) * t; }
+    }
+    this._nearDist = best;
+    return bd;
   }
 
   // Normalised polyline (pts in 0..1) -> world path with cumulative arc lengths. `reversed` walks the

@@ -10,6 +10,27 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A fixed cut on a river that moves: the upper Manawatū lost the main
+
+- **What happened.** At about a third of the dates, the main stem stopped a few px short of the upper
+  Manawatū, where the main's horizontal run meets that tributary's vertical one. The whole eastern
+  system (upper Manawatū, Tīraumea, Mangatoro, Tamaki, Mangatewainui) was then a lake with no
+  outlet. Separately, every tributary mouth stopped 1–4 px short of its parent or the sea. Fish
+  turned round at each gap, and at every mouth anyway: each river was its own path.
+- **Root cause.** `LOOK.mainArmKeep` (0.625) is a fixed position along the main, measured once
+  against the junction at 0.615. The meanders (2026-10-20) move that junction: it drifts
+  0.626 → 0.70 across the window, and past ~0.645 the arm's taper had already dried the main.
+  `_tribThreads` faded a mouth over the 0.012 *before* its end, so the water (which needs ~0.55 of
+  the mask) stopped short of the end point.
+- **Rule.** A cut placed against another feature must follow that feature when it moves. Measure
+  it at every date (`_mainArmKeepEff()` reads `_armJoinPos`), not once. A fade that ends a channel
+  must straddle the end point, not lie wholly before it. The harness's land is noise, so its water
+  checks pass on a seed that does not show the gap. Sweep the real build's dates in the browser for
+  connectivity: label the water's connected components and check that each river's line lies in
+  the main's.
+
+---
+
 ## The terrain work ran far past its budgets, and nobody had timed it in Chrome
 
 - **What happened.** A perf survey (2026-11-04) timed the terrain work in Chrome at 1920×1080.

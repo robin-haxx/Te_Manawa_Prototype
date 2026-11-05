@@ -1087,7 +1087,7 @@ try{
   const sim=G.simulation;
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
   const hawk=sim.eagles[0], m=sim.moas.find(x=>x.alive);
-  const save={x:hawk.pos.x,y:hawk.pos.y,t:hawk.target,h:hawk.hunting,sx:hawk._swX,sy:hawk._swY,alt:hawk._altitude};
+  const save={x:hawk.pos.x,y:hawk.pos.y,t:hawk.target,h:hawk.hunting,sx:hawk._swX,sy:hawk._swY,alt:hawk._altitude,fe:hawk._flightElev};
   m.render();
   chk(m._bodyLiftY>0, `a moa's render leaves where its drawn body sits above pos (${m._bodyLiftY})`);
   const gyOf=(b)=>P.groundY(b.pos.y, b.terrain.getElevationAt(b.pos.x,b.pos.y));
@@ -1108,17 +1108,74 @@ try{
   let t=talon(), bd=body();
   chk(Math.hypot(t.x-bd.x,t.y-bd.y)<0.5, `at catchRadius the drawn talons are on the prey's body (off ${Math.hypot(t.x-bd.x,t.y-bd.y).toFixed(2)} px)`);
   // The catch steps onto the kill without moving the drawn bird, then holds the talons on it.
-  const ax=hawk.pos.x+hawk._swX, ay=gyOf(hawk)+hawk._swY;
+  // The drawn body rides the flight floor, so the invariant is on gy − _bodyAlt(gy) + _swY.
+  const drawnY=()=>{ const g=gyOf(hawk); return g-hawk._bodyAlt(g)+hawk._swY; };
+  const ax=hawk.pos.x+hawk._swX, ay=drawnY();
   hawk.onCatch(m); hawk.hunting=false; hawk.target=null;
   chk(hawk.pos.x===m.pos.x && hawk.pos.y===m.pos.y, 'onCatch steps the harrier onto the kill');
-  chk(Math.abs(hawk.pos.x+hawk._swX-ax)<1e-6 && Math.abs(gyOf(hawk)+hawk._swY-ay)<1e-6, 'onCatch does not move the drawn harrier');
+  chk(Math.abs(hawk.pos.x+hawk._swX-ax)<1e-6 && Math.abs(drawnY()-ay)<1e-6, `onCatch does not move the drawn harrier (dy ${(drawnY()-ay).toFixed(4)})`);
   step(hawk.killHoldFrames-2); t=talon(); bd=body();
   chk(Math.hypot(t.x-bd.x,t.y-bd.y)<0.5, 'the talons stay on the kill while it fades');
   step(80);
   chk(hawk._kill===null && Math.hypot(hawk._swX,hawk._swY)<0.05, 'after the hold the pull eases out and the kill is let go');
-  hawk.pos.x=save.x; hawk.pos.y=save.y; hawk.target=save.t; hawk.hunting=save.h; hawk._swX=save.sx; hawk._swY=save.sy; hawk._altitude=save.alt;
+  hawk.pos.x=save.x; hawk.pos.y=save.y; hawk.target=save.t; hawk.hunting=save.h; hawk._swX=save.sx; hawk._swY=save.sy; hawk._altitude=save.alt; hawk._flightElev=save.fe;
   console.log(fail? `harrier strike: ${fail} FAILURES` : 'harrier strike: talons meet the prey\'s drawn body, the catch lands on the kill with no jump');
 }catch(e){ console.log('harrier strike: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
+
+// ---- harrier dive: one smooth descent, no rubber band ------------------------------------
+// The "swoop rubber-bands up and down" report. Three causes, each pinned here: altitude was eased
+// on the warped life clock (snapped in a boost); it dropped to 0 the instant a prey was locked and
+// rose again whenever the gap reopened; and the flying body rode the true relief, so a chase over
+// gullies bobbed with every one. Now: a spring on the real frame, a distance-shaped dive latched
+// one-way, and a smoothed flight floor (the shadow stays on the true ground).
+try{
+  const G=vm.runInContext('game',ctx), P=vm.runInContext('Projection',ctx);
+  const sim=G.simulation;
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const hawk=sim.eagles[0], m=sim.moas.find(x=>x.alive);
+  const tr=hawk.terrain, ownElev=Object.prototype.hasOwnProperty.call(tr,'getElevationAt'), elevFn=tr.getElevationAt, relief=P.relief;
+  const save={x:hawk.pos.x,y:hawk.pos.y,vx:hawk.vel.x,vy:hawk.vel.y,t:hawk.target,h:hawk.hunting,st:hawk.state,alt:hawk._altitude,av:hawk._altVel,dc:hawk._diveCeil,fe:hawk._flightElev,f:hawk._facing,mx:m.pos.x,my:m.pos.y};
+  const cruise=hawk.wingspan*1.05;
+  try{
+    tr.getElevationAt=()=>0.3; P.relief=true;
+    // A locked hunt with the prey juking out and back in: altitude never climbs, and lands on the deck.
+    hawk.state='hunting'; hawk.hunting=true; hawk.target=m; hawk._altitude=cruise; hawk._altVel=0; hawk._diveCeil=-1; hawk._flightElev=-1;
+    hawk._facing=0; hawk.pos.y=m.pos.y;
+    const gaps=[130,110,80,60,95,70,40,75,30,20,12];
+    let prev=hawk._altitude, rose=0, maxStep=0;
+    for(const g of gaps){ hawk.pos.x=m.pos.x-g; for(let i=0;i<40;i++){ hawk._updateFlightHeight(1); rose=Math.max(rose,hawk._altitude-prev); maxStep=Math.max(maxStep,Math.abs(hawk._altitude-prev)); prev=hawk._altitude; } }
+    for(let i=0;i<120;i++) hawk._updateFlightHeight(1);
+    chk(rose<1e-6, `a locked dive never climbs while the prey jukes (rose ${rose.toFixed(4)} px)`);
+    chk(hawk._altitude<0.3, `the dive reaches the deck at the catch (${hawk._altitude.toFixed(3)} px)`);
+    chk(maxStep<cruise*0.08, `the dive descends smoothly (largest per-frame step ${maxStep.toFixed(3)} of ${cruise.toFixed(1)} px)`);
+    // The climb-out eases in: the first frame moves a small fraction of the gap (a lerp moved 5%).
+    hawk.hunting=false; hawk.target=null; hawk.state='patrol'; hawk._altitude=0; hawk._altVel=0;
+    hawk._updateFlightHeight(1);
+    chk(hawk._altitude>0 && hawk._altitude<cruise*0.01, `the climb-out eases in (${(hawk._altitude/cruise*100).toFixed(2)}% of cruise on frame 1)`);
+    for(let i=0;i<240;i++) hawk._updateFlightHeight(1);
+    chk(Math.abs(hawk._altitude-cruise)<0.05*cruise, `it settles back at cruise (${hawk._altitude.toFixed(2)} / ${cruise.toFixed(2)})`);
+    // A big frame hitch never kicks the spring past the target.
+    hawk._altitude=cruise; hawk._altVel=0; hawk.state='resting'; hawk._updateFlightHeight(40);
+    chk(hawk._altitude>=0 && hawk._altitude<=cruise, `a 40-frame hitch stays in range (${hawk._altitude.toFixed(2)})`);
+    // Flying over gullies: the drawn body moves far less than the ground under it does.
+    tr.getElevationAt=(x)=>0.3+0.12*(Math.floor(x/18)%2);   // 18-px gullies, a hard step each
+    hawk.state='patrol'; hawk._altitude=cruise; hawk._altVel=0; hawk._flightElev=-1; hawk._facing=0;
+    const x0=m.pos.x; let gMax=0, bMax=0, pg=null, pb=null;
+    for(let i=0;i<300;i++){
+      hawk.pos.x=x0+i*0.4; hawk._updateFlightHeight(1);
+      const g=P.groundY(hawk.pos.y,tr.getElevationAt(hawk.pos.x,hawk.pos.y)), b=g-hawk._bodyAlt(g);
+      if(pg!==null){ gMax=Math.max(gMax,Math.abs(g-pg)); if(i>40) bMax=Math.max(bMax,Math.abs(b-pb)); }
+      pg=g; pb=b;
+    }
+    chk(gMax>1 && bMax<gMax*0.25, `over gullies the body glides (body ${bMax.toFixed(2)} px/frame vs ground ${gMax.toFixed(2)})`);
+  } finally {
+    if(ownElev) tr.getElevationAt=elevFn; else delete tr.getElevationAt;
+    P.relief=relief;
+    hawk.pos.x=save.x; hawk.pos.y=save.y; hawk.vel.x=save.vx; hawk.vel.y=save.vy; hawk.target=save.t; hawk.hunting=save.h; hawk.state=save.st;
+    hawk._altitude=save.alt; hawk._altVel=save.av; hawk._diveCeil=save.dc; hawk._flightElev=save.fe; hawk._facing=save.f; m.pos.x=save.mx; m.pos.y=save.my;
+  }
+  console.log(fail? `harrier dive: ${fail} FAILURES` : 'harrier dive: one committed descent, eased in and out, gliding over relief');
+}catch(e){ console.log('harrier dive: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n')[1]); }
 
 // ---- storm overuse: the STORM cost (plan §4) ----------------------------------
 // Each STORM press adds decaying pressure; above the overuse line the kererū stay grounded
@@ -4536,12 +4593,13 @@ console.log('  playTime  ', g.playTime.toFixed(0));
   }
   const strandedN = swimmers().filter(e => T.waterTypeAt(e._x, e._y) === 0).length;
   chk(strandedN === 0, `no eel or fish is left on dry land across morphs (${strandedN} stranded)`);
-  const lo = swimmers().map(e => e.d), hi = lo.slice();
-  for (let i = 0; i < 240; i++) {
+  // Extent on the MAP, not along one path: a fish now changes river at a junction, and its d jumps.
+  const x0 = swimmers().map(e => e._x), x1 = x0.slice(), y0 = swimmers().map(e => e._y), y1 = y0.slice();
+  for (let i = 0; i < 480; i++) {
     w.update(1);
-    swimmers().forEach((e, k) => { if (e.d < lo[k]) lo[k] = e.d; if (e.d > hi[k]) hi[k] = e.d; });
+    swimmers().forEach((e, k) => { if (e._x < x0[k]) x0[k] = e._x; if (e._x > x1[k]) x1[k] = e._x; if (e._y < y0[k]) y0[k] = e._y; if (e._y > y1[k]) y1[k] = e._y; });
   }
-  const pacing = swimmers().filter((e, k) => hi[k] - lo[k] < 20).length;   // 240 ticks at 0.3–0.4 px/tick ≈ 70–95 px when free
+  const pacing = swimmers().filter((e, k) => (x1[k] - x0[k]) + (y1[k] - y0[k]) < 20).length;   // 480 ticks at 0.15–0.4 px/tick ≈ 70–190 px when free
   chk(pacing === 0, `every eel and fish keeps travelling, none paces a tiny pocket (${pacing} pacing)`);
   //      Deterministic pocket: the real land leaves 6–20 px wet islands between dry stretches longer
   //      than swimHop (349 ka main stem: d86 W6 d128 W8 d30 W466), and a swimmer seeded or rescued
@@ -4580,6 +4638,47 @@ console.log('  playTime  ', g.playTime.toFixed(0));
       w.reconcile(T, DT.yearsEnd);
       chk(T.waterTypeAt(e._x, e._y) !== 0, 'a morph moves any eel the new land covers back onto water');
     }
+  }
+  // (b2c) THE FISH SWIM ONE NETWORK (2026-11-05). Each river was its own path, so a fish reaching a
+  //       tributary's mouth turned round there instead of swimming on into the river it joins. The
+  //       links are built from the real window-end rivers; waterTypeAt is stubbed wet so only the
+  //       links are under test, not this run's random land.
+  {
+    T.morphTo(DT.yearsEnd, 1); w.reconcile(T, DT.yearsEnd);
+    const net = w._buildNet(T), wt = T.waterTypeAt;
+    const linked = net.filter(p => p && p.parent), tribN = T.getRivers().filter(rv => rv.type === 'tributary').length;
+    chk(linked.length >= Math.ceil(tribN / 2), `the fish's tributaries are linked to the rivers they join (${linked.length} of ${tribN}; a mouth the sea cut joins nothing)`);
+    chk(w.fish.length > 0 && w.fish.every(f => f.fadeP > 0.8 * 5 * 60 && f.fadeP < 1.2 * 5 * 60),
+        'each fish fades down and up on its own ~5 s cycle');
+    if (linked.length) {
+      const c = linked[0];
+      T.waterTypeAt = () => 2;
+      try {
+        const e = { path: c, d: c.len - 0.05, dir: 1, animTime: 0, _x: 0, _y: 0, _angle: 0, seek: false };
+        w._stepSwimmers([e], 0.15, 1, true);
+        chk(e.path === c.parent && Math.abs(e.d - c.parentD) < 1, 'a fish reaching a tributary mouth swims on into the river it joins (it used to turn round there)');
+        e.path = c.parent; e.d = c.parentD - 0.1; e.dir = 1; e.seek = true;
+        w._stepSwimmers([e], 0.15, 1, true);
+        chk(e.path === c && e.dir === -1, 'a fish turned back by a dead end takes the next tributary mouth it passes, upstream');
+        const eel = { path: c, d: c.len - 0.05, dir: 1, animTime: 0, _x: 0, _y: 0, _angle: 0 };
+        w._stepSwimmers([eel], 0.15, 1, false);
+        chk(eel.path === c, 'the eels keep to their own river (no network)');
+      } finally { delete T.waterTypeAt; if (T.waterTypeAt !== wt) T.waterTypeAt = wt; }
+    }
+  }
+  // (b2d) THE MAIN REACHES THE UPPER MANAWATŪ at every date (2026-11-05). The dried NE arm was cut at
+  //       a fixed LOOK.mainArmKeep while the meanders carried the junction 0.626 → 0.70 along the main;
+  //       past ~0.645 the main stopped short and the whole eastern system was cut off from the sea.
+  {
+    const arm = T._armTrib, out = [];
+    if (arm) for (const y of [1000000, 850000, 650000, 450000, 300000, DT.yearsEnd]) {
+      T.morphTo(y, 1);
+      const keep = T._mainArmKeepEff(), jp = T._armJoinPos;
+      const v = T.getRivers()[T._geoRivers.indexOf(arm)].pts, m = v[v.length - 1];
+      const wet = T.waterTypeAt(m[0] * T.mapWidth, m[1] * T.mapHeight) !== 0;
+      if (!(keep > jp) || !wet) out.push(`${Math.round(y / 1000)} ka: keep ${keep.toFixed(3)} join ${jp.toFixed(3)} ${wet ? 'wet' : 'DRY'}`);
+    }
+    chk(!!arm && out.length === 0, `the main's dried arm ends past the ${arm ? arm.name : '(none)'} junction and there is water where they meet, at every date${out.length ? ' — ' + out.join('; ') : ''}`);
   }
 
   // (b3) tributaries JOIN the river network at every stage. Sampled along each prepared
