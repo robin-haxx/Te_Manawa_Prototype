@@ -40,6 +40,8 @@ stage. The last three goals shown are skipped while there is any other choice. A
 a climate swing for as long as it is still live and has a chance left. **A goal gets two chances**
 (`TM_GOALS.missLimit`): the first boost that doesn't answer it leaves it up, the second draws a new goal
 when its verdict releases, without moving the sequence on. Only the last goal live comes straight back.
+A press during a boost's time-lapse is a seed top-up, not an attempt: it isn't judged and costs no chance
+(`md/TEMANAWA_SECOND_SCREEN.md` §6.5).
 A new visitor (soft reset) starts the sequence again at moa.
 
 > **Built 2026-11-02 — a fresh goal past a glacial turn.** When the time dial or a deep burst carries

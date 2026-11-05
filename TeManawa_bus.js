@@ -22,13 +22,16 @@
 //   · clock / goal / timelapse : live telemetry; goal from Climate.nextRegimeBoundary (§7.1), plus
 //                                the live plant goal's prompt (TeManawa_goals.js).
 //   · plant goals              : each boost is judged against the live goal (TMGoals.judge); the
-//                                answer gets a bigger boost + a white-to-climate outline.
+//                                answer gets a bigger boost + a white-to-climate outline. A press
+//                                during a boost's time-lapse is only a seed top-up (onBoost).
 // ============================================================
 
 // Boost / timelapse tunables — console-tunable like TM_TIME / TM_GROW / TM_EDGE.
 const TM_BOOST = {
   matchedSeed:        12,   // plants a climate-MATCHED boost seeds of the chosen species (generous)
   mismatchedSeed:      0,   // a wrong-for-the-climate boost seeds NOTHING — the scene desaturates (the lesson)
+  topUpSeed:           2,   // a press during a boost's time-lapse: a couple more of the plant, if it fits the climate...
+  topUpGapMs:       2000,   // ...at most this often, counted from the boost itself (onBoost)
   faunaRecruit:        2,   // birds of EACH linked species a matched boost founds on-screen (the fauna coupling)
   eruptionLeadYears: 300,   // stop a timelapse this many years BEFORE an intervening eruption...
   eruptionFireDelayMs: 2000, // ...then fire it this long after the boost result settles (§6.3)
@@ -79,7 +82,9 @@ const TMBus = (function () {
   // Per-boost state carried from onBoost() to the timelapse-end handler.
   let _boostMatched = null;      // the regime-fit verdict at boost time → the goal 'achieved' flag
   let _pendingEruption = null;   // an eruption the timelapse stopped short of, fired a beat after it ends
+  let _eruptionDue = false;      // ...and the beat itself: the timelapse is over, that eruption has yet to fire
   let _wasTimelapsing = false;   // edge-detect the timelapse ending, in the heartbeat
+  let _lastPressAt = -Infinity;  // the last boost press that took effect, for TM_BOOST.topUpGapMs
 
   // ---- regime-boundary finder ------------------------------
   // Delegates to the pure Climate.nextRegimeBoundary (§7.1) so the goal readout and the timelapse
@@ -174,6 +179,21 @@ const TMBus = (function () {
     if (warmSpecies) matched = !glacial;
     else if (coldSpecies) matched = glacial;
     else matched = true;
+
+    // ONE BOOST PER GLACIAL TURN OR SERVED GOAL. A boost plays the clock to the next turn, or to an eruption
+    // that serves a new goal. Until that has happened a press is only a top-up: a couple more of the plant,
+    // no more than one per topUpGapMs, and it is not judged, so it costs no chance and moves no health.
+    const boostRunning = _pendingEruption || _eruptionDue || (typeof DeepTime !== 'undefined' && DeepTime.isTimelapsing && DeepTime.isTimelapsing());
+    if (boostRunning) {
+      if (nowMs - _lastPressAt >= (TM_BOOST.topUpGapMs ?? 2000)) {
+        _lastPressAt = nowMs;
+        const seeded = (matched && g && g.simulation && typeof g.simulation.seedSpecies === 'function')
+          ? g.simulation.seedSpecies(key, TM_BOOST.topUpSeed ?? 2) : 0;
+        reply({ type: 'boostResult', plantKey: key, matched: matched, topUp: true, seeded: seeded, goal: null, text: null });
+      }
+      return;
+    }
+    _lastPressAt = nowMs;
 
     // The plant goal (TeManawa_goals.js): judge this boost against the live goal BEFORE seeding, so
     // the ANSWER gets the bigger boost below. The verdict replaces the goal line above the timeline
@@ -311,6 +331,7 @@ const TMBus = (function () {
   }
 
   function fireEruptionInPlace(er) {
+    _eruptionDue = false;
     const g = G();
     if (!g) return;
     if (typeof g._fireEruptionInPlace === 'function') g._fireEruptionInPlace(er);
@@ -324,7 +345,7 @@ const TMBus = (function () {
     reply({ type: 'timelapse', active: false, progress: 1, yrPerSec: 0, achieved: _boostMatched });
     emitClock(); emitGoal();
     if (_pendingEruption) {
-      const er = _pendingEruption; _pendingEruption = null;
+      const er = _pendingEruption; _pendingEruption = null; _eruptionDue = true;
       const delay = TM_BOOST.eruptionFireDelayMs || 2000;
       try { setTimeout(() => fireEruptionInPlace(er), delay); } catch (_) { fireEruptionInPlace(er); }
     }
@@ -390,6 +411,7 @@ const TMBus = (function () {
     available() { return !!ch; },
     emitClock, emitGoal, emitTimelapse, nextRegimeBoundary,
     boost: onBoost,       // testable entry point (also usable from the console)
-    dispatch: onMessage   // the channel's message handler, exposed so bootcheck can drive intents
+    dispatch: onMessage,  // the channel's message handler, exposed so bootcheck can drive intents
+    heartbeat: tick       // one beat of the telemetry timer, which never starts without a channel (the harness)
   };
 })();

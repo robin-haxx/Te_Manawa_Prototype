@@ -110,7 +110,7 @@ const TM_HABITATS = {
       { key: 'kahikatea', name: 'Kahikatea', en: 'White pine', sci: 'Dacrycarpus dacrydioides',
         desc: [
           "Kahikatea is New Zealand's tallest tree, growing up to 60 metres! Long stands of kahikatea lined the ancient wetlands along the Manawatū River.",
-          "You might see kahikatea die and grow back as the river shifts: its seedlings need fresh, wet silt at the water's edge. At Round Bush near Foxton, people crossed the flooded forest by stepping along its raised roots. Birds eat its red berries and spread the seeds.",
+          "You might see kahikatea die and grow back as the river shifts: its seedlings need fresh, wet silt at the water's edge. In the swamp forests near Foxton, people crossed the floodwater by stepping along its raised roots. Birds eat its red berries and spread the seeds.",
           "Kahikatea wood was used to make butter boxes, and since the wetlands were drained, almost all of it is gone."
         ],
         birdDesc: [
@@ -124,8 +124,8 @@ const TM_HABITATS = {
         ], cx: 250, cy: 600, h: 493 },
       { key: 'flax', name: 'Harakeke', en: 'New Zealand flax', sci: 'Phormium tenax',
         desc: [
-          "Harakeke grows to about 3 metres tall, and its flower stalks can reach 5 metres – taller than a ceiling! Tūī carry pollen between its flowers as they drink the nectar.",
-          "Harakeke was actually less common in ancient times. It spread through the Manawatū after the swamps were drained and the rivers stopbanked, and it fed a huge flax-milling industry. The Moutoa swamp plant survey was carried out to help manage the flax crop."
+          "Harakeke grows to about 3 metres tall, and its flower stalks can reach 5 metres, taller than a ceiling! Tūī carry pollen between its flowers as they drink the nectar.",
+          "Harakeke was actually less common in ancient times. It spread through the Manawatū after the swamps were drained and the rivers stopbanked, and it fed a huge flax-milling industry. Flax was so valuable that people mapped the Moutoa swamp just to manage the crop."
         ],
         birdDesc: [
           "Mantell's moa was a stocky moa of lowland swamps and dunes, with a strong bill suited to tough, fibrous plants like harakeke."
@@ -214,7 +214,7 @@ const TM_HABITATS = {
         ],
         birdDesc: [
           "Tawa has the biggest seeds of any plant here, and it needs kererū: today they're the only bird big enough to swallow and spread them!",
-          "Moa didn't spread tawa, because the stones they swallowed (gastroliths) ground up seeds in their gizzards. So kererū don't just sit around eating – they're working hard to plant the forest!"
+          "Moa didn't spread tawa, because the stones they swallowed (gastroliths) ground up seeds in their gizzards. So kererū don't just sit around eating: they're working hard to plant the forest!"
         ],
         crop: 'top', cropKeep: 0.72, fauna: ['kereru'],
         // two kererū in the canopy: one swallowing fruit, one flying in
@@ -225,10 +225,10 @@ const TM_HABITATS = {
       { key: 'fern', name: 'Mamaku & Ponga', en: 'Black tree fern & silver fern', sci: 'Cyathea medullaris, C. dealbata',
         desc: [
           "Mamaku is Aotearoa's tallest tree fern, growing up to 20 metres tall! Ponga's fronds are green on top and brilliant silver underneath.",
-          "Tree ferns need a warm climate: when an ice age came around, about 90% of them died back. Thankfully, they grow back faster than trees, and dense \"stands\" of mamaku have been reported to grow in about 50 years."
+          "Tree ferns need a warm climate: when an ice age came around, they almost disappeared. Thankfully, they grow back faster than trees, and dense stands of mamaku can grow in about 50 years."
         ],
         birdDesc: [
-          "Kiwi love ferns, because a ferny forest floor is damp and sheltered, full of bugs and rich soil – perfect for probing with their long beaks at night! All that probing turns over the soil and mixes in fallen leaves, keeping the forest floor rich."
+          "Kiwi love ferns, because a ferny forest floor is damp and sheltered, full of bugs and rich soil, perfect for probing with their long beaks at night! All that probing turns over the soil and mixes in fallen leaves, keeping the forest floor rich."
         ],
         birdScale: 1.45, fauna: ['kiwi'], cx: 830, cy: 830, h: 229 },
       { key: 'kowhai', name: 'Kōwhai', sci: 'Sophora microphylla, S. godleyi',
@@ -281,7 +281,7 @@ const TM_HABITATS = {
       { key: 'wharariki', name: 'Wharariki', en: 'Mountain flax', sci: 'Phormium cookianum',
         desc: [
           "Mountain flax is the smaller, drooping cousin of harakeke, at home on the cold, windswept tops of the Tararua and Ruahine ranges.",
-          "On Aruwaru, a summit of the northern Tararua, it moves in where old leatherwood dies, and it crosses with harakeke where the two meet.",
+          "High in the northern Tararua, it moves in where old leatherwood dies, and it crosses with harakeke where the two meet.",
           "Its yellow-green flowers are full of nectar, and birds carry their pollen from plant to plant. Its seeds blow away on the wind."
         ],
         birdDesc: [
@@ -316,8 +316,8 @@ const TM_HABITATS = {
         desc: [
           "Aotearoa has more kinds of Dracophyllum than anywhere else in the world! Most of them appeared in the last few million years, as the mountains rose and the ice ages began.",
           "Stiff, needle-leaved and wind-proof, it rides out storms that can blow down tall trees. It could only make a home here once the Ruahine and Tararua ranges rose high enough to have cold, windswept tops.",
-          "In glacial times, the Manawatū may have looked like Campbell Island today, where Dracophyllum is the main woody plant. As the cold pushed the treeline down, scrub like this spread down the slopes.",
-          "This species was named from plants that William Colenso collected in the Ruahine Range. Today it grows in the leatherwood scrub of the Tararua tops, even on Aruwaru."
+          "In glacial times, the Manawatū may have looked like the windswept islands far south of New Zealand, where Dracophyllum is the main woody plant. As the cold pushed the treeline down, scrub like this spread down the slopes.",
+          "Today it grows in the leatherwood scrub of the Tararua tops."
         ],
         birdDesc: [
           "The North Island giant moa roamed all the way from the coast up to the mountaintops, into the herbfields and grasslands above the trees.",

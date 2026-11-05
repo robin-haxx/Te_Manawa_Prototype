@@ -561,6 +561,7 @@
                             yrPerSec: m.yrPerSec, achieved: m.achieved };
         renderReadout(); break;
       case 'boostResult':
+        if (m.topUp) break;                                      // a press during the time-lapse: the boost's own verdict stands
         card.classList.toggle('matched', m.matched === true);
         card.classList.toggle('mismatched', m.matched === false);
         card.classList.toggle('answer', m.goal === 'answer');   // the live plant goal's answer: a white glow

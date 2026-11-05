@@ -3270,6 +3270,70 @@ try{
     if(stagedFe) fe.delete(1);
   }
 
+  // 7c. ONE BOOST PER GLACIAL TURN OR SERVED GOAL. A press while a boost's time-lapse plays is only a top-up: a
+  //     couple more of the plant every TM_BOOST.topUpGapMs. It isn't judged, so it moves nothing else.
+  {
+    const sim=G.simulation, count=(k)=>sim.plants.filter(p=>p.alive && p.type===k).length;
+    const gAns=mk('t-ans','moa'), gAns2=mk('t-ans2','moa');
+    const atRest=()=>{ DT.endTimelapse(); DT.seekTo(122000); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null; };
+    const gap=TBO.topUpGapMs;
+    atRest(); TGL.list=[gAns,gAns2]; TG.reset(); tick();
+    const goal0=TG.live();
+    _t+=gap; TB.boost({ plantKey:'tawa', plantName:'Tawa' });
+    chk(DT.isTimelapsing() && TG.verdict() && TG.verdict().kind==='matched' && TG._misses===1, 'the boost itself is judged and starts its time-lapse');
+    const snap=()=>JSON.stringify({ h:sim.ecoHealth, ok:DT.boostsOk, solved:DT.goalsSolved, misses:TG._misses, line:TG.text(), kind:TG.verdict()&&TG.verdict().kind,
+      target:DT._tlTarget, lift:sim._homeo.lift, fauna:sim._fauna&&sim._fauna.link, moa:sim.getSpeciesCount('mantells_moa'), cold:G._tmGrowColdUntil, stage:TG._stage });
+    const s0=snap(); let f0=count('flax');
+    TB.boost({ plantKey:'flax' });
+    chk(count('flax')===f0, 'a press right after the boost does nothing');
+    _t+=gap-1; TB.boost({ plantKey:'flax' });
+    chk(count('flax')===f0, '…nor just short of the gap');
+    _t+=1; TB.boost({ plantKey:'flax' });
+    const added=count('flax')-f0;
+    chk(added>0 && added<=TBO.topUpSeed, `a press at the gap seeds a couple more (${added} of at most ${TBO.topUpSeed})`);
+    chk(snap()===s0, 'a top-up of the answer is not judged: no solve, no health, no lift, no birds, no tally, the same verdict and time-lapse');
+    TB.boost({ plantKey:'flax' });
+    chk(count('flax')===f0+added, 'the gap starts again from each top-up');
+    _t+=gap; const c0=count('tussock'); TB.boost({ plantKey:'tussock' });
+    chk(count('tussock')===c0 && snap()===s0, 'a wrong-climate top-up seeds nothing and costs nothing');
+    f0=count('flax'); let t0=_t;
+    for(let i=0;i<100;i++){ _t+=100; TB.boost({ plantKey:'flax' }); }   // spamming it for 10 s
+    const spam=count('flax')-f0, most=Math.ceil((_t-t0)/gap)*TBO.topUpSeed;
+    chk(spam>0 && spam<=most && snap()===s0, `spamming for 10 s adds a few plants (${spam} of at most ${most}) and changes nothing else`);
+    DT.endTimelapse(); _t+=TGL.holdMs+1; tick();
+    chk(TG.live()===goal0 && TG._misses===1, 'the goal comes back with only the boost itself counted as a chance');
+    // Landed, the next press is a real boost again.
+    const h1=sim.ecoHealth; atRest(); _t+=gap; TB.boost({ plantKey:'flax' });
+    chk(TG.verdict() && TG.verdict().kind==='answer' && sim.ecoHealth>h1, 'after the time-lapse lands the next press is judged and moves the health');
+    // The solve survives another boost landing on its verdict (a short time-lapse leaves the verdict still up).
+    const solved=TG.live(), st=TG._stage;
+    DT.endTimelapse(); TB.boost({ plantKey:'tawa' }); DT.endTimelapse();
+    chk(TG.verdict() && TG.verdict().kind==='matched', '(another boost lands on the answer\'s verdict)');
+    _t+=TGL.holdMs+1; tick();
+    chk(TG.live()!==solved && TG._stage===st+1, `a solved goal still leaves, and the sequence still moves on (live: ${TG.live()&&TG.live().id})`);
+    // A boost that stops short of an eruption: presses stay top-ups until that eruption has served its goal.
+    const fired=G._firedEruptions, realST=ctx.setTimeout; let fire=null;
+    const er=DT.ERUPTIONS.find(e=>{ if(e.yearsBP>990000 || fired.has(e.yearsBP)) return false; const b=TB.nextRegimeBoundary(e.yearsBP+2000); return b && b.targetYearsBP<e.yearsBP; });
+    chk(!!er, 'the window has an eruption ahead of a turn');
+    if(er){
+      ctx.setTimeout=(f)=>{ fire=f; return 0; };
+      DT.seekTo(er.yearsBP+2000); G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null; TG.reset(); tick();
+      _t+=gap; TB.boost({ plantKey:'flax' }); TB.heartbeat();
+      const h2=sim.ecoHealth, n2=DT.goalsSolved;
+      chk(DT.isTimelapsing() && DT._tlTarget>er.yearsBP, 'the boost stops short of the eruption');
+      DT.endTimelapse(); _t+=gap; TB.boost({ plantKey:'flax' });
+      chk(!DT.isTimelapsing() && sim.ecoHealth===h2 && DT.goalsSolved===n2, 'landed short of it, a press is still a top-up');
+      TB.heartbeat(); chk(typeof fire==='function', '…the eruption is held for its beat');
+      _t+=gap; TB.boost({ plantKey:'flax' });
+      chk(sim.ecoHealth===h2 && DT.goalsSolved===n2, '…and through that beat');
+      fire(); DT.endTimelapse(); tick(); fired.add(er.yearsBP);
+      const h3=sim.ecoHealth; _t+=gap; TB.boost({ plantKey:'flax' });
+      chk(TG.verdict() && TG.verdict().kind==='answer' && sim.ecoHealth>h3, 'once it has fired the next press counts');
+      DT.endTimelapse(); ctx.setTimeout=realST; fired.delete(er.yearsBP);
+    }
+    G.resetEcosystem(); atRest(); TG.reset();
+  }
+
   // 8. The climate line above the timeline, under the goal: "The climate is INTERGLACIAL / GLACIAL", the state in green / blue.
   const drawn=[]; const bt=IH._blitText;
   IH._blitText=function(s,f,t,sz,ah,av,x,y,col){ drawn.push([s,col]); return bt.apply(this,arguments); };

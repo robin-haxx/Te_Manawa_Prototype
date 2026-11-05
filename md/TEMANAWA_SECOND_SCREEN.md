@@ -171,7 +171,7 @@ sim sends *telemetry* so the readout tracks the clock.
 | `clock` | `yearsBP`, `glacialIndex`, `stage`, `stageName`, `mis` | the KYA date + glacial/interglacial label (sent ~4/s) |
 | `goal` | `targetYearsBP`, `targetStage`, `targetStageName`, `prompt` | the goal readout: the live plant goal's line (`prompt`, §6.5), else the next glacial/interglacial |
 | `timelapse` | `active`, `progress` (0..1), `yrPerSec`, `achieved` (bool/null) | the timelapse progress bar + goal-met indicator |
-| `boostResult` | `plantKey`, `matched` (bool), `goal` (`answer`/`matched`/`wrong`/`answerWrongClimate`/null), `text` | the immediate regime-fit verdict (right species for the climate?) and the plant-goal verdict line the diorama shows (§6.5) |
+| `boostResult` | `plantKey`, `matched` (bool), `goal` (`answer`/`matched`/`wrong`/`answerWrongClimate`/null), `text`; a top-up (§6.5) adds `topUp: true`, `seeded` | the immediate regime-fit verdict (right species for the climate?) and the plant-goal verdict line the diorama shows (§6.5) |
 | `eruptionSoon` | `name`, `yearsBP` | when a timelapse will stop early at a looming eruption (§6.3) |
 
 The screen never assumes the sim is up: it renders from its own state and simply reflects
@@ -338,6 +338,13 @@ The verdict holds at least `holdMs` (7 s) and until the time-lapse ends, then cr
 (`InstallHUD.GOAL_FADE_MS`, 800 ms). Long lines wrap, balanced, and stack upward from the anchor.
 After a goal's first miss the same goal comes back; after its second a new one is drawn
 (`TM_GOALS.missLimit`).
+
+**One boost per glacial turn or served goal.** A boost plays the clock to the next turn, or to an eruption
+that serves a new goal. Until that has happened (its time-lapse, then the beat before a held-back eruption
+fires) a press is a **top-up** (`TeManawa_bus.js` `onBoost`): at most one per `TM_BOOST.topUpGapMs` (2 s,
+counted from the boost), seeding `topUpSeed` (2) more of the plant if it fits the climate. A top-up is not
+judged: no verdict, no chance used, no health or habitat lift, no birds, no tally, and the time-lapse carries
+on as it was. So hammering the button adds a few seedlings and nothing else.
 
 **The health bar reads these verdicts** (`md/TEMANAWA_PLAN_V3.md` §7): four answers in a row fill it, four
 *totally wrong* boosts in a row leave it poor, and the two half-right rows above count for less. Another

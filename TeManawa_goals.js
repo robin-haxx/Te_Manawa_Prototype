@@ -108,13 +108,13 @@ const TM_GOALS = {
       requires: { eruption: true } },
     // ---- From the cards (2026-10-19). Each fact below is on its answer's touchscreen card
     // (secondscreen/encyclopedia.js), quoted in the comment, so a visitor can find the answer there.
-    // Harakeke: "its flower stalks can reach 5 metres – taller than a ceiling!"
+    // Harakeke: "its flower stalks can reach 5 metres, taller than a ceiling!"
     { id: 'tall-flower-stalks', group: 'moa',
       prompt: 'Boost a plant with flower stalks taller than a ceiling!',
       cond:   'a plant with flower stalks taller than a ceiling',
       answer: ['flax'],
-      terms:  { flax: ['flower stalks can reach 5 metres – taller than a ceiling'] } },
-    // Kahikatea: "At Round Bush near Foxton, people crossed the flooded forest by stepping along its raised roots."
+      terms:  { flax: ['flower stalks can reach 5 metres, taller than a ceiling'] } },
+    // Kahikatea: "In the swamp forests near Foxton, people crossed the floodwater by stepping along its raised roots."
     { id: 'stepping-roots', group: 'moa', 
       prompt: 'Boost a tree whose roots were stepping stones in a flooded forest!',
       cond:   'a tree whose roots were stepping stones in a flooded forest',
@@ -297,7 +297,7 @@ const TM_GOALS = {
       cond:   'a plant that dies back when it gets colder',
       answer: ['fern', 'nikau', 'tawa', 'Totara'],
       terms:  {
-        fern: ['need a warm climate', 'about 90% of them died back'],
+        fern: ['need a warm climate', 'almost disappeared'],
         nikau: ['retreated in the ice ages'] } },
     // Tōtara and kahikatea "berries" are fleshy red stalks under the seed; nīkau's are true fruit.
     // Coprosma too (2026-11-05): many have orange to red berries. Cold, so this is live in glacials too.
@@ -548,6 +548,7 @@ const TMGoals = {
   _misses: 0,         // boosts in a row that didn't answer the live goal (TM_GOALS.missLimit)
   _spent: null,       // the goal that just ran out of chances: the next draw passes over it if it can
   _eruptionSpent: [], // ids of the post-eruption goals out of chances since the last eruption
+  _solved: false,     // the live goal has been answered: its release draws a new one, whatever verdict came after
   _rand: Math.random, // the draw's random source (bootcheck swaps in a fixed sequence)
   // The current verdict. ONE reused object (no allocation on the frame path); kind null = none.
   _verdict: { kind: null, text: null, col: null, t0: 0, goalId: null },
@@ -661,7 +662,7 @@ const TMGoals = {
   update(g, now) {
     const v = this._verdict;
     if (v.kind && now - v.t0 >= TM_GOALS.holdMs && !this._timeMoving()) {
-      if (v.kind === 'answer') { this._stage++; this._force = true; }
+      if (this._solved) { this._solved = false; this._stage++; this._force = true; }
       else if (TM_GOALS.missLimit && this._misses >= TM_GOALS.missLimit && this._live) {
         this._spent = this._live;
         if (this.isEruptionGoal(this._live)) this._eruptionSpent.push(this._live.id);
@@ -714,6 +715,7 @@ const TMGoals = {
     const kind = isAnswer ? (matched ? 'answer' : 'answerWrongClimate') : (matched ? 'matched' : 'wrong');
     if (kind === 'answer' && this.isEruptionGoal(goal)) this._afterEruption = false;
     this._misses = (kind === 'answer') ? 0 : this._misses + 1;
+    if (kind === 'answer') this._solved = true;
     const regime = glacial ? 'glacial' : 'interglacial';
     const v = this._verdict;
     v.kind = kind;
@@ -801,7 +803,7 @@ const TMGoals = {
   reset() {
     this._live = null; this._stage = 0; this._recent.length = 0;
     this._force = true; this._dirty = true; this._afterEruption = false;
-    this._misses = 0; this._spent = null; this._eruptionSpent.length = 0;
+    this._misses = 0; this._spent = null; this._eruptionSpent.length = 0; this._solved = false;
     const v = this._verdict; v.kind = null; v.text = null; v.col = null; v.goalId = null;
   }
 };
