@@ -41,11 +41,18 @@ const LOOK = {
   facetDetail:   0.6,   // FACET: weight of a 2nd (high-freq) octave that frays facet edges into
                         //   cracks (0 = smooth wander; ~0.4 = ragged rock edges). Fraction of octave 1.
   facetDetailFreq: 2.0, // FACET: frequency multiple of that crack octave over facetFreq.
-  bakeScale:     4,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. render() draws
-                         //   it under the 2.5× camera, so N>2.5 MINIFIES it — that downsample is
-                         //   what anti-aliases ink+fill into curves (needs smoothScale). 3 is the
-                         //   sweet spot. Higher is sharper but memory grows as N² and is HARD-CAPPED
-                         //   by bakeMaxPixels below (a kiosk must never OOM), so raising it may no-op.
+  bakeScale:     2,      // SUPERSAMPLE factor: bake the ground at N× the sim grid. ONE scale for the
+                         //   boot bake, the reseed, every morph and every eruption (CONFIG.morphBakeScale
+                         //   null = follow this). Was 4 (capped to 3) at boot with morphs at 2. The
+                         //   first morph after every boot then reallocated the paint grid and rebuilt
+                         //   the wobble + facet noise fields (~0.9 s of freezes, Chrome), and the land's
+                         //   look changed at that first morph. At 16:9 the whole map spans ~1425
+                         //   backing px of the half-density ground layer (cover zoom ~4.2;
+                         //   Game._ensureTerrainLayer). So 2× (1364 px) is drawn ~1.04× MAGNIFIED,
+                         //   nearest-neighbour, and its coast/river edges step. 3× (2046 px) is
+                         //   MINIFIED, and with smoothScale that downsample anti-aliases ink+fill into
+                         //   curves, but every morph then bakes ~2.25× longer. Memory grows as N² and is
+                         //   HARD-CAPPED by bakeMaxPixels below (a kiosk must never OOM).
   bakeMaxPixels: 2200000,// per-season-buffer pixel cap: bakeScale auto-reduces so a bake buffer never
                          //   exceeds this (there are 4 of them). Guards the OOM at large grids / high
                          //   bakeScale — esp. Firefox, which is stricter than the Chrome kiosk. Press B.
@@ -272,8 +279,8 @@ const LOOK = {
   palaeoNeckAmp:       0.008, // the wobble on that ceiling (elevation): a little mottle, never enough to sink the neck under the sea
   palaeoFingerReach:   0.04,  // the finger's spine closeness starts this far (map fraction, at native scale) OUTSIDE the drawn range outline, so the early finger stands a little wider than the range with a gentle shore while keeping its taper to the gorge (0 = the closeness starts on the outline: a narrower finger with a steeper shore). Regenerate to apply.
   palaeoFingerNarrow:  0.8,   // how much the finger thins to its crest lines while GEO_EPOCHS.palaeoFingerNarrow is 1 (early): the mass is scaled by 1 − this × (1 − spine closeness), so at the flanks it falls under palaeoAxisCore and shelves under. 0 = the whole footprint at every date
-  palaeoAxisLow:       0.75,  // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by this much × (1 − uplift/upliftStart), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma)
-  palaeoAxisLowE:      0.22,  // … the level it is cut toward (lowland)
+  palaeoAxisLow:       1.2,   // "albeit at low elevation": before the rapid uplift the axis core's height ABOVE palaeoAxisLowE is cut by min(1, this × (1 − uplift/upliftStart)), so the 4 Ma finger reads as low land, rising continuously to the opening (0 at 1 Ma). > 1 so the cut is nearly whole early (0.96 at 4 Ma, 0.85 at 3 Ma) and eases off only as the uplift starts. At 0.75 (until 2026-11-05) it was 0.6 at 4 Ma: the base noise left a podocarp ridge at ~0.35 whose shore the relief bake painted as a sheer face from the coast to the forest
+  palaeoAxisLowE:      0.20,  // … the level it is cut toward (lowland: the 4 Ma crest sits ~0.21, under the podocarp band at 0.30 and low enough that bakeLift's coastal taper keeps the shore face short)
   palaeoAxisFloorE:    0.15,  // "emergent": inside the axis core the pre-window land stands at least this high (± the wobble), so the finger is land even where its footprint lies on today's coastal shelf (the southern Tararua, whose base is sea without the range uplift). Kept just above the lowland line, where the relief bake's lift is nearly flat (bakeLift tapers to 0 at the waterline) — higher, and the thin bridge across the saddle paints as a striped wall. Fades with the basin, 0 at the opening
   palaeoBasinEastU:    0.62,  // the EAST shelf (the Ruataniwha Strait's south-west end) lies east of this screen-X fraction; it closes earlier than the west (GEO_EPOCHS.palaeoBasinE*)
   palaeoBasinEastFeather: 0.12, // width (in screen-X) of the blend from the west basin's clock to the east's
@@ -422,7 +429,8 @@ const LOOK = {
   // Early the main stem reaches inland to its NE source (flowing inland). Once the ranges rise the
   // drainage flips: the flow reverses seaward (by the ~1 Ma opening) and the inland (NE) reach dries back to LAND,
   // gone by the narrow-river stage. Positional in downstream wPos (0 = SW mouth, 1 = NE source).
-  mainArmKeep:    0.625, // main river: the seaward reach with wPos BELOW this survives; the NE reach ABOVE it dries to land at full recession. Set just past the EASTERN tributary's confluence (wPos 0.615, measured), so the main ends where that tributary takes over as the upper Manawatū: lower and the tributary is left ending in dry land; higher and the main runs on past the junction as a blunt dead-end blob. Read on the UN-jittered main position (wMPos) so the end is clean.
+  mainArmKeep:    0.625, // main river: the seaward reach with wPos BELOW this survives; the NE reach ABOVE it dries to land at full recession. Set just past the EASTERN tributary's confluence (wPos 0.615, measured), so the main ends where that tributary takes over as the upper Manawatū: lower and the tributary is left ending in dry land; higher and the main runs on past the junction as a blunt dead-end blob. Read on the UN-jittered main position (wMPos) so the end is clean. A FLOOR: the meanders carry that junction along the main (0.626 → 0.70 across the window), so the live cut is _mainArmKeepEff(), never below the junction's position at this date + mainArmJoinPad.
+  mainArmJoinPad: 0.01,  // main river: how far past the upper Manawatū's live junction (in wPos) the arm's cut sits at least. The mask still needs a little of the feather to clear the water threshold, so 0 leaves the junction on a pinch. Regenerate to apply.
   mainArmFeather: 0.05,  // main river: width (in wPos) of the drying front's soft taper above mainArmKeep, so the arm fades to land instead of ending on a hard line.
 
   // ---- colours ----
@@ -2846,6 +2854,11 @@ class TerrainGenerator {
       for (const rv of this._geoTribs || []) if (rv.netDepth < 0 && rv.parent && rv.parent.netDepth >= 0) rv.netDepth = rv.parent.netDepth + 1;
     for (const rv of this._geoTribs || []) if (rv.netDepth < 0) rv.netDepth = 1;
     this._riverOrder = Rv.map((rv, i) => i).sort((a, b) => Rv[a].netDepth - Rv[b].netDepth);
+    // The ARM tributary: the main's eastern-most tributary (the upper Manawatū), where the main's dried
+    // NE arm ends (LOOK.mainArmKeep). _refineJunctionEnds tracks where it meets the main at each date.
+    this._armTrib = null; this._armJoinPos = -1;
+    for (const rv of this._geoTribs || [])
+      if (rv.parent && rv.parent.type !== 'tributary' && (!this._armTrib || rv.parentP > this._armTrib.parentP)) this._armTrib = rv;
   }
 
   // MEANDERS — per-river envelopes and vertex frames, built once per prep. Every river gets: mEnv
@@ -3068,7 +3081,36 @@ class TerrainGenerator {
           if (t >= 0 && t <= 1 && s >= 0 && s <= 1) { endJ[j] = cP[k] + (cP[k + 1] - cP[k]) * t; found = true; break; }
         }
       }
+      if (rv === this._armTrib) this._armJoinPos = this._joinPosOnParent(cv, cP, pv, pP, endJ[j]);
     }
+  }
+
+  // Where on its parent (the parent's authored position, wPos for the main) a tributary's moved line
+  // ends: the parent's line nearest the tributary's end point at pEnd. No allocation.
+  _joinPosOnParent(cv, cP, pv, pP, pEnd) {
+    let k = 0; while (k + 2 < cP.length && cP[k + 1] < pEnd) k++;
+    const f = (cP[k + 1] - cP[k]) > 0 ? Math.min(1, Math.max(0, (pEnd - cP[k]) / (cP[k + 1] - cP[k]))) : 0;
+    const ex = cv[k][0] + (cv[k + 1][0] - cv[k][0]) * f, ey = cv[k][1] + (cv[k + 1][1] - cv[k][1]) * f;
+    let best = Infinity, pos = -1;
+    for (let m = 0; m + 1 < pv.length; m++) {
+      const ax = pv[m][0], ay = pv[m][1], dx = pv[m + 1][0] - ax, dy = pv[m + 1][1] - ay, l2 = dx * dx + dy * dy;
+      let t = l2 > 0 ? ((ex - ax) * dx + (ey - ay) * dy) / l2 : 0; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const d = Math.hypot(ex - ax - dx * t, ey - ay - dy * t);
+      if (d < best) { best = d; pos = pP[m] + (pP[m + 1] - pP[m]) * t; }
+    }
+    return pos;
+  }
+
+  // Where the main's dried NE arm ends at this date: LOOK.mainArmKeep, pushed downstream far enough
+  // that the main still reaches the upper Manawatū wherever the meanders have carried their junction.
+  // A fixed cut stranded the whole eastern system (upper Manawatū, Tīraumea, Mangatoro, Tamaki,
+  // Mangatewainui) whenever the junction drifted past it: 0.626 → 0.70 of the main across the window.
+  _mainArmKeepEff() {
+    const L = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const keep = (L.mainArmKeep != null) ? L.mainArmKeep : 0.55;
+    const pad = (L.mainArmJoinPad != null) ? L.mainArmJoinPad : 0.01;
+    const j = this._armJoinPos;
+    return (j > 0 && j + pad > keep) ? j + pad : keep;
   }
 
   // Move the cached channels to the current date's meanders: the main stem's distance field
@@ -3225,12 +3267,17 @@ class TerrainGenerator {
   // `wThread`, except the trunk, which has `wTrunk`. taper eases to 0 approaching pc, so each stream
   // runs into the trunk; spread 0 puts every stream on the trunk, i.e. one channel. `pEnd` (optional)
   // ends the channel at that position: at its parent's moved line, or where the sea cut it (the mouth
-  // stub beyond is never drawn). Pure/static.
+  // stub beyond is never drawn). The end's fade straddles pEnd (TRIB_END_IN before, TRIB_END_OUT
+  // after) so the WATER, which needs ~0.55 of the mask, runs right up to pEnd: a fade wholly before
+  // it stopped every mouth a few px short of its parent or the sea, and the network fell apart into
+  // pieces there (fish turned round at the gap). Pure/static.
   static _tribThreads(s, p, threads, spread, wTrunk, wThread, edge, wRef, pEnd, minW) {
     let gate = 1;
     if (pEnd != null) {
-      if (p >= pEnd) return 0;
-      if (p > pEnd - 0.012) gate = (pEnd - p) / 0.012;
+      const pOut = pEnd + TerrainGenerator.TRIB_END_OUT;
+      if (p >= pOut) return 0;
+      const f = TerrainGenerator.TRIB_END_IN + TerrainGenerator.TRIB_END_OUT;
+      if (p > pOut - f) gate = (pOut - p) / f;
     }
     const eK = (wRef > 0) ? 1 / wRef : 0;
     const L = (typeof LOOK !== 'undefined') ? LOOK : {};
@@ -3456,9 +3503,12 @@ class TerrainGenerator {
     // The axis before the rapid uplift sits low: its height above pAxisLowE is cut by pAxisLow × how far
     // the pre-window uplift still has to go (0 at the opening, where uplift = upliftStart).
     const pUpStart = TerrainGenerator.GEO_EPOCHS.upliftStart;
-    const pAxisLow = (palaeoOn && pUpStart > 0 && up < pUpStart)
-      ? ((LKp.palaeoAxisLow != null) ? LKp.palaeoAxisLow : 0.75) * (1 - up / pUpStart) : 0;
-    const pAxisLowE = (LKp.palaeoAxisLowE != null) ? LKp.palaeoAxisLowE : 0.22;
+    // Capped at 1: palaeoAxisLow is > 1 so the cut is nearly whole at 4 Ma, and an uncapped cut would
+    // push the core BELOW pAxisLowE.
+    let pAxisLow = (palaeoOn && pUpStart > 0 && up < pUpStart)
+      ? ((LKp.palaeoAxisLow != null) ? LKp.palaeoAxisLow : 1.2) * (1 - up / pUpStart) : 0;
+    if (pAxisLow > 1) pAxisLow = 1;
+    const pAxisLowE = (LKp.palaeoAxisLowE != null) ? LKp.palaeoAxisLowE : 0.20;
     const pAxisFloorE = (LKp.palaeoAxisFloorE != null) ? LKp.palaeoAxisFloorE : 0.15;
     const pNarrow = ((LKp.palaeoFingerNarrow != null) ? LKp.palaeoFingerNarrow : 0.8) * (PL.narrow || 0);   // the dated thinning of the finger
     const rSpArr = c.rSp, rMaskRArr = c.rMaskR;
@@ -3482,7 +3532,7 @@ class TerrainGenerator {
     const minWV = this._tribMinWidth() * valleyWiden;                                                     // the channel-width floor, at valley scale
     // MAIN NE-ARM recession (deep time): fade the main channel's water/carve where the inland reach dries.
     const mainArm = (t.mainArm > 0) ? t.mainArm : 0;
-    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmKeep = this._mainArmKeepEff();   // follows the upper Manawatū's junction
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     // COASTAL DUNE relief (relict ridges) — added at the GLACIAL (max) reach so the landform
     // persists across phases while the sand COLOUR surges over it. Off the river channel (wMask).
@@ -3905,10 +3955,10 @@ class TerrainGenerator {
     const srFeather = (typeof LOOK !== 'undefined' && LOOK.straitRetreatFeather != null) ? LOOK.straitRetreatFeather : 0.08;
     const valleyWiden = (typeof LOOK !== 'undefined' && LOOK.riverValleyWiden != null) ? LOOK.riverValleyWiden : 2.4;
     const mainArm = (t.mainArm > 0) ? t.mainArm : 0;   // MAIN NE-ARM recession (deep time)
-    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     let wMaskM = 0, wDepthM = 1;
     this._meanderLUT();
+    const mArmKeep = this._mainArmKeepEff();   // follows the upper Manawatū's junction (after _meanderLUT has placed it)
     const mf = this._mainField(u, v);
     if (mf) {
       let dm = Math.abs(mf.s - TerrainGenerator._meanderAt(this._geoMain ? this._geoMain.mOff : null, mf.p)) + mf.e;
@@ -4133,7 +4183,7 @@ class TerrainGenerator {
     const seaWobE = (this._waterBiome && this._waterBiome.maxElevation != null) ? this._waterBiome.maxElevation : 0.10;   // the waterline the border wobble fades to 0 at
     const seaWobW = (typeof LOOK !== 'undefined' && LOOK.wobbleSeaFade != null) ? LOOK.wobbleSeaFade : 0.04;
     const mainArm = (_gt.mainArm > 0) ? _gt.mainArm : 0;   // MAIN NE-ARM recession (deep time)
-    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmKeep = this._mainArmKeepEff();   // follows the upper Manawatū's junction
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     // TRIBUTARY FANS at this date: spread + per-tributary stream widths (water scale).
     const tSpread = TerrainGenerator._tribSpreadEff(_gt);
@@ -4333,6 +4383,13 @@ class TerrainGenerator {
 
   get morphInProgress() { return !!this._morphJob; }
 
+  // Rows (or columns) per morph chunk: the whole lines that fit in `cells`, never fewer than one.
+  // `span` is the line length (paint width for row bands, height for column bands). Pure, so
+  // tools/bootcheck.js asserts it.
+  static morphChunk(cells, span) {
+    return Math.max(1, Math.floor(cells / Math.max(1, span | 0)));
+  }
+
   // Which glacial-phase buffers this morph re-bakes, current first (so the visible
   // land updates soonest). The incremental visitor-path morph re-bakes ONLY the
   // pair that render() can put on screen — currentKey (drawn full) + nextKey (the
@@ -4361,7 +4418,13 @@ class TerrainGenerator {
     const nowFn = (typeof performance !== 'undefined' && performance.now)
       ? () => performance.now() : () => Date.now();
     const deadline = nowFn() + budgetMs;
-    const ROWS = 32, COLS = 48;   // per-slice chunk sizes (time re-checked between chunks)
+    // Per-slice chunk sizes, in CELLS rather than fixed rows/columns, so a chunk costs about the same
+    // whatever the paint width. The time is re-checked between chunks, so a frame overshoots
+    // budgetMs by at most one chunk. A fixed 32 rows was ~44K pass-1 cells at the 16:9 paint
+    // width: 17–26 ms per slice against a 3 ms budget (66–84 ms with FES on), 23 frames running.
+    // Measured costs per cell (Chrome, FES off): pass 1 ~0.4 µs, pass 2 ~0.02 µs, bake ~0.05 µs.
+    // Sized inside each phase: phase 1 can change the paint grid within this same call.
+    const MC = TerrainGenerator.MORPH_CHUNK_CELLS;
 
     do {
       if (job.phase === 0) {
@@ -4386,12 +4449,12 @@ class TerrainGenerator {
         this._bakeScaleOverride = null;
         job.phase = 2; job.row = 0;
       } else if (job.phase === 2) {
-        const r1 = Math.min(this._paintH, job.row + ROWS);
+        const r1 = Math.min(this._paintH, job.row + TerrainGenerator.morphChunk(MC.pass1, this._paintW));
         this._paintGridPass1(job.row, r1);
         job.row = r1;
         if (job.row >= this._paintH) { job.phase = 3; job.row = 0; }
       } else if (job.phase === 3) {
-        const r1 = Math.min(this._paintH, job.row + ROWS);
+        const r1 = Math.min(this._paintH, job.row + TerrainGenerator.morphChunk(MC.pass2, this._paintW));
         this._paintGridPass2(job.row, r1);
         job.row = r1;
         if (job.row >= this._paintH) { job.phase = 4; job.col = 0; }
@@ -4400,7 +4463,7 @@ class TerrainGenerator {
           job.st = this._bakeSeasonBegin(job.seasons[job.seasonIdx]);
           job.col = 0;
         }
-        const c1 = Math.min(this._paintW, job.col + COLS);
+        const c1 = Math.min(this._paintW, job.col + TerrainGenerator.morphChunk(MC.bake, this._paintH));
         this._bakeSeasonColumns(job.st, job.col, c1);
         job.col = c1;
         if (job.col >= this._paintW) {
@@ -4688,7 +4751,7 @@ class TerrainGenerator {
     const seaWobE = (this._waterBiome && this._waterBiome.maxElevation != null) ? this._waterBiome.maxElevation : 0.10;   // the waterline the border wobble fades to 0 at
     const seaWobW = (typeof LOOK !== 'undefined' && LOOK.wobbleSeaFade != null) ? LOOK.wobbleSeaFade : 0.04;
     const mainArm = (_gt.mainArm > 0) ? _gt.mainArm : 0;   // MAIN NE-ARM recession (deep time)
-    const mArmKeep = (typeof LOOK !== 'undefined' && LOOK.mainArmKeep != null) ? LOOK.mainArmKeep : 0.55;
+    const mArmKeep = this._mainArmKeepEff();   // follows the upper Manawatū's junction
     const mArmFeather = (typeof LOOK !== 'undefined' && LOOK.mainArmFeather != null) ? LOOK.mainArmFeather : 0.14;
     // TRIBUTARY FANS at this date (same as the classify).
     const tSpread = TerrainGenerator._tribSpreadEff(_gt);
@@ -5154,21 +5217,24 @@ class TerrainGenerator {
     // global canvas and any legacy caller keeps working.
     const R = g || (typeof window !== 'undefined' ? window : this);
     // Anti-alias the baked ground as it scales to the panel. The buffer is baked
-    // at bakeScale× and drawn under the 2.5× camera, so bakeScale>2.5 minifies it;
-    // with smoothing that downsample turns the raster ink+fill into curved edges.
+    // at bakeScale× and drawn under the camera zoom into the ground layer; when that
+    // shrinks it, smoothing turns the raster ink+fill into curved edges.
     // smoothScale=false → crisp nearest-neighbour (the pixel look). Saved/restored
     // so sprites and HUD keep whatever the frame set.
     const _dc = R.drawingContext, _ps = _dc.imageSmoothingEnabled, _pq = _dc.imageSmoothingQuality;
     // Smooth a buffer ONLY while it is being MINIFIED (baked LARGER than its on-screen
-    // size) — that anti-aliased downsample is the resting look (LOOK.bakeScale 3 bakes
-    // above the ~2.5x camera zoom). A buffer baked BELOW the camera zoom — a cheap morph
-    // re-bake at CONFIG.morphBakeScale — is MAGNIFIED, and smoothing a magnified raster is
-    // exactly what turned it BLURRY after the first morph; draw those NEAREST-NEIGHBOUR
-    // (crisp) instead. So the resting ground stays smooth and the post-morph land stays
-    // sharp. Set inline before each draw below (no per-frame closure — CLAUDE.md).
-    // LOOK.smoothScale=false still forces nearest everywhere (the chunky pixel look).
+    // size) — that anti-aliased downsample is the resting look. A buffer baked BELOW its
+    // on-screen size is MAGNIFIED, and smoothing a magnified raster turns it BLURRY; draw
+    // those NEAREST-NEIGHBOUR (crisp) instead. Set inline before each draw below (no
+    // per-frame closure — CLAUDE.md). LOOK.smoothScale=false still forces nearest everywhere
+    // (the chunky pixel look).
+    //   On-screen size is in the target's BACKING pixels, not its logical size: the ground
+    // layer is pixelDensity .5 (Game._ensureTerrainLayer). At 16:9 the map's footprint is
+    // ~2850 logical but ~1425 backing px. Comparing against the logical width drew a 3× bake
+    // (2046 px) nearest-neighbour while the layer was in fact shrinking it, which aliases the ink.
     const _sm = (typeof LOOK === 'undefined') ? true : LOOK.smoothScale !== false;
-    const _screenW = this.mapWidth * ((typeof CONFIG !== 'undefined' && CONFIG.viewZoom) || 1);
+    const _dens = (_dc.canvas && _dc.canvas.width > 0 && R.width > 0) ? _dc.canvas.width / R.width : 1;
+    const _screenW = this.mapWidth * ((typeof CONFIG !== 'undefined' && CONFIG.viewZoom) || 1) * _dens;
     if ('imageSmoothingQuality' in _dc) _dc.imageSmoothingQuality = 'high';
 
     // Morph crossfade: when the incremental morph swapped the on-screen bake,
@@ -5266,3 +5332,17 @@ class TerrainGenerator {
     };
   }
 }
+
+// Morph chunk budgets in cells (see morphStep). A frozen constant, not a static getter, because
+// morphStep reads it every frame and a getter would allocate a fresh object each time.
+TerrainGenerator.MORPH_CHUNK_CELLS = Object.freeze({
+  pass1: 4096,    // paint pass 1: ~0.4 µs/cell → ~1.6 ms
+  pass2: 65536,   // paint pass 2 (edge flags): ~0.02 µs/cell → ~1.3 ms
+  bake:  40960    // season bake columns: ~0.05 µs/cell → ~2 ms
+});
+
+// A tributary's end fade (_tribThreads), in its own position units (0 source → 1 mouth): IN before
+// its end, OUT past it. The water clears the threshold to ~pEnd + 0.001; the bed to ~pEnd + 0.004, a
+// couple of px into the parent's water, never out the far side of it. Was 0.012 / 0.
+TerrainGenerator.TRIB_END_IN  = 0.004;
+TerrainGenerator.TRIB_END_OUT = 0.008;

@@ -295,7 +295,13 @@ Proposed `levelDef.geography` block, mirrored onto a `GEO` dev surface like
    - **Junctions** (`_prepJunctions`): each tributary's parent is the river nearest its mouth (main or
      tributary). Its line runs on past the mouth by `tribMouthStub`; its last `tribMouthBlend` slides
      sideways with the parent's offset, and `_refineJunctionEnds` ends it where its moved line crosses
-     the parent's (`_tribEndJ`). No channel is pinned at a confluence.
+     the parent's (`_tribEndJ`). No channel is pinned at a confluence. A tributary's end fade straddles
+     that point (`TerrainGenerator.TRIB_END_IN/OUT`), so its water runs right up to the parent. The
+     main's dried NE arm is cut at `_mainArmKeepEff()`: `LOOK.mainArmKeep`, pushed past the upper
+     Manawatū's live junction (`_armJoinPos` + `mainArmJoinPad`), which the meanders move.
+   - **The fish swim the network** (`WaterLayer._buildNet`): each tributary path links to its parent at
+     the junction. A fish at a mouth swims on into the parent; one passing a mouth turns up it 40% of
+     the time, and always after a dead end has turned it. A mouth the sea cut joins nothing.
    - **Two tributary slots per cell** (`tJ`/`tJ2` …, unioned in the carve, classify and paint): with
      channels moving, a cell nearest one trunk's authored line can hold another's water. A spatial
      index (`_buildTribBins`) and a Douglas–Peucker pass over the rounded lines keep the cache build

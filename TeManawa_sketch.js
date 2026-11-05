@@ -18,6 +18,22 @@ let fpsHistory = [];
 const FPS_HISTORY_SIZE = 30;
 let currentFPS = 60;
 
+// p5's Friendly Error System (FES) is LIVE in the shipped p5.min.js (1.11.11 does not strip
+// it): every p5 call (red(), fill(), image(), …) builds an argument-signature key before doing
+// its work. Measured in Chrome at 1920×1080 (2026-11-04): FES made init 12.1 s instead of
+// 6.3 s, the attract reset 2.8–4.0 s instead of 0.9 s, a morph 2.4 s instead of 0.7 s, and
+// cost ~1.5 ms per frame. Off by default; ?fes=1 turns it back on for authoring (its
+// messages catch bad p5 arguments). Runs at script load, before p5's global-mode init on the
+// window load event, so the global-override warnings are covered too. See MISTAKES.md.
+function applyFriendlyErrorsFromURL() {
+  if (typeof p5 === 'undefined') return;
+  let on = false;
+  try { on = new URLSearchParams(window.location.search).get('fes') === '1'; } catch (e) { on = false; }
+  p5.disableFriendlyErrors = !on;
+  if (on) console.log('[p5] Friendly Error System ON from URL (slow; authoring only)');
+}
+applyFriendlyErrorsFromURL();
+
 // ============================================
 // PLANT SPRITE SETS
 // ============================================
@@ -419,22 +435,23 @@ const CONFIG = {
   // Terrain morph (deep-time land change). The driver in Game.update re-bakes the
   // land as yearsBP advances so ranges rise and the gorge deepens. The re-bake is
   // INCREMENTAL (TerrainGenerator.morphBegin/morphStep): each frame spends at most
-  // morphBudgetMs on it, into back buffers that swap in when finished, so the
-  // visitor path never hitches. At the default budget a morph completes in
-  // ~30-60 frames — well inside morphMinMs before the next one can start.
+  // morphBudgetMs on it, into back buffers that swap in when finished. Measured in Chrome
+  // at 1920×1080 (2026-11-04): ~1.05–1.2 s of work over ~165–180 frames (~3 s at 60 fps),
+  // median ~4.5 ms a frame. Two spots still go over: phase 0 (heightMap + biome reshape) is one
+  // ~280–340 ms frame per morph, and a season buffer's begin/end (pixel read-back / upload) is up
+  // to ~17 ms. A morph outlasts morphMinMs, so at a fast dial they run back to back.
   morphEnabled: true,
   morphIntervalYears: 12000,   // re-bake once yearsBP has drifted this far from the baked land
   morphMinMs: 1100,           // ...and at least this long since the last morph re-bake (throttle)
-  morphBakeScale: 2,          // supersample for morph re-bakes (the original baseline). Baked below the
-                              //   camera zoom (~3), so a re-bake buffer is MAGNIFIED on screen — terrain.render()
-                              //   now draws a magnified buffer NEAREST-NEIGHBOUR (crisp), never smoothed (which
-                              //   is what made it blurry). This is the SAME resolution the land already dropped
-                              //   to on the first morph before, so no new detail loss and no extra bake cost.
-                              //   Going lower (1) magnifies harder → chunky; matching LOOK.bakeScale (3) keeps
-                              //   full detail but makes each morph bake ~2.25x pricier (MORE stutter). Neither
-                              //   the machine-independent transfer cost changes here. The zero-compromise
-                              //   stutter cut is structural: bake only the visible glacial phase per morph, not
-                              //   all four — see md/archive/TEMANAWA_TERRAIN_PLAN.md.
+  morphBakeScale: null,       // supersample for morph + eruption re-bakes. null = LOOK.bakeScale, the SAME
+                              //   scale the boot bake used, so the paint grid, the pooled bake buffers and the
+                              //   cached wobble/facet noise fields carry straight over. A number here bakes morphs
+                              //   at a different scale than boot. Then the first morph after every boot or reseed
+                              //   reallocates the paint grid and rebuilds those noise fields (~0.9 s of freezes,
+                              //   Chrome 2026-11-04), and the ground's look changes at that morph. A magnified buffer
+                              //   (baked below its on-screen size) draws nearest-neighbour in terrain.render().
+                              //   The structural stutter cut is to bake only the visible glacial phase per
+                              //   morph, not all four; see md/archive/TEMANAWA_TERRAIN_PLAN.md.
   morphBudgetMs: 3,           // per-frame time slice for the incremental re-bake (60fps frame = 16.6ms)
   morphFadeMs: 600,           // crossfade for the on-screen buffer swap (floored at 500ms — photosensitivity)
 

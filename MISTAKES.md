@@ -10,6 +10,54 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A fixed cut on a river that moves: the upper Manawatū lost the main
+
+- **What happened.** At about a third of the dates, the main stem stopped a few px short of the upper
+  Manawatū, where the main's horizontal run meets that tributary's vertical one. The whole eastern
+  system (upper Manawatū, Tīraumea, Mangatoro, Tamaki, Mangatewainui) was then a lake with no
+  outlet. Separately, every tributary mouth stopped 1–4 px short of its parent or the sea. Fish
+  turned round at each gap, and at every mouth anyway: each river was its own path.
+- **Root cause.** `LOOK.mainArmKeep` (0.625) is a fixed position along the main, measured once
+  against the junction at 0.615. The meanders (2026-10-20) move that junction: it drifts
+  0.626 → 0.70 across the window, and past ~0.645 the arm's taper had already dried the main.
+  `_tribThreads` faded a mouth over the 0.012 *before* its end, so the water (which needs ~0.55 of
+  the mask) stopped short of the end point.
+- **Rule.** A cut placed against another feature must follow that feature when it moves. Measure
+  it at every date (`_mainArmKeepEff()` reads `_armJoinPos`), not once. A fade that ends a channel
+  must straddle the end point, not lie wholly before it. The harness's land is noise, so its water
+  checks pass on a seed that does not show the gap. Sweep the real build's dates in the browser for
+  connectivity: label the water's connected components and check that each river's line lies in
+  the main's.
+
+---
+
+## The terrain work ran far past its budgets, and nobody had timed it in Chrome
+
+- **What happened.** A perf survey (2026-11-04) timed the terrain work in Chrome at 1920×1080.
+  `init()` took 11–12 s, close to the 10 s watchdog. Each deep-time morph spent 25–28 frames at
+  ~65 ms against a 3 ms slice budget, and the first one after each boot also had a 500–760 ms
+  frame. The error-recovery reset took 2.2 s. In its first 90 s, the 4 Ma attract sequence (which
+  streams re-bakes) had 600 frames over 33 ms.
+- **Root cause.** Three separate things:
+  1. `p5.min.js` 1.11.11 ships the Friendly Error System live. Every `red()`, `fill()` and `image()`
+     call validated its arguments, which roughly doubled every bake.
+  2. Morph chunks were a fixed 32 rows. At the 16:9 paint width that is ~44K cells, about 25 ms of
+     work. The deadline is only checked between chunks, so neither the visitor path's 3 ms budget
+     nor the attract sequence's 8–14 ms applied.
+  3. Boot baked at `LOOK.bakeScale` (4, capped to 3) and morphs at `CONFIG.morphBakeScale` (2). The
+     first morph after every boot reallocated the paint grid and rebuilt the wobble and facet noise
+     fields, and the land's look changed at that morph.
+- **Consequence.** Every boost, eruption and attract sequence stuttered in front of visitors.
+  Fixing (3) also exposed a latent cut. `Palaeo._landingBake` issued the 1 Ma bake without waiting
+  out a live crossfade. It had only passed because the harness's morphs were slow enough to outlast
+  the fade.
+- **Rule.** FES stays off (`applyFriendlyErrorsFromURL`, `?fes=1` for authoring). Size a sliced
+  job's chunks in cells against its budget (`TerrainGenerator.MORPH_CHUNK_CELLS`). Use one bake
+  scale on the visitor path (`morphBakeScale: null`). A swap that relies on timing must also check
+  state: whatever issues a bake waits for `_morphFade` to clear. Time new terrain work in Chrome as
+  well as the harness; the harness's vm globals distort the hot loops. The harness "frame budget"
+  section guards the first three; "palaeo attract" guards the cut.
+
 ## The neck painted as a sheer face: a field that picked one range per cell
 
 - **What happened.** With the neck moved onto the crest-to-crest line, the 4 Ma land across the gap

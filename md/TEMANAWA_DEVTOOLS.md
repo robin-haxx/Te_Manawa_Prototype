@@ -56,10 +56,15 @@ the SVG river line).
 
 Notes:
 
-- **`bakeScale`** is the paint resolution over the sim grid. Default **`3`** (the sweet
-  spot); `2` is the lightest, matching sim-grid memory. Higher is sharper but memory grows
-  as N² and is **hard-capped by `bakeMaxPixels`** (~2.2 M px per buffer, ×4), so raising it
-  may no-op. It only costs at bake time, never per frame.
+- **`bakeScale`** is the paint resolution over the sim grid. Default **`2`**, and it is the
+  one scale for boot, reseed, morphs and eruptions (`CONFIG.morphBakeScale: null` follows
+  it). At 16:9 the map spans ~1425 backing px of the half-density ground layer, so 2×
+  (1364 px) is drawn slightly magnified, nearest-neighbour, with stepped coast and river edges.
+  3× is minified and smoothed into curves. Higher is sharper but memory grows as N²
+  and is **hard-capped by `bakeMaxPixels`** (~2.2 M px per buffer, ×4), so raising it may
+  no-op. It costs only at bake time, never per frame, but each step costs ~2.25× more bake
+  time, and every deep-time morph pays that cost. Setting `CONFIG.morphBakeScale` to a
+  different number brings back a ~0.9 s rebuild on the first morph after each boot.
 - **`shadeStrength`** feeds the cel bands. High values saturate to the two extreme bands
   (hard light/shadow); for three distinct steps use ~`10`–`15` with `shadeSteps: 3`.
 

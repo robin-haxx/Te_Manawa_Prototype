@@ -134,7 +134,18 @@ class EylesHarrier extends Boid {
     // while flying, eases to 0 to dive/rest so a swoop-to-catch reads at 3/4. Kept LOW —
     // a harrier quarters close to the ground, it does not soar high like Haast's eagle.
     this._altitude = this.wingspan * 1.05;
-    
+    // The dive, shaped (see _updateFlightHeight): altitude is a critically damped spring
+    // (`_altVel`), so every climb and descent eases in AND out instead of lurching off a lerp.
+    // A locked hunt descends by DISTANCE — cruise at `diveStartDist`, the deck at catchRadius —
+    // and `_diveCeil` latches it one-way, so a prey juking in and out never bounces the bird.
+    this.diveStartDist = 110;
+    this._altVel = 0;
+    this._diveCeil = -1;          // < 0 = no dive in progress
+    // The flight FLOOR: the elevation the flying body rides, smoothed (with a short look-ahead)
+    // off the true ground so a chase over broken relief glides instead of hopping every gully.
+    // The shadow stays on the true ground, so the gap between them reads as real height.
+    this._flightElev = -1;        // < 0 = seed from the ground on the first update
+
     // Reusable vectors
     this._tempForce = createVector();
     this._targetVec = createVector();
@@ -267,14 +278,8 @@ class EylesHarrier extends Boid {
     const mdt = (simulation && simulation.lifeScale > 1) ? dt / simulation.lifeScale : dt;
     this.hunger = Math.min(this.hunger + this.hungerRate * mdt, this.maxHunger);
 
-    // Flight altitude (visual only): cruise while flying/searching, drop to the
-    // deck when diving on prey or resting, so a swoop reads as a real descent.
-    // Eased so it never pops. Runs before the early-returns below and uses last
-    // frame's state/target — a single frame of lag is invisible.
-    const _diving = this.hunting && this.target !== null;
-    const _cruiseAlt = this.wingspan * 1.05;   // low quartering flight (see constructor)
-    const _targetAlt = (_diving || this.state === 'resting') ? 0 : _cruiseAlt;
-    this._altitude += (_targetAlt - this._altitude) * Math.min(1, 0.05 * dt);
+    // Flight altitude is NOT eased here: behave() runs on the warped life clock, which in a
+    // boost made the ease snap. It rides the real frame in update() → _updateFlightHeight().
 
     // Emergent population model: age, maybe starve, and (when calm) maybe breed.
     if (this.emergent) {
@@ -969,6 +974,77 @@ class EylesHarrier extends Boid {
   }
 
   // ============================================
+  // FLIGHT HEIGHT (visual only — the sim stays 2D)
+  // ============================================
+
+  update(dt = 1) {
+    this._updateFlightHeight(dt);   // real frame dt, like the wingbeat
+    super.update(dt);
+  }
+
+  // Once per REAL frame. Two parts, both allocation-free:
+  //  · ALTITUDE above the flight floor — a critically damped spring toward a target that is
+  //    cruise while quartering, the deck while resting on a kill, and during a locked hunt a
+  //    smoothstep of distance-to-prey (cruise at diveStartDist → 0 at catchRadius), latched
+  //    one-way so the stoop is a single committed descent.
+  //  · the FLIGHT FLOOR — the ground elevation the body rides, smoothed toward the higher of
+  //    the ground here and ~a body-length ahead, so ridges are met early and gullies glided over.
+  //    It hugs the true ground as the bird drops to the deck, so the talons and the shadow meet.
+  _updateFlightHeight(dt) {
+    const step = dt > 3 ? 3 : (dt > 0 ? dt : 0);   // a hitch never kicks the spring
+    const cruise = this.wingspan * 1.05;           // low quartering flight (see constructor)
+    const t = this.target;
+    let target;
+    if (this.hunting && t) {
+      const ex = t.pos.x - this.pos.x, ey = t.pos.y - this.pos.y;
+      const span = this.diveStartDist - this.catchRadius;
+      let u = (Math.sqrt(ex * ex + ey * ey) - this.catchRadius) / (span > 1 ? span : 1);
+      u = u < 0 ? 0 : (u > 1 ? 1 : u);
+      const prof = cruise * u * u * (3 - 2 * u);
+      if (this._diveCeil < 0) this._diveCeil = cruise;
+      if (prof < this._diveCeil) this._diveCeil = prof;   // a dive only goes DOWN
+      target = this._diveCeil;
+    } else {
+      this._diveCeil = -1;
+      target = this.state === 'resting' ? 0 : cruise;
+    }
+
+    // Critically damped spring (ζ = 1): no overshoot, eases out of rest and into the target.
+    // Descending is a touch quicker than the climb-out, which a harrier labours over.
+    const w = target < this._altitude ? 0.075 : 0.05;
+    this._altVel += (w * w * (target - this._altitude) - 2 * w * this._altVel) * step;
+    this._altitude += this._altVel * step;
+    if (this._altitude < 0) { this._altitude = 0; if (this._altVel < 0) this._altVel = 0; }
+
+    // The flight floor.
+    const tr = this.terrain;
+    if (!tr || typeof tr.getElevationAt !== 'function') return;
+    const ground = tr.getElevationAt(this.pos.x, this.pos.y);
+    if (this._flightElev < 0) this._flightElev = ground;
+    const h = (this._facing !== undefined) ? this._facing : Math.atan2(this.vel.y, this.vel.x);
+    const look = this.wingspan * 3;
+    const ahead = tr.getElevationAt(this.pos.x + Math.cos(h) * look, this.pos.y + Math.sin(h) * look);
+    // Near the deck the floor must BE the ground; at cruise it glides. Rising ground is met
+    // quicker than falling ground is followed, and ground above the floor is never ignored.
+    // The look-ahead fades out as the bird drops, so a stoop uphill doesn't float off the slope.
+    const low = 1 - Math.min(1, this._altitude / (cruise > 0 ? cruise : 1));
+    const want = ahead > ground ? ground + (ahead - ground) * (1 - low) : ground;
+    let r = want > this._flightElev ? 0.09 : 0.035;
+    if (ground > this._flightElev) r = 0.2;
+    r += (0.25 - r) * low * low;
+    this._flightElev += (want - this._flightElev) * Math.min(1, r * step);
+    if (low >= 1 && this._flightElev > ground) this._flightElev = ground;   // on the deck: on the ground
+  }
+
+  // The drawn body's height above the true ground under it, in paint px: the altitude plus the
+  // flight floor's lift over that ground. `gy` is the true ground's groundY at pos.
+  _bodyAlt(gy) {
+    const fe = this._flightElev;
+    const lift = fe >= 0 ? gy - Projection.groundY(this.pos.y, fe) : 0;
+    return (this._altitude || 0) + lift;
+  }
+
+  // ============================================
   // RENDERING
   // ============================================
 
@@ -1109,10 +1185,15 @@ class EylesHarrier extends Boid {
   // folding the move into the strike pull so the drawn bird doesn't jump, and hold the talons on it.
   onCatch(prey) {
     if (typeof Projection !== 'undefined' && Projection.groundY && this.terrain) {
-      const gy0 = Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y));
-      const gy1 = Projection.groundY(prey.pos.y, this.terrain.getElevationAt(prey.pos.x, prey.pos.y));
+      // The body rides the flight floor (not the ground under pos), so fold the move as the
+      // floor sees it; then drop the floor onto the kill's ground and fold that step too.
+      const fe0 = this._flightElev >= 0 ? this._flightElev : this.terrain.getElevationAt(this.pos.x, this.pos.y);
+      const fe1 = this.terrain.getElevationAt(prey.pos.x, prey.pos.y);
+      const by0 = Projection.groundY(this.pos.y, fe0) - (this._altitude || 0);
+      const by1 = Projection.groundY(prey.pos.y, fe1) - (this._altitude || 0);
       this._swX -= prey.pos.x - this.pos.x;
-      this._swY -= gy1 - gy0;
+      this._swY -= by1 - by0;
+      this._flightElev = fe1;
     }
     this.pos.x = prey.pos.x;
     this.pos.y = prey.pos.y;
@@ -1147,7 +1228,7 @@ class EylesHarrier extends Boid {
       const drawW = this.wingspan * 2.8;
       const drawH = sprite.width > 0 ? drawW * (sprite.height / sprite.width) : this.wingspan * 2.1;
       const gy = Projection.groundY(this.pos.y, this.terrain.getElevationAt(this.pos.x, this.pos.y));
-      const _alt = this._altitude || 0;
+      const _alt = this._bodyAlt(gy);   // altitude + the flight floor's lift over this ground
       if (!ghosting) this._updateSwoop(gy, facing, mirror, artAngle, drawW, drawH, _alt);
 
       push();
