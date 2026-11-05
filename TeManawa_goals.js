@@ -370,8 +370,8 @@ const TM_GOALS = {
     // "lived through the ice ages" (2026-11-05): every plant on the cards did, so a "not" verdict read as
     // "beech didn't survive the ice ages". The DNA finding is kōwhai's own.
     { id: 'small-survivor', group: 'forest',
-      prompt: 'Boost a colourful tree that DNA shows grew all over in the ice ages!',
-      cond:   'a colourful tree that DNA shows grew all over in the ice ages',
+      prompt: 'Boost a colourful tree that persisted in the ice ages!',
+      cond:   'a colourful tree that persisted in the ice ages',
       answer: ['kowhai'],
       terms:  { kowhai: ['DNA shows', 'persisted across much of the country'] } },
     // Mountain beech: "Cold pushed whole forests downhill, but Beech held in harsh soil while other trees died away."
