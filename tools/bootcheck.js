@@ -2041,6 +2041,26 @@ try{
     chk(got.join(',')==='dialTurn:1,dialTurn:-1,dialReset,dialTurn:1,dialTurn:1',`console dial keys/wheel → actions (${got.join(',')})`);
   }catch(e){ chk(false,'secondscreen/input.js dial bindings: threw '+e.message); }
 
+  // an ERUPTION halts every speed-up: a timeline crossing stops the dial the frame it is detected
+  // (not after the ~5 s charge), and an eruption firing ends a boost timelapse / deep burst too
+  try{
+    const ER=DT.ERUPTIONS, e=ER[1]||ER[0];
+    const fired0=new Set(G._firedEruptions||[]); G._firedEruptions=new Set();
+    DT.seekTo(e.yearsBP+500); DT.dialSet(DT.dialSteps); run(120);
+    chk(DT.dialRate()>1000,'(setup) the dial is running fast before the crossing');
+    G._autoPrevYear=e.yearsBP+1; DT.yearsBP=e.yearsBP-1; G._tmAutoErAt=0; G._tmErDownAt=0;
+    G._checkAutoEruptions();
+    chk(G._tmAutoErAt>0,'(setup) the crossing armed the timeline eruption');
+    const yA=DT.yearsBP; run(30);
+    chk(DT.dialStep===0 && DT.dialRate()===0 && DT.yearsBP===yA,'a timeline eruption halts the dial at once: detent 0, no coast past the event');
+    G._tmAutoErAt=0; G._tmAutoErupt=null;
+    DT.seekTo(e.yearsBP+20000); DT.dialSet(10); DT.beginTimelapse(e.yearsBP+100); run(30);
+    chk(DT.isTimelapsing(),'(setup) a boost timelapse is playing');
+    G._fireEruptionInPlace(e);
+    chk(!DT.isTimelapsing() && DT.dialStep===0 && DT.dialRate()===0 && !DT.isMoving(),'an eruption firing ends the boost timelapse and the dial');
+    G._firedEruptions=fired0; G._ashCover=0; G._tmAshUntil=0; G._ashCloudUntil=0;
+  }catch(e){ chk(false,'eruption halt threw: '+e.message); }
+
   DT.dialReset(); DT._dialRate=0; DT._dialAt=0; DT.reset();
   console.log(fail? `time dial: ${fail} FAILURES`
     : `time dial: 0 → 5,000 yr/s over ${DT.dialSteps} detents, eased, window in ${secs.toFixed(0)} s at the top; keys/wheel/bus reach it`);
