@@ -3217,6 +3217,59 @@ try{
   G.resetEcosystem(); DT.seekTo(122000); tick();
   chk(!TG.verdict() && TG._stage===0 && TG._recent.length===1, 'a soft reset clears the verdict and restarts the sequence');
 
+  // 7b. TWO CHANCES (TM_GOALS.missLimit). A both-worlds answer is live in either climate, so nothing but a
+  //     solve or an eruption used to move the line: a visitor who missed it stayed on it for the whole session.
+  {
+    const release=()=>{ _t+=TGL.holdMs+1; tick(); };
+    const miss=()=>boost({ plantKey:'tawa' });
+    const gA=mk('t-a','moa'), gB=mk('t-b','moa'), gC=mk('t-c','moa');
+    TGL.list=[gA,gB,gC]; DT.seekTo(122000); TG.reset(); tick();
+    const a=TG.live();
+    miss(); release();
+    chk(TG.live()===a && !TG.verdict(), 'two chances: the first miss brings the same goal back');
+    DT.seekTo(150000); tick();
+    chk(TG.live()===a, '…a climate turn keeps it, and keeps the count');
+    miss();
+    chk(TG.verdict() && TG.verdict().kind==='wrong' && TG.live()===a, '…the second miss (here the wrong climate) is judged against it, and its verdict holds');
+    DT.seekTo(122000); release();
+    const b=TG.live();
+    chk(b && b!==a && !TG.verdict() && TG.text()===b.prompt, `…and when that verdict releases a new goal comes up (live: ${b&&b.id})`);
+    chk(TG._stage===0, '…without moving the bird sequence on: only a solve does');
+    miss(); release();
+    chk(TG.live()===b, 'the new goal gets its own two chances');
+    miss(); miss(); release();
+    const c=TG.live();
+    chk(c!==a && c!==b, `two boosts inside one verdict's hold are both chances (live: ${c&&c.id})`);
+    miss(); miss(); TG._rand=()=>0.99; release(); TG._rand=()=>0;   // all three are recent; 0.99 would take the last
+    chk(TG.live()!==c, `with every goal recent, the one out of chances still isn't redrawn (live: ${TG.live()&&TG.live().id})`);
+    const d=TG.live();
+    miss(); solve('flax');
+    const e=TG.live();
+    chk(e!==d && TG._stage===1 && TG._misses===0, 'a solve after a miss still counts as a solve, and the count starts over');
+    TGL.list=[gA]; TG.reset(); tick();
+    miss(); miss(); release();
+    chk(TG.live()===gA && TG._misses===0, 'with no other goal live the same one returns, with fresh chances');
+    const lim=TGL.missLimit; TGL.missLimit=0; TG.reset(); tick();
+    miss(); miss(); miss(); release();
+    chk(TG.live()===gA && TG._misses===3, 'missLimit 0 holds a goal until it is solved');
+    TGL.missLimit=lim;
+    // After an eruption: both of the book's post-eruption goals take mānuka, so a lock that only ended on an
+    // answer would swap one for the other forever. Each gets its chances, then the whole book opens again.
+    const fe=G._firedEruptions, stagedFe=!fe.has(1); if(stagedFe) fe.add(1);
+    const gE1=Object.assign(mk('t-e1','lowland'),{ requires:{ eruption:true } }), gE2=Object.assign(mk('t-e2','lowland'),{ requires:{ eruption:true } });
+    TGL.list=[gA,gE1,gE2]; TG.reset(); tick(); TG.onEruption(); tick();
+    const e1=TG.live();
+    chk(TG.isEruptionGoal(e1), `an eruption moves the line to a post-eruption goal (live: ${e1&&e1.id})`);
+    miss(); miss(); release();
+    const e2=TG.live();
+    chk(TG.isEruptionGoal(e2) && e2!==e1, `out of chances, it moves to the other post-eruption goal (live: ${e2&&e2.id})`);
+    miss(); miss(); release();
+    chk(TG.live()===gA, `when both are out of chances the line leaves them (live: ${TG.live()&&TG.live().id})`);
+    TG.onEruption(); tick();
+    chk(TG.isEruptionGoal(TG.live()), 'the next eruption gives them their chances again');
+    if(stagedFe) fe.delete(1);
+  }
+
   // 8. The climate line above the timeline, under the goal: "The climate is INTERGLACIAL / GLACIAL", the state in green / blue.
   const drawn=[]; const bt=IH._blitText;
   IH._blitText=function(s,f,t,sz,ah,av,x,y,col){ drawn.push([s,col]); return bt.apply(this,arguments); };

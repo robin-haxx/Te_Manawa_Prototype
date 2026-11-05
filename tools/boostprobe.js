@@ -161,8 +161,19 @@ for (let i = 0; i < 60; i++) FRAME();
 const cardKeys = Object.keys(TB.faunaLinks).filter(k => PT[k]);
 const fitOf = k => TG.fitOf(k);
 const samples = [], events = [];
+// How long a bird lasts, by kind, and what state it was in when it went: a steady count can hide a treadmill.
+const seenBirds = new Map(), lives = {};
+function trackLives(sim, now) {
+  const live = new Set();
+  const note = (o, key) => { live.add(o); let r = seenBirds.get(o); if (!r) seenBirds.set(o, r = { key, t: now, h: 0, maxH: o.hunger != null && o.maxHunger ? o.maxHunger : 100 }); if (o.hunger != null) r.h = o.hunger; };
+  for (const m of sim.moas) if (m.alive) note(m, m.speciesKey);
+  for (const e of sim.eagles) if (e.alive) note(e, e.speciesKey || 'eagle');
+  for (const k in sim.otherEntities) { const L = sim.otherEntities[k]; if (!Array.isArray(L)) continue; for (const x of L) if (x && x.alive) note(x, k); }
+  for (const [o, r] of seenBirds) if (!live.has(o)) { const L = lives[r.key] || (lives[r.key] = { n: 0, ages: [], hungry: 0 }); L.n++; L.ages.push(+(now - r.t).toFixed(1)); if (r.h >= 80) L.hungry++; seenBirds.delete(o); }
+}
 function sample(tag) {
   const sim = G.simulation;
+  trackLives(sim, _t / 1000);
   const byType = {}, byBiome = {}, matureByType = {};
   let alive = 0, mature = 0, dormant = 0, growthSum = 0;
   for (const p of sim.plants) {
@@ -343,6 +354,8 @@ function windDial(step, afterEruptionS, maxFrames, every = 60) {
 plans[SCEN]();
 sample('end');
 fs.writeFileSync(OUT, JSON.stringify({ scen: SCEN, seed: Number(process.env.SEED || 12345), bootMs, wallMs: Date.now() - t0, cardKeys: cardKeys.map(k => [k, fitOf(k)]),
+  lives, stillAlive: [...seenBirds.values()].reduce((a, r) => { a[r.key] = (a[r.key] || 0) + 1; return a; }, {}),
+  deathsBySpecies: G.simulation.stats.deathsBySpecies, birthsBySpecies: G.simulation.stats.birthsBySpecies,
   faunaClimate: G.simulation._fauna ? G.simulation._fauna.clim : null, faunaBase: G.simulation._fauna ? G.simulation._fauna.base : null, events, samples }));
 report(JSON.parse(fs.readFileSync(OUT, 'utf8')));
 console.log('\n' + SCEN, 'done', OUT, ((Date.now() - t0) / 1000).toFixed(0) + 's', samples.length, 'samples', events.length, 'boosts');
@@ -457,6 +470,16 @@ function idleTable(sc, rs) {
   const mins = r => (r.samples[r.samples.length - 1].s - r.samples[0].s) / 60;
   const flow = (k) => rs.map(r => ((r.samples[r.samples.length - 1][k] - r.samples[0][k]) / mins(r)).toFixed(1)).join('/');
   console.log('per minute, each seed:  births ' + flow('births') + '  deaths ' + flow('deaths') + '  starved ' + flow('starved') + '  census retired ' + flow('culls') + '  newcomers ' + flow('recruits') + '  refounds ' + flow('refounds'));
+  // The treadmill: how long a bird lasts, by kind, and how many went hungry (hunger ≥ 80 at its last sample).
+  if (rs[0].lives) {
+    const med = v => { const s = [...v].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+    console.log(pad('', 30) + pad('died/min', 10) + pad('median life s', 15) + pad('lives < 60 s', 14) + 'hungry at death');
+    for (const k of kinds) {
+      const L = rs.map(r => (r.lives || {})[k] || { n: 0, ages: [], hungry: 0 }), ages = L.flatMap(x => x.ages), n = ages.length, tot = rs.reduce((a, r) => a + mins(r), 0);
+      if (!n) { console.log(pad('  ' + k, 30) + 'none died'); continue; }
+      console.log(pad('  ' + k, 30) + pad((n / tot).toFixed(1), 10) + pad(med(ages).toFixed(0), 15) + pad(Math.round(100 * ages.filter(a => a < 60).length / n) + '%', 14) + Math.round(100 * L.reduce((a, x) => a + x.hungry, 0) / n) + '%');
+    }
+  }
 }
 function climateTable(r) {
   const clim = r.faunaClimate || {}, S = r.samples.filter(x => x.tag === 'dial');

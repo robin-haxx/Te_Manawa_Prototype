@@ -11,16 +11,21 @@
 //                                   seedlings, more birds), and a white outline easing to green/blue.
 //                                   When it fades, a NEW goal comes up.
 //   other plant, right climate   "Tōtara was in interglacial habitats, but is not rarer in …..."
-//                                 · the normal matched boost (outline, rim pulse, trails). Same goal after.
+//                                 · the normal matched boost (outline, rim pulse, trails). A chance gone.
 //   wrong climate                "Tawa was not glacial, and was not rarer in …"
-//                                 · grey, nothing grows (the regime-fit lesson). Same goal after.
+//                                 · grey, nothing grows (the regime-fit lesson). A chance gone.
+//
+// A goal gets TWO CHANCES (TM_GOALS.missLimit). After the first miss the same goal comes back; after the
+// second, a new one is drawn when the verdict releases. Without this a both-worlds answer never left: it
+// is live in either climate, so nothing but a solve or an eruption moved the line.
 //
 // WHICH GOAL IS UP. Every goal that is LIVE right now (below) is a candidate, and one is drawn at
 // random, so two visitors at the same point in the timeline can get different goals. The draw leans
 // on the BIRD SEQUENCE (TM_GOALS.sequence: moa → harrier → lowland animals → forest birds): most of
 // the time (sequenceBias) it takes a goal from the current stage, otherwise any live goal, for
 // variety. Solving a goal moves the sequence on a stage. The last few goals shown are skipped while
-// there is any other choice. A goal stays up across a climate flip as long as it is still live.
+// there is any other choice. A goal stays up across a climate flip as long as it is still live and
+// has a chance left.
 //
 // HOW TO ADD A GOAL — append to TM_GOALS.list below:
 //   id      unique key (bootcheck checks it)
@@ -64,6 +69,8 @@ const TM_GOALS = {
   sequence: ['moa', 'harrier', 'lowland', 'forest'],
   sequenceBias: 0.75,
   recentMemory: 3,              // skip the last N goals shown while there is another choice
+  missLimit: 2,                 // a goal's chances: this many boosts in a row that don't answer it and a new
+                                // goal is drawn when the last verdict releases (0 = hold it until it is solved)
 
   list: [
     // ---- MOA: kahikatea (little bush moa), harakeke (Mantell's moa), mānuka (stout-legged moa) ----
@@ -538,6 +545,9 @@ const TMGoals = {
   _glacial: null,     // the regime the live goal was checked under
   _baked: undefined,  // the land (Game._bakedYearsBP) it was checked on
   _afterEruption: false,   // an eruption is waiting for its goal to be answered: the draw takes a post-eruption goal
+  _misses: 0,         // boosts in a row that didn't answer the live goal (TM_GOALS.missLimit)
+  _spent: null,       // the goal that just ran out of chances: the next draw passes over it if it can
+  _eruptionSpent: [], // ids of the post-eruption goals out of chances since the last eruption
   _rand: Math.random, // the draw's random source (bootcheck swaps in a fixed sequence)
   // The current verdict. ONE reused object (no allocation on the frame path); kind null = none.
   _verdict: { kind: null, text: null, col: null, t0: 0, goalId: null },
@@ -615,21 +625,25 @@ const TMGoals = {
   // Choose the goal to show. `keep`: hold the live goal if it is still live (a climate flip or a land
   // morph shouldn't churn the line). Otherwise draw: skip the recent few if there's another choice,
   // then usually (sequenceBias) take one from the current bird-sequence stage, else any live goal.
-  // After an eruption the draw is the post-eruption goals alone, whatever the sequence says.
-  // Event-driven (a solve, a regime flip, a land morph, a reset), never per frame: it scans the plants
-  // and hasHabitat scans the biome map.
+  // After an eruption the draw is the post-eruption goals alone, whatever the sequence says, until each
+  // has had its chances. A goal that just ran out of chances is passed over unless it is the only one live.
+  // Event-driven (a solve, a miss limit, a regime flip, a land morph, a reset), never per frame: it scans
+  // the plants and hasHabitat scans the biome map.
   _pick(g, glacial, yearsBP, keep) {
     const counts = this._plantCounts(g ? g.simulation : null);
     if (keep && this._live && TM_GOALS.list.indexOf(this._live) >= 0 &&
         this.eligible(this._live, g, glacial, yearsBP, counts)) return;
     let live = [];
     for (const gl of TM_GOALS.list) if (this.eligible(gl, g, glacial, yearsBP, counts)) live.push(gl);
-    this._live = null;
+    const spent = this._spent;
+    this._live = null; this._misses = 0; this._spent = null;
     if (!live.length) return;
-    const tied = this._afterEruption ? live.filter(gl => this.isEruptionGoal(gl)) : null;
+    const tied = this._afterEruption
+      ? live.filter(gl => this.isEruptionGoal(gl) && this._eruptionSpent.indexOf(gl.id) < 0) : null;
     if (tied && tied.length) live = tied;
     let pool = live.filter(gl => this._recent.indexOf(gl.id) < 0);
     if (!pool.length) pool = live;
+    if (spent && pool.length > 1) pool = pool.filter(gl => gl !== spent);
     const seq = TM_GOALS.sequence || [];
     const stage = seq.length ? seq[this._stage % seq.length] : null;
     const inStage = stage ? pool.filter(gl => gl.group === stage) : [];
@@ -641,12 +655,18 @@ const TMGoals = {
   },
 
   // Per frame (InstallHUD.update). Releases a verdict once it has been read AND its time-lapse is
-  // over (a solve moves the bird sequence on and draws a new goal), and re-checks the live goal when
-  // the world it depends on has changed. Allocation-free on the common path.
+  // over (a solve moves the bird sequence on and draws a new goal; a goal out of chances draws one too,
+  // without moving the sequence), and re-checks the live goal when the world it depends on has changed.
+  // Allocation-free on the common path.
   update(g, now) {
     const v = this._verdict;
     if (v.kind && now - v.t0 >= TM_GOALS.holdMs && !this._timeMoving()) {
       if (v.kind === 'answer') { this._stage++; this._force = true; }
+      else if (TM_GOALS.missLimit && this._misses >= TM_GOALS.missLimit && this._live) {
+        this._spent = this._live;
+        if (this.isEruptionGoal(this._live)) this._eruptionSpent.push(this._live.id);
+        this._force = true;
+      }
       v.kind = null; v.text = null; v.col = null;
     }
     if (typeof DeepTime === 'undefined') return;
@@ -679,9 +699,9 @@ const TMGoals = {
   // A goal that only makes sense after an eruption (requires.eruption). When one fires (Game.applyAsh)
   // the line moves to such a goal, so what to do about the eruption is the next thing on the wall, and
   // answering it counts healthEruptionMult× (TeManawa_bus.js onBoost). The draw keeps to them until one
-  // is answered, so the release of an older verdict cannot draw past it.
+  // is answered or each has had its chances, so the release of an older verdict cannot draw past it.
   isEruptionGoal(goal) { return !!(goal && goal.requires && goal.requires.eruption); },
-  onEruption() { this._afterEruption = true; this._force = true; },
+  onEruption() { this._afterEruption = true; this._force = true; this._eruptionSpent.length = 0; },
 
   // ---- the verdict -------------------------------------------------------------------------------
   // Judge a boost against the live goal (TeManawa_bus.js onBoost, BEFORE it seeds, so an answer gets
@@ -693,6 +713,7 @@ const TMGoals = {
     const isAnswer = goal.answer.indexOf(key) !== -1;
     const kind = isAnswer ? (matched ? 'answer' : 'answerWrongClimate') : (matched ? 'matched' : 'wrong');
     if (kind === 'answer' && this.isEruptionGoal(goal)) this._afterEruption = false;
+    this._misses = (kind === 'answer') ? 0 : this._misses + 1;
     const regime = glacial ? 'glacial' : 'interglacial';
     const v = this._verdict;
     v.kind = kind;
@@ -780,6 +801,7 @@ const TMGoals = {
   reset() {
     this._live = null; this._stage = 0; this._recent.length = 0;
     this._force = true; this._dirty = true; this._afterEruption = false;
+    this._misses = 0; this._spent = null; this._eruptionSpent.length = 0;
     const v = this._verdict; v.kind = null; v.text = null; v.col = null; v.goalId = null;
   }
 };

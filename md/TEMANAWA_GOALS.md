@@ -26,7 +26,8 @@ At any moment some goals are **live**. A goal is live when all of these hold:
    - an eruption has happened this session (the scrub-after-a-volcano goal).
 
 **An eruption moves the line** to one of those post-eruption goals, ahead of the sequence below, and the
-draw keeps to them until one is answered. Answering it counts double (`md/TEMANAWA_PLAN_V3.md` §7).
+draw keeps to them until one is answered or each has had its two chances. Answering it counts double
+(`md/TEMANAWA_PLAN_V3.md` §7).
 
 Among the live goals, **one is drawn at random**, so two visitors at the same point in the timeline
 can get different goals. The draw follows the **bird sequence**:
@@ -36,8 +37,10 @@ can get different goals. The draw follows the **bird sequence**:
 Three out of four times the draw takes a goal from the current stage; the rest of the time it takes
 any live goal, for variety (`TM_GOALS.sequenceBias`, 0.75). Solving a goal moves the sequence on one
 stage. The last three goals shown are skipped while there is any other choice. A goal stays up across
-a climate swing for as long as it is still live. A miss leaves it up. A new visitor (soft reset)
-starts the sequence again at moa.
+a climate swing for as long as it is still live and has a chance left. **A goal gets two chances**
+(`TM_GOALS.missLimit`): the first boost that doesn't answer it leaves it up, the second draws a new goal
+when its verdict releases, without moving the sequence on. Only the last goal live comes straight back.
+A new visitor (soft reset) starts the sequence again at moa.
 
 > **Built 2026-11-02 — a fresh goal past a glacial turn.** When the time dial or a deep burst carries
 > the clock across a glacial/interglacial turn, a **new goal** is drawn instead of holding the current

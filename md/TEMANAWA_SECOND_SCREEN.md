@@ -330,19 +330,22 @@ time-lapse is over:
 | Boost | Line | What else happens |
 |---|---|---|
 | The answer, right climate | *"Harakeke was an interglacial plant, and was rarer in ancient times than today!"*, in the climate boost colour (green/blue) | A **bigger** boost (`answerSeed` 24 seedlings, `answerFauna` 4 birds), and a **solid white** outline on the plant + its bird that eases to green/blue over 6 s. When the verdict fades, the **next goal** in the book comes up. |
-| Another plant, right climate | *"Tōtara was in interglacial habitats, but is not rarer in ancient times than today..."*, in the goal colour | The normal matched boost: outline, rim pulse, time-lapse trails. Same goal after. |
-| Wrong climate | *"Tawa was not glacial, and was not rarer in ancient times than today"*, **grey** | The normal wrong boost: nothing grows, grey pulse, the scene desaturates. Same goal after. |
-| The answer, wrong climate | *"… was rarer in …, but was not glacial..."*, grey | As a wrong boost. Only possible when a goal has both a warm and a cold answer. |
+| Another plant, right climate | *"Tōtara was in interglacial habitats, but is not rarer in ancient times than today..."*, in the goal colour | The normal matched boost: outline, rim pulse, time-lapse trails. One of the goal's two chances. |
+| Wrong climate | *"Tawa was not glacial, and was not rarer in ancient times than today"*, **grey** | The normal wrong boost: nothing grows, grey pulse, the scene desaturates. One of the goal's two chances. |
+| The answer, wrong climate | *"… was rarer in …, but was not glacial..."*, grey | As a wrong boost, and one of the goal's two chances. Only possible when a goal has both a warm and a cold answer. |
 
 The verdict holds at least `holdMs` (7 s) and until the time-lapse ends, then crossfades back
 (`InstallHUD.GOAL_FADE_MS`, 800 ms). Long lines wrap, balanced, and stack upward from the anchor.
+After a goal's first miss the same goal comes back; after its second a new one is drawn
+(`TM_GOALS.missLimit`).
 
 **The health bar reads these verdicts** (`md/TEMANAWA_PLAN_V3.md` §7): four answers in a row fill it, four
 *totally wrong* boosts in a row leave it poor, and the two half-right rows above count for less. Another
 plant in the right climate lifts it only as far as 75 %, and above that takes it down a notch toward 75 %, so
 the top quarter can only be reached by answering. **After an
 eruption** the line moves to a goal that only makes sense after one (`requires.eruption`: the scrub that
-grows back, the plant that spreads after ash), and stays on those until one is answered. Answering it counts
+grows back, the plant that spreads after ash), and stays on those until one is answered or each has had its
+two chances. Answering it counts
 double: the health, the habitat lift, the seedlings and the birds (`LEVEL_MECHANICS.healthEruptionMult`).
 
 **Where it lives.** `TeManawa_goals.js`: `TM_GOALS` (the goal book, the verdict templates, colours,
