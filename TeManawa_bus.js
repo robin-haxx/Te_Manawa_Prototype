@@ -181,6 +181,10 @@ const TMBus = (function () {
     const GL = (typeof TM_GOALS !== 'undefined') ? TM_GOALS : null;
     const verdict = (typeof TMGoals !== 'undefined') ? TMGoals.judge(key, m.plantName, matched, glacial, nowMs) : null;
     const isAnswer = !!(GL && verdict && verdict.kind === 'answer');
+    // The goal an eruption put up (TMGoals.isEruptionGoal): answering it counts double, in everything
+    // an answer earns below, so a visitor who reads the eruption brings the land back twice as fast.
+    const LM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const mult = (isAnswer && TMGoals.isEruptionGoal(TMGoals.live())) ? (LM.healthEruptionMult ?? 2) : 1;
 
     reply({ type: 'boostResult', plantKey: key, matched: matched,
             goal: verdict ? verdict.kind : null, text: verdict ? verdict.text : null });
@@ -188,7 +192,7 @@ const TMBus = (function () {
     // Populate ESPECIALLY with the chosen species (§6.1 / §9.2): a matched boost seeds generously (the
     // goal's answer more so), a mismatched boost seeds nothing and the scene desaturates (the
     // regime-fit lesson below).
-    const n = matched ? ((isAnswer && GL.answerSeed) || TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
+    const n = matched ? ((isAnswer && GL.answerSeed * mult) || TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
     if (matched && typeof DeepTime !== 'undefined') DeepTime.boostsOk++;   // the top band's boost tally
     // The goal tally beside it: a solve is the live goal's answer boosted in the right climate. The
     // plant joins the band's row of sprites once (a repeat solve still counts).
@@ -196,16 +200,18 @@ const TMBus = (function () {
       DeepTime.goalsSolved++;
       if (DeepTime.solvedKeys.indexOf(key) === -1) DeepTime.solvedKeys.push(key);
     }
-    // Plant homeostasis (Simulation._updateHomeostasis): a matched boost lifts the target of every
-    // habitat this plant grows in (the answer by more), so correct boosts accumulate; a wrong one
-    // drops every habitat back to its original floor and shocks the birds (Simulation.onWrongBoost:
-    // fauna homeostasis). Lift BEFORE seeding so the seedlings fit it.
+    // The health ledger + plant homeostasis (Simulation.onRightBoost / onWrongBoost, _updateHomeostasis): a
+    // matched boost lifts the target of every habitat this plant grows in (the answer by more), so correct
+    // boosts accumulate; a wrong one takes a step back everywhere, habitats and birds alike, and only the
+    // right plant in the wrong climate is half forgiven. Lift BEFORE seeding so the seedlings fit it.
     const simH = g && g.simulation;
-    if (simH && typeof simH.liftHabitats === 'function') {
-      const LM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
-      if (matched) simH.liftHabitats([key], 0, isAnswer ? (LM.homeoAnswerSteps ?? 2) : 1);
-      else if (typeof simH.onWrongBoost === 'function') simH.onWrongBoost();
-      else simH.resetHabitatLift();
+    if (simH) {
+      if (matched) {
+        simH.onRightBoost(isAnswer, mult);
+        simH.liftHabitats([key], 0, isAnswer ? (LM.homeoAnswerSteps ?? 2) * mult : 1);
+      } else {
+        simH.onWrongBoost(verdict && verdict.kind === 'answerWrongClimate' ? (LM.healthHalfRight ?? 0.5) : 1);
+      }
     }
     const seeder = (g && g.simulation && typeof g.simulation.seedSpecies === 'function')
       ? g.simulation.seedSpecies.bind(g.simulation) : null;
@@ -220,8 +226,8 @@ const TMBus = (function () {
     if (matched && g && g.simulation && typeof g.simulation.boostFauna === 'function') {
       const faunaKeys = (Array.isArray(m.fauna) && m.fauna.length) ? m.fauna
                       : (TM_BOOST.faunaLinks && TM_BOOST.faunaLinks[key]);
-      if (faunaKeys && typeof g.simulation.liftFauna === 'function') g.simulation.liftFauna(faunaKeys, isAnswer ? 2 : 1);
-      if (faunaKeys) g.simulation.boostFauna(faunaKeys, (isAnswer && GL.answerFauna) || TM_BOOST.faunaRecruit || 2);
+      if (faunaKeys && typeof g.simulation.liftFauna === 'function') g.simulation.liftFauna(faunaKeys, isAnswer ? 2 * mult : 1);
+      if (faunaKeys) g.simulation.boostFauna(faunaKeys, (isAnswer && GL.answerFauna * mult) || TM_BOOST.faunaRecruit || 2);
     }
 
     if (g) {

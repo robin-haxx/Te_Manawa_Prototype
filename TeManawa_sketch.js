@@ -883,6 +883,11 @@ const HEALTH = {
   regimeMatchRate:    0.010,  // per-frame ease of fit toward 1 while pressing the right one
   regimeRelaxRate:    0.004,  // per-frame ease of fit back toward 1 when no growth button is held
 
+  // The ledger (Simulation.ecoHealth, the HUD's bar): a land run down below where a visitor found it stays
+  // drained, not just for the moment of the press. 1 at healthStart and above, so the default look is
+  // untouched; this in the poor state.
+  ledgerFloor:        0.30,
+
   // Step 3 — recruitment: in the interglacial the forest should be regenerating via kererū
   // seed dispersal. If there are no kererū to do it, recruitment stalls and the forest thins,
   // so R falls; in the glacial the forest isn't recruiting anyway, so R relaxes back (no
@@ -1351,7 +1356,11 @@ class Game {
       this._lastMorphMs = (typeof millis === 'function') ? millis() : Date.now();
     }
     if (this.water) this.water.build(this.terrain, targetYear);  // re-stamp water to the morphed sea/river (eels gated by targetYear)
+    // The rebuild is a new Simulation, but the visitor has not changed: the land's health carries across
+    // it (applyAsh takes the eruption's dip below). A recovery wants a fresh start: Kiosk.resetToAttract.
+    const health = this.simulation ? this.simulation.ecoHealth : null;
     this.resetEcosystem();                                       // spawns against the morphed (target-year) biome map (also DeepTime.reset())
+    if (health != null && this.simulation) this.simulation._healthSet(health);
     if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);   // ...so re-seek after the rebuild (§3.4)
     this.applyAsh(eruption);
     this._autoPrevYear = targetYear;                             // the auto-check must not re-fire the event we just placed
@@ -1373,6 +1382,10 @@ class Game {
     this._ashArmedMs = (typeof millis === 'function') ? millis() : 0;
     this._ashCycleMs = (typeof DeepTime !== 'undefined' && DeepTime.aftermathMs) ? DeepTime.aftermathMs(this._ashFromYear) : 0;
     this._ashTlSeen = false; this._ashTlFrom = 0; this._ashTlCover0 = 0;
+    // The ledger takes a small knock, and the line moves to the goal that answers it (answering that
+    // one counts double: TeManawa_bus.js onBoost).
+    if (this.simulation) this.simulation.onEruption();
+    if (typeof TMGoals !== 'undefined') TMGoals.onEruption();
     const plants = this.simulation && this.simulation.plants;
     if (plants) {
       const PT = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
@@ -1671,10 +1684,10 @@ class Game {
   // per-frame cap so a whole-scene colour change can never land as a cut (photosensitivity).
   // md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md §1, §5. Allocation-free (hot path).
   //
-  // Health = ash disturbance × regime fit × recruitment. The ash term is grazing-
-  // independent and reads exactly 0 on an undisturbed map, so the DEFAULT look is
-  // untouched (health=1 → saturate(1) → the filter is never even set). An eruption
-  // greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
+  // Health = ash disturbance × regime fit × recruitment × the ledger. The ash term is grazing-
+  // independent and reads exactly 0 on an undisturbed map, and the ledger reads 1 from healthStart
+  // up, so the DEFAULT look is untouched (health=1 → saturate(1) → the filter is never even set).
+  // An eruption greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
   // as the ash decays. Health is NOT a living-cover ratio — that was tried and
   // desaturated healthy maps as moa grazed; see MISTAKES.md.
   _updateHabitatHealth(dt) {
@@ -1723,8 +1736,9 @@ class Game {
     this._recruitment += (recTarget - this._recruitment) * (recStep > 1 ? 1 : recStep);
     if (this._recruitment < 0) this._recruitment = 0; else if (this._recruitment > 1) this._recruitment = 1;
 
-    // Health target: ash disturbance × regime fit × recruitment (all must be healthy for full colour).
+    // Health target: ash disturbance × regime fit × recruitment × the ledger (all must be healthy for full colour).
     let target = (1 - (this._ashCover || 0)) * this._regimeFit * this._recruitment;
+    if (sim) target *= sim._healthLevel(H.ledgerFloor);
     // Dune BURIAL (COAST §10A/§10C): an ACTIVE, mismanaged dunefield buries coastal vegetation,
     // draining the readout — the "sand flux buries vegetation" half of the feedback. Keyed to the
     // disturbance-driven flux only (see _updateSandFlux), so a well-managed map is never penalised.

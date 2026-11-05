@@ -74,8 +74,9 @@ window.TM_GROW = TM_GROW;
 // The ambient colour band that frames the scene at all times — the on-screen twin of the
 // physical button LEDs on the wall. HUE tracks the CLIMATE (deep green interglacial → light
 // blue glacial), so the band always reads the "temperature" of the sim. SATURATION tracks
-// HABITAT HEALTH — an eruption, a wrong FOREST/TUSSOCK press, or storm overuse all drain it
-// toward grey (the same signal that quietly desaturates the ground, Game._habitatHealth).
+// HABITAT HEALTH — an eruption, a wrong FOREST/TUSSOCK press, storm overuse or a run-down health
+// ledger all drain it toward grey (the same signal that quietly desaturates the ground,
+// Game._habitatHealth).
 // The colour is low-passed and breathes on a slow sine so it EBBS rather than snaps: the
 // pulse is small and the slew gentle, keeping it inside the photosensitivity budget
 // (CLAUDE.md — ≤3 luminance transitions/s, large changes ramped ≥500 ms). Console-tunable
@@ -161,11 +162,12 @@ const InstallHUD = {
                        InstallHUD.beginWind(g, 'warm');                                   // the interglacial gust blows W→E on the FOREST boost
                        if (InstallHUD._growMatches(g, true)) {                            // right for the climate → it actually grows
                          DeepTime.boostsOk++;                                             // the top band's boost tally
+                         if (g.simulation) g.simulation.onRightBoost(false);              // the health ledger: right climate, no goal answered
                          if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(true);   // the forest habitats hold a busier stock (homeostasis)
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
                          InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
                        } else {
-                         InstallHUD._wrongBoost(g);                                       // wrong guess → every habitat back to its floor, the birds shocked
+                         if (g.simulation) g.simulation.onWrongBoost();                   // wrong guess → the ledger, the habitats and the birds each take a step back
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // wrong boost for the climate → grey pulse, and no growth (gated in update)
                        } },
       isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
@@ -174,17 +176,19 @@ const InstallHUD = {
                        InstallHUD.beginWind(g, 'cold');                                   // the glacial chill blows W→E on the TUSSOCK boost
                        if (InstallHUD._growMatches(g, false)) {
                          DeepTime.boostsOk++;
+                         if (g.simulation) g.simulation.onRightBoost(false);
                          if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(false);  // the open-country habitats hold a busier stock
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
                          InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
                        } else {
-                         InstallHUD._wrongBoost(g);                                       // wrong guess → every habitat back to its floor, the birds shocked
+                         if (g.simulation) g.simulation.onWrongBoost();                   // wrong guess → the ledger, the habitats and the birds each take a step back
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // grey pulse, no growth
                        } },
       isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
     { id: 'storm',  key: '4', label: 'STORM',
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        g._stormPressure = Math.min(1, (g._stormPressure || 0) + TM_TIME.stormPressureAdd);
+                       if (g.simulation) g.simulation.onStorm();   // the health ledger: the first storm in a run heals, the ones after it wear the land down
                        if (g.beginStorm) g.beginStorm();   // §10B–C habitat effects, but spread OVER the storm (staggered windthrow + gradual knockback), not one instant snap
                        InstallHUD.initStormCells(g);
                        InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs); },   // one short white blink on press, then one per lightning strike
@@ -203,14 +207,6 @@ const InstallHUD = {
       isActive: (g) => (g._tmErDownAt && !g._tmErFired) ||
                        (g._tmAshUntil && millis() < g._tmAshUntil) }
   ],
-
-  // A wrong FOREST / TUSSOCK press: the same consequence as a wrong console boost (Simulation.onWrongBoost).
-  _wrongBoost(g) {
-    const s = g && g.simulation;
-    if (!s) return;
-    if (s.onWrongBoost) s.onWrongBoost();
-    else if (s.resetHabitatLift) s.resetHabitatLift();
-  },
 
   press(g, id) {
     const b = this.BUTTONS.find(x => x.id === id);
@@ -1111,7 +1107,8 @@ const InstallHUD = {
     const cx = W / 2, cy = ay - lift;
     push();
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
-    this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
+    this._fullTick(g);
+    this._brightText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, this._GOAL_COL);
     this._renderClimateLine(cx, ay - this.VIS_CLIMATE_ABOVE);
     pop();
   },
@@ -1327,15 +1324,14 @@ const InstallHUD = {
   // least map (the west edge is mostly sea). Top-left, the TALLIES: big numerals for successful boosts
   // and goals solved, with the solved goals' plants drawn as their own sprites. That keeps it a
   // collection, not a score (CLAUDE.md: a goal is "a question a plant answers"). Top-right, ECOSYSTEM
-  // HEALTH: one bar whose LENGTH is the stock the visitor has earned. An unattended land reads
-  // HEALTH_FLOOR (half full); the other half is earned by right boosts (Simulation.ecoEarned, the
-  // habitats' homeostasis lift) and lost at once by a wrong one. Habitat health (Game._habitatHealth:
-  // ash, a wrong-climate boost, storm overuse, dune burial) only GREYS the bar's colour, as it greys the
-  // scene; it no longer shortens it, which double-counted a wrong boost (tools/boostprobe.js). Top-centre,
-  // the speed readout (_renderSpeed). No backing panels: the text carries the HUD's dark halo, as the
-  // goal and year do. Every change eases (≥500 ms) or pops in SIZE, never in brightness
-  // (photosensitivity). The layout is computed once per width (_tbGeom), so a frame allocates nothing;
-  // the strings are small integers and a few labels.
+  // HEALTH: one bar that IS the ledger (Simulation.ecoHealth): half full for a new visitor, full and
+  // glowing after four right answers, short and ochre after four wrong goals or five storms in a
+  // row. Its LENGTH says it for anyone who cannot read the colour. At full, the bar, its title, the
+  // tallies and the year all take the climate's bright green or blue (_fullTick). Top-centre, the speed readout
+  // (_renderSpeed). No backing panels: the text carries the HUD's dark halo, as the goal and year do.
+  // Every change eases (≥500 ms) or pops in SIZE, never in brightness (photosensitivity). The layout is
+  // computed once per width (_tbGeom), so a frame allocates nothing; the strings are small integers and
+  // a few labels.
   TB_MARGIN: 36,             // px from the screen edge to each corner's block
   TB_PAD: 22,                // inner margin of each block
   TALLY_NUM_SIZE: 80,
@@ -1354,11 +1350,57 @@ const InstallHUD = {
   HEALTH_W: 400,
   HEALTH_BAR_H: 30,
   HEALTH_TITLE_SIZE: 30,
-  HEALTH_FLOOR: 0.5,         // the bar an unattended land shows: the rest (50–100 %) has to be earned
   HEALTH_EASE: 0.02,         // per-frame ease of the bar toward its target (~0.8 s at 60 fps)
-  HEALTH_COL_EASE: 0.04,     // per-frame ease of the bar colour (climate hue, greyed by health)
+  // The bar's colour runs with its length: ochre at the poor level and below, straw at a new visitor's
+  // level, rising through green. Only when it is full does it take the climate's colour (_fullTick).
+  HEALTH_COL_POOR: [190, 118, 74],
+  HEALTH_COL_MID:  [214, 192, 108],
+  HEALTH_COL_FULL: [84, 210, 96],    // the green of a right interglacial boost (TM_BOOST.outlineInterglacial)
+  HEALTH_GLOW_FROM: 0.88,    // the glow starts to come up at this level and is at its height at full…
+  HEALTH_GLOW_MS: 2800,      // …where it breathes this slowly, within its own small band (photosensitivity)
+  HEALTH_GLOW: [[22, 26], [14, 44], [7, 76]],   // [stroke width px, alpha] around the bar, widest and faintest first
+  FULL_AT: 0.98,             // the readouts light once the ledger is full and the bar as drawn has reached this
+  FULL_FADE_MS: 700,         // ≥ 500 ms (photosensitivity), both for lighting up and for a change of climate while lit
   _tally: null,              // { b, bAt, g, gAt, nb, ng, sB, sG }
-  _eco: null,                // { v, r, g, b }
+  _eco: null,                // { v }
+  _full: null,               // { a: lit 0..1, m: the climate's colour, 0 green .. 1 blue, last, warm, cold }
+
+  // FULL HEALTH: the year, the tallies and the gauge take the climate's bright colour (the boost colours,
+  // as "The climate is…" uses). Called more than once a frame, so it moves by elapsed time.
+  _fullTick(g) {
+    const sim = g && g.simulation, E = this._eco, now = millis();
+    const on = !!(sim && sim.ecoHealth === 1 && E && E.v >= this.FULL_AT);
+    const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null, cold = TG ? TG.glacialNow() : false;
+    let F = this._full;
+    if (!F) {
+      return this._full = { a: on ? 1 : 0, m: cold ? 1 : 0, last: now,
+        warm: TG ? TG.climateColor(false) : [84, 210, 96], cold: TG ? TG.climateColor(true) : [150, 205, 236] };
+    }
+    let d = (now - F.last) / this.FULL_FADE_MS;
+    if (d > 0.1) d = 0.1;                                            // a long frame gap never jumps the fade
+    F.last = now;
+    F.a += on ? d : -d;
+    F.a = F.a < 0 ? 0 : F.a > 1 ? 1 : F.a;
+    F.m += cold ? d : -d;
+    F.m = F.a === 0 ? (cold ? 1 : 0) : (F.m < 0 ? 0 : F.m > 1 ? 1 : F.m);   // unlit, it simply follows the climate
+    return F;
+  },
+
+  // Text in `col`, with the full-health colour laid over it as far as it is lit. The colours are fixed
+  // and the fade rides globalAlpha, so the text cache only ever sees three colours per string.
+  _brightText(str, font, tag, size, ah, av, x, y, col) {
+    const F = this._full, a = F ? F.a : 0;
+    if (a < 1) this._blitText(str, font, tag, size, ah, av, x, y, col);
+    if (a <= 0) return;
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    if (F.m < 1) { dc.globalAlpha = a0 * a; this._blitText(str, font, tag, size, ah, av, x, y, F.warm); }
+    if (F.m > 0) { dc.globalAlpha = a0 * a * F.m; this._blitText(str, font, tag, size, ah, av, x, y, F.cold); }
+    dc.globalAlpha = a0;
+  },
+  _brightHalo(str, font, tag, size, ah, av, x, y, col) {
+    this._blitText(str, font, tag, size, ah, av, x + 2, y + 3, this._GOAL_HALO);
+    this._brightText(str, font, tag, size, ah, av, x, y, col);
+  },
 
   _tbG: null,
   _tbGeom(W) {
@@ -1404,8 +1446,8 @@ const InstallHUD = {
     return (u >= 0 && u < 1) ? 1 + this.TALLY_POP * Math.sin(Math.PI * u) : 1;
   },
   _popText(str, font, tag, size, ah, av, x, y, col, s) {
-    if (s === 1) { this._haloText(str, font, tag, size, ah, av, x, y, col); return; }
-    push(); translate(x, y); scale(s); this._haloText(str, font, tag, size, ah, av, 0, 0, col); pop();
+    if (s === 1) { this._brightHalo(str, font, tag, size, ah, av, x, y, col); return; }
+    push(); translate(x, y); scale(s); this._brightHalo(str, font, tag, size, ah, av, 0, 0, col); pop();
   },
 
   _renderTallies(G, now) {
@@ -1419,9 +1461,9 @@ const InstallHUD = {
     const P = this.TB_PAD, nIcons = Math.min(keys.length, this.TALLY_ICON_MAX);
     const NS = this.TALLY_NUM_SIZE, LS = this.TALLY_LABEL_SIZE;
     this._popText(T.sB, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row1, this._TALLY_NUM_COL, this._popScale(T.bAt, now));
-    this._haloText(this.TALLY_BOOSTS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row1 + NS * 0.06, this._GOAL_COL);
+    this._brightHalo(this.TALLY_BOOSTS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row1 + NS * 0.06, this._GOAL_COL);
     this._popText(T.sG, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row2, this._TALLY_NUM_COL, this._popScale(T.gAt, now));
-    this._haloText(this.TALLY_GOALS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row2 + NS * 0.06, this._GOAL_COL);
+    this._brightHalo(this.TALLY_GOALS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row2 + NS * 0.06, this._GOAL_COL);
     // the solved goals' plants, newest on the right; the newest pops with its numeral
     const h = this.TALLY_ICON_H;
     let ix = G.lx + P;
@@ -1452,31 +1494,53 @@ const InstallHUD = {
 
   _renderHealth(g, G) {
     const sim = g && g.simulation;
-    let earned = (sim && sim.ecoEarned != null) ? sim.ecoEarned : 0;
-    earned = earned < 0 ? 0 : earned > 1 ? 1 : earned;
-    let hh = (g && g._habitatHealth != null) ? g._habitatHealth : 1;
-    hh = hh < 0 ? 0 : hh > 1 ? 1 : hh;
-    const F = this.HEALTH_FLOOR, target = F + (1 - F) * earned;     // half for free, the rest earned
-    const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null;
-    const glacial = TG ? TG.glacialNow() : false;
-    const base = TG ? TG.climateColor(glacial) : (glacial ? [150, 205, 236] : [84, 210, 96]);
-    const EG = (typeof TM_EDGE !== 'undefined') ? TM_EDGE : null;
-    const grey = EG ? EG.grey : [122, 130, 132], dz = (1 - hh) * (EG ? EG.desatMax : 0.8);
-    const tr = base[0] + (grey[0] - base[0]) * dz, tg = base[1] + (grey[1] - base[1]) * dz, tb = base[2] + (grey[2] - base[2]) * dz;
+    const target = (sim && sim.ecoHealth != null) ? sim.ecoHealth : 0.5;
     let E = this._eco;
-    if (!E) E = this._eco = { v: target, r: tr, g: tg, b: tb };
-    else {
-      E.v += (target - E.v) * this.HEALTH_EASE;
-      const ce = this.HEALTH_COL_EASE;
-      E.r += (tr - E.r) * ce; E.g += (tg - E.g) * ce; E.b += (tb - E.b) * ce;
-    }
-    this._haloText(this.HEALTH_TITLE, FreckleFace, 'freckle', this.HEALTH_TITLE_SIZE, LEFT, CENTER, G.barX, G.hTitle, this._GOAL_COL);
+    if (!E) E = this._eco = { v: target };
+    else E.v += (target - E.v) * this.HEALTH_EASE;
+    const v = E.v < 0 ? 0 : E.v > 1 ? 1 : E.v;
+
+    // the colour, from the length as drawn: it arrives with the bar, not ahead of it
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const poor = M.healthPoor ?? 0.2, start = M.healthStart ?? 0.5;
+    const A = v < start ? this.HEALTH_COL_POOR : this.HEALTH_COL_MID;
+    const B = v < start ? this.HEALTH_COL_MID : this.HEALTH_COL_FULL;
+    let t = v < start ? (v - poor) / (start - poor) : (v - start) / (1 - start);
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    // at full, the climate's bright colour: this one number is what makes the bar blue in a glacial
+    const F = this._fullTick(g), lit = F.a, m = F.m;
+    const fr = F.warm[0] + (F.cold[0] - F.warm[0]) * m, fg = F.warm[1] + (F.cold[1] - F.warm[1]) * m, fb = F.warm[2] + (F.cold[2] - F.warm[2]) * m;
+    const r0 = A[0] + (B[0] - A[0]) * t, g0 = A[1] + (B[1] - A[1]) * t, b0 = A[2] + (B[2] - A[2]) * t;
+    const r = r0 + (fr - r0) * lit, gg = g0 + (fg - g0) * lit, b = b0 + (fb - b0) * lit;
+    const FC = this.HEALTH_COL_FULL;
+    const gr = FC[0] + (fr - FC[0]) * lit, gv = FC[1] + (fg - FC[1]) * lit, gb = FC[2] + (fb - FC[2]) * lit;
+
+    this._brightHalo(this.HEALTH_TITLE, FreckleFace, 'freckle', this.HEALTH_TITLE_SIZE, LEFT, CENTER, G.barX, G.hTitle, this._GOAL_COL);
     const bw = this.HEALTH_W, bh = this.HEALTH_BAR_H;
+    const glow = this.healthGlow();
+    if (glow > 0.01) {
+      const breath = 0.8 + 0.2 * Math.sin(millis() * TWO_PI / this.HEALTH_GLOW_MS);
+      noFill();
+      for (let i = 0; i < this.HEALTH_GLOW.length; i++) {
+        const L = this.HEALTH_GLOW[i];
+        stroke(gr, gv, gb, L[1] * glow * breath);
+        strokeWeight(L[0]);
+        rect(G.barX, G.barTop, bw, bh, bh / 2);
+      }
+    }
     fill(8, 14, 12, 170); stroke(236, 244, 240, 150); strokeWeight(2);
     rect(G.barX, G.barTop, bw, bh, bh / 2);
     noStroke();
-    const fw = (bw - 6) * (E.v < 0 ? 0 : E.v > 1 ? 1 : E.v);
-    if (fw > 1) { fill(E.r, E.g, E.b); rect(G.barX + 3, G.barTop + 3, fw, bh - 6, (bh - 6) / 2); }
+    const fw = (bw - 6) * v;
+    if (fw > 1) { fill(r, gg, b); rect(G.barX + 3, G.barTop + 3, fw, bh - 6, (bh - 6) / 2); }
+  },
+
+  // How far the bar's glow is up, 0..1, from the bar as drawn.
+  healthGlow() {
+    const v = this._eco ? this._eco.v : 0, from = this.HEALTH_GLOW_FROM;
+    let u = (v - from) / (1 - from);
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    return u * u * (3 - 2 * u);
   },
 
   // ---- the ERUPTION CAPTION -----------------------------------------------------------------------

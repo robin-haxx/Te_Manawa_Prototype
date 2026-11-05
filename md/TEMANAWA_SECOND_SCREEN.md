@@ -337,6 +337,14 @@ time-lapse is over:
 The verdict holds at least `holdMs` (7 s) and until the time-lapse ends, then crossfades back
 (`InstallHUD.GOAL_FADE_MS`, 800 ms). Long lines wrap, balanced, and stack upward from the anchor.
 
+**The health bar reads these verdicts** (`md/TEMANAWA_PLAN_V3.md` §7): four answers in a row fill it, four
+*totally wrong* boosts in a row leave it poor, and the two half-right rows above count for less. Another
+plant in the right climate lifts it only as far as 75 %, and above that takes it down a notch toward 75 %, so
+the top quarter can only be reached by answering. **After an
+eruption** the line moves to a goal that only makes sense after one (`requires.eruption`: the scrub that
+grows back, the plant that spreads after ash), and stays on those until one is answered. Answering it counts
+double: the health, the habitat lift, the seedlings and the birds (`LEVEL_MECHANICS.healthEruptionMult`).
+
 **Where it lives.** `TeManawa_goals.js`: `TM_GOALS` (the goal book, the verdict templates, colours,
 the answer's bigger boost) and `TMGoals` (which goal is live, `judge()`, release). The bus calls
 `TMGoals.judge` in `onBoost` *before* seeding; the HUD only crossfades whatever `TMGoals.text()`

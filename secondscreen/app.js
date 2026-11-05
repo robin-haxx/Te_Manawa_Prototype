@@ -27,6 +27,7 @@
   const cardPlant = $('cardPlant');
   const cardSceneBox = $('cardSceneBox');
   const cardName = $('cardName');
+  const cardAlt = $('cardAlt');
   const cardSci = $('cardSci');
   const cardBody = $('cardBody');
   const clockLabel = $('clockLabel');
@@ -125,6 +126,9 @@
     cardPrompt.classList.add('hidden');
     cardSpecies.classList.remove('hidden');
     cardName.textContent = p.name;
+    // Te reo, English and Latin: the headline is one of them, so this adds what it doesn't already say.
+    cardAlt.textContent = [p.reo, p.en].filter(Boolean).join(' · ');
+    cardAlt.classList.toggle('hidden', !cardAlt.textContent);
     cardSci.textContent = p.sci;
     renderBody(p);
     // The scene: the plant, sized from its cluster height so a tree still stands a little taller than
@@ -282,7 +286,20 @@
 
   // The write-up: the plant's paragraphs, then (if the card has a bird) "Boosting <plant> helps:
   // <bird>" and the bird's paragraphs. Built as text nodes, never HTML. Scrolled back to the top.
+  // Words a plant goal rests on are bold: each goal names its own (`terms`, ../TeManawa_goals.js).
   function paras(v) { return v == null ? [] : (Array.isArray(v) ? v : [v]); }
+  function addPara(text, key) {
+    const el = document.createElement('p');
+    // A goal book that failed to load costs the bold, never the card.
+    const runs = (typeof TMGoals !== 'undefined') ? TMGoals.termRuns(text, key) : [{ text, bold: false }];
+    runs.forEach((r) => {
+      if (!r.bold) { el.appendChild(document.createTextNode(r.text)); return; }
+      const b = document.createElement('strong');
+      b.textContent = r.text;
+      el.appendChild(b);
+    });
+    cardBody.appendChild(el);
+  }
   function birdNames(p) {
     const names = [];
     (p.fauna || []).forEach((fkey) => {
@@ -295,17 +312,14 @@
   }
   function renderBody(p) {
     cardBody.textContent = '';
-    const add = (tag, text, cls) => {
-      const el = document.createElement(tag);
-      el.textContent = text;
-      if (cls) el.className = cls;
-      cardBody.appendChild(el);
-    };
-    paras(p.desc).forEach((t) => add('p', t));
+    paras(p.desc).forEach((t) => addPara(t, p.key));
     const birds = paras(p.birdDesc);
     if (birds.length) {
-      add('h3', 'Boosting ' + p.name.toLowerCase() + ' helps: ' + birdNames(p), 'card-boost');
-      birds.forEach((t) => add('p', t));
+      const h = document.createElement('h3');
+      h.textContent = 'Boosting ' + p.name.toLowerCase() + ' helps: ' + birdNames(p);
+      h.className = 'card-boost';
+      cardBody.appendChild(h);
+      birds.forEach((t) => addPara(t, p.key));
     }
     cardBody.scrollTop = 0;
     updateMore();

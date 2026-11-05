@@ -33,9 +33,9 @@
 //
 // Any input skips: the remaining legs run at skipMult with no holds, then the landing is the same.
 // Photosensitivity (TEMANAWA_BUILD_V3.md §3): the dips ≥ 500 ms, every terrain swap the existing
-// ≥ 500 ms crossfade, the caption and the names crossfade (≥ 500 ms), the eruption's flash a 4.5 s
-// ramp and a 1.6 s fall, its cover a 500 ms ramp. No per-frame allocation on the draw path: the
-// labels are built once, the caption strings are quantised.
+// ≥ 500 ms crossfade, the names crossfade (≥ 500 ms), the eruption's flash a 4.5 s ramp and a 1.6 s
+// fall, its cover a 500 ms ramp. No per-frame allocation on the draw path: the labels are built once,
+// the date string is quantised.
 // ============================================================
 
 // Console-tunable like TM_TIME / TM_RIVER_NAMES. Sizes in 1080-space px; dates in yearsBP.
@@ -67,29 +67,14 @@ const TM_PALAEO = {
   // in under its cover. false = the older dip to dark and back.
   eruptLanding: true,
   coverLeadMs: 900,       // the cloud opens this long before the swap (its backdrop is opaque from 500 ms on)
-  eruptionNote: 'The Kidnappers eruption, far to the north, rains ash across the young land.',   // co-design placeholder, as EPOCHS
   skipMult:    12,        // an input plays the rest at this × kyrPerSec, with no holds
   dateQuant:   50000,     // the travelling date is rounded to this (a few strings for the text cache, ~1 change/s)
-  notes:       true,      // the one-line note under the date (co-design placeholder copy; EPOCHS[].note)
   spelling:    'Whanganui',   // the basin's spelling on the wall: the district's (and the blog's). Trewick & Bland write 'Wanganui'
   riverProtoUntil: 1250000,   // the main stem is 'proto-Manawatū' while its arm still flows east (GEO_EPOCHS.mainArmFrom)
   labelSize:   24,        // the region names' lettering (the river names' mainSize is 26)
   labelFadeMs: 700,       // a name's fade in / out (≥ 500)
   captionSize: 42,        // the date (InstallHUD.VIS_YEAR_SIZE)
   captionUp:   186,       // px from the bottom edge up to the date's centre (the sequence draws no timeline, so it keeps its own spot)
-  noteSize:    26,        // the note under it
-  noteBelow:   42,        // px from the date's centre down to the note's
-  noteFadeMs:  800,       // the note's crossfade on change
-  // The epochs' one-line notes, keyed by the OLDER bound (the first whose `from` ≥ the date wins).
-  // Co-design placeholder copy — sourced in md/TEMANAWA_PALAEO_ATTRACT.md §1; cut with notes:false.
-  EPOCHS: [
-    { from: 4000000, note: 'The Manawatū is deep sea. A low finger of basement rock stands where the ranges will rise.' },
-    { from: 3350000, note: 'The sea breaks across the gorge: the Manawatū Strait opens as a narrow seaway.' },
-    { from: 2950000, note: 'The strait closes. The sea planes the low basement flat.' },
-    { from: 2500000, note: 'The strait at its widest: a shallow sea where the southern Ruahine and northern Tararua now stand.' },
-    { from: 1650000, note: 'The strait closes for good. The basin begins to shoal into land.' },
-    { from: 1300000, note: 'The ranges begin their rapid rise. The river, older than the mountains, holds its course west.' }
-  ],
   // The names on the map, each for its dated window (from = older bound, to = younger), anchored at a
   // map fraction (u 0 west → 1 east, v 0 north → 1 south) and lettered at `deg` on screen (−90 … 90 so it
   // reads left to right / bottom to top). `on` is the surface the anchor must sit on at the date, read off
@@ -128,7 +113,6 @@ const Palaeo = {
   _reseed:  false,
   _labels:  null,      // built label instances (lazily, needs p5)
   _labelKey: '',
-  _cap:     null,      // caption state { date, note slots }
   _anchorSig: '',
   _coverAt: 0,         // millis() the landing eruption's cloud opened (0 = not yet)
   lastCoverMs: 0,      // how long the cloud had been up when the world was swapped (the harness reads it)
@@ -477,14 +461,6 @@ const Palaeo = {
     return this.yearsBP >= TM_PALAEO.riverProtoUntil ? 'proto-Manawatū' : 'Manawatū';
   },
 
-  // The note for a date (the first epoch whose `from` ≥ it), or null.
-  epochNote(y) {
-    const E = TM_PALAEO.EPOCHS;
-    let best = null;
-    for (let i = 0; i < E.length; i++) if (E[i].from >= y && (best === null || E[i].from < best.from)) best = E[i];
-    return best ? best.note : null;
-  },
-
   // The names showing at date `y` on their surfaces (text → the surface check runs on the live land).
   labelsAt(y) {
     return TM_PALAEO.LABELS.filter(L => y <= L.from && y >= L.to).map(L => this._labelText(L));
@@ -586,7 +562,7 @@ const Palaeo = {
     dc.globalAlpha = ga0;
   },
 
-  // The date where the HUD puts its year, and the epoch's note under it (crossfaded on change).
+  // The date where the HUD puts its year.
   _renderCaption(W, H) {
     const HUD = (typeof InstallHUD !== 'undefined') ? InstallHUD : null;
     if (!HUD || !HUD._blitText || typeof FreckleFace === 'undefined') return;
@@ -600,31 +576,6 @@ const Palaeo = {
       const xEnd = W - Math.round(W * (HUD.VIS_INSET || 0.10)), by = H - (HUD.VIS_STRIP_H || 64) + 16;
       HUD._blitText(this.speedLabel(), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, xEnd, by, [240, 240, 240]);
     }
-    if (!TM_PALAEO.notes) return;
-    const note = (this.state === 'erupt' && TM_PALAEO.eruptionNote) ? TM_PALAEO.eruptionNote : this.epochNote(this.yearsBP);
-    const now = this._now(), fade = Math.max(500, TM_PALAEO.noteFadeMs);
-    let c = this._cap;
-    if (!c) c = this._cap = { cur: { text: null, t0: -1e9 }, out: { text: null, t0: -1e9, a0: 0 } };
-    if (note !== c.cur.text) {
-      const shown = Math.min(1, (now - c.cur.t0) / fade);
-      const o = c.out; c.out = c.cur; c.cur = o;
-      c.out.a0 = shown; c.out.t0 = now;
-      c.cur.text = note; c.cur.t0 = now;
-    }
-    const ny = cy + TM_PALAEO.noteBelow, ns = TM_PALAEO.noteSize;
-    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null, ga0 = dc ? dc.globalAlpha : 1;
-    const aOut = c.out.a0 * (1 - Math.min(1, (now - c.out.t0) / fade)), aIn = Math.min(1, (now - c.cur.t0) / fade);
-    if (c.out.text && aOut > 0.004) {
-      if (dc) dc.globalAlpha = ga0 * aOut;
-      HUD._blitText(c.out.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx + 2, ny + 2, halo);
-      HUD._blitText(c.out.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx, ny, ink);
-    }
-    if (c.cur.text && aIn > 0.004) {
-      if (dc) dc.globalAlpha = ga0 * aIn;
-      HUD._blitText(c.cur.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx + 2, ny + 2, halo);
-      HUD._blitText(c.cur.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx, ny, ink);
-    }
-    if (dc) dc.globalAlpha = ga0;
   },
 
   // A still frame (tools/export_frames.js): the names of date `y` on terrain `T` as it stands (seated
@@ -655,12 +606,6 @@ const Palaeo = {
         buf.push(); buf.textFont(FreckleFace); buf.textAlign(CENTER, CENTER); buf.noStroke();
         buf.textSize(TM_PALAEO.captionSize); buf.fill(8, 14, 12, 170); buf.text(this.dateLabel(), cx + 2, cy + 3);
         buf.fill(236, 244, 240); buf.text(this.dateLabel(), cx, cy);
-        const note = TM_PALAEO.notes ? this.epochNote(y) : null;
-        if (note) {
-          const ny = cy + TM_PALAEO.noteBelow;
-          buf.textSize(TM_PALAEO.noteSize); buf.fill(8, 14, 12, 170); buf.text(note, cx + 2, ny + 2);
-          buf.fill(236, 244, 240); buf.text(note, cx, ny);
-        }
         buf.pop();
       }
     } finally {

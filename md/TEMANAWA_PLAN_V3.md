@@ -316,13 +316,37 @@ so there is no universal-win press.
 
 A single scalar **`H ∈ [0,1]`** is surfaced as the **saturation of the ground**: full colour when the
 land is tended, a slow desaturation toward a **tired floor (`SAT_FLOOR ≈ 0.35`, never full grey)** when
-it is mismanaged. `H` is **not a score the buttons move directly** — it is *derived from the sim*, so the
-colour on the wall is an honest diagnostic of the world's state. The buttons act on the ecology; `H`
-follows, on a long ease so cause and effect read as a visible drift.
+it is mismanaged. The buttons act on the ecology; `H` follows, on a long ease so cause and effect read as
+a visible drift.
 
 ```
-H_target = F × R          // either one sick drains the scene
+H_target = (1 − ash) × F × R × L          // any one sick drains the scene
 ```
+
+- **`L` — the ledger, and the bar on the wall.** *(Built 2026-11-05: `Simulation.ecoHealth`, knobs under
+  ECOSYSTEM HEALTH in the scaffold.)* One number, moved by what the visitor does, and it is the top band's
+  health bar. `L` reads 1 at a new visitor's level and above, so the default look is untouched, and drains
+  below it. The birds and the plants read the same number (below), so the bar, the land and the colour
+  cannot disagree. A new visitor stands at 0.5; it holds until the visitor changes it, and the attract
+  landing starts it again.
+
+  | What the visitor does | The bar |
+  |---|---|
+  | The live goal's **answer** | Up. **Four in a row fill it, from any level**. **Only an answer takes it past 75 %.** At 100 % the year, the tallies and the gauge go the climate's bright green or blue |
+  | The right climate, not the answer | Below 75 %, a smaller gain that stops at 75 %. Above it, **down a notch (0.0625) toward 75 %**, never past it |
+  | **Totally wrong** (wrong plant, wrong climate) | Down. **Four in a row leave it poor (≤ 0.2), from any level** |
+  | The right plant in the wrong climate | Half of that |
+  | A **first** storm | Up a little, to 75 % at most: the land is better for one. Above 75 % it changes nothing |
+  | Each storm after it in succession | Down. **The fifth in a row leaves it poor.** A boost, or 40 s without a storm, ends the run |
+  | An **eruption** | Down a little (0.08). The goal line moves to a post-eruption goal (`requires.eruption`), and answering it counts **double**: health, habitat lift, seedlings and birds |
+
+  A step's size is set when a run begins, from where the land stands then. That is what makes "four
+  wrong goals" true from a full bar and from a half one. The rest of the living world follows: **above**
+  the start every bird target rises toward its authored level and every habitat holds at least half the
+  maximum lift; **below** it the bird targets fall to `faunaShockFloor` and the habitats' base to
+  `homeoPoorFrac` in the poor state, and each wrong boost or overused storm takes a step of banked lift
+  back, with the census running fast for a while so the crash is plain to see. The numbers are events,
+  never a census of the land, which jittered and stepped with every morph (`MISTAKES.md`).
 
 - **`F` — regime fit.** Is the standing cover the right type for the current climate? A climate-matched
   growth press raises `F`; a mismatched press drains it (mostly emergent from the existing dormancy/
@@ -335,6 +359,7 @@ H_target = F × R          // either one sick drains the scene
 **Storm's hidden cost** is a decaying **storm-pressure accumulator**: each press adds pressure (τ ≈ 17 s
 decay); above an overuse line the kererū stay grounded *between* storms too, so **spamming Storm →
 dispersal stalls → the forest thins → the scene drains of colour.** A single press stays below the line.
+This is the quick, behavioural half of overuse; the ledger above is the half that lasts.
 
 Saturation is applied as a `saturate()` filter around the **ground blit only** (cheaper on a 4K panel and
 on-brand with the "quiet ground" look), gated off entirely when healthy (zero cost in the steady state).
@@ -508,7 +533,7 @@ The prototype does **not** map onto the v2.1 §8 phase ledger — it ran ahead o
 | **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | ✅ **Built** — the console page, the `BroadcastChannel` bus, geology paused by default, the 500→5000 yr/s ramp to the next regime boundary, `Simulation.seedSpecies`, the regime-fit gate, eruption-aware endings, live telemetry (`TEMANAWA_SECOND_SCREEN.md`). Open: the boost-feel tuning pass |
 | **+ Plant goals** | a question a plant answers | ✅ **Built** — the line above the timeline, drawn from the live goals along the moa → harrier → lowland → forest-bird sequence, judged on each boost, with a fresh goal when the dial or a deep burst carries the clock across a glacial turn (`TeManawa_goals.js`, `TEMANAWA_GOALS.md`) |
 | **+ Time dial** | a standing fast-forward on the macro pad | ✅ **Built** — 0 → 5,000 yr/s over 30 detents, eased, kept across resets, relayed over the bus (`DeepTime.dialStep`) |
-| **+ The land before the window** | the attract as a palaeogeography sequence | ✅ **Built** (2026-11-01) — idle and end-of-window play a land-only 4 Ma → 1 Ma sequence through the terrain's dated geology extended before the window (`GEO_EPOCHS.palaeo*`: the Whanganui Basin's shelf, the basement finger, the Manawatū Strait narrow at 3 Ma / widest at 2.4 Ma / closed from 1.63 Ma, the Ruataniwha shelf closing with Mount Bruce — Trewick & Bland 2012 Fig. 4A–D), its own clock, the names of the time, every swap crossfaded, then the fresh 1 Ma world (`TEMANAWA_PALAEO_ATTRACT.md`). Open: the co-design pass on pacing, holds and notes |
+| **+ The land before the window** | the attract as a palaeogeography sequence | ✅ **Built** (2026-11-01) — idle and end-of-window play a land-only 4 Ma → 1 Ma sequence through the terrain's dated geology extended before the window (`GEO_EPOCHS.palaeo*`: the Whanganui Basin's shelf, the basement finger, the Manawatū Strait narrow at 3 Ma / widest at 2.4 Ma / closed from 1.63 Ma, the Ruataniwha shelf closing with Mount Bruce — Trewick & Bland 2012 Fig. 4A–D), its own clock, the names of the time, every swap crossfaded, then the fresh 1 Ma world (`TEMANAWA_PALAEO_ATTRACT.md`). Open: the co-design pass on pacing and holds |
 | **8 — Kiosk** | hardening, audio, lockdown | ✅ **Built** — watchdog, error ring buffer, nightly reload, idle attract, the key lockdown (`?dev` unlocks), `draw()` error recovery, the console page's own layer, the software-WebGL guard, audio not loaded (§14.1). Open: commissioning on the install hardware (`TEMANAWA_OPERATIONS.md` §8) |
 
 **Harness, 2026-11-02:** the plant-goals failure (the Dracophyllum goal at 30 ka, failing on every run

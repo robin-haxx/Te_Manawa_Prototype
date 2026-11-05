@@ -9,10 +9,12 @@
 /* The distinctive display face. If NF Nadira Pro is not the mockup title face,
    swap the src here — nothing else changes. Body stays a system sans (offline,
    deterministic on the Windows kiosk). */
+/* The TTF first, the same file the sim loads. Chrome draws the OTF's capital W hollow, as two thin
+   outlines ("Wetland", "Wharariki"); Firefox doesn't, so it only shows on the browser the wall runs. */
 @font-face {
   font-family: 'Nadira';
-  src: url('../typefaces/NF-Nadira-Pro-Regular.otf') format('opentype'),
-       url('../typefaces/NF-Nadira-Pro-Regular.ttf') format('truetype');
+  src: url('../typefaces/NF-Nadira-Pro-Regular.ttf') format('truetype'),
+       url('../typefaces/NF-Nadira-Pro-Regular.otf') format('opentype');
   font-display: swap;
 }
 
@@ -101,7 +103,8 @@ html, body {
   width: 845px; height: 840px;
   background: var(--card-bg); border: 1px solid var(--card-br);
   border-radius: 26px; padding: 54px;
-  backdrop-filter: blur(2px);
+  /* No backdrop-filter here: the blur is a separate rounded layer whose corners can part from the
+     fill and border under the stage's fractional scale. At 2 px under a 60% fill it hardly showed. */
   transition: box-shadow 300ms ease, border-color 300ms ease;
 }
 #card.matched    { border-color: rgba(120, 200, 120, 0.55); box-shadow: 0 0 40px rgba(90,180,90,0.25); }
@@ -169,6 +172,7 @@ html, body {
 #cardFauna .ground.right  { right: -84px; transform: scaleX(-1); }
 /* Upright: only the Regular Nadira is loaded, so italic here was a browser-faked oblique (soft) */
 #cardName { font-family: var(--display); font-style: normal; font-size: 58px; line-height: 1.05; color: var(--cream); }
+#cardAlt  { font-size: 30px; line-height: 1.2; color: var(--cream); margin-top: 8px; }   /* the card's other common name(s) */
 #cardSci  { font-style: italic; font-size: 28px; color: var(--orange); margin-top: 6px; }
 /* The write-up scrolls by touch: a scroll container with pan-y overrides the page's
    touch-action:none inside it. A thin cream bar shows the position; the fade at the bottom
@@ -179,6 +183,7 @@ html, body {
   font-size: 24px; line-height: 1.5; color: var(--body);
 }
 #cardBody p { margin-bottom: 14px; }
+#cardBody strong { font-weight: 700; color: #fff; }   /* the words a plant goal rests on (app.js addPara) */
 #cardBody .card-boost {
   margin: 22px 0 8px; font-style: italic; font-weight: normal; font-size: 26px; color: var(--orange);
 }
@@ -218,7 +223,7 @@ html, body {
 #habitatScreen { position: absolute; inset: 0; }
 .scrollGhost { pointer-events: none; }
 /* habitat → habitat with a card change: the outgoing card fades its contents only (the live box stays) */
-.scrollGhost #card.bare { background: none; border-color: transparent; box-shadow: none; backdrop-filter: none; }
+.scrollGhost #card.bare { background: none; border-color: transparent; box-shadow: none; }
 #selectScreen {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;

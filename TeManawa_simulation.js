@@ -135,7 +135,10 @@ class Simulation {
 
     this.activeSpecies = { moa: [], eagle: [] };
     this.otherEntities = {};
-    this.ecoEarned = 0;   // the HUD's ecosystem-health meter + the bird targets (_updateEcoReadout)
+    this.ecoHealth = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.healthStart != null) ? LEVEL_MECHANICS.healthStart : 0.5;   // the ledger (_healthSet): the HUD's bar, read by the birds, the plants and the ground's colour
+    this.ecoEarned = 0;   // its upper half, 0..1: 0 at healthStart, 1 at full
+    this._ecoRun = { dir: 0, step: 0 };     // the run of boosts the next step belongs to (_healthUp / _healthDown)
+    this._ecoStorm = { n: 0, at: -Infinity };   // the storms in succession (onStorm)
     this._fauna = null;   // fauna homeostasis state (_updateFaunaHomeostasis), built on its first tick
     this._speciesStableTimes = {};
     this._speciesLastAlive = {};
@@ -983,6 +986,9 @@ class Simulation {
   }
 
   // The stock a habitat is held at: its base (density × area) plus any lift earned by correct boosts.
+  // The ledger moves it both ways, so the plants say what the bar says: below healthStart the base itself
+  // thins, to homeoPoorFrac of it in the poor state; above it every habitat holds at least its share of
+  // the earned lift (homeoEarnedShare), boosted or not, and the habitats actually boosted stand above that.
   homeoTarget(biomeKey) {
     const H = this._homeo;
     if (!H || H.dens[biomeKey] == null) return null;
@@ -991,7 +997,8 @@ class Simulation {
     // The floor on a step helps a thin habitat (the wetland corridor) read the lift, but never more
     // than half its base: a habitat that barely exists yet (a few stray subalpine cells) stays tiny.
     const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
-    return base + (H.lift[biomeKey] || 0) * step;
+    const earned = (this.ecoEarned || 0) * (M.homeoLiftMaxSteps ?? 4) * (M.homeoEarnedShare ?? 0.5);
+    return base * this._healthLevel(M.homeoPoorFrac ?? 0.7) + Math.max(H.lift[biomeKey] || 0, earned) * step;
   }
 
   _homeoDeadband(target) {
@@ -1037,12 +1044,15 @@ class Simulation {
     return this.liftHabitats(keys, M.homeoButtonShare ?? 0.34);
   }
 
-  // A WRONG-for-the-climate boost: every habitat drops back to its original floor.
-  resetHabitatLift() {
+  // A WRONG boost or an overused storm: every habitat gives back `steps` of its lift (homeoLiftMaxSteps
+  // of them takes the land to its floor). A habitat with nothing left forgets the species it favoured.
+  dropHabitatLift(steps = 1) {
     const H = this._homeo;
     if (!H) return;
-    for (const k in H.lift) delete H.lift[k];
-    for (const k in H.favour) delete H.favour[k];
+    for (const k in H.lift) {
+      if (H.lift[k] > steps) H.lift[k] -= steps;
+      else { delete H.lift[k]; delete H.favour[k]; }
+    }
   }
 
   // The census. Real clock (rdt), every homeoIntervalFrames, so a time-lapse neither speeds the
@@ -1081,60 +1091,146 @@ class Simulation {
     }
   }
 
-  // ---- the HUD's ecosystem readout (InstallHUD.renderVisitorTopBand) ----------------------------
-  // ecoEarned 0..1, recomputed on the real clock once a second: how much of the habitats' homeostasis
-  // lift the visitor has banked, Σ lift·step ÷ Σ maxSteps·step over every plant-bearing habitat (a big
-  // habitat counts for more). 0 on an unattended land, 1 with every habitat at full lift; a wrong boost
-  // resets it to 0 (resetHabitatLift). The HUD shows it as the earned half of the bar (HEALTH_FLOOR).
-  // It reads the TARGETS, not the census: the census ratio it replaced jittered as plants recruited and
-  // thinned, and stepped ±0.1 whenever a land morph changed a habitat's AREA (tools/boostprobe.js). The
-  // bird targets read it too (_updateFaunaHomeostasis). Stays 0 with plant homeostasis off.
-  _updateEcoReadout(rdt) {
-    this._ecoTimer = (this._ecoTimer || 0) + rdt;
-    if (this._ecoTimer < 60) return;
-    this._ecoTimer = 0;
-    const H = this._homeo;
+  // ============================================
+  // THE HEALTH LEDGER — what the visitor has done to the land, as one number (2026-11-05).
+  // ----------------------------------------------
+  // ecoHealth 0..1 is the HUD's bar. It is moved by events, never by a census: a census ratio jitters as
+  // plants recruit and thin, and steps whenever a land morph changes a habitat's area (tools/boostprobe.js).
+  // The world reads it the other way round: above healthStart it raises the bird and plant targets
+  // (ecoEarned), below it thins them (_healthLevel), and it drains the ground's colour (Game._updateHabitatHealth),
+  // so the numbers on the land follow the bar on their own clocks. The knobs and the rules are in the
+  // scaffold (ECOSYSTEM HEALTH).
+  //   A step's size is set when a run begins, from where the land stands then, which is what makes "four
+  //   right answers fill it" and "four wrong goals leave it poor" true from ANY level, not just the start.
+  //   Mixed play settles between the two. It holds until the visitor changes it: an idle wall lands the
+  //   attract sequence, whose fresh Simulation is at healthStart.
+  // ============================================
+  _healthSet(h) {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
-    if (!H || !H.dens || M.plantHomeostasis === false) { this.ecoEarned = 0; return; }
-    const maxSteps = M.homeoLiftMaxSteps ?? 4;
-    let got = 0, full = 0;
-    for (const k in H.dens) {
-      const base = H.dens[k] * (H.cells[k] || 0);
-      if (!(base > 0)) continue;
-      const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
-      full += maxSteps * step;
-      got += Math.min(maxSteps, H.lift[k] || 0) * step;
+    const lo = M.healthMin ?? 0.05, start = M.healthStart ?? 0.5;
+    h = h < lo ? lo : (h > 1 - 1e-6 ? 1 : h);
+    this.ecoHealth = h;
+    this.ecoEarned = h > start ? (h - start) / (1 - start) : 0;
+    if (this._fauna) this._fauna.timer = Infinity;   // the birds' census runs at once, on the same beat as the bar
+  }
+
+  // One step up the run toward full. mult scales this step only; the run keeps its size.
+  _healthUp(mult = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, R = this._ecoRun;
+    if (R.dir !== 1) { R.dir = 1; R.step = (1 - this.ecoHealth) / (M.healthAnswersToFull ?? 4); }
+    this._healthSet(this.ecoHealth + R.step * mult);
+  }
+
+  // One step down the run toward poor. weight < 1 for a half-right boost.
+  _healthDown(weight = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, R = this._ecoRun;
+    if (R.dir !== -1) {
+      R.dir = -1;
+      R.step = Math.max(M.healthDownMinStep ?? 0.04, (this.ecoHealth - (M.healthPoor ?? 0.2)) / (M.healthStepsToPoor ?? 4));
     }
-    this.ecoEarned = full > 0 ? Math.max(0, Math.min(1, got / full)) : 0;
+    this._healthSet(this.ecoHealth - R.step * weight);
+  }
+
+  // A share of the gap to full, for the gains that are not an answer: a right-climate boost, a storm taken
+  // alone. They stop at healthMatchedCap, because only an answer takes the bar past it. Ends a downward
+  // run but not an upward one, so it cannot cost a visitor the step they are on.
+  _healthGain(share) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const cap = M.healthMatchedCap ?? 0.75, h = this.ecoHealth;
+    if (this._ecoRun.dir === -1) this._ecoRun.dir = 0;
+    if (h < cap) this._healthSet(Math.min(cap, h + (1 - h) * share));
+  }
+
+  // The right climate but not the answer, above the cap: a notch back toward it, and never past it. An
+  // upward run carries on, its step widened if need be so four answers still fill the bar from here.
+  _healthSlip() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, R = this._ecoRun;
+    if (R.dir === -1) R.dir = 0;
+    this._healthSet(Math.max(M.healthMatchedCap ?? 0.75, this.ecoHealth - (M.healthMatchedDrop ?? 0.0625)));
+    if (R.dir === 1) R.step = Math.max(R.step, (1 - this.ecoHealth) / (M.healthAnswersToFull ?? 4));
+  }
+
+  // Below healthStart the living world thins with the ledger: 1 at the start, `poorLevel` in the poor
+  // state, a straight line between. Above the start it is 1 (the earned half lifts the targets instead).
+  _healthLevel(poorLevel) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const start = M.healthStart ?? 0.5, poor = M.healthPoor ?? 0.2, h = this.ecoHealth;
+    if (h >= start) return 1;
+    const t = (h - poor) / (start - poor);
+    return poorLevel + (1 - poorLevel) * (t > 0 ? t : 0);
+  }
+
+  // A correct boost. isAnswer: the live goal's answer (mult > 1: the goal an eruption put up). Otherwise
+  // the right climate but not the answer: a smaller gain up to healthMatchedCap, a notch back down above it.
+  onRightBoost(isAnswer, mult = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    this._ecoStorm.n = 0;                  // doing anything else ends a run of storms
+    if (isAnswer) this._healthUp(mult);
+    else if (this.ecoHealth > (M.healthMatchedCap ?? 0.75)) this._healthSlip();
+    else this._healthGain(M.healthMatchedGain ?? 0.18);
+  }
+
+  // A WRONG boost (the console's or the FOREST/TUSSOCK buttons'). weight < 1: the right plant in the wrong
+  // climate, half wrong. Birds and plants each give back a step, starting on the same beat as the bar.
+  onWrongBoost(weight = 1) {
+    this._ecoStorm.n = 0;
+    this._healthDown(weight);
+    this._healthHurt();
+  }
+
+  // A STORM. The first in a run clears dead wood and opens the ground, and the land is better for it. Each
+  // one after it, within healthStormCalmS of the last and with no boost between, is a step down.
+  onStorm() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, S = this._ecoStorm;
+    const now = (typeof millis === 'function') ? millis() : 0;
+    if (now - S.at > (M.healthStormCalmS ?? 40) * 1000) S.n = 0;
+    S.at = now; S.n++;
+    if (S.n === 1) this._healthGain(M.healthStormGain ?? 0.15);
+    else { this._healthDown(1); this._healthHurt(); }
+  }
+
+  // An ERUPTION (Game.applyAsh, which every eruption path reaches): a little, and a fresh run from here.
+  onEruption() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    this._ecoRun.dir = 0;
+    this._healthSet(this.ecoHealth - (M.healthEruptionDip ?? 0.08));
+  }
+
+  // The living world's side of a wrong boost or an overused storm: every habitat and every linked bird
+  // gives back a step, and the census runs fast for a while, so the crash is plain to see.
+  _healthHurt() {
+    this.dropHabitatLift(1);
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null, F = this._fauna;
+    if (!M || !M.faunaHomeostasis || !F) return;
+    for (const k in F.link) { if (F.link[k] > 1) F.link[k]--; else delete F.link[k]; }
+    F.crashT = (M.faunaCrashS ?? 12) * 60;
+    F.timer = Infinity;
   }
 
   // ============================================
   // FAUNA HOMEOSTASIS — the birds are held at a level the visitor earns, like the plants (2026-11-05).
   // ----------------------------------------------
-  // Unattended, each species is held at its FOUNDING number (or its floor, if that is higher), so the
-  // birds do not multiply on their own and the sim can run for hours without a visitor. Earned health
-  // (ecoEarned) raises every target toward the configured speciesTargets level; a matched boost of a
-  // plant a bird is linked to (TM_BOOST.faunaLinks / the card's m.fauna) adds a step on top for that
-  // bird. The climate sets each species' PROMINENCE: forest birds lead in the interglacial, the
+  // At healthStart each species is held at its FOUNDING number (or its floor, if that is higher), so the
+  // birds do not multiply on their own and the sim can run for hours without a visitor. The upper half
+  // of the ledger (ecoEarned) raises every target toward the configured speciesTargets level; a matched
+  // boost of a plant a bird is linked to (TM_BOOST.faunaLinks / the card's m.fauna) adds a step on top
+  // for that bird. The climate sets each species' PROMINENCE: forest birds lead in the interglacial, the
   // open-country grazers in the glacial (ClimateAffinity, from the same seasonalModifiers the sim keys
-  // off; the forest flyers carry none and count as warm). A WRONG boost or storm OVERUSE is a SHOCK:
-  // every target drops to faunaShockFloor of itself (held there while the overuse lasts) and recovers
-  // over faunaShockRecoverS real seconds. Breeding tapers to the target (the existing gates read
-  // _speciesTarget); above target + faunaBand the census retires the hungriest birds, slowly as a
-  // climate turn or a lost lift settles, fast in a shock, so the crash is plain to see; below it a
-  // newcomer arrives now and then (_faunaRecruit), so the favoured kinds rise too. Never below a floor.
-  // On the real clock, once a second, off the draw path.
+  // off; the forest flyers carry none and count as warm). The lower half of the ledger is F.shock: every
+  // target falls with it, to faunaShockFloor of itself in the poor state, and stays there until the
+  // visitor turns the land around. Breeding tapers to the target (the existing gates read _speciesTarget);
+  // above target + faunaBand the census retires the hungriest birds, slowly as a climate turn or a lost
+  // lift settles, fast for faunaCrashS after a wrong boost or an overused storm (F.crashT), so the crash
+  // is plain to see; below it a newcomer arrives now and then (_faunaRecruit), so the favoured kinds rise
+  // too. Never below a floor. On the real clock, once a second, off the draw path.
   // Knobs in the scaffold's ECOLOGY FEEDBACK; measured with tools/boostprobe.js.
   // ============================================
   _updateFaunaHomeostasis(rdt) {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
     if (!M || !M.faunaHomeostasis) return;
     let F = this._fauna;
-    if (!F) F = this._fauna = { timer: 0, ready: false, keys: [], kind: {}, clim: {}, base: {}, link: {}, targets: {}, shock: 1 };
-    // the shock eases back on the real clock; storm overuse holds it down
-    const sFloor = M.faunaShockFloor ?? 0.4;
-    if (this.game && this.game._stormOveruse) F.shock = Math.min(F.shock, sFloor);
-    else if (F.shock < 1) F.shock = Math.min(1, F.shock + (1 - sFloor) * (rdt / 60) / Math.max(1, M.faunaShockRecoverS ?? 45));
+    if (!F) F = this._fauna = { timer: 0, ready: false, keys: [], kind: {}, clim: {}, base: {}, link: {}, targets: {}, shock: 1, crashT: 0 };
+    if (F.crashT > 0) F.crashT -= rdt;
     F.timer += rdt;
     if (F.ready && F.timer < (M.faunaIntervalFrames ?? 60)) return;
     F.timer = 0;
@@ -1146,13 +1242,13 @@ class Simulation {
 
   // Below its target a kind takes in a newcomer now and then (from beyond the map), with a chance of
   // faunaRecruitRate × its shortfall per census: so the climate's favoured kinds RISE to their
-  // prominence instead of waiting minutes on breeding, and a crash refills once the shock has passed.
-  // In a shock only a kind that natural losses have taken under its FLOOR is topped up (the floor is
+  // prominence instead of waiting minutes on breeding, and a crash refills once it has passed.
+  // In a crash only a kind that natural losses have taken under its FLOOR is topped up (the floor is
   // the protected minimum; the land is failing the rest). Never past the caps. Huia arrive as a pair.
   _faunaRecruit(F, M) {
     const rate = M.faunaRecruitRate ?? 0.1;
     if (!(rate > 0)) return;
-    const shocked = F.shock < 0.999;
+    const shocked = F.crashT > 0;
     const moaCap = (typeof CONFIG !== 'undefined' && CONFIG.maxMoaPopulation) || 60;
     const eagleCap = M.eagleMaxPopulation || 12;
     let added = 0;
@@ -1230,6 +1326,7 @@ class Simulation {
 
   _faunaRetarget(F, M) {
     const earned = this.ecoEarned || 0, linkStep = M.faunaLinkStep ?? 0.15;
+    F.shock = this._healthLevel(M.faunaShockFloor ?? 0.4);
     for (let i = 0; i < F.keys.length; i++) {
       const key = F.keys[i], base = F.base[key], full = Math.max(base, this._speciesFullTarget(key));
       let t = base + (full - base) * earned + linkStep * full * (F.link[key] || 0);
@@ -1240,8 +1337,8 @@ class Simulation {
 
   // Retire the surplus over target + band: the hungriest bird first (the one the land was failing).
   _faunaCull(F, M) {
-    const shocked = F.shock < 0.999, maxPer = M.faunaCullMaxPerTick ?? 3;
-    // In a shock there is no band: with targets of 2–4 a bird's grace per species would swallow the crash.
+    const shocked = F.crashT > 0, maxPer = M.faunaCullMaxPerTick ?? 3;
+    // In a crash there is no band: with targets of 2–4 a bird's grace per species would swallow it.
     const band = shocked ? (M.faunaShockBand ?? 0) : (M.faunaBand ?? 1);
     const rate = shocked ? (M.faunaShockCullRate ?? 0.4) : (M.faunaCullRate ?? 0.12);
     let culled = 0;
@@ -1286,20 +1383,6 @@ class Simulation {
     }
     if (n) this._faunaRetarget(F, M);
     return n;
-  }
-
-  // A WRONG-for-the-climate boost (the console's or the FOREST/TUSSOCK buttons'): every habitat drops
-  // to its floor, every bird loses its link steps, and the birds take the shock. The next census runs
-  // at once, so the bar and the crash start on the same beat.
-  onWrongBoost() {
-    this.resetHabitatLift();
-    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
-    this.ecoEarned = 0;
-    const F = this._fauna;
-    if (!M || !M.faunaHomeostasis || !F) return;
-    for (const k in F.link) delete F.link[k];
-    F.shock = Math.min(F.shock, M.faunaShockFloor ?? 0.4);
-    F.timer = Infinity;
   }
 
   // One seedling into habitat k: beside a standing plant of that habitat (seed rain from a parent,
@@ -1782,7 +1865,7 @@ class Simulation {
   // (floor). Drive the surplus-aware harrier (crop the abundant, spare the rare)
   // and the grazer breeding gate (breed up to target, then trickle). With fauna
   // homeostasis on, the target is the LIVE one the census sets (founding level →
-  // earned, by climate, shocked by a wrong boost); _speciesFullTarget is the
+  // earned, by climate, thinned by a poor ledger); _speciesFullTarget is the
   // authored, earned-in-full level, static, resolved once and cached.
   // ============================================
 
@@ -1993,8 +2076,7 @@ class Simulation {
     this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
     this._updateHomeostasis(rdt);       // hold each habitat at its (boost-lifted) target, on real time
-    this._updateEcoReadout(rdt);        // the HUD's ecosystem-health meter, once a second
-    this._updateFaunaHomeostasis(rdt);  // hold each bird at its earned, climate-led target; the shock of a wrong boost
+    this._updateFaunaHomeostasis(rdt);  // hold each bird at its earned, climate-led target; the crash of a wrong boost
 
     if (this.seasonManager.justChanged) this.onSeasonChange();
     

@@ -38,7 +38,7 @@ kiosk screen). Turn it on with `…/secondscreen/?debug=1`, or toggle it live wi
 |---|---|
 | `index.html` | the page shell (fixed 1920×1080 stage, scaled to the panel) |
 | `secondscreen.css` | styling — matches the mockups |
-| `encyclopedia.js` | **the content.** Habitats → plants → names, taxonomy, description, fauna links, positions. Edit this to add/rename/reposition; nothing in `app.js` changes |
+| `encyclopedia.js` | **the content.** Habitats → plants → names, taxonomy, description, fauna links, positions. Edit this to add/rename/reposition; nothing in `app.js` changes. Words in bold come from the goal book (`../TeManawa_goals.js`, a goal's `terms`): reword one and run the harness |
 | `input.js` | maps the physical keys / touch to named actions. **Set the switch mode + key bindings here at install time** |
 | `kiosk.js` | loads first: an error ring buffer (`TMConsoleKiosk.getErrorLog()`), a reload on a burst of errors, the 03:00 reload |
 | `bus.js` | `BroadcastChannel` wrapper + the message vocabulary |

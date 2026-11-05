@@ -340,8 +340,10 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // nobody touches the buttons. The land is spawned OPEN (homeoBaseFrac of the full density) and a
     // CORRECT boost lifts the target of the habitats it serves by one step (the goal's answer by two),
     // up to homeoLiftMaxSteps, so density is something the visitor earns; a WRONG-for-the-climate
-    // boost drops every habitat back to its open floor and the surplus fades out. However open, every
-    // palette species keeps a representation floor (homeoSpecies*). The census runs on the REAL clock.
+    // boost or an overused storm takes one step back from every habitat and the surplus fades out. The
+    // health ledger (ECOSYSTEM HEALTH, below) moves every habitat too: see homeoEarnedShare, homeoPoorFrac.
+    // However open, every palette species keeps a representation floor (homeoSpecies*). The census runs
+    // on the REAL clock.
     plantHomeostasis:    true,
     homeoBaseFrac:       0.55,   // unattended floor as a share of the full plantDensity (spawn + targets)
     homeoSpeciesShare:   0.06,   // each palette species is kept at ≥ this share of its habitat's stock...
@@ -355,6 +357,8 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     homeoLiftStep:       0.25,   // one correct boost raises a habitat's target by this share of its base (4 steps: 0.55 → 1.1 of full density)...
     homeoLiftStepMin:    6,      // ...or by at least this many plants (thin habitats like the wetland), capped at half the base
     homeoLiftMaxSteps:   4,      // most steps a habitat can bank (4 × 25% = double the open floor; keep the total under maxLivePlants)
+    homeoEarnedShare:    0.5,    // the upper half of the health ledger holds EVERY habitat at this share of the max lift (full health: 2 of 4 steps), boosted or not
+    homeoPoorFrac:       0.7,    // in the poor health state each habitat's base thins to this share of itself (1 at healthStart)
     homeoAnswerSteps:    2,      // steps a goal's ANSWER earns
     homeoButtonShare:    0.34,   // FOREST/TUSSOCK lift only habitats where their set is ≥ this share of the palette
     homeoFavourChance:   0.4,    // chance a recruit is the habitat's last-boosted species rather than a palette draw
@@ -454,27 +458,59 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
       eyles_harrier:       { target: 6, floor: 2 }    // fauna homeostasis only (the harrier keeps its own breeding cap)
     },
 
+    // ECOSYSTEM HEALTH (Simulation.ecoHealth, the ledger, 2026-11-05) — one number, 0..1, moved by what
+    // the visitor does. The HUD's bar IS this number; the bird targets, the plant targets and the ground's
+    // colour all read it, so the indicator and the living world cannot disagree. A new visitor starts at
+    // healthStart. It does not drift back on its own: the attract landing resets it.
+    //   a goal's ANSWER     up one step; healthAnswersToFull in a row reach 1 from ANY level (the step is
+    //                       set when the run starts). The goal an eruption put up counts healthEruptionMult×.
+    //   right climate, not the answer     + healthMatchedGain of the gap to full, up to healthMatchedCap;
+    //                       above the cap, − healthMatchedDrop, back toward the cap and never past it. Only
+    //                       an answer takes the bar over the cap
+    //   TOTALLY WRONG       down one step; healthStepsToPoor in a row reach healthPoor from any level
+    //   right plant, wrong climate        healthHalfRight of a down step
+    //   STORM               the first in a run heals (+ healthStormGain of the gap to full, up to
+    //                       healthMatchedCap; above it, nothing); each one after it is a down step, so the
+    //                       fifth in succession lands on healthPoor. A boost, or healthStormCalmS real
+    //                       seconds without a storm, ends the run
+    //   ERUPTION            − healthEruptionDip, flat: a little
+    healthStart:         0.5,
+    healthPoor:          0.2,    // the poor state: the bar's ochre, the birds at faunaShockFloor, the plants at homeoPoorFrac
+    healthMin:           0.05,   // the bar never quite empties
+    healthAnswersToFull: 4,
+    healthStepsToPoor:   4,
+    healthDownMinStep:   0.04,   // the least a down step takes, so a land already near poor still falls
+    healthHalfRight:     0.5,
+    healthMatchedGain:   0.18,
+    healthMatchedCap:    0.75,   // the most anything but an answer can raise the bar to
+    healthMatchedDrop:   0.0625, // the notch above the cap: one answer's step from the cap, so an answer and a miss cancel
+    healthStormGain:     0.15,
+    healthStormCalmS:    40,     // > TM_TIME.stormSeconds: pressing again as the last storm clears is still "in succession"
+    healthEruptionDip:   0.08,
+    healthEruptionMult:  2,      // the post-eruption goal's answer: this × the health, lift, seedlings and birds of an answer
+
     // FAUNA HOMEOSTASIS (Simulation._updateFaunaHomeostasis, 2026-11-05) — the birds, like the plants,
     // are held at a level the visitor EARNS. With it on, `target` above is the earned-in-full level;
     // the live target is:
-    //   (founding number → target, by the earned health ecoEarned  +  faunaLinkStep·target per banked
-    //    link step)  ×  the climate prominence  ×  the shock          — never below `floor`.
-    // Unattended the birds hold at their founding numbers (they do not multiply without boosts);
+    //   (founding number → target, by the upper half of the ledger ecoEarned  +  faunaLinkStep·target per
+    //    banked link step)  ×  the climate prominence  ×  the lower half of the ledger (F.shock)
+    //                                                                  — never below `floor`.
+    // A new visitor's birds hold at their founding numbers (they do not multiply without boosts);
     // above target + faunaBand the census retires the hungriest, below it a newcomer arrives now and
     // then (faunaRecruitRate), so each kind follows its target both ways. tools/boostprobe.js measures it.
     faunaHomeostasis:    true,
     faunaIntervalFrames: 60,     // census cadence, real frames
     faunaBand:           0,      // birds a species may sit over its live target before the census retires any. 0: with
     faunaShockBand:      0,      // targets of 2–6, a bird's grace each swallowed both the climate swing and the crash
-    faunaRecruitRate:    0.1,    // below target: chance per census of a newcomer = this × the shortfall (none in a shock)
+    faunaRecruitRate:    0.1,    // below target: chance per census of a newcomer = this × the shortfall (none in a crash)
     faunaLinkStep:       0.15,   // a matched boost of a plant linked to a bird (TM_BOOST.faunaLinks): + this share of its target…
-    faunaLinkMaxSteps:   3,      // …banked up to this many steps (the goal's answer banks two); a wrong boost clears them
+    faunaLinkMaxSteps:   3,      // …banked up to this many steps (the goal's answer banks two); each wrong boost or storm in a run takes one back
     faunaClimateWarm:    { interglacial: 1.3, glacial: 0.6 },   // forest birds (kererū, kōkako, huia, tūī, the warm moa, kiwi)
     faunaClimateCold:    { interglacial: 0.7, glacial: 1.4 },   // open-country grazers (goose, mōho, duck, the cold moa)
-    faunaShockFloor:     0.4,    // a WRONG boost or storm OVERUSE drops every live target to this share of itself…
-    faunaShockRecoverS:  45,     // …easing back over this many real seconds (held down while the overuse lasts)
+    faunaShockFloor:     0.4,    // at the poor state every live target is this share of itself (1 at healthStart, a straight line between)
+    faunaCrashS:         12,     // after a wrong boost or an overused storm the census runs fast for this many real seconds…
     faunaCullRate:       0.12,   // share of a species' surplus retired per census, settling (a climate turn, a lost lift)
-    faunaShockCullRate:  0.4,    // …and in a shock: the crash the visitor sees
+    faunaShockCullRate:  0.4,    // …at this rate: the crash the visitor sees
     faunaCullMaxPerTick: 3,      // per species, per census
 
     autoRefound:          true,

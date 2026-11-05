@@ -101,7 +101,7 @@ TeManawa_spriteatlas.js    runtime texture atlas: packs every loaded sprite at s
 TeManawa_glbatch.js        the default WebGL entity layer (DOM-stacked); falls back to 2D
 TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored; SEA_ANCHORS
 TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the time dial
-TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) — pure, p5-free
+TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) + the cards' bold terms — pure, p5-free; the console page loads it too
 TeManawa_hud.js            InstallHUD: timeline (climate ribbon, eruption pins + end labels), visitor year/goal/speed, the top band (tallies + ecosystem health), eruption captions, the five buttons (debug), storm/ash/wind FX
 TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
 TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only attract sequence (idle + end-of-window), its own clock, the names of the time — see TEMANAWA_PALAEO_ATTRACT.md
@@ -193,6 +193,11 @@ mismatch rebuilds the paint grid and noise fields on the first morph after every
 
 **No emoji in visitor-facing UI** — drawn glyphs only. Emoji render differently per
 platform and carry no colourblind-safe guarantee.
+
+**The health bar has one source: `Simulation.ecoHealth`, moved by events.** The bird targets, the plant
+targets and the ground's colour read it; nothing reads a census back into it. Its targets (four answers
+fill it, only an answer passes 75 %, four wrong goals or five storms leave it poor, from any level) are the harness's "health ledger"
+section. It lives on the Simulation, so `Game.applyEruptionAt` carries it across the rebuild (`md/TEMANAWA_PLAN_V3.md` §7).
 
 ---
 
@@ -314,5 +319,5 @@ now stages the habitat.
 peak near 0.65 at every date while the real build reaches ~0.88. Test logic that needs a landform
 (a habitat, a band) by staging it, not by trusting the noise (`MISTAKES.md`).
 
-Open co-design items: `TM_PALAEO` pacing and notes, the look of the pre-window land (`LOOK.palaeo*`),
+Open co-design items: `TM_PALAEO` pacing, the look of the pre-window land (`LOOK.palaeo*`),
 the live outline prototype, `CONFIG.mapGrid` (still 512), and the interpretation layer (PLAN §16).

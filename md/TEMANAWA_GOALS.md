@@ -25,6 +25,9 @@ At any moment some goals are **live**. A goal is live when all of these hold:
    - birds present, e.g. kererū and kōkako both alive;
    - an eruption has happened this session (the scrub-after-a-volcano goal).
 
+**An eruption moves the line** to one of those post-eruption goals, ahead of the sequence below, and the
+draw keeps to them until one is answered. Answering it counts double (`md/TEMANAWA_PLAN_V3.md` §7).
+
 Among the live goals, **one is drawn at random**, so two visitors at the same point in the timeline
 can get different goals. The draw follows the **bird sequence**:
 
@@ -208,6 +211,37 @@ wording narrowed to the card's own fact:
 A both-worlds answer now gets its own success line (`TM_GOALS.text.answerNeutral`: "… grew in both
 climates, and was …") instead of "a glacial plant" or "an interglacial plant" by the clock.
 `blue-wattles` is live but no card mentions the kōkako's wattles yet.
+
+### 2.4 The card terms: what shows in bold (2026-11-05)
+
+The touchscreen card shows the words a plant goal rests on in **bold**, so a visitor reading for an
+answer can find it. Each goal names its own words: `terms: { plantKey: ['the exact words on its card'] }`
+in `TeManawa_goals.js`. The console page loads the goal book and bolds them with `TMGoals.termRuns`, so
+**switching a goal on or off moves the bold with it**. Goals that are `off` carry their terms too, but
+they show plain.
+
+A rewrite of a card has to keep each phrase word for word, or it loses its bold. The harness ("plant
+goals") fails on any term no longer on a card of that plant.
+
+**Answers with no term.** 27 live answers have nothing to bold, because their card doesn't state the
+fact. The goal is true of the plant (§2.3 widened answers so the wall never says a false "is not"), but a
+visitor can't find it by reading. The harness lists them on each run. Two goals have no term on any card,
+so nothing on the touchscreen can answer them yet. Add the line to the card to close a gap:
+
+| Goal | Answers whose card doesn't say it |
+|---|---|
+| **`no-wings`** | every answer: kahikatea, harakeke, scrub, mānuka, *Dracophyllum* |
+| **`blue-wattles`** | its only answer: nīkau |
+| `similar-species` | tree ferns, scrub, tussock, pūrei, tī kōuka, tōtara |
+| `both-worlds` | harakeke, mānuka, pūrei, wharariki |
+| `regrow-from-base` | harakeke, wharariki, pūrei |
+| `most-kinds-here` | tussock, scrub |
+| `dies-back-cold` | tawa, tōtara |
+| `red-berries` | tōtara, scrub |
+| `moho-food` | tussock |
+| `ash-bloom` | mānuka |
+
+Proposed shorter card copy that keeps every term: `TEMANAWA_CARD_TRIMS.md` (not applied).
 
 ### Through the timeline
 

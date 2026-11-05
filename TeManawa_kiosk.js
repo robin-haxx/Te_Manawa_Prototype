@@ -317,6 +317,9 @@ const Kiosk = {
       } else {
         g.resetEcosystem();                                          // before the first eruption → rebuild at start
       }
+      // A reset is a new visitor. applyEruptionAt keeps the land's health for a visitor's own eruption
+      // and takes the dip, neither of which belongs here.
+      if (g.simulation) g.simulation._healthSet(LEVEL_MECHANICS.healthStart ?? 0.5);
 
       this.resetCount++;
       this.lastResetMs = Date.now();

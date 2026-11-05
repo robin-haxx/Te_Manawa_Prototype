@@ -47,6 +47,7 @@
         <div id="cardHead">
           <div id="cardTitle">
             <h2 id="cardName"></h2>
+            <div id="cardAlt"></div>
             <div id="cardSci"></div>
           </div>
           <div id="cardScene">
@@ -89,9 +90,11 @@
 </div>
 
 <!-- load order: the kiosk layer first (its error handlers armed before anything else runs),
-     then data + bus + input before the app -->
+     then data + bus + input before the app. The goal book is the sim's own: pure, and only read
+     here for the words each card shows in bold. -->
 <script src="kiosk.js"></script>
 <script src="encyclopedia.js"></script>
+<script src="../TeManawa_goals.js"></script>
 <script src="bus.js"></script>
 <script src="input.js"></script>
 <script src="app.js"></script>

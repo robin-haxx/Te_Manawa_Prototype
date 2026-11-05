@@ -2,7 +2,7 @@
 // Boots the real scripts headless (the bootcheck stubs), with a p5-faithful Perlin noise() so the land
 // has real habitats (the harness's noise is white), a BroadcastChannel stub and frame-clocked timers so
 // the bus behaves as in the browser (its heartbeat ends timelapses and fires pending eruptions).
-//   node tools/boostprobe.js <scenario> [out.json]    scenarios: idle | right | wrong | mixed | answer | same | dial | smoke
+//   node tools/boostprobe.js <scenario> [out.json]    scenarios: idle | right | wrong | mixed | answer | same | dial | storm | health | smoke
 //   node tools/boostprobe.js --report a.json [b.json ...]   the per-boost table for saved runs
 // One scenario is ~6 min of wall time (12 boosts); run several in parallel. SEED=n picks the land.
 const fs = require('fs'), path = require('path'), vm = require('vm');
@@ -180,10 +180,10 @@ function sample(tag) {
     plants: alive, mature, dormant, meanGrowth: +(growthSum / Math.max(1, alive)).toFixed(3),
     warmN, coldN, neutN, plantKinds: Hp.s, plantEven: +Hp.e.toFixed(3),
     faunaN: Hf.n, faunaKinds: Hf.s, faunaEven: +Hf.e.toFixed(3),
-    rich: +(sim.ecoEarned || 0).toFixed(3),           // earned health, 0..1 (Simulation.ecoEarned)
+    rich: +(sim.ecoEarned || 0).toFixed(3),           // the ledger's upper half, 0..1 (Simulation.ecoEarned)
     hh: +(G._habitatHealth ?? 1).toFixed(3), fit: +(G._regimeFit ?? 1).toFixed(3), rec: +(G._recruitment ?? 1).toFixed(3),
     ash: +(G._ashCover || 0).toFixed(3), sat: +(G._sceneSat ?? 1).toFixed(3),
-    hudBar: +(HUDK.HEALTH_FLOOR + (1 - HUDK.HEALTH_FLOOR) * (sim.ecoEarned || 0)).toFixed(3),   // the HUD meter's length
+    hudBar: +sim.ecoHealth.toFixed(3),                // the HUD meter's length: the ledger itself (Simulation.ecoHealth)
     shock: sim._fauna ? +sim._fauna.shock.toFixed(2) : 1, culls: sim.stats.homeoCulls || 0, recruits: sim.stats.homeoRecruits || 0,
     faunaTarget: sim._fauna ? Object.values(sim._fauna.targets).reduce((a, b) => a + b, 0) : null,
     targets: sim._fauna ? Object.assign({}, sim._fauna.targets) : null, overuse: !!G._stormOveruse,
@@ -208,8 +208,21 @@ function pickAnswer() {
   if (L && L.answer) { const a = L.answer.find(k => TG.fits(k, glacial)); if (a) return a; }
   return pick('right');
 }
+// a boost that is wrong in every way: the wrong climate, and not the live goal's answer
+function pickTotallyWrong() {
+  const L = TG.live && TG.live();
+  for (let i = 0; i < cardKeys.length; i++) { const k = pick('wrong'); if (!L || !L.answer || L.answer.indexOf(k) < 0) return k; }
+  return pick('wrong');
+}
+// one row of the `health` scenario: what the ledger, the birds and the plants have done since the last
+function line(label) {
+  run(60 * 15, 60, 'settle');   // 15 s more for the census to show it
+  const s = samples[samples.length - 1];
+  console.log(pad(label, 30) + pad(s.hudBar.toFixed(3), 8) + pad(s.faunaN + '/' + s.faunaTarget, 9) + pad(s.plants, 8) + pad(s.sat.toFixed(2), 7) + (s.glacial ? 'G' : 'I') + ' ' + Math.round(s.yr / 1000) + 'k');
+}
+function stormPress() { HUDK.press(G, 'storm'); run(60 * 3, 60, 'storm'); }
 function boost(kind) {
-  const key = kind === 'answer' ? pickAnswer() : kind === 'same' ? (TG.glacialNow() ? 'tussock' : 'tawa') : pick(kind);
+  const key = kind === 'answer' ? pickAnswer() : kind === 'same' ? (TG.glacialNow() ? 'tussock' : 'tawa') : kind === 'totallyWrong' ? pickTotallyWrong() : pick(kind);
   const before = { yr: Math.round(DT.yearsBP), glacial: TG.glacialNow() };
   const live = TG.live && TG.live();
   BUS.boost({ type: 'boost', plantKey: key, plantName: key });
@@ -237,6 +250,21 @@ const plans = {
                   for (let i = 0; i < 6; i++) { HUDK.press(G, 'storm'); events.push({ f: ctx.frameCount, s: +(_t / 1000).toFixed(1), key: 'STORM', kind: 'storm', fit: '-', yr: Math.round(DT.yearsBP), glacial: TG.glacialNow() }); run(120, 60, 'storm'); }
                   run(60 * 60, 60, 'settle');
                   for (let i = 0; i < 3; i++) boost('right'); },
+  // the targets on the health indicator, in one visitor's session: does the land follow the bar?
+  health: () => {
+    console.log(pad('step', 30) + pad('bar', 8) + pad('fa/tgt', 9) + pad('plants', 8) + pad('sat', 7) + 'clock');
+    line('start');
+    for (let i = 1; i <= 4; i++) { boost('answer'); line('right answer ' + i); }
+    for (let i = 1; i <= 4; i++) { boost('totallyWrong'); line('totally wrong ' + i); }
+    for (let i = 1; i <= 4; i++) { boost('answer'); line('right answer ' + i); }
+    stormPress(); line('a storm alone, from full');
+    for (let i = 2; i <= 5; i++) { stormPress(); line('storm ' + i + ' in succession'); }
+    run(60 * 45, 60, 'calm');
+    stormPress(); line('a storm after calm');
+    for (let i = 1; i <= 3; i++) { boost('answer'); line('right answer ' + i); }
+    const er = DT.ERUPTIONS.find(e => e.yearsBP < DT.yearsBP);
+    if (er) { G._fireEruptionInPlace(er); line('an eruption'); line('…as the ash clears'); const lv = TG.live(); console.log('  the goal now: ' + (lv ? lv.id : 'none')); boost('answer'); line('the post-eruption answer'); }
+  },
   smoke:  () => { boost('right'); boost('wrong'); },
 };
 plans[SCEN]();

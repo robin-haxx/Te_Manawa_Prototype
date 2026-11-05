@@ -290,6 +290,7 @@ try{
   // dispersal grows the plant population by one, near forest, as a low-growth warm seedling.
   // (relax the density gate here — this asserts the recruit mechanic, the gate is tested below)
   const M = vm.runInContext('LEVEL_MECHANICS', ctx);
+  sim._healthSet(M.healthStart);   // this sim has had the five buttons pressed at it, and a run-down land refuses seed (its habitats are over target)
   const savedDensMax = M ? M.disperseDensityMax : undefined;
   if(M) M.disperseDensityMax = 1e9;
   const n0 = sim.plants.length;
@@ -932,6 +933,7 @@ try{
   // One unattended sweep on whatever land is standing; checks tagged with `label`.
   const sweep=(label)=>{
     const sim=G.simulation, season=G.seasonManager;
+    sim._healthSet(vm.runInContext('LEVEL_MECHANICS',ctx).healthStart);   // unattended means a new visitor's ledger, whatever the sections above pressed
     const grazers=(sim.activeSpecies.moa||[]).slice();
     const flyers=Object.keys(sim.otherEntities).filter(t=>sim.otherEntities[t][0]&&sim.otherEntities[t][0].isFlyer);
     const all=grazers.concat(flyers);
@@ -2234,7 +2236,7 @@ try{
 // ---- plant homeostasis: habitats hold steady, correct boosts lift them, a wrong one resets ----
 // Each plant-bearing habitat is held at a target (spawn density × area). With no input the counts
 // must not drift or churn; correct boosts lift the habitats they serve (capped); a wrong-for-the-
-// climate boost (bus or button) drops every habitat back to its floor, and the surplus fades out
+// climate boost (bus or button) takes a step back from every habitat, and the surplus fades out
 // — sparing the young — then leaves the plant list.
 try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx),
@@ -2243,7 +2245,7 @@ try{
   const sim=G.simulation;
   const step=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(1); sim.update(1,1); } };
   const census=()=>{ const c={}; for(const p of sim.plants){ if(p._senescent||p._fallKind==='thin') continue; c[p.biomeKey]=(c[p.biomeKey]||0)+1; } return c; };
-  chk(typeof sim.liftHabitats==='function' && typeof sim.resetHabitatLift==='function' &&
+  chk(typeof sim.liftHabitats==='function' && typeof sim.dropHabitatLift==='function' &&
       typeof sim.homeoTarget==='function' && sim._homeo, 'the homeostasis API is present');
   const keys=Object.keys(sim._homeo.dens).filter(k=>sim.homeoTarget(k)>=10);
   const near=(c)=>keys.every(k=>Math.abs((c[k]||0)-sim.homeoTarget(k)) <= sim._homeoDeadband(sim.homeoTarget(k))+1);
@@ -2268,11 +2270,15 @@ try{
   chk(sim._homeo.lift.podocarp===M.homeoLiftMaxSteps, 'the lift is capped at homeoLiftMaxSteps');
   chk(sim.plants.length <= M.maxLivePlants, `the lifted world stays under the live-plant cap (${sim.plants.length})`);
 
-  // 3. A wrong guess: back to the floor. The surplus fades (the young spared), then leaves the list.
+  // 3. Wrong guesses: a step back each, four of them to the floor. The surplus fades (the young spared),
+  //    then leaves the list.
   step(1200);
   const surplus=(census().podocarp||0)-base.podocarp;
-  sim.resetHabitatLift();
-  chk(sim.homeoTarget('podocarp')===base.podocarp, 'a reset drops the target back to the original floor');
+  const tFull=sim.homeoTarget('podocarp');
+  sim.dropHabitatLift(1);
+  chk(sim.homeoTarget('podocarp')<tFull && sim.homeoTarget('podocarp')>base.podocarp, 'a wrong boost takes one step of the lift back, not all of it');
+  sim.dropHabitatLift(M.homeoLiftMaxSteps);
+  chk(sim.homeoTarget('podocarp')===base.podocarp && !Object.keys(sim._homeo.lift).length, 'all of them take the target back to the original floor');
   step(240);
   const now=vm.runInContext('millis()',ctx);
   let fading=0, youngHit=0;
@@ -2287,13 +2293,16 @@ try{
   // 4. The two seams: the bus boost and the FOREST/TUSSOCK buttons.
   DT.seekTo(122000); G.seasonManager.update(1);                   // an interglacial
   TB.boost({ plantKey:'tawa' }); DT.endTimelapse();
-  chk((sim._homeo.lift.podocarp||0)>=1, 'a matched bus boost lifts its habitats');
+  const liftTawa=sim._homeo.lift.podocarp||0;
+  chk(liftTawa>=1, 'a matched bus boost lifts its habitats');
   TB.boost({ plantKey:'tussock' }); DT.endTimelapse();             // cold species in the interglacial
-  chk(Object.keys(sim._homeo.lift).length===0, 'a wrong-for-the-climate bus boost resets every habitat');
+  chk((sim._homeo.lift.podocarp||0)===liftTawa-1, 'a wrong-for-the-climate bus boost takes a step back from every habitat');
+  sim.dropHabitatLift(M.homeoLiftMaxSteps);
   G.handleKey('2');                                                // FOREST, matched
-  chk((sim._homeo.lift.podocarp||0)>=1 && !sim._homeo.lift.grassland, 'a matched FOREST press lifts the forest habitats only');
+  const liftForest=sim._homeo.lift.podocarp||0;
+  chk(liftForest>=1 && !sim._homeo.lift.grassland, 'a matched FOREST press lifts the forest habitats only');
   G.handleKey('3');                                                // TUSSOCK in the interglacial: wrong
-  chk(Object.keys(sim._homeo.lift).length===0, 'a wrong TUSSOCK press resets every habitat');
+  chk((sim._homeo.lift.podocarp||0)===liftForest-1, 'a wrong TUSSOCK press takes a step back too');
 
   // 5. Storm: the lightning cloud fades in and out — no blink.
   const HUD=vm.runInContext('InstallHUD',ctx), TT=vm.runInContext('TM_TIME',ctx);
@@ -2316,16 +2325,245 @@ try{
 
   DT.reset(); G._boostHi=null; G.resetEcosystem();
   console.log(fail? `plant homeostasis: ${fail} FAILURES`
-    : 'plant homeostasis: habitats hold steady unattended; correct boosts lift (capped), a wrong one fades back to the floor; lightning fades');
+    : 'plant homeostasis: habitats hold steady unattended; correct boosts lift (capped), wrong ones step back and the surplus fades; lightning fades');
 }catch(e){ console.log('HOMEOSTASIS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
+// ---- the health ledger: the indicator's targets, against what a visitor actually does ------------
+// Simulation.ecoHealth is the bar. The rules (the design chat, 2026-11-05): five storms in succession or
+// four totally wrong goals leave it POOR; a first storm IMPROVES it; four totally correct goals fill it,
+// and full lights the year, the tallies and the gauge in the climate's colour; only an answer goes past
+// healthMatchedCap, and a right-climate boost above it slips a notch back; an eruption takes it down a little, and answering the goal it puts up counts
+// double. All of it from ANY level, because a real visitor arrives mid-story, not at the start. Driven
+// through the real seams (the bus and the buttons), with a staged goal book so each verdict is known.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), TB=vm.runInContext('TMBus',ctx),
+        TG=vm.runInContext('TMGoals',ctx), TGL=vm.runInContext('TM_GOALS',ctx),
+        M=vm.runInContext('LEVEL_MECHANICS',ctx), IH=vm.runInContext('InstallHUD',ctx), K=vm.runInContext('Kiosk',ctx),
+        H=vm.runInContext('HEALTH',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const near=(a,b,e=1e-6)=>Math.abs(a-b)<=e, f2=(v)=>v.toFixed(3);
+  const realBook=TGL.list, realRand=TG._rand;
+  // A one-goal book with a both-worlds answer (harakeke), so the same plant is the answer in either
+  // climate and the time-lapses below cannot change the verdict.
+  const gHara={ id:'t-hara', group:'moa', prompt:'P', cond:'c', answer:['flax'] };
+  const gErupt={ id:'t-erupt', group:'lowland', prompt:'P-e', cond:'c', answer:['flax'], requires:{ eruption:true } };
+  const fresh=(h,book)=>{                              // a new visitor at this level, in an interglacial, on the one-goal book
+    TGL.list=book||[gHara]; G.resetEcosystem(); DT.seekTo(122000); G.seasonManager.update(1);
+    G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null;
+    TG.reset(); TG.update(G,vm.runInContext('millis()',ctx));
+    const s=G.simulation; if(h!=null) s._healthSet(h); return s;
+  };
+  // Every boost lands the clock and re-seats it, so the climate and the bird census stay as staged.
+  const boost=(key)=>{ DT.seekTo(122000); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP; TB.boost({ plantKey:key }); const v=TG.verdict(); DT.endTimelapse(); G._boostHi=null; return v?v.kind:null; };
+  const answer=()=>boost('flax');                      // the live goal's answer
+  const wrong=()=>boost('tussock');                    // a cold plant in an interglacial, and not the answer
+  const matched=()=>boost('tawa');                     // the right climate, not the answer
+  const storm=(gapS=2)=>{ ctx.__tick(Math.ceil(gapS*1000/16)); IH.press(G,'storm'); };
+  const reader=(s)=>f2(s.ecoHealth);
+  try{
+  // 1. A new visitor stands at the start, and the default look is untouched there.
+  let s=fresh();
+  chk(near(s.ecoHealth,M.healthStart), `a new visitor starts at healthStart (${reader(s)})`);
+  chk(s.ecoEarned===0 && s._healthLevel(0.1)===1, 'at the start nothing is earned and nothing is thinned');
+  chk(s._healthLevel(H.ledgerFloor)===1, 'the ground is at full colour at the start (the default look is untouched)');
+
+  // 2. Four right answers fill it, from anywhere, and only the fourth does.
+  for(const from of [M.healthStart, M.healthPoor, 0.75]){
+    s=fresh(from); const seq=[];
+    for(let i=0;i<3;i++){ chk(answer()==='answer','the staged boost is the answer'); seq.push(reader(s)); }
+    chk(s.ecoHealth<1, `from ${from}: three right answers do not fill it (${seq.join(' ')})`);
+    answer();
+    chk(s.ecoHealth===1, `from ${from}: the fourth does (${reader(s)})`);
+  }
+  // 3. Four totally wrong goals leave it poor, from anywhere, and not before.
+  for(const from of [M.healthStart, 1, 0.75]){
+    s=fresh(from); const seq=[];
+    for(let i=0;i<3;i++){ chk(wrong()==='wrong','the staged boost is totally wrong'); seq.push(reader(s)); }
+    chk(s.ecoHealth>M.healthPoor, `from ${from}: three wrong goals are not yet poor (${seq.join(' ')})`);
+    wrong();
+    chk(s.ecoHealth<=M.healthPoor+1e-9, `from ${from}: the fourth is (${reader(s)})`);
+  }
+  s=fresh(M.healthPoor+0.01); for(let i=0;i<4;i++) wrong();
+  chk(s.ecoHealth<M.healthPoor && s.ecoHealth>=M.healthMin, `a land already near poor still falls, and never empties (${reader(s)})`);
+  s=fresh(); for(let i=0;i<40;i++) wrong();
+  chk(near(s.ecoHealth,M.healthMin), `…however long it goes on (${reader(s)})`);
+  // 4. Half-right boosts are worth less than the real thing, and only an answer goes past healthMatchedCap.
+  const CAP=M.healthMatchedCap;
+  s=fresh(); const h0=s.ecoHealth; chk(matched()==='matched','the staged boost is right climate, not the answer');
+  const gainMatched=s.ecoHealth-h0; s=fresh(); answer(); const gainAnswer=s.ecoHealth-h0;
+  chk(gainMatched>0 && gainMatched<gainAnswer, `the right climate alone is a smaller gain than the answer (+${f2(gainMatched)} vs +${f2(gainAnswer)})`);
+  s=fresh(); { let top=0; for(let i=0;i<12;i++){ matched(); top=Math.max(top,s.ecoHealth); }
+    chk(near(s.ecoHealth,CAP) && top<=CAP+1e-9, `right-climate boosts alone reach the cap and stop there (${reader(s)})`); }
+  s=fresh(1); matched();
+  chk(near(s.ecoHealth,1-M.healthMatchedDrop), `from full, a right-climate boost takes it down a notch (${reader(s)})`);
+  { let low=1; for(let i=0;i<12;i++){ matched(); low=Math.min(low,s.ecoHealth); }
+    chk(near(s.ecoHealth,CAP) && low>=CAP-1e-9, `…toward the cap, and never past it (${reader(s)})`); }
+  s=fresh(CAP); answer(); const oneUp=s.ecoHealth; matched();
+  chk(oneUp>CAP && near(s.ecoHealth,CAP), `from the cap, an answer and a miss cancel (${f2(oneUp)} → ${reader(s)})`);
+  s=fresh(); answer(); matched(); answer(); matched(); answer(); answer();
+  chk(s.ecoHealth===1, 'a right-climate boost among the answers does not cost the run its fourth answer');
+  s=fresh(0.9); answer(); matched(); { const seq=[reader(s)]; for(let i=0;i<3;i++){ answer(); seq.push(reader(s)); }
+    chk(s.ecoHealth<1, `a slip on a small step: three answers do not refill it (${seq.join(' ')})`);
+    answer(); chk(s.ecoHealth===1, `…and the fourth always does (${reader(s)})`); }
+  s=fresh(); wrong(); const lostWrong=h0-s.ecoHealth;
+  s=fresh(); TGL.list=[{ id:'t-warm', group:'forest', prompt:'P', cond:'c', answer:['tussock','tawa'] }]; TG.reset(); TG.update(G,vm.runInContext('millis()',ctx));
+  chk(boost('tussock')==='answerWrongClimate', 'the staged boost is the right plant in the wrong climate');
+  const lostHalf=h0-s.ecoHealth;
+  chk(near(lostHalf,lostWrong*M.healthHalfRight), `the right plant in the wrong climate costs half a wrong goal (-${f2(lostHalf)} vs -${f2(lostWrong)})`);
+
+  // 5. A first storm improves it; the fifth in succession leaves it poor, and the fourth does not.
+  for(const from of [M.healthStart, 1, 0.75]){
+    s=fresh(from); const seq=[]; const start=s.ecoHealth;
+    storm();
+    chk(from>=CAP ? s.ecoHealth===start : s.ecoHealth>start, `from ${from}: a first storm improves it, up to the cap (${f2(start)} → ${reader(s)})`);
+    for(let i=2;i<=4;i++){ storm(); seq.push(reader(s)); }
+    chk(s.ecoHealth>M.healthPoor, `from ${from}: four storms in succession are not yet poor (${seq.join(' ')})`);
+    storm();
+    chk(s.ecoHealth<=M.healthPoor+1e-9, `from ${from}: the fifth is (${reader(s)})`);
+  }
+  s=fresh(); for(let i=0;i<5;i++) storm(20);
+  chk(s.ecoHealth<=M.healthPoor+1e-9, `storms still count as in succession if each is left to play out (${reader(s)})`);
+  s=fresh(); storm(); const after1=s.ecoHealth; storm(M.healthStormCalmS+1);
+  chk(s.ecoHealth>after1, `after healthStormCalmS of calm a storm is a first storm again (${f2(after1)} → ${reader(s)})`);
+  s=fresh(); storm(); storm(); const down=s.ecoHealth; answer(); const up=s.ecoHealth; storm();
+  chk(down<up && s.ecoHealth>up, 'a boost ends the run: the next storm is a first storm again');
+  s=fresh(); for(let i=0;i<30;i++) storm();
+  chk(s.ecoHealth<1 && s.ecoHealth>=M.healthMin, `storm alone never reaches full, and never empties it (${reader(s)})`);
+  s=fresh(); for(let i=0;i<30;i++) storm(M.healthStormCalmS+1);
+  chk(s.ecoHealth<=CAP+1e-9, `…and one at a time with a calm between, never past the cap (${reader(s)})`);
+
+  // 6. An eruption takes it down a little, from any level, on every path.
+  const er=DT.ERUPTIONS[1];
+  for(const from of [M.healthStart, 1]){
+    s=fresh(from); G._fireEruptionInPlace(er);
+    chk(near(from-s.ecoHealth,M.healthEruptionDip), `from ${from}: an eruption in place takes it down a little (${reader(s)})`);
+  }
+  chk(M.healthEruptionDip<(1-M.healthPoor)/M.healthStepsToPoor/2, 'a little: under half of what a wrong goal costs from full');
+
+  // 7. The eruption puts its goal up; answering it counts double, in everything an answer earns.
+  s=fresh(null,[gHara, gErupt]); TG._rand=()=>0;
+  const t=()=>vm.runInContext('millis()',ctx);
+  TG.update(G,t());
+  chk(TG.live()===gHara, 'before the eruption the ordinary goal is up (the post-eruption goal is not yet live)');
+  G._fireEruptionInPlace(er); TG.update(G,t());
+  chk(TG.live()===gErupt, 'the eruption moves the line to the post-eruption goal');
+  G._fireEruptionInPlace(DT.ERUPTIONS[2]); TG.update(G,t()); chk(TG.live()===gErupt, '…and keeps it there through another');
+  // the plain answer, for comparison, from the same level on the same land
+  const measure=(goal)=>{
+    const sm=fresh(0.42,[goal]); G._firedEruptions.add(er.yearsBP); TG.reset(); TG.update(G,t());
+    const L0=Object.assign({}, sm._homeo.lift), h=sm.ecoHealth, n0=sm.plants.length;
+    const b0=sm._faunaCount('mantells_moa');
+    DT.seekTo(122000); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP;
+    TB.boost({ plantKey:'flax', fauna:['mantells_moa'] }); DT.endTimelapse(); G._boostHi=null;
+    let lift=0; for(const k in sm._homeo.lift) lift=Math.max(lift, sm._homeo.lift[k]-(L0[k]||0));
+    return { gain:sm.ecoHealth-h, lift, seeded:sm.plants.length-n0, birds:sm._faunaCount('mantells_moa')-b0 };
+  };
+  const plain=measure(gHara), dbl=measure(gErupt);
+  chk(near(dbl.gain,plain.gain*2), `the post-eruption answer gives 2× the health (+${f2(dbl.gain)} vs +${f2(plain.gain)})`);
+  chk(dbl.lift===plain.lift*2 || dbl.lift===M.homeoLiftMaxSteps, `…the habitat lift (${dbl.lift} vs ${plain.lift} steps)`);
+  chk(dbl.seeded>plain.seeded, `…the seedlings (${dbl.seeded} vs ${plain.seeded})`);
+  chk(dbl.birds>=plain.birds, `…and its birds (${dbl.birds} vs ${plain.birds})`);
+  chk(TG._afterEruption===false, 'answering it lets the draw go back to the whole book');
+  // 8. The world follows the bar: the birds' and the plants' targets rise and fall with it, in step.
+  const levels=(h)=>{ const sm=fresh(h), F=(ctx.__tick(1),sm.update(1,1),sm._fauna); sm._healthSet(h); ctx.__tick(1); sm.update(1,1);
+    let birds=0; for(const k of F.keys) birds+=F.targets[k];
+    let plants=0; for(const k in sm._homeo.dens) plants+=sm.homeoTarget(k)||0;
+    return { birds, plants, floorOk:F.keys.every(k=>F.targets[k]>=sm._speciesFloor(k)) }; };
+  const poorL=levels(M.healthPoor), startL=levels(M.healthStart), fullL=levels(1);
+  chk(poorL.birds<startL.birds && startL.birds<fullL.birds, `the bird targets follow the bar (poor ${poorL.birds}, start ${startL.birds}, full ${fullL.birds})`);
+  chk(fullL.birds>=startL.birds*1.3, 'full health visibly more birds');
+  chk(poorL.birds<=startL.birds*0.8, 'the poor state visibly fewer');
+  chk(poorL.plants<startL.plants && startL.plants<fullL.plants, `the plant targets follow the bar (poor ${Math.round(poorL.plants)}, start ${Math.round(startL.plants)}, full ${Math.round(fullL.plants)})`);
+  chk(poorL.floorOk && startL.floorOk && fullL.floorOk, 'no kind is ever targeted below its floor');
+  chk(fullL.plants<M.maxLivePlants, `the full land stays under the live-plant cap (${Math.round(fullL.plants)})`);
+  // the ground's colour follows it down, and not up: the default look is the top of that scale
+  s=fresh(); G._habitatHealth=1; G._ashCover=0; G._regimeFit=1; G._recruitment=1; G._sandBurial=0;
+  for(let i=0;i<600;i++) G._updateHabitatHealth(1);
+  const hhStart=G._habitatHealth;
+  s._healthSet(1); for(let i=0;i<600;i++) G._updateHabitatHealth(1); const hhFull=G._habitatHealth;
+  s._healthSet(M.healthPoor); for(let i=0;i<600;i++) G._updateHabitatHealth(1); const hhPoor=G._habitatHealth;
+  chk(near(hhStart,1,1e-3) && near(hhFull,1,1e-3), `the ground is at full colour at the start and at full health (${f2(hhStart)}, ${f2(hhFull)})`);
+  chk(near(hhPoor,H.ledgerFloor,1e-2), `…and drained in the poor state (${f2(hhPoor)})`);
+  // the crash, in the census: a wrong boost's birds go fast, and there is no recovery without the visitor
+  s=fresh(1); ctx.__tick(1); s.update(1,1); let F=s._fauna;
+  const stepN=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(1); s.update(1,1); } };
+  stepN(61*20);
+  const count=()=>F.keys.reduce((a,k)=>a+s._faunaCount(k),0), full=count();
+  for(let i=0;i<4;i++) wrong();
+  chk(F.crashT>0, 'a wrong boost sets the census running fast');
+  stepN(60*14);
+  chk(count()<full, `four wrong goals: the birds crash (${full} → ${count()})`);
+  chk(F.keys.every(k=>s._faunaCount(k)>=Math.min(F.targets[k],s._speciesFloor(k))-1), '…down to the floors, and no further');
+  const held=s.ecoHealth; stepN(60*60);
+  chk(s.ecoHealth===held && near(F.shock,M.faunaShockFloor), 'the poor state holds until the visitor changes it');
+
+  // 9. The bar on the HUD: its length is the ledger; ochre when poor, full and glowing green at full, in either climate.
+  const fills=[]; const rf=ctx.rect, ff=ctx.fill; let curFill=null;
+  ctx.fill=function(r,g,b){ curFill=[r,g,b]; }; ctx.rect=function(x,y,w){ fills.push({ w, col:curFill }); };
+  const barAt=(h,yr)=>{ const sm=fresh(); sm._healthSet(h); if(yr){ DT.seekTo(yr); G.seasonManager.update(1); } IH._eco=null; IH._full=null; fills.length=0; IH._renderHealth(G,IH._tbGeom(1920));
+    const bar=fills[fills.length-1]; return { w:bar.w/(IH.HEALTH_W-6), col:bar.col, glow:IH.healthGlow() }; };
+  for(const h of [M.healthPoor, M.healthStart, 0.8, 1]) { const b=barAt(h); chk(near(b.w,h,1e-6), `the bar's length is the ledger (${h}: ${f2(b.w)})`); }
+  const green=TG.climateColor(false), blue=TG.climateColor(true), full1=barAt(1), fullG=barAt(1,20000), poorB=barAt(M.healthPoor), startB=barAt(M.healthStart);
+  chk(TG.glacialNow()===false && full1.col.join()===green.join() && full1.glow===1, 'full, interglacial: bright green, and the glow all the way up');
+  chk(fullG.col.join()===blue.join() && fullG.glow===1, 'full, glacial: bright blue');
+  chk(poorB.col.join()===IH.HEALTH_COL_POOR.join() && poorB.glow===0, 'poor: ochre, no glow');
+  chk(startB.col.join()===IH.HEALTH_COL_MID.join() && startB.glow===0, 'a new visitor: straw, no glow');
+  chk(green[1]>green[0]*2 && green[1]>green[2]*2 && IH.HEALTH_COL_POOR[0]>IH.HEALTH_COL_POOR[1], 'green reads green, ochre reads warm');
+  // …and it eases to a new level over ≥500 ms (photosensitivity), never jumping
+  const sm=fresh(); IH._eco=null; IH._renderHealth(G,IH._tbGeom(1920)); sm._healthSet(1);
+  let frames=0; while(IH._eco.v<0.5+0.45 && frames<600){ IH._renderHealth(G,IH._tbGeom(1920)); frames++; }
+  chk(frames>=30, `the bar eases to its new level (${frames} frames to 90 %)`);
+  ctx.rect=rf; ctx.fill=ff;
+
+  // 9b. At full, the year, the tallies and the gauge's title all take the climate's colour, on a fade.
+  { const bt=IH._blitText; let seen=[];
+    IH._blitText=function(str,f,tag,size,ah,av,x,y,col){ seen.push({ str, col:col.join() }); };
+    const texts=(g)=>{ seen=[]; IH.renderVisitorYear(g,1920,1080); IH.renderVisitorTopBand(g,1920,1080); return seen; };
+    const wants=()=>[DT.label(), IH.TALLY_BOOSTS, IH.TALLY_GOALS, String(DT.boostsOk|0), String(DT.goalsSolved|0), IH.HEALTH_TITLE];
+    const halo=IH._GOAL_HALO.join()+'', halo2='8,14,12,170';
+    const colsOf=(rows,str)=>rows.filter(r=>r.str===str && r.col!==halo && r.col!==halo2).map(r=>r.col);
+    const lit=(h,yr)=>{ barAt(h,yr); IH._renderHealth(G,IH._tbGeom(1920)); return texts(G); };
+    try{
+      let rows=lit(1);
+      for(const w of wants()) chk(colsOf(rows,w).join('|')===green.join(), `full, interglacial: "${w}" is bright green (${colsOf(rows,w).join('|')})`);
+      chk(colsOf(rows,IH.CLIMATE_PREFIX).join()===IH._GOAL_COL.join(), 'the climate line keeps its own colours');
+      rows=lit(1,20000);
+      for(const w of wants()) chk(colsOf(rows,w).join('|')===blue.join(), `full, glacial: "${w}" is bright blue (${colsOf(rows,w).join('|')})`);
+      rows=lit(0.97);
+      for(const w of wants()) chk(!colsOf(rows,w).some(c=>c===green.join()||c===blue.join()), `short of full: "${w}" stays in its own colour`);
+      // it lights over ≥500 ms, once the bar has arrived, and goes out the same way
+      const sm=fresh(); sm._healthSet(1); IH._eco={ v:1 }; IH._full={ a:0, m:0, last:vm.runInContext('millis()',ctx), warm:green, cold:blue };
+      let ticks=0, jump=0; while(IH._full.a<1 && ticks<400){ const a=IH._full.a; ctx.__tick(1); IH._fullTick(G); jump=Math.max(jump,IH._full.a-a); ticks++; }
+      const ms=ticks*16;
+      chk(ms>=500 && IH._full.a===1, `the readouts light over ≥ 500 ms (${ms} ms)`);
+      chk(jump<=0.1+1e-9, `…with no jump in it (${f2(jump)} a frame at most)`);
+      sm._healthSet(0.9); ticks=0; while(IH._full.a>0 && ticks<400){ ctx.__tick(1); IH._fullTick(G); ticks++; }
+      chk(ticks*16>=500 && IH._full.a===0, `…and go out the same way (${ticks*16} ms)`);
+      sm._healthSet(1); IH._eco={ v:0.9 }; IH._fullTick(G);
+      chk(IH._full.a===0, 'the ledger full but the bar still climbing: not lit yet');
+    } finally { IH._blitText=bt; IH._eco=null; IH._full=null; }
+  }
+
+  // 10. Through a rebuild. The eruption BUTTON builds a new Simulation: the land's health must survive it,
+  //     or a visitor's eruption erases what they have done. The two ways a new visitor starts must not.
+  s=fresh(0.9); G.applyEruptionAt(er.yearsBP, er);
+  chk(G.simulation!==s, 'the eruption button rebuilds the living world (a new Simulation)');
+  chk(near(G.simulation.ecoHealth,0.9-M.healthEruptionDip), `…and the land's health survives it, less the dip (${f2(G.simulation.ecoHealth)})`);
+  s=fresh(0.9); K.landAttract(G,'bootcheck');
+  chk(G.simulation.ecoHealth===M.healthStart, 'the attract landing is a new visitor: back to the start');
+  s=fresh(0.9); K.resetToAttract(G,'error',{ reseed:false });
+  chk(G.simulation.ecoHealth===M.healthStart, 'an error recovery too, though it lands through an eruption');
+  } finally { TGL.list=realBook; TG._rand=realRand; TG.reset(); DT.reset(); G._boostHi=null; G._tmStormUntil=0; G._stormOveruse=false; G._stormPressure=0; G._ashCover=0; G._ashCloudUntil=0;
+              G.terrain.morphTo(DT.yearsStart,1); G._bakedYearsBP=DT.yearsStart; G.resetEcosystem(); }
+  console.log(fail? `health ledger: ${fail} FAILURES`
+    : 'health ledger: from any level, four right answers fill it (the readouts light green/blue) and four wrong goals or five storms leave it poor; only an answer passes 75 %, a right-climate boost above it slips back; a first storm improves it; an eruption takes a little and its goal counts double; birds, plants and the ground follow the bar');
+}catch(e){ console.log('HEALTH LEDGER FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
 // ---- earned health + fauna homeostasis ----------------------------------------------------------
-// The meter: half full on an unattended land, the other half earned (Simulation.ecoEarned, the banked
-// habitat lift), greyed but never shortened by habitat health. The birds: held at their founding
-// numbers unattended (they must not multiply without boosts), raised as health is earned and by a
-// linked plant's boost, led by the climate (forest birds in the interglacial, open country in the
-// glacial), and CRASHED by a wrong boost or storm overuse, never below a floor, recovering on the real
-// clock. tools/boostprobe.js measured the gap this closes (unattended birds doubled in 4 min).
+// The birds: held at their founding numbers by a new visitor's ledger (they must not multiply without
+// boosts), raised as health is earned and by a linked plant's boost, led by the climate (forest birds in
+// the interglacial, open country in the glacial), and CRASHED by a run of wrong boosts or storms, never
+// below a floor. tools/boostprobe.js measured the gap this closes (unattended birds doubled in 4 min).
 try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), TB=vm.runInContext('TMBus',ctx),
         M=vm.runInContext('LEVEL_MECHANICS',ctx), IH=vm.runInContext('InstallHUD',ctx);
@@ -2341,13 +2579,6 @@ try{
   chk(F.keys.every(k=>F.base[k]>=sim._speciesFloor(k)), 'each kind\'s unattended level is its founding number, at least its floor');
   chk(sim.ecoEarned===0, 'nothing is earned on an unattended land');
 
-  // the meter: half for free, the rest earned; habitat health greys it but never shortens it
-  const meter=()=>{ IH._eco=null; IH.renderVisitorTopBand(G,1920,1080); return IH._eco.v; };
-  chk(Math.abs(meter()-IH.HEALTH_FLOOR)<1e-9, `unattended the meter reads its floor (${meter()})`);
-  sim.ecoEarned=1; G._habitatHealth=0;
-  chk(Math.abs(meter()-1)<1e-9, 'fully earned it reads full, even with the habitat greyed by ash or a wrong boost');
-  G._habitatHealth=1; sim.ecoEarned=0;
-
   // 1. Unattended: the birds hold, they do not breed up past their targets
   step(60*60);
   const over=F.keys.filter(k=>count(k)>F.targets[k]+(M.faunaBand??1)+1);
@@ -2356,9 +2587,9 @@ try{
 
   // 2. Earned health raises every target; a linked boost raises its bird's
   const t0=sum(F.targets);
-  for(const k in sim._homeo.dens) sim._homeo.lift[k]=M.homeoLiftMaxSteps;
+  sim._healthSet(1);
   step(61);
-  chk(sim.ecoEarned>0.99, `every habitat at full lift reads fully earned (${sim.ecoEarned.toFixed(2)})`);
+  chk(sim.ecoEarned===1, `a full ledger reads fully earned (${sim.ecoEarned.toFixed(2)})`);
   chk(sum(F.targets)>=t0*1.4, `earned health lifts the bird targets (${t0} → ${sum(F.targets)})`);
   const kt=F.targets.kereru; sim.liftFauna(['kereru'],1);
   chk(F.targets.kereru>kt, `a boost of the kererū's plant lifts its target (${kt} → ${F.targets.kereru})`);
@@ -2373,47 +2604,49 @@ try{
   }
   DT.seekTo(122000); G.seasonManager.update(1);
 
-  // 4. A wrong boost: nothing earned, the links gone, every target shocked — and the birds crash to it
+  // 4. The poor state, from full: nothing earned, the links gone, every target down — and the birds crash to it
   const before=allCounts();
   // the census itself must never take a kind under its floor (natural losses can; a newcomer then tops it up)
   const culledBelow=[], cullOne=sim._faunaCullOne;
   sim._faunaCullOne=function(kind,key){ const r=cullOne.call(this,kind,key); if(r && this._faunaCount(key)<this._speciesFloor(key)) culledBelow.push(key); return r; };
-  sim.onWrongBoost();
-  chk(sim.ecoEarned===0 && Object.keys(F.link).length===0 && F.shock<=M.faunaShockFloor+1e-9, 'a wrong boost clears the earned lift and the links and shocks the birds');
+  for(let i=0;i<4;i++) sim.onWrongBoost();
+  step(61);
+  chk(sim.ecoEarned===0 && Object.keys(F.link).length===0 && F.shock<=M.faunaShockFloor+1e-9, 'four wrong boosts clear the earned lift and the links and take the birds to their poor level');
   step(60*12);
   sim._faunaCullOne=cullOne;
   const high=F.keys.filter(k=>count(k)>F.targets[k]+1);
-  chk(high.length===0, `12 s on, every kind is down at its shocked target (${high.map(k=>k+' '+count(k)+'/'+F.targets[k]).join(', ')||'all'})`);
+  chk(high.length===0, `12 s on, every kind is down at its poor target (${high.map(k=>k+' '+count(k)+'/'+F.targets[k]).join(', ')||'all'})`);
   chk(culledBelow.length===0, `…and the crash never retires a bird under its kind's floor (${culledBelow.join(', ')||'none'})`);
   chk(allCounts()<before, `the cast visibly crashes (${before} → ${allCounts()} birds)`);
-  //    a kind that natural losses take under its floor mid-shock is topped back up (the protected minimum)
+  //    a kind that natural losses take under its floor mid-crash is topped back up (the protected minimum)
   const lowKey=F.keys.find(k=>F.kind[k]==='moa' && sim._speciesFloor(k)>=3);
   if(lowKey){
     let left=1; for(const m of sim.moas) if(m.alive && m.speciesKey===lowKey){ if(left>0) left--; else m.alive=false; }
-    sim._invalidateCache(); F.shock=M.faunaShockFloor; step(60*30);
-    chk(count(lowKey)>=2, `a ${lowKey} knocked to 1 in a shock gets a newcomer toward its floor (${count(lowKey)}/${sim._speciesFloor(lowKey)})`);
+    sim._invalidateCache(); F.crashT=60*60; step(60*30);
+    chk(count(lowKey)>=2, `a ${lowKey} knocked to 1 in a crash gets a newcomer toward its floor (${count(lowKey)}/${sim._speciesFloor(lowKey)})`);
   }
-  step(60*Math.ceil((M.faunaShockRecoverS??45)+2));
-  chk(F.shock===1, 'the shock eases off on the real clock');
+  step(60*Math.ceil((M.faunaCrashS??12)+40));
+  chk(F.crashT<=0, 'the crash ends on the real clock');
 
-  // 5. Storm overuse holds the shock down while it lasts
-  G._stormOveruse=true; step(120);
-  chk(F.shock<=M.faunaShockFloor+1e-9, 'storm overuse shocks the birds and holds it while it lasts');
-  G._stormOveruse=false; step(120);
-  chk(F.shock>M.faunaShockFloor, '…and it starts to ease once the overuse is over');
+  // 5. One wrong boost is a step, not a wipe-out: the targets move a part of the way
+  sim._healthSet(1); F.link.kereru=3; step(61); const tFull=sum(F.targets);
+  sim.onWrongBoost(); step(61);
+  chk(F.link.kereru===2, 'one wrong boost takes one link step back');
+  chk(sim.ecoEarned>0 && sum(F.targets)<tFull && sum(F.targets)>t0, `one wrong boost from full: the targets fall part of the way (${tFull} → ${sum(F.targets)}, start ${t0})`);
 
-  // 6. The seams: a matched bus boost banks a link step for its bird; a wrong one shocks
-  F.shock=1;
+  // 6. The seams: a matched bus boost banks a link step for its bird; a wrong one takes it back
+  sim._healthSet(M.healthStart); for(const k in F.link) delete F.link[k]; F.crashT=0;
   TB.boost({ plantKey:'tawa' }); DT.endTimelapse();
   chk((F.link.kereru||0)>=1, 'a matched tawa boost banks a step for the kererū');
+  const lk=F.link.kereru;
   TB.boost({ plantKey:'tussock' }); DT.endTimelapse();                // cold in the interglacial
-  chk(!F.link.kereru && F.shock<1, 'a wrong bus boost clears it and shocks the birds');
-  F.shock=1; G.handleKey('3');                                       // TUSSOCK in the interglacial: wrong
-  chk(F.shock<1, 'a wrong TUSSOCK press shocks them too');
+  chk((F.link.kereru||0)===lk-1 && F.crashT>0, 'a wrong bus boost takes it back and starts the crash');
+  F.crashT=0; G.handleKey('3');                                       // TUSSOCK in the interglacial: wrong
+  chk(F.crashT>0, 'a wrong TUSSOCK press does too');
 
   G._stormOveruse=false; DT.reset(); G._boostHi=null; G.resetEcosystem();
   console.log(fail? `fauna homeostasis: ${fail} FAILURES`
-    : 'fauna homeostasis: the meter is half free, half earned (greyed, not shortened, by habitat health); birds hold at their founding numbers unattended, rise with earned health and linked boosts, follow the climate, crash on a wrong boost or storm overuse (never below a floor) and recover');
+    : 'fauna homeostasis: birds hold at their founding numbers for a new visitor, rise with earned health and linked boosts, follow the climate, fall with a run of wrong boosts or storms (never below a floor)');
 }catch(e){ console.log('FAUNA HOMEOSTASIS FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- encyclopedia roster: every touchscreen card fits its screen's era ---------
@@ -2458,6 +2691,12 @@ try{
       // its highlight: the outlined copy app.js swaps in (re-run `node tools/outline_plants.js` after new art)
       chk(!!s && fs.existsSync(path.join(sdir,'assets','plants_outlined',path.basename(s))),
           `${tag}: outlined highlight sprite baked (tools/outline_plants.js)`);
+      // Every card names the plant in te reo, English and Latin, unless English just uses the te reo word.
+      const SAME_WORD=['Tōtara','Nīkau','Tawa','Kōwhai'];
+      chk(!!p.sci && (SAME_WORD.includes(p.name) ? !(p.en||p.reo) : !!(p.en||p.reo)),
+          `${tag}: shows its te reo, English and Latin names (en '${p.en||''}', reo '${p.reo||''}', sci '${p.sci||''}')`);
+      for(const [bare,good] of Object.entries({ tawhairauriki:'tāwhairauriki', inanga:'īnanga', tupare:'tūpare', pohuehue:'pōhuehue', patiti:'pātītī', wi:'wī' }))
+        chk(!new RegExp('\\b'+bare+'\\b','i').test(p.reo||''), `${tag}: its te reo name spells ${good} with its macrons`);
       // Card copy: `desc` (the plant: a string or paragraphs) and optional `birdDesc` (paragraphs under the
       // generated "Boosting … helps:" heading, so only on a card that has a bird).
       const paras=[].concat(p.desc||[]), birdParas=[].concat(p.birdDesc||[]);
@@ -2740,6 +2979,29 @@ try{
   for(const k of ['answer','answerNeutral','matched','wrong','answerWrongClimate'])
     chk(typeof TGL.text[k]==='string' && TGL.text[k].indexOf('{plant}')>=0 && TGL.text[k].indexOf('{cond}')>=0,
         `verdict line '${k}' names the plant and the condition`);
+  // The card's bold words (a goal's `terms`). A phrase the copy no longer says would quietly lose its bold,
+  // so every one must still be on a card for that plant, and an answer of that goal.
+  const cardCopy={};
+  for(const h of Object.values(vm.runInContext('TM_HABITATS',ectx))) for(const p of h.plants)
+    (cardCopy[p.key]=cardCopy[p.key]||[]).push([].concat(p.desc||[],p.birdDesc||[]).join('\n'));
+  for(const gl of realBook) for(const [k,phrases] of Object.entries(gl.terms||{})){
+    chk((gl.answer||[]).includes(k), `${gl.id}: its terms for '${k}' belong to one of its answers`);
+    for(const t of phrases) chk(typeof t==='string' && t.length>0 && (cardCopy[k]||[]).some(c=>c.indexOf(t)>=0),
+        `${gl.id}: the term "${t}" is still on a ${k} card`);
+  }
+  // termRuns: off-book goals stay plain, every occurrence goes bold, overlaps merge, nothing is lost.
+  const runsOf=(s,k)=>TG.termRuns(s,k).map(r=>(r.bold?'['+r.text+']':r.text)).join('');
+  chk(runsOf('Kahikatea is New Zealand\'s tallest tree!','kahikatea')==='Kahikatea is [New Zealand\'s tallest tree]!',
+      'termRuns bolds a live goal\'s phrase in place');
+  chk(runsOf('Its red berries, those red berries.','nikau')==='Its [red berries], those [red berries].', 'termRuns bolds every occurrence');
+  chk(runsOf('Used for butter boxes.','kahikatea')==='Used for butter boxes.', 'an off goal\'s terms stay plain');
+  chk(runsOf('Aotearoa has more kinds of Dracophyllum than anywhere else in the world!','dracophyllum')
+      ==='Aotearoa has [more kinds of Dracophyllum than anywhere else in the world]!', 'overlapping terms merge into one run');
+  chk(runsOf('Nothing here.','no_such_plant')==='Nothing here.' && TG.termRuns('','kahikatea').length===1, 'a plant with no terms is one plain run');
+  // Which live answers have no term: the goal is true of the plant, but its card doesn't say so (GOALS.md §2.4).
+  const noTerm=[];
+  for(const gl of realBook) if(!gl.off) for(const k of gl.answer) if(!(gl.terms&&gl.terms[k])) noTerm.push(gl.id+'/'+k);
+  console.log(`plant goals: ${noTerm.length} live answers have no bold term, their card doesn't state the fact: ${noTerm.join(', ')}`);
   chk(TG.fitOf('flax')==='neutral' && TG.fitOf('tawa')==='warm' && TG.fitOf('beech')==='cold',
       'TMGoals.fitOf (shared with the boost gate): harakeke neutral, tawa warm, beech cold');
   chk(TG.format('{a} {regime}','X','interglacial','')==='an interglacial' && TG.format('{a} {regime}','X','glacial','')==='a glacial',
