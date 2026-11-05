@@ -1147,7 +1147,6 @@ const InstallHUD = {
   // round numbers and a new number holds SPEED_HOLD_MS, so the text cache sees ~18 strings, never a
   // per-frame value. It fades in and out over SPEED_FADE_MS, and yields its slot to the eruption
   // caption while that is up (the two share the top centre; neither ever draws over the other).
-  SPEED_TOP: 36,              // px from the top edge to the head line's top
   SPEED_HEAD: 'Time travelling forward!',
   SPEED_HEAD_SIZE: 30,
   SPEED_RATE_SIZE: 52,
@@ -1165,10 +1164,10 @@ const InstallHUD = {
     for (let i = 0; i < S.length; i++) { const d = Math.abs(Math.log(S[i]) - lr); if (d < bd) { bd = d; best = S[i]; } }
     return best;
   },
-  // The two lines' centres, from the top edge.
-  _speedHeadY() { return this.SPEED_TOP + this.SPEED_HEAD_SIZE * 0.675; },
-  _speedRateY() { return this.SPEED_TOP + this.SPEED_HEAD_SIZE * 1.35 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 0.675; },
-  _speedBot()   { return this.SPEED_TOP + this.SPEED_HEAD_SIZE * 1.35 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 1.35; },
+  // The two lines' centres. The head line sits on the top band's text line (_tbTextY).
+  _speedHeadY() { return this._tbTextY(); },
+  _speedRateY() { return this._tbTextY() + this.SPEED_HEAD_SIZE * 0.675 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 0.675; },
+  _speedBot()   { return this._tbTextY() + this.SPEED_HEAD_SIZE * 0.675 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 1.35; },
   _renderSpeed(W) {
     if (typeof DeepTime === 'undefined') return;
     const rate = DeepTime.geoRate > 0 ? DeepTime.geoRate : 0, now = millis();
@@ -1402,6 +1401,10 @@ const InstallHUD = {
     this._brightText(str, font, tag, size, ah, av, x, y, col);
   },
 
+  // The centre of the "successful boosts" label. The speed head and the health title sit on this same
+  // line: all three are FreckleFace at the same size, so sharing a centre lines up their tops.
+  _tbTextY() { return this.TB_MARGIN + this.TB_PAD + this.TALLY_NUM_SIZE * 0.55 + this.TALLY_NUM_SIZE * 0.06; },
+
   _tbG: null,
   _tbGeom(W) {
     let G = this._tbG;
@@ -1425,7 +1428,7 @@ const InstallHUD = {
     G.rR = W - M;                                    // the health block's right edge
     G.rx = G.rR - this.HEALTH_W - 2 * P;             // …and its left edge
     G.barX = G.rx + P;
-    G.hTitle = M + P + this.HEALTH_TITLE_SIZE * 0.6;
+    G.hTitle = this._tbTextY();
     G.barTop = G.hTitle + this.HEALTH_TITLE_SIZE * 0.6 + 10;
     G.ry1 = G.barTop + this.HEALTH_BAR_H + P;
     return G;
@@ -1461,7 +1464,7 @@ const InstallHUD = {
     const P = this.TB_PAD, nIcons = Math.min(keys.length, this.TALLY_ICON_MAX);
     const NS = this.TALLY_NUM_SIZE, LS = this.TALLY_LABEL_SIZE;
     this._popText(T.sB, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row1, this._TALLY_NUM_COL, this._popScale(T.bAt, now));
-    this._brightHalo(this.TALLY_BOOSTS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row1 + NS * 0.06, this._GOAL_COL);
+    this._brightHalo(this.TALLY_BOOSTS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, this._tbTextY(), this._GOAL_COL);
     this._popText(T.sG, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row2, this._TALLY_NUM_COL, this._popScale(T.gAt, now));
     this._brightHalo(this.TALLY_GOALS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row2 + NS * 0.06, this._GOAL_COL);
     // the solved goals' plants, newest on the right; the newest pops with its numeral
