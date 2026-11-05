@@ -416,7 +416,8 @@ const LOOK = {
   gorgeTaper:      0.035,  // along the river, the saddle eases out over this much u beyond the gap's half-width
   gorgeValley:     0.4,   // the carved valley's width in the gorge, as a fraction of the plain's (steep walls)
   gorgeChannel:    0.45,  // the water channel's width in the gorge, as a fraction of the plain's
-  gorgeIncise:     3.5,   // extra incision in the gorge (× riverIncise, on top of the plain's): the bed cuts down toward plain level while the saddle rises around it, and deepens with the incision clock — antecedence you can see
+  gorgeIncise:     3.5,   // extra incision in the gorge (× riverIncise, on top of the plain's): the bed cuts down toward plain level while the saddle rises around it, and deepens with the incision clock — antecedence you can see. This is the MATURE value
+  gorgeInciseStart: 0.15, // the share of gorgeIncise already cut at the 1 Ma onset (a shallow notch through low hills); ramps to 1 with the incision clock (_gorgeDepth)
   // WOODVILLE LAKE (east of the gap). Its own body and clock, not the strait: uplift on the
   // Wellington Fault ponds it from ~1 Ma, and it drains west as the gorge cuts down
   // (GEO_EPOCHS.lake*). It is a widening of the main stem over a short reach east of the gap only,
@@ -2194,9 +2195,18 @@ class TerrainGenerator {
     const k = (typeof LOOK !== 'undefined' && LOOK.gorgeValley != null) ? LOOK.gorgeValley : 1;
     return 1 - (1 - k) * TerrainGenerator._gorgeAlong(u);
   }
-  static _gorgeDepth(u) {
-    const k = (typeof LOOK !== 'undefined' && LOOK.gorgeIncise > 0) ? LOOK.gorgeIncise : 0;
-    return 1 + k * TerrainGenerator._gorgeAlong(u);
+  // The gorge's extra cut GROWS with the incision clock: at 1 Ma Te Āpiti is a shallow notch through
+  // low hills (only LOOK.gorgeInciseStart of the extra), deepening to the full LOOK.gorgeIncise by the
+  // present (~300 m of cut is ~200 kyr at today's 1.5 mm/yr). `inc` is _geoT.incision (0.2 at the
+  // 1 Ma onset → 1 mature, see _geoTimeline); omitted = mature.
+  static _gorgeDepth(u, inc) {
+    const L = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const k = (L.gorgeIncise > 0) ? L.gorgeIncise : 0;
+    if (k === 0) return 1;
+    const s = (L.gorgeInciseStart != null) ? L.gorgeInciseStart : 0.15;
+    let g = 1;
+    if (inc != null) { const n = (inc - 0.2) / 0.8; g = s + (1 - s) * (n <= 0 ? 0 : n >= 1 ? 1 : n); }
+    return 1 + k * g * TerrainGenerator._gorgeAlong(u);
   }
   static _gorgeChannel(u) {
     const k = (typeof LOOK !== 'undefined' && LOOK.gorgeChannel != null) ? LOOK.gorgeChannel : 1;
@@ -3655,7 +3665,7 @@ class TerrainGenerator {
         if (dM < 1) {
           const valleyWM = wMBaseWArr[i] * TerrainGenerator._gorgeValley(u) * TerrainGenerator._mainTaper(wMPosArr[i]) * TerrainGenerator._mainWidthMult(u, straitF, straitRetreat, srFeather, lake) * valleyWiden;
           if (dM < valleyWM) {
-            const tt = 1 - dM / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = wMDepthArr[i] * TerrainGenerator._gorgeDepth(u);
+            const tt = 1 - dM / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = wMDepthArr[i] * TerrainGenerator._gorgeDepth(u, inc);
             if (mainArm > 0) wMaskM *= TerrainGenerator._mainArmPresence(wMPosArr[i], mainArm, mArmKeep, mArmFeather);   // un-jittered position: a clean end at the eastern confluence
           }
         }
@@ -3966,7 +3976,7 @@ class TerrainGenerator {
       mf.d = dm;   // this date's meandered line (matches _applyMeanders)
       const valleyWM = mf.w * TerrainGenerator._gorgeValley(u) * TerrainGenerator._mainTaper(mf.p) * TerrainGenerator._mainWidthMult(u, (t.straitFactor != null ? t.straitFactor : 0), t.straitRetreat, srFeather, t.lake) * valleyWiden;
       if (mf.d < valleyWM) {
-        const tt = 1 - mf.d / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = mf.depth * TerrainGenerator._gorgeDepth(u);
+        const tt = 1 - mf.d / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = mf.depth * TerrainGenerator._gorgeDepth(u, t.incision);
         if (mainArm > 0) wMaskM *= TerrainGenerator._mainArmPresence(mf.p, mainArm, mArmKeep, mArmFeather);
       }
     }

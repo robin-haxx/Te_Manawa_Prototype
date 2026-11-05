@@ -2016,7 +2016,15 @@ try{
     HUD.renderEruptionCaption(G,1920,1080);
     chk(C.e===wh && C.title==='The Whakamaru eruption' && C.date==='349,000 years ago' && C.until>ctx.millis(),
         `…and comes up on the charge's first frame, naming it (${C.title} · ${C.date})`);
-    G._tmAutoErAt=0; G._tmAutoErupt=null; DT.seekTo(wh.yearsBP+400000); C.until=0;
+    // past its timed hold it stays while the clock stands still, and fades once time moves
+    G._tmAutoErAt=0; G._tmAutoErupt=null; C.a=1;
+    const tHold=C.until+5000; C.until=tHold-6000;
+    HUD._updateCaption(G, tHold, 1920); HUD._updateCaption(G, tHold+60000, 1920);
+    chk(C.e===wh && C.a===1, '…stays up past its hold while time is not progressed');
+    DT.seekTo(wh.yearsBP-2000);
+    for(let i=0;i<20;i++) HUD._updateCaption(G, tHold+60100+i*100, 1920);
+    chk(C.e===null && C.a===0, '…and fades once the clock moves on');
+    DT.seekTo(wh.yearsBP+400000); C.until=0;
     HUD._updateCaption(G, C.last+10000, 1920);
     chk(C.e===null && C.a===0, '…and lets it go once the eruption is over');
   }catch(e){ chk(false,'eruption caption threw: '+e.message); }
@@ -2687,8 +2695,8 @@ try{
     for(const k of Object.keys(R.birds||{})) chk(knownBirds.has(k), `${gl.id}: requires.birds '${k}' is a bird in the cast`);
     // Every verdict line this goal can produce fits the HUD (≤ 3 wrapped lines): the longest card name.
     const longest=Object.keys(cardName).reduce((a,k)=>{ const n=(TGL.verdictNames[k]||cardName[k]); return n.length>a.length?n:a; },'');
-    for(const kind of ['answer','matched','wrong','answerWrongClimate']){
-      const tpl=(gl.text&&gl.text[kind])||TGL.text[kind];
+    for(const kind of ['answer','answerNeutral','matched','wrong','answerWrongClimate']){
+      const tpl=(gl.text&&gl.text[kind==='answerNeutral'?'answer':kind])||TGL.text[kind];
       const L=TG.format(tpl,longest,'interglacial',gl.cond).length;
       chk(L<=130, `${gl.id}: its '${kind}' line fits the HUD (${L} ≤ 130 characters)`);
     }
@@ -2708,7 +2716,7 @@ try{
     const neutral=[...onCard].filter(k=>TG.fitOf(k)==='neutral').sort().join(',');
     chk([...gBoth.answer].sort().join(',')===neutral, `both-worlds answers are the both-worlds card plants (${neutral})`);
   }
-  for(const k of ['answer','matched','wrong','answerWrongClimate'])
+  for(const k of ['answer','answerNeutral','matched','wrong','answerWrongClimate'])
     chk(typeof TGL.text[k]==='string' && TGL.text[k].indexOf('{plant}')>=0 && TGL.text[k].indexOf('{cond}')>=0,
         `verdict line '${k}' names the plant and the condition`);
   chk(TG.fitOf('flax')==='neutral' && TG.fitOf('tawa')==='warm' && TG.fitOf('beech')==='cold',
@@ -2752,7 +2760,7 @@ try{
       return bs.length>0 && bs.every(b=>b.key==='subalpine'); };
     const subGoals=realBook.filter(gl=>!gl.off && gl.answer.every(subOnly));
     const dates=new Set(subGoals.map(gl=>gl.fromYearsBP));
-    chk(subGoals.length>=2, `the book's subalpine-only goals are found (${subGoals.map(gl=>gl.id).join(', ')})`);
+    chk(subGoals.length>=1, `the book's subalpine-only goals are found (${subGoals.map(gl=>gl.id).join(', ')})`);
     chk(dates.size===1 && [...dates][0]!=null && [...dates][0]<1000000,
         `every subalpine-only goal waits for the ranges, on one shared date (${[...dates].join(', ')})`);
     const from=[...dates][0];
@@ -2856,7 +2864,8 @@ try{
   DT.seekTo(122000); tick();
   const f0=count('flax'), b0=sim.getSpeciesCount('mantells_moa'), gs0=DT.goalsSolved;
   TB.boost({ plantKey:'flax', plantName:'Harakeke', fauna:['mantells_moa'] });
-  chk(TG.verdict() && TG.verdict().kind==='answer' && TG.text()===TG.format(TGL.text.answer,'Harakeke','interglacial',cond),
+  // harakeke is a both-worlds plant, so its answer takes the both-climates line, not "an interglacial plant"
+  chk(TG.verdict() && TG.verdict().kind==='answer' && TG.text()===TG.format(TGL.text.answerNeutral,'Harakeke','interglacial',cond),
       `the answer: "${TG.text()}"`);
   chk(DT.goalsSolved===gs0+1 && DT.solvedKeys.indexOf('flax')!==-1,
       `the answer counts as a goal solved, and harakeke joins the top band's row (${gs0} → ${DT.goalsSolved})`);
@@ -4314,6 +4323,9 @@ try{
       chk(c2.rMask[row0 * gc2 + col] > 0.5, `Te Āpiti: the ranges meet at the river — range mass on the channel in the gap (${c2.rMask[row0 * gc2 + col].toFixed(2)})`);
       chk(TG._gorgeValley(gu) < 0.6 && TG._gorgeChannel(gu) < 0.6 && TG._gorgeDepth(gu) > 2, 'the gorge has a narrower valley and channel and cuts deeper');
       chk(TG._gorgeAlong(0.25) === 0 && TG._gorgeAlong(0.8) === 0, 'the gorge treatment is confined to the gap');
+      { const d0 = TG._gorgeDepth(gu, 0.2), dm = TG._gorgeDepth(gu, 0.6), d1 = TG._gorgeDepth(gu, 1);
+        chk(d0 < 2 && d0 < dm && dm < d1 && Math.abs(d1 - TG._gorgeDepth(gu)) < 1e-9,
+          `the gorge's extra cut grows with the incision clock — a shallow notch at 1 Ma (${d0.toFixed(2)} → ${dm.toFixed(2)} → ${d1.toFixed(2)})`); }
     }
 
     // THE SHELF (md/TEMANAWA_COAST_PLAN.md): the western coast sits where relative sea level puts
@@ -4986,13 +4998,12 @@ try{
   // (0) the keep-out covers what the visitor HUD draws, and the debug layout swaps in its strips
   const ay=HUD._visAxisY(H), goalCy=ay-HUD.VIS_GOAL_GAP, lh=HUD.VIS_GOAL_SIZE*HUD.GOAL_LINE_H;
   const whX=DT.yearToX(DT.ERUPTIONS.find(e=>e.name==='Whakamaru').yearsBP, W*HUD.VIS_INSET, W*(1-2*HUD.VIS_INSET));
-  const hudPts=[[W/2,goalCy-lh-HUD.VIS_GOAL_SIZE*0.6,'goal (2nd line up)'],[W/2,goalCy,'goal'],
+  const gl=HUD._labelGoalLines();
+  const hudPts=[[W/2,goalCy-(gl-1)*lh-HUD.VIS_GOAL_SIZE*0.6,'goal (top line, top edge)'],[W/2,goalCy,'goal'],
                 [W/2-HUD.VIS_CLIMATE_SIZE*6,ay-HUD.VIS_CLIMATE_ABOVE,'climate line'],
-                [whX,ay+HUD._tlNameY(HUD.TL_MARKER_H*HUD.PIN_TIER_SCALE.catastrophic*(1+HUD.PIN_GROW)),'grown eruption pin name'],
-                [W*0.5,ay,'timeline axis'],[W/2+200,ay-HUD.VIS_YEAR_ABOVE,'year'],
+                [whX,ay+HUD._tlPinBot(HUD.TL_MARKER_H*HUD.PIN_TIER_SCALE.catastrophic*(1+HUD.PIN_GROW)),'grown eruption pin foot'],
+                [W*0.5,ay,'timeline axis'],[W/2+HUD._yearHalfW()*0.9,ay-HUD._yearAbove(gl),'year (right end)'],[W/2,ay-HUD._yearAbove(gl)-HUD.VIS_YEAR_SIZE*0.6,'year (top edge)'],
                 [W/2+200,HUD._speedRateY(),'speed readout (top centre)'],[W/2-200,HUD._speedHeadY(),'speed head line'],
-                [W*HUD.VIS_INSET+40,ay+HUD.TL_END_BELOW+HUD.TL_END_LINE_H,'start end-label'],
-                [W*(1-HUD.VIS_INSET)-40,ay+HUD.TL_END_BELOW+HUD.TL_END_LINE_H,'end end-label'],
                 [HUD._tbGeom(W).numR-20,HUD._tbGeom(W).row1,'boost tally'],[HUD._tbGeom(W).lx+30,HUD._tbGeom(W).iconBot-20,'solved-plant row'],
                 [HUD._tbGeom(W).barX+30,HUD._tbGeom(W).barTop+10,'health bar']];
   for(const [x,y,what] of hudPts) chk(ko.rects.some(r=>inRect(x,y,r,0)),`the visitor keep-out covers the ${what} at (${x|0},${y|0})`);

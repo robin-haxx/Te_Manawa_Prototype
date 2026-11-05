@@ -354,7 +354,7 @@ const TM_HABITATS = {
             + "apart from Australia's for about ten million years.",
         birdDesc: [
           "The stout-legged moa was short and heavy, with thick, powerful legs. It lived in the drier, more open lowlands and along the coast, eating leaves and fruit.",
-          "Stout-legged moa came in very different sizes, and the biggest lived in the south of the North Island, around places like the Manawatū!"
+          "Stout-legged moa came in very different sizes: the smallest lived in the far north, and they grew bigger the further south they lived. Around the Manawatū, they were some of the biggest in the North Island!"
         ],
         crop: 'bottom', fauna: ['stout_legged_moa'],
         // a stout-legged moa browsing under the scrub

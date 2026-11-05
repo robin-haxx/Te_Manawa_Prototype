@@ -181,6 +181,34 @@ Consequences to know:
   `flax-cousin` is off but keeps the same `fromYearsBP`.
 - The live counts in the table below are from before the cut; re-sample before quoting them.
 
+### 2.3 The 2026-11-05 science pass
+
+The live set was re-chosen by hand (34 live). Each live goal was then held to a second test: **a plant
+left off the answer list is told on the wall that it "is not {cond}"**, so every true-but-missing
+answer puts a false line on the wall, aimed at the visitor who knew most. Answers were widened, or the
+wording narrowed to the card's own fact:
+
+| Goal | Change |
+|---|---|
+| `scrub-after-volcano` | + mānuka (the classic pioneer scrub) |
+| `ash-bloom` | + scrub, mānuka (both scrub cards say scrub pioneers after an eruption); swamp-only success line dropped |
+| `most-kinds-here` | + snow tussock (*Chionochloa*), scrub (*Coprosma*) |
+| `regrow-from-base` | + harakeke, wharariki, pūrei |
+| `moho-food` | "a swamp plant" → "a plant"; + tussock (the card says the mōho grazed grass) |
+| `similar-species` | + pūrei (*Carex*), tī kōuka (five *Cordyline*), tōtara (three tōtara) |
+| `dies-back-cold` | + tōtara (the sim topples it as the glacial forest shrinks) |
+| `red-berries` | + scrub (*Coprosma*); now live in glacials too |
+| `held-in-cold` | + kōwhai, tī kōuka (their cards say they held on); "ice aces" typo fixed |
+| `no-wings` | + Dracophyllum (its bird is the giant moa) |
+| `small-survivor` | "lived through the ice ages" (true of every card) → "DNA shows grew all over in the ice ages" |
+| `shelters-kiwi` | "shelters kiwi" (flax, scrub and tussock do too) → "whose damp forest floor kiwi love to probe" |
+| `manawatu-moa` | "the small moa" (reads as the little bush moa) → "a moa that grew bigger the further south it lived"; the mānuka card now says small in the far north, bigger further south |
+| `top-predator` | success line: "hunted the other birds" → "hunted kererū, kōkako and ducks" |
+
+A both-worlds answer now gets its own success line (`TM_GOALS.text.answerNeutral`: "… grew in both
+climates, and was …") instead of "a glacial plant" or "an interglacial plant" by the clock.
+`blue-wattles` is live but no card mentions the kōkako's wattles yet.
+
 ### Through the timeline
 
 Live goals by climate, each sample settled on its own land and cast (2026-10-19, browser; **before the 2026-11-03 cut**):

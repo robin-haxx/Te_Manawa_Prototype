@@ -82,10 +82,12 @@ const TM_GOALS = {
     // of fresh volcanic ground (Rangitoto). NOT "first": the true post-eruption pioneers are bracken,
     // toetoe and tutu (Taupō, Tarawera), none of them on the cards. Cold, so glacial; only after an
     // eruption has happened this session (Kaukatea, Whakamaru and Ōruanui all fall in glacials).
+    // Mānuka too (2026-11-05): the scrub New Zealanders know as the pioneer of disturbed ground (its card:
+    // "the tough pioneer of poor ground"), so a "not a scrub that grows back" verdict on it would be false.
     { id: 'scrub-after-volcano', group: 'moa',
       prompt: 'Boost a scrub that grows back after a volcano!',
       cond:   'a scrub that grows back after a volcano',
-      answer: ['coprosma'],
+      answer: ['coprosma', 'manuka'],
       requires: { eruption: true } },
     // ---- From the cards (2026-10-19). Each fact below is on its answer's touchscreen card
     // (secondscreen/encyclopedia.js), quoted in the comment, so a visitor can find the answer there.
@@ -120,21 +122,26 @@ const TM_GOALS = {
       prompt: "Boost a plant that has evolved apart from Australia's for 10 million years!",
       cond:   "evolving apart from Australia's for about ten million years",
       answer: ['manuka'] },
-    // Mānuka (stout-legged moa): "the biggest lived in the south of the North Island, around places like the Manawatū!"
+    // Mānuka (stout-legged moa): "the smallest lived in the far north, and they grew bigger the further south
+    // they lived". Euryapteryx size runs with latitude: small in the northern North Island, larger in the
+    // southern North Island and the South Island. Not "the small moa": that reads as the little bush moa.
     { id: 'manawatu-moa', group: 'moa',
-      prompt: 'Boost a plant for the small moa, who was bigger the further South they lived!',
-      cond:   'food for the small moa, who was bigger the further South they lived',
+      prompt: 'Boost a plant for a moa that grew bigger the further south it lived!',
+      cond:   'food for a moa that grew bigger the further south it lived',
       answer: ['manuka'],
-      text:   { answer: '{plant} fed the stout-legged moa. They were larger in the Manawatū and South Island!' } },
+      text:   { answer: '{plant} fed the stout-legged moa: small in the far north, bigger the further south it lived!' } },
     // Dracophyllum: "Aotearoa has more kinds of Dracophyllum than anywhere else in the world!" Cold, and only
     // once the ranges have risen. THE SUBALPINE DATE (decided 2026-11-02, md/TEMANAWA_PLAN_V3.md §16.14):
     // the real 1 Ma land already carries a thin subalpine belt (568–3,522 cells on two seeds, over the
     // habitat gate), so the goals answered only from the tops (this one, wind-seeds, flax-cousin) wait for
     // ~0.5 Ma, "ranges well risen" (md/TEMANAWA_NATURAL_HISTORY.md). Keep the three dates in step.
+    // Also true (2026-11-05) of snow tussock (Chionochloa: ~23 of ~25 species are here) and Coprosma (NZ is
+    // the genus's centre, about half its ~110 species), both on the same glacial screens. They keep the
+    // ranges date: the fact is about the tops.
     { id: 'most-kinds-here', group: 'moa',
       prompt: 'Boost a plant with more kinds here than anywhere else on Earth!',
       cond:   'a plant with more kinds in Aotearoa than anywhere else on Earth',
-      answer: ['dracophyllum'],
+      answer: ['dracophyllum', 'tussock', 'coprosma'],
       fromYearsBP: 500000 },
 
     // ---- HARRIER: tōtara (Eyles' harrier) ---------------------------------------------------------
@@ -170,7 +177,7 @@ const TM_GOALS = {
       prompt: "Boost the tree for the North Island's apex predator!",
       cond:   "home to the North Island's top predator",
       answer: ['Totara'],
-      text:   { answer: "{plant} was home to the giant Eyles' harrier, which hunted the other birds in the ancient North Island!" } },
+      text:   { answer: "{plant} was home to the giant Eyles' harrier, which hunted kererū, kōkako and ducks in the ancient North Island!" } },
 
     // ---- LOWLAND ANIMALS: pūrei (mōho/takahē), tussock (goose), tī kōuka (Finsch's duck) -----------
     // The both-worlds plants: the cards' neutral coldTolerance (0.65 < ct < 0.75), the ones the boost
@@ -187,20 +194,23 @@ const TM_GOALS = {
       cond:   'a plant that builds its own little island',
       answer: ['sedge'] },
     // Tī kōuka: "can regrow from its base if it's damaged!"; both tussock cards: "Tussock regrows from its base".
+    // Harakeke, wharariki and pūrei resprout from the base too (2026-11-05); harakeke's is the harvesting
+    // tikanga many visitors know (cut the outer leaves, leave the rito).
     { id: 'regrow-from-base', group: 'lowland',              // tī kōuka → Finsch's duck; tussock → goose
       prompt: 'Boost a plant that can regrow from its base!',
       cond:   'a plant that can regrow from its base',
-      answer: ['cabbagetree', 'tussock'] },
+      answer: ['cabbagetree', 'tussock', 'flax', 'wharariki', 'sedge'] },
     // Tussock (flats): "In the glacial ice ages, grass covered the open plains."
     { id: 'ice-age-grass', group: 'lowland',                 // tussock → North Island goose (glacial only)
       prompt: 'Boost the grass that covered the ice-age plains!',
       cond:   'the grass that covered the ice-age plains',
       answer: ['tussock'] },
     // Pūrei (mōho): "The mōho was the North Island's takahē, a big flightless rail that grazed grass and swamp plants."
-    { id: 'moho-food', group: 'lowland', 
-      prompt: "Boost a swamp plant that fed the North Island's takahē!",
+    // Not "a swamp plant" any more (2026-11-05): the card says grass too, so tussock is an answer.
+    { id: 'moho-food', group: 'lowland',
+      prompt: "Boost a plant that fed the North Island's takahē!",
       cond:   "food for the mōho, the North Island's takahē",
-      answer: ['sedge'] },
+      answer: ['sedge', 'tussock'] },
     // Snow tussock: "Alpine country itself is young: permanent for only a million years."
     { id: 'young-tops', group: 'lowland', off: true,
       prompt: 'Boost the grass of the high tops, which are only a million years old!',
@@ -218,27 +228,34 @@ const TM_GOALS = {
       cond:   'able to out-compete nīkau',
       answer: ['tawa'],
       requires: { plants: { nikau: 3, tawa: 3 } } },
+    // Mamaku & ponga: "a ferny forest floor is damp and sheltered … perfect for probing". Was "a plant that
+    // shelters kiwi" (2026-11-05): kiwi also shelter under flax clumps, scrub and tussock, so that told a
+    // visitor harakeke "is not a shelter for kiwi". The card's own fact is the ferny forest floor.
     { id: 'shelters-kiwi', group: 'forest',
-      prompt: 'Boost a plant that shelters kiwi!',
-      cond:   'a shelter for kiwi',
+      prompt: 'Boost a plant whose damp forest floor kiwi love to probe!',
+      cond:   'a plant whose damp forest floor kiwi love to probe',
       answer: ['fern'],
       requires: { birds: { north_island_brown_kiwi: 1 } } },
     // Cards that stand for a group of close relatives: tree ferns (mamaku, ponga), beech, Dracophyllum,
-    // kōwhai (8 species), Coprosma, tussock. Live in either climate.
-    { id: 'similar-species', group: 'forest', 
+    // kōwhai (8 species), Coprosma, tussock. Also (2026-11-05) pūrei (Carex, dozens of NZ species),
+    // tī kōuka (five Cordyline) and tōtara (tōtara, Hall's tōtara, snow tōtara). Live in either climate.
+    { id: 'similar-species', group: 'forest',
       prompt: 'Boost a plant that comes in several similar species!',
       cond:   'a plant with several similar species',
-      answer: ['fern', 'beech', 'dracophyllum', 'kowhai', 'coprosma', 'tussock'] },
-    // The most frost-tender plants: tree-fern pollen fell ~90% at the last ice age (7% → 0.7%).
+      answer: ['fern', 'beech', 'dracophyllum', 'kowhai', 'coprosma', 'tussock', 'sedge', 'cabbagetree', 'Totara'] },
+    // The most frost-tender plants: tree-fern pollen fell ~90% at the last ice age (7% → 0.7%). Tōtara
+    // too (2026-11-05): the sim topples it as the glacial forest band contracts (FOREST_TREES,
+    // forestDieback), and the beech card says other trees "died away" in the cold.
     { id: 'dies-back-cold', group: 'forest',
       prompt: 'Boost a plant that dies back when it gets colder!',
       cond:   'a plant that dies back when it gets colder',
-      answer: ['fern', 'nikau', 'tawa'] },
+      answer: ['fern', 'nikau', 'tawa', 'Totara'] },
     // Tōtara and kahikatea "berries" are fleshy red stalks under the seed; nīkau's are true fruit.
-    { id: 'red-berries', group: 'forest', 
+    // Coprosma too (2026-11-05): many have orange to red berries. Cold, so this is live in glacials too.
+    { id: 'red-berries', group: 'forest',
       prompt: 'Boost a plant with red berries!',
       cond:   'a plant with red berries',
-      answer: ['nikau', 'Totara', 'kahikatea'] },
+      answer: ['nikau', 'Totara', 'kahikatea', 'coprosma'] },
     { id: 'yellow-flowers', group: 'forest', 
       prompt: 'Boost a plant with yellow flowers!',
       cond:   'a plant with yellow flowers',
@@ -287,16 +304,20 @@ const TM_GOALS = {
       prompt: 'Boost a plant whose seeds floated here across the ocean!',
       cond:   'a plant whose seeds floated here across the ocean',
       answer: ['kowhai'] },
-    // Kōwhai: "Though it's a small tree, kōwhai lived through the ice ages!"
+    // Kōwhai: "DNA shows that even in glacial times, it persisted across much of the country." Not just
+    // "lived through the ice ages" (2026-11-05): every plant on the cards did, so a "not" verdict read as
+    // "beech didn't survive the ice ages". The DNA finding is kōwhai's own.
     { id: 'small-survivor', group: 'forest',
-      prompt: 'Boost a colourful tree that lived through the ice ages!',
-      cond:   'a colourful tree that lived through the ice ages',
+      prompt: 'Boost a colourful tree that DNA shows grew all over in the ice ages!',
+      cond:   'a colourful tree that DNA shows grew all over in the ice ages',
       answer: ['kowhai'] },
     // Mountain beech: "Cold pushed whole forests downhill, but Beech held in harsh soil while other trees died away."
+    // Kōwhai ("lived through the ice ages … across much of the country") and tī kōuka ("hardy enough to
+    // survive glacial climates") held on too, by their own cards (2026-11-05).
     { id: 'held-in-cold', group: 'forest',
       prompt: 'Boost a tree that held on when ice ages pushed forests downhill!',
-      cond:   'a tree that held on when ice aces pushed forests downhill',
-      answer: ['beech'] },
+      cond:   'a tree that held on when ice ages pushed forests downhill',
+      answer: ['beech', 'kowhai', 'cabbagetree'] },
     // Mountain beech (huia): "They hunted huhu grubs, fat beetle larvae that live in rotting wood."
     { id: 'huhu-grubs', group: 'forest', 
       prompt: 'Boost a tree where huia foraged for fat huhu grubs!',
@@ -328,7 +349,7 @@ const TM_GOALS = {
     { id: 'no-wings', group: 'moa',                 // trait: moa had no wings at all
       prompt: 'Boost a plant that fed a bird with no wing bones at all!',
       cond:   'food for a bird with no wing bones at all',
-      answer: ['kahikatea', 'flax', 'coprosma', 'manuka'],
+      answer: ['kahikatea', 'flax', 'coprosma', 'manuka', 'dracophyllum'],   // every card whose bird is a moa
       text:   { answer: '{plant} fed a moa, a bird with no wings at all! Even the kiwi has traces of wing bones.' } },
     { id: 'tangled-shrub', group: 'moa', off: true,           // trait: divaricating shrubs vs moa browsing
       prompt: 'Boost a tangled shrub that may have grown that way to keep moa off!',
@@ -350,12 +371,14 @@ const TM_GOALS = {
       cond:   "a scrub where Eyles' harrier hunted",
       answer: ['coprosma', 'manuka'] },
     // Lowland animals
-    { id: 'ash-bloom', group: 'lowland',           // sim: an eruption blooms the wetland
+    // sim: an eruption blooms the wetland. Pūrei's card: "ash-silted swamp margins widen and sedges spread".
+    // Scrub too (2026-11-05): both scrub cards say it pioneers the regrowth after an eruption, and this goal
+    // can be up beside scrub-after-volcano, so the two must not contradict each other (mānuka with it).
+    { id: 'ash-bloom', group: 'lowland',
       prompt: 'Boost a plant that spreads after volcanic ash falls!',
       cond:   'a plant that spreads after volcanic ash falls',
-      answer: ['sedge'],
-      requires: { eruption: true },
-      text:   { answer: '{plant} spreads after volcanic ash falls, as the ash widens the swamp edges!' } },
+      answer: ['sedge', 'coprosma', 'manuka'],
+      requires: { eruption: true } },
     { id: 'flightless-goose', group: 'lowland', off: true,    // trait: the North Island goose couldn't fly
       prompt: "Boost the grass that fed a goose that couldn't fly!",
       cond:   "the grass that fed a goose that couldn't fly",
@@ -398,6 +421,9 @@ const TM_GOALS = {
   // {a} = 'a' / 'an' for {regime}, {cond} = the goal's condition.
   text: {
     answer:       '{plant} was {a} {regime} plant, and was {cond}!',
+    // The answer when it is a both-worlds plant (TMGoals.fitOf 'neutral'): the line above would call
+    // harakeke "a glacial plant" for one visitor and "an interglacial plant" for the next.
+    answerNeutral: '{plant} grew in both climates, and was {cond}!',
     matched:      '{plant} was in {regime} habitats, but is not {cond}...',
     wrong:        '{plant} was not {regime}, and was not {cond}',
     // The right plant boosted in the wrong climate (only possible for a warm or cold answer).
@@ -583,7 +609,10 @@ const TMGoals = {
     const regime = glacial ? 'glacial' : 'interglacial';
     const v = this._verdict;
     v.kind = kind;
-    const tpl = (goal.text && goal.text[kind]) || TM_GOALS.text[kind];   // the goal's own line, else the book's
+    // the goal's own line, else the book's (a both-worlds answer gets its own book line)
+    const tpl = (goal.text && goal.text[kind])
+             || (kind === 'answer' && this.fitOf(key) === 'neutral' && TM_GOALS.text.answerNeutral)
+             || TM_GOALS.text[kind];
     const name = (TM_GOALS.verdictNames && TM_GOALS.verdictNames[key]) || plantName || this.nameOf(key);
     v.text = this.format(tpl, name, regime, goal.cond);
     v.col = (kind === 'answer') ? this.climateColor(glacial)

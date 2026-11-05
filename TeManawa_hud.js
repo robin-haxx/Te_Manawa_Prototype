@@ -774,7 +774,7 @@ const InstallHUD = {
   // remove()s the evicted GPU buffer (the §2.3 createGraphics-leak rule): the
   // rolling year string would otherwise accumulate a buffer every time it ticks.
   _txtCache: new Map(),        // key -> { buf, tw, th }; insertion order = LRU
-  _txtCacheMax: 96,            // the top band, the end labels and the eruption captions add ~30 standing strings
+  _txtCacheMax: 96,            // the top band and the eruption captions add ~30 standing strings
 
   _blitText(str, fontObj, tag, size, ah, av, x, y, col) {
     const a = (col.length > 3) ? col[3] : 255;
@@ -934,12 +934,12 @@ const InstallHUD = {
   },
 
   // VISITOR timeline — the deep-time axis relocated to a thin strip at the bottom (the top
-  // of where the buttons used to sit), with the goal line above it and the year just below it
+  // of where the buttons used to sit), with the year at the top of the stack above it and the goal under the year
   // (renderVisitorGoal / renderVisitorYear), all three keyed off _visAxisY so they move as one.
   // On the wall the five buttons are physical, so their on-screen twins only appear in debug —
   // this is the clean, uncluttered visitor layout.
   VIS_STRIP_H: 64,
-  VIS_AXIS_UP: 136,          // px from the top of the bottom strip up to the timeline axis (only the eruption names sit under it)
+  VIS_AXIS_UP: 112,          // px from the top of the bottom strip up to the timeline axis (only the eruption pins hang under it)
   VIS_INSET: 0.10,           // horizontal inset each side, as a fraction of canvas width (compacted from the debug strip)
   _visAxisY(H) { return (H - this.VIS_STRIP_H) - this.VIS_AXIS_UP; },
   renderVisitorTimeline(g, W, H) {
@@ -960,25 +960,20 @@ const InstallHUD = {
   // glacial, baked once from Climate) laid in its inner channel so the bar's outline and rim still
   // show, and a goal's "the next glacial" is visible ahead of the playhead. Uplift stays a faint white
   // wedge riding on it, so the "river older than the mountains" takeaway survives. Every eruption is a
-  // pin hanging UNDER the bar, sized by tier, with its name beneath; the two that open and close the
-  // window sit on the bar's ends, their name and date on a lower row (Kaukatea is too close to
-  // Kidnappers for the two to share one). The pin of an eruption the caption is announcing grows. A
+  // pin hanging UNDER the bar, sized by tier, with no name (the top-centre caption names an eruption
+  // as it happens); the two that open and close the window sit on the bar's ends. The pin of an
+  // eruption the caption is announcing grows. A
   // trail streams behind the playhead while geology moves. Assumes an active push().
   VIS_BAR_H: 24,             // the visitor bar's thickness (the debug strip keeps TL_BAR_H)
   VIS_PLAYHEAD_H: 32,        // …and its playhead token, a little proud of the bar
   PIN_TIER_SCALE: { minor: 0.95, major: 1.2, catastrophic: 1.4 },
   PIN_GROW: 0.2,             // extra pin scale while its eruption's caption is fully up
   PIN_TUCK: 3,               // px a pin's tip tucks up under the bar's lower edge
-  TL_LABEL_SIZE: 22,         // the eruption names and end dates (were 11 px: unreadable past ~2 m)
-  TL_LABEL_GAP: 8,           // px from a pin's foot to the top of its name
-  TL_END_BELOW: 104,         // px from the axis down to the end eruptions' names (below the mid names, a grown pin's too)
-  TL_END_LINE_H: 28,         // between an end eruption's name and its date
   TRAIL_MAX_PX: 110,         // the playhead's trail at DeepTime.tlMaxRate
   TRAIL_COL: [255, 214, 130],
-  _TL_COL: [255, 255, 255, 235],
   _trailRate: 0,
-  // px from the axis down to a mid-window eruption's name centre, for a pin `ph` tall.
-  _tlNameY(ph) { return this.VIS_BAR_H / 2 - this.PIN_TUCK + ph + this.TL_LABEL_GAP + this.TL_LABEL_SIZE * 0.675; },
+  // px from the axis down to the foot of a pin `ph` tall.
+  _tlPinBot(ph) { return this.VIS_BAR_H / 2 - this.PIN_TUCK + ph; },
   _visitorTimelineBody(g, x0, w, ay) {
     const yr = DeepTime.yearsBP, bh = this.VIS_BAR_H;
     // ---- the bar/track (sprite, or the single white line as fallback), then the climate ribbon in it ----
@@ -995,8 +990,8 @@ const InstallHUD = {
     vertex(upNow, ay);
     vertex(upNow, ay - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the eruptions: every pin hangs under the bar, its name beneath ----
-    const ER = DeepTime.ERUPTIONS, labs = this._erLabels(), s = this.TL_LABEL_SIZE, C = this._cap;
+    // ---- the eruptions: every pin hangs under the bar, unnamed (the caption names one as it happens) ----
+    const ER = DeepTime.ERUPTIONS, labs = this._erLabels(), C = this._cap;
     const tipY = ay + bh / 2 - this.PIN_TUCK;
     for (let i = 0; i < ER.length; i++) {
       const e = ER[i], L = labs[i];
@@ -1005,13 +1000,6 @@ const InstallHUD = {
       if (C.e === e) sc *= 1 + this.PIN_GROW * C.a;
       const ph = this.TL_MARKER_H * sc;
       if (!this._tlMarkerSprite(i, mx, tipY, ph, true)) { stroke(255); strokeWeight(2); line(mx, tipY, mx, tipY + 12); }
-      if (L.end) {
-        const al = L.start ? LEFT : RIGHT, ny = ay + this.TL_END_BELOW;
-        this._haloText(L.text, OpenDyslexic, 'dys', s, al, CENTER, mx, ny, this._TL_COL);
-        this._haloText(L.date, OpenDyslexic, 'dys', s, al, CENTER, mx, ny + this.TL_END_LINE_H, this._TL_COL);
-      } else {
-        this._haloText(L.text, OpenDyslexic, 'dys', s, CENTER, CENTER, mx, ay + this._tlNameY(ph), this._TL_COL);
-      }
     }
     // ---- the speed trail, behind (older than) the playhead ----
     const px = DeepTime.yearToX(yr, x0, w);
@@ -1076,14 +1064,14 @@ const InstallHUD = {
     return true;
   },
 
-  // Per-eruption label records, built once: { end, start, text, date }. `end` marks the two that open
-  // and close the window (their names sit on the lower row, with the date), `start` the opening one.
+  // Per-eruption pin records, built once: { end, start }. `end` marks the two that open and close the
+  // window (their pins sit on the bar's ends), `start` the opening one.
   _erLabelCache: null,
   _erLabels() {
     if (this._erLabelCache) return this._erLabelCache;
     this._erLabelCache = DeepTime.ERUPTIONS.map(e => {
       const start = e.yearsBP >= DeepTime.yearsStart;
-      return { end: start || !!e.terminal, start, text: e.name + ' eruption', date: this._yearsAgo(e.yearsBP) };
+      return { end: start || !!e.terminal, start };
     });
     return this._erLabelCache;
   },
@@ -1098,15 +1086,29 @@ const InstallHUD = {
     this._blitText(str, font, tag, size, ah, av, x, y, col);
   },
 
-  // VISITOR year: the one always-on readout, centred ABOVE the timeline between the goal and the
-  // climate line, so the stack reads goal → year → climate → axis, with only the eruption pins and
-  // names under the bar. A soft dark halo keeps it legible over the busy scene; no strip behind it.
-  // The climate line is drawn from here too, so the two readouts move as one.
-  VIS_YEAR_SIZE: 42,
-  VIS_YEAR_ABOVE: 100,       // px from the year's centre down to the timeline axis
+  // VISITOR year: the one always-on readout, the TOP of the bottom stack, so it reads
+  // year → goal → climate → axis, with only the eruption pins under the bar. It sits
+  // VIS_YEAR_GAP above the goal's top line, on the goal actually shown; a goal that wraps to more
+  // lines pushes it up, eased (_yearLift) so a crossfade never jumps it. A soft dark halo keeps it
+  // legible over the busy scene; no strip behind it. The climate line is drawn from here too.
+  VIS_YEAR_SIZE: 64,
+  VIS_YEAR_GAP: 0,           // px between the goal's top line box and the year's box (the boxes carry their own air)
+  YEAR_EASE: 0.12,           // per-frame ease of the year toward a taller/shorter goal block
+  _yearLift: null,           // eased px from the axis up to the year's centre
+  // px from the timeline axis up to the year's centre, for a goal block `lines` tall.
+  _yearAbove(lines) {
+    return this.VIS_GOAL_GAP + (lines - 1) * this.VIS_GOAL_SIZE * this.GOAL_LINE_H
+         + this.VIS_GOAL_SIZE * 0.675 + this.VIS_YEAR_GAP + this.VIS_YEAR_SIZE * 0.675;
+  },
   renderVisitorYear(g, W, H) {
     const label = DeepTime.label(), ay = this._visAxisY(H);
-    const cx = W / 2, cy = ay - this.VIS_YEAR_ABOVE;
+    const F = this._goalFade, n = (F && F.cur.lines) ? F.cur.lines.length : 1;
+    const want = this._yearAbove(Math.max(1, n));              // sits on the goal actually shown
+    let lift = this._yearLift;
+    lift = (lift == null) ? want : lift + (want - lift) * this.YEAR_EASE;
+    if (Math.abs(want - lift) < 0.5) lift = want;
+    this._yearLift = lift;
+    const cx = W / 2, cy = ay - lift;
     push();
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
@@ -1119,7 +1121,7 @@ const InstallHUD = {
   // boost gate (TMGoals.glacialNow → Climate.regimeThreshold). Centred as one line, so the two parts'
   // widths are measured once per regime change, never per frame.
   VIS_CLIMATE_SIZE: 28,
-  VIS_CLIMATE_ABOVE: 50,     // px from this line's centre down to the timeline axis
+  VIS_CLIMATE_ABOVE: 44,     // px from this line's centre down to the timeline axis
   CLIMATE_PREFIX: 'The climate is ',
   _climateLine: null,        // { glacial, word, col, prefixW, wordW }
   _renderClimateLine(cx, cy) {
@@ -1203,8 +1205,9 @@ const InstallHUD = {
   // before the window end. Lines wrap to the screen and stack UPWARD from the anchor, so a long
   // verdict never runs into the timeline. A change of line CROSSFADES (GOAL_FADE_MS, above the
   // 500 ms photosensitivity floor) via globalAlpha, never a per-frame tint (see per-frame tint stutter).
-  VIS_GOAL_SIZE: 50,          // the year's format (FreckleFace), a touch larger than the year itself
-  VIS_GOAL_GAP: 160,          // px above the timeline axis to the goal's last line — clears the year and climate lines under it
+  VIS_GOAL_SIZE: 38,          // the year's format (FreckleFace), smaller than the year, with a heavier shadow (GOAL_SHADOW)
+  VIS_GOAL_GAP: 88,           // px above the timeline axis to the goal's last line — clears the climate line under it (the year sits above the goal)
+  GOAL_SHADOW: [4, 8, 6, 235],   // the goal's drop shadow: darker and deeper than the HUD halo, two passes (_drawGoalLines)
   GOAL_WRAP: 0.88,            // max line width, as a fraction of the canvas width
   GOAL_LINE_H: 1.12,          // line spacing, × VIS_GOAL_SIZE
   GOAL_FADE_MS: 800,          // crossfade between successive lines (goal → verdict → next goal)
@@ -1265,36 +1268,49 @@ const InstallHUD = {
   // Where the HUD stands over the world, for overlays lettered over it (RiverNames) to keep clear of:
   // { top, bottom, rects: [[x0, y0, x1, y1], …] } in 1080-space px. The top strip's height is kept
   // clear in both modes. Visitor: the goal (held at LABEL_GOAL_LINES lines, or more while a longer one
-  // shows), the year, the climate line, the timeline and the mid-window pins with their names as one
-  // full-width band, the bar's two end labels, the two top-band corners at their largest (a full row of
+  // shows), the year, the climate line, the timeline and its pins as one full-width band, the two
+  // top-band corners at their largest (a full row of
   // solved plants) and the top-centre slot the speed readout and the eruption caption share, so the
   // keep-out never changes as the tallies grow or time starts and stops; the map shows round the
   // blocks. Debug: its top strip and button bar. Allocates, so call it when labelSig() changes, not per frame.
-  LABEL_GOAL_LINES: 2,
-  LABEL_END_W: 300,           // the bar's end labels (eruption name + date)
+  LABEL_GOAL_LINES: 1,        // most goals fit one line at VIS_GOAL_SIZE; a longer one re-lays the names (labelSig)
   _labelGoalLines() {
     const F = this._goalFade, cur = (F && F.cur.lines) ? F.cur.lines.length : 0;
     return Math.max(this.LABEL_GOAL_LINES, cur);
+  },
+  // Half the widest year label's width ("~ 1,000,000 years ago"), measured once.
+  _yearHalfWCache: 0,
+  _yearHalfW() {
+    if (!this._yearHalfWCache) {
+      let w = this.VIS_YEAR_SIZE * 11;                    // fallback: ~0.5 em a character
+      if (typeof textWidth === 'function' && typeof FreckleFace !== 'undefined' && FreckleFace) {
+        push(); textFont(FreckleFace); textSize(this.VIS_YEAR_SIZE);
+        const m = textWidth('~ ' + (1000000).toLocaleString() + ' years ago'); pop();
+        if (m > 0) w = m;
+      }
+      this._yearHalfWCache = w / 2;
+    }
+    return this._yearHalfWCache;
   },
   _labelDebug() { return typeof Debug !== 'undefined' && !!Debug.enabled; },
   labelSig() { return this._labelGoalLines() * 2 + (this._labelDebug() ? 1 : 0); },   // changes ⇒ labelKeepOut changed
   labelKeepOut(W, H) {
     if (this._labelDebug()) return { top: this.TOP_H, bottom: H - this.BOT_H, rects: [] };
     const ay = this._visAxisY(H), lines = this._labelGoalLines();
+    // the goal's top line (_blitText's box is 1.35 em); the year above it gets its own narrow rect, so
+    // a river crossing the screen at the year's height (the Manawatū at 1 Ma) still has room beside it
     const goalTop = ay - this.VIS_GOAL_GAP - (lines - 1) * this.VIS_GOAL_SIZE * this.GOAL_LINE_H
-                  - this.VIS_GOAL_SIZE * 0.7;          // the top line's upper half (_blitText's box is 1.35 em)
-    const inset = Math.round(W * this.VIS_INSET), xEnd = W - inset;
-    const endBot = ay + this.TL_END_BELOW + this.TL_END_LINE_H + this.TL_LABEL_SIZE * 0.7;
-    // the deepest mid-window name: the largest tier's pin, grown
+                  - this.VIS_GOAL_SIZE * 0.7;
+    const yCy = ay - this._yearAbove(lines), yHalf = this._yearHalfW() + 12;
+    // the deepest pin: the largest tier's, grown
     let tmax = 1;
     for (const k in this.PIN_TIER_SCALE) tmax = Math.max(tmax, this.PIN_TIER_SCALE[k]);
-    const pinsBot = ay + this._tlNameY(this.TL_MARKER_H * tmax * (1 + this.PIN_GROW)) + this.TL_LABEL_SIZE * 0.7;
+    const pinsBot = ay + this._tlPinBot(this.TL_MARKER_H * tmax * (1 + this.PIN_GROW)) + 6;
     const G = this._tbGeom(W);
     return { top: this.TOP_H, bottom: H, rects: [
-      [0, goalTop, W, pinsBot],                                                  // goal, year, climate, timeline, pins
+      [0, goalTop, W, pinsBot],                                                  // goal, climate, timeline, pins
+      [W / 2 - yHalf, yCy - this.VIS_YEAR_SIZE * 0.7, W / 2 + yHalf, goalTop],  // the year, above the goal
       [W / 2 - this.SPEED_HALF_W, 0, W / 2 + this.SPEED_HALF_W, this._speedBot()],   // the speed readout / eruption caption slot
-      [inset - 8, ay, inset + this.LABEL_END_W, endBot],                         // the bar's start label
-      [xEnd - this.LABEL_END_W, ay, xEnd + 8, endBot],                           // …and its end label
       [0, 0, G.lx + G.lwMax, G.lyMax],                                           // the tallies, at their largest
       [G.rx, 0, W, G.ry1]                                                        // ecosystem health
     ] };
@@ -1468,14 +1484,15 @@ const InstallHUD = {
   // top-centre between the two top-band corners, in the HUD's halo text (no card). It fades in the
   // moment an eruption is INITIATED: a timeline eruption's charge (the playhead crossing it), a button
   // eruption or the attract's landing on Kidnappers as their ash cloud opens. It holds through the
-  // charge and the cloud (GameUI draws it AFTER the cloud) and then fades out. One at a time: a new
+  // charge and the cloud (GameUI draws it AFTER the cloud), then stays up for as long as the clock stands
+  // still, and fades out once time moves on. One at a time: a new
   // eruption waits for the old caption to fade. The names and dates come from DeepTime.ERUPTIONS.
   CAPTION_FADE_MS: 700,       // ≥ 500 ms (photosensitivity)
   CAPTION_TOP: 36,
   CAPTION_TITLE_SIZE: 46,
   CAPTION_DATE_SIZE: 28,
   _CAP_TITLE_COL: [255, 214, 150],
-  _cap: { e: null, a: 0, until: 0, last: 0, title: null, date: null, W: 0 },
+  _cap: { e: null, a: 0, until: 0, last: 0, title: null, date: null, W: 0, yr: null },   // yr: the clock when the timed hold last ran
 
   _updateCaption(g, now, W) {
     const C = this._cap, ER = DeepTime.ERUPTIONS, y = DeepTime.yearsBP;
@@ -1498,7 +1515,13 @@ const InstallHUD = {
     let d = C.last ? (now - C.last) / this.CAPTION_FADE_MS : 0;
     if (d > 0.1) d = 0.1;                                           // a long frame gap never jumps the fade
     C.last = now;
-    const on = !!C.e && now < C.until;
+    // Past its timed hold the caption STAYS while the clock stands still (geology paused, no boost
+    // timelapse): it fades only once time moves on from where the hold ended. A newer eruption
+    // (C.until zeroed above) still clears it at once.
+    let on = !!C.e && now < C.until;
+    if (on) C.yr = y;
+    else if (C.e && C.until > 0 && C.yr != null && Math.abs(y - C.yr) < 1) on = true;
+    if (!on) C.yr = null;
     C.a += on ? d : -d;
     if (C.a > 1) C.a = 1;
     if (C.a <= 0) { C.a = 0; if (!on) C.e = null; }
@@ -1570,7 +1593,8 @@ const InstallHUD = {
     const lh = this.VIS_GOAL_SIZE * this.GOAL_LINE_H, n = lines.length;
     for (let i = 0; i < n; i++) {
       const ly = cy - (n - 1 - i) * lh;
-      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 2, ly + 3, this._GOAL_HALO);
+      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 3, ly + 4, this.GOAL_SHADOW);
+      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 1, ly + 2, this.GOAL_SHADOW);
       this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx, ly, col || this._GOAL_COL);
     }
     if (dc) dc.globalAlpha = a0;

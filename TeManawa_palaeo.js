@@ -543,8 +543,14 @@ const Palaeo = {
       // stream on the proto-Ruahine used to hide its name whenever the fan's geometry put one there).
       L.ok = (D.on === 'sea') ? wt === 1 : (D.on === 'land') ? wt !== 1 : true;
       const lift = T.paintLiftAt ? T.paintLiftAt(x, y) : T.getElevationAt(x, y);
-      const cx = vx + vz * Projection.projX(x), cy = vy + vz * Projection.groundY(y, lift);
+      let cx = vx + vz * Projection.projX(x), cy = vy + vz * Projection.groundY(y, lift);
       const ang = (D.deg || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+      // Keep the whole tilted name on screen: the anchor is a map fraction, and the cover fit crops the
+      // map's sides differently per aspect (Ruataniwha Strait, near the east edge, ran off the right).
+      const m = (typeof TM_RIVER_NAMES !== 'undefined' ? TM_RIVER_NAMES.marginX : 28), hh = TM_PALAEO.labelSize * 0.7;
+      const ex = L.len / 2 * Math.abs(ca) + hh * Math.abs(sa) + m, ey = L.len / 2 * Math.abs(sa) + hh * Math.abs(ca) + m;
+      if (2 * ex < W) cx = Math.min(W - ex, Math.max(ex, cx));
+      if (2 * ey < H) cy = Math.min(H - ey, Math.max(ey, cy));
       let cum = 0;
       for (let j = 0; j < L.n; j++) {
         const s = cum + L.gs[j].adv / 2 - L.len / 2;
