@@ -2522,13 +2522,14 @@ try{
     const wants=()=>[DT.label(), IH.TALLY_BOOSTS, IH.TALLY_GOALS, String(DT.boostsOk|0), String(DT.goalsSolved|0), IH.HEALTH_TITLE];
     const halo=IH._GOAL_HALO.join()+'', halo2='8,14,12,170';
     const colsOf=(rows,str)=>rows.filter(r=>r.str===str && r.col!==halo && r.col!==halo2).map(r=>r.col);
-    const lit=(h,yr)=>{ barAt(h,yr); IH._renderHealth(G,IH._tbGeom(1920)); return texts(G); };
+    const lit=(h,yr)=>{ const sm=fresh(); sm._healthSet(h); if(yr){ DT.seekTo(yr); G.seasonManager.update(1); } IH._eco=null; IH._full=null; IH._renderHealth(G,IH._tbGeom(1920)); return texts(G); };
     try{
       let rows=lit(1);
-      for(const w of wants()) chk(colsOf(rows,w).join('|')===green.join(), `full, interglacial: "${w}" is bright green (${colsOf(rows,w).join('|')})`);
+      const allAre=(rows,w,c)=>{ const cs=colsOf(rows,w); return cs.length>0 && cs.every(v=>v===c.join()); };   // two tallies can read the same number
+      for(const w of wants()) chk(allAre(rows,w,green), `full, interglacial: "${w}" is bright green (${colsOf(rows,w).join('|')})`);
       chk(colsOf(rows,IH.CLIMATE_PREFIX).join()===IH._GOAL_COL.join(), 'the climate line keeps its own colours');
       rows=lit(1,20000);
-      for(const w of wants()) chk(colsOf(rows,w).join('|')===blue.join(), `full, glacial: "${w}" is bright blue (${colsOf(rows,w).join('|')})`);
+      for(const w of wants()) chk(allAre(rows,w,blue), `full, glacial: "${w}" is bright blue (${colsOf(rows,w).join('|')})`);
       rows=lit(0.97);
       for(const w of wants()) chk(!colsOf(rows,w).some(c=>c===green.join()||c===blue.join()), `short of full: "${w}" stays in its own colour`);
       // it lights over ≥500 ms, once the bar has arrived, and goes out the same way
