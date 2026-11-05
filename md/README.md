@@ -38,6 +38,8 @@ If you are about to write code, read `BUILD_V3.md` §5 (the budgets) and `../CLA
 | Document | |
 |---|---|
 | **`TEMANAWA_OPERATIONS.md`** | **The operator guide.** What to deploy, the two windows, the browser flags, what the kiosk layer does on its own, how to recover and read the error log, and the known gaps before opening |
+| **`TEMANAWA_HANDOFF.md`** | **The handoff plan.** The assessment before release, what the museum receives (the kiosk shell, built by `tools/make_deploy.js`), the hardware, the acceptance test, the support model, the IP and co-design dependencies, the release procedure |
+| `../deploy/OPERATOR_QUICKSTART.md` | The one-page operator sheet that ships inside the package (`electron/README.md` is the shell's own note) |
 | `TEMANAWA_DEVTOOLS.md` | The console dev workflow: `LOOK` (paint), `GEN` (landform), `GEO` (ranges), the `B` / `G` / `N` keys. Read before tuning the look |
 
 ---

@@ -28,6 +28,13 @@ and the idle attract still plays.
 
 ## 2. Starting it
 
+**The kiosk shell does all of this itself** (built 2026-11-05, `electron/`, `deploy/OPERATOR_QUICKSTART.md`):
+`TeManawa.exe` starts the server on 127.0.0.1, opens the diorama full screen on the largest display
+and the console on the other, keeps the console focused, reloads a crashed or hung page, blocks display
+sleep, logs to `%APPDATA%\TeManawa\temanawa-shell.log`, and relaunches itself at 03:05;
+`install_autostart.ps1` makes it start at logon and come back if it exits. The steps below are the
+**fallback** (Chrome plus the server by hand), and the detail behind what the shell does.
+
 1. **Server:** `node tools/serve.js` from the install folder (default port 8080; `node tools/serve.js
    8090` for another). Never use `--export` on the wall; it lets the page write files.
 2. **Browser:** Chromium/Chrome in kiosk mode. The flags from `TEMANAWA_BUILD_V3.md` §3:
@@ -101,8 +108,18 @@ loop to stall), and it does not return to its landing card between visitors (an 
 
 ## 5. What to deploy
 
-Deploy a **copy of the files the wall needs**, not a git clone: about 95 MB against a git history of
-about 500 MB.
+Deploy a **copy of the files the wall needs**, not a git clone: about 86 MB against a git history of
+about 590 MB. **`tools/make_deploy.js` builds it** (2026-11-05): it copies exactly the table below into
+`dist/temanawa-web/`, fails if any script or asset the pages name is missing from the copy, stamps
+`VERSION.txt` and `manifest.json` (a sha256 per file), and with `--smoke` boots both pages in headless
+Chromium and checks the bus both ways. `--electron --platform win32 --zip` wraps the copy in the kiosk
+shell (`dist/TeManawa-win32-x64/` + zip), which is the museum build; `md/TEMANAWA_HANDOFF.md` is the
+release procedure.
+
+```
+cd electron && npm ci && cd ..                                        # once per machine
+node tools/make_deploy.js --electron --platform win32 --smoke --zip   # the museum build
+```
 
 | Needed | |
 |---|---|
@@ -112,12 +129,14 @@ about 500 MB.
 | `typefaces/OpenDyslexic.ttf`, `typefaces/NF-Nadira-Pro-Regular.ttf`, `typefaces/NF-Nadira-Pro-Regular.otf` | the three fonts in use |
 | `audio/` | not needed while audio is off (nothing loads it); keep it only if audio returns |
 | `secondscreen/` | the console page and its assets |
-| `tools/serve.js` | the server (Node.js must be installed) |
+| `tools/serve.js` | the server (inside the shell, no Node.js install is needed; the Chrome fallback needs one) |
+| `VERSION.txt`, `manifest.json`, `OPERATOR_QUICKSTART.md` | written by `make_deploy.js`: the build identity, a checksum per file, the operator page |
 
 **Not needed on the wall:** `md/`, `exports/`, `research/`, `node_modules/`, the rest of `tools/`,
 `p5.js` (the unminified debug copy), `geo/*.svg`, the proposal `.docx`, `.git/`.
 
-To update: stop the browser, replace the folder, start again.
+To update: stop it (Ctrl+Shift+Q in the shell), replace the folder (keep `temanawa.config.json`), start again.
+`VERSION.txt` says which build is running.
 
 ---
 
@@ -162,8 +181,10 @@ open:
 On the install PC, once the fixes in §7 have landed:
 
 - [ ] `node tools/bootcheck.js` passes on the build being deployed (run it on a dev machine; it needs
-      the whole repo).
-- [ ] Both windows open full screen on the right displays after a cold boot, with no clicks.
+      the whole repo), and `node tools/make_deploy.js --smoke` reports OK for the package.
+- [ ] `VERSION.txt` in the deployed folder names the commit that was tested, and the release is tagged.
+- [ ] Both windows open full screen on the right displays after a cold boot, with no clicks
+      (`TeManawa.exe --displays`, then `temanawa.config.json` if the shell's largest-display guess is wrong).
 - [ ] The console drives the wall: turn the dial and boost a plant; the wall answers.
 - [ ] The debug overlay's PERF panel says **WebGL**, and the frame rate holds at 60 during a boost
       time-lapse and an eruption.

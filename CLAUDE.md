@@ -29,7 +29,11 @@ time dial reach the game, and a `draw()` error is logged and recovered instead o
 every authoring key works and a `draw()` error throws as normal. The harness runs with `?dev=1`.
 
 The touchscreen console is `/secondscreen/` on the same server; the two talk over
-`BroadcastChannel`, so open both in one browser profile. The install itself (windows, flags,
+`BroadcastChannel`, so open both in one browser profile. The museum runs the **kiosk shell** instead
+(`electron/`): `cd electron && npm ci && npm start` runs it on the repo, windowed, with `?dev=1`.
+**The release build is `node tools/make_deploy.js --electron --platform win32 --smoke --zip`**
+(`md/TEMANAWA_HANDOFF.md`): it copies only what the wall needs, fails on any missing asset reference,
+stamps `VERSION.txt`, boots both pages headless, and wraps them in the shell. The install itself (windows, flags,
 recovery, what to deploy) is `md/TEMANAWA_OPERATIONS.md`.
 
 `node tools/serve.js 8093 --export` (dev only) also accepts `POST /__export?path=…` and writes the
@@ -114,7 +118,9 @@ TeManawa_devtools.js       LOOK / GEN console dev tools (B/G/N) — see TEMANAWA
 TeManawa_sketch.js         CONFIG, Game, and the p5 entry points
 TeManawa_bus.js            the console bus (BroadcastChannel 'temanawa'): intents in, telemetry out — loads after sketch.js
 secondscreen/              the touchscreen console page (static DOM) — see secondscreen/README.md
-tools/                     serve.js, bootcheck.js, svg2geo.js, export_frames.js, outline_plants.js, shot.js
+tools/                     serve.js (also a module: start()), bootcheck.js, make_deploy.js (the release build), shell_check.js (drives the shell), svg2geo.js, export_frames.js, outline_plants.js, shot.js
+electron/                  the kiosk shell: one executable = serve.js + wall window + console window (main.js) — see electron/README.md
+deploy/                    what ships beside the executable: OPERATOR_QUICKSTART.md, temanawa.config.json, the Windows autostart scripts
 geo/                       manawatu.svg (authored) + manawatu.geo.js (emitted)
 md/                        live docs — start at md/README.md; md/ecology/ research, md/archive/ built plans
 exports/                   terrain snapshot sets (dev reference, not needed on the wall)

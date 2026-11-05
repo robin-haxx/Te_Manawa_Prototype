@@ -1,0 +1,18 @@
+# Te Manawa — a systemd USER unit for a Linux kiosk PC (untested on hardware; the museum build is Windows).
+# Copy the unpacked TeManawa-linux-x64/ folder to /opt/temanawa, then as the kiosk user:
+#   mkdir -p ~/.config/systemd/user && cp temanawa.service ~/.config/systemd/user/
+#   systemctl --user enable --now temanawa
+# The user needs a graphical session at boot (auto-login) and `loginctl enable-linger <user>`.
+[Unit]
+Description=Avian Age: Te Manawa kiosk
+After=graphical-session.target
+
+[Service]
+ExecStart=/opt/temanawa/TeManawa
+WorkingDirectory=/opt/temanawa
+Restart=always
+RestartSec=5
+Environment=DISPLAY=:0
+
+[Install]
+WantedBy=graphical-session.target

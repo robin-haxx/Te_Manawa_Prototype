@@ -1,0 +1,15 @@
+{
+  "_comment": "Te Manawa kiosk shell settings. Keep this file beside TeManawa.exe. Keys starting with _ are notes. Run `TeManawa.exe --displays` to list the displays with their index numbers.",
+  "port": 8080,
+  "_port": "The local server's port. If it is taken the shell uses any free port (the two pages still find each other).",
+  "wall":    { "display": "largest", "query": "" },
+  "console": { "display": "other",   "query": "" },
+  "_display": "'largest' / 'smallest' / 'primary' / a display index from --displays / 'other' (console only: the display the wall is not on) / 'none' (no console).",
+  "_query": "Extra URL options for a page, e.g. the wall's \"render=2d\" to force the 2D renderer, or \"terrain=square\". Normally empty.",
+  "kiosk": true,
+  "relaunchHour": 3,
+  "_relaunchHour": "The whole program restarts at five past this hour every night (the pages reload themselves on the hour). null turns it off.",
+  "ignoreGpuBlocklist": false,
+  "_ignoreGpuBlocklist": "If the debug overlay's PERF panel says '2D canvas' instead of 'WebGL', try true: it forces GPU rendering on a graphics card Chromium has blocklisted.",
+  "unresponsiveSeconds": 20
+}
