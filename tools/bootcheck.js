@@ -2675,7 +2675,8 @@ try{
   // Seat the land at a year (the morph job the frame loop runs, to completion), then a fresh cast.
   const seat=(yr)=>{ DT.endTimelapse(); DT.seekTo(yr); G.terrain.morphBegin(yr, CFG.morphBakeScale);
     for(let n=0; n<1000 && !G.terrain.morphStep(1e9); n++){}
-    G._bakedYearsBP=yr; G._onMorphComplete(); G.resetEcosystem(); DT.seekTo(yr); };   // the rebuild resets the clock: re-seek
+    G._bakedYearsBP=yr; G._onMorphComplete(); G.resetEcosystem(); DT.seekTo(yr);    // the rebuild resets the clock: re-seek
+    G._autoPrevYear=yr; G._tmAutoErAt=0; G._tmAutoErupt=null; };   // ...and, like applyEruptionAt, the seek is not a crossing (an armed eruption halts a boost)
   const tick=()=>TG.update(G,_t);           // the per-frame hook (InstallHUD.update calls it), driven directly
   const boost=(m)=>{ TB.boost(m); DT.endTimelapse(); };   // judge + seed, without playing the time-lapse
   const solve=(key)=>{ boost({ plantKey:key }); _t+=TGL.holdMs+1; tick(); };   // boost, then let the verdict release
@@ -2882,6 +2883,7 @@ try{
       `the wrong climate: "${TG.text()}" (grey, nothing grows)`);
   // (c) the answer: the verdict in the climate colour, a bigger boost, a white outline easing to colour.
   DT.seekTo(122000); tick();
+  G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null;   // the test's seeks are not crossings: an armed eruption would halt the boost
   const f0=count('flax'), b0=sim.getSpeciesCount('mantells_moa'), gs0=DT.goalsSolved;
   TB.boost({ plantKey:'flax', plantName:'Harakeke', fauna:['mantells_moa'] });
   // harakeke is a both-worlds plant, so its answer takes the both-climates line, not "an interglacial plant"

@@ -153,6 +153,22 @@ const DeepTime = {
 
   isTimelapsing() { return !!this._timelapse; },
 
+  // An eruption stops every speed-up dead: the boost timelapse, a deep burst and the dial (back to
+  // detent 0, its eased rate snapped to 0, not eased, so the clock does not coast past the event).
+  // Geology then holds at the eruption's date and the visitor watches the aftermath at 1×; turning
+  // the dial again resumes. Called from Game when an eruption is armed (a timeline crossing) and
+  // when one fires (Game.applyAsh, which every eruption path reaches).
+  haltForEruption() {
+    if (this._timelapse) this.endTimelapse();
+    this._deepUntil = 0;
+    this._deepFrom  = 0;
+    this.timeScale  = 1;
+    this.dialStep   = 0;
+    this._dialRate  = 0;
+    this._wheelAcc  = 0;
+    this._dialAt    = (typeof millis === 'function') ? millis() : 0;   // the HUD's speed readout shows the drop
+  },
+
   // ---- the time dial ---------------------------------------
   // One encoder detent per call (delta ±1; a bigger delta is a fast spin). Clamped to the range.
   dialTurn(delta) { return this.dialSet(this.dialStep + (delta | 0)); },

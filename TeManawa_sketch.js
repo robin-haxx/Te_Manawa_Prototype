@@ -1360,6 +1360,9 @@ class Game {
   applyAsh(eruption) {
     const T = (typeof DeepTime !== 'undefined' && DeepTime.TIERS) || null;
     const tier = (T && eruption && T[eruption.tier]) || (T && T.major) || { clearFraction: 0.6, decayYears: 18000 };
+    // Every eruption path lands here (button, timeline crossing, a boost stopped short): halt any
+    // timelapse / deep burst / dial speed-up so the aftermath plays at the eruption's date.
+    if (typeof DeepTime !== 'undefined' && DeepTime.haltForEruption) DeepTime.haltForEruption();
     this._ashCover = 1;
     this._ashFromYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
     this._ashDecayYears = tier.decayYears || 18000;
@@ -1456,6 +1459,7 @@ class Game {
         // guard can't re-trigger it mid-ramp. If a charge is already running (a manual hold, or
         // two events cross close together under fast-forward), fire this one instantly instead.
         this._firedEruptions.add(e);
+        DeepTime.haltForEruption();            // stop the fast-forward AT the eruption, not 5 s of dial later
         if (!this._tmAutoErAt && !this._tmErDownAt) {
           this._tmAutoErAt = millis(); this._tmAutoErupt = ER[i];
         } else {
