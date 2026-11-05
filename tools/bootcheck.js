@@ -1990,9 +1990,22 @@ try{
   // the HUD readout draws through both timelines without throwing
   const HUD=vm.runInContext('InstallHUD',ctx);
   let threw=null;
-  try{ for(const s of [0,1,15,DT.dialSteps]){ DT.dialSet(s); HUD.renderVisitorTimeline(G,1080,1920); HUD.renderTimeline(G.ui,G,1080,1920); } }
+  try{ for(const s of [0,1,15,DT.dialSteps]){ DT.dialSet(s); HUD.renderVisitorTimeline(G,1080,1920); HUD.renderTimeline(G.ui,G,1080,1920);
+         HUD.renderVisitorYear(G,1080,1920); HUD.renderVisitorTopBand(G,1080,1920); HUD.renderEruptionCaption(G,1080,1920); } }
   catch(e){ threw=e.message; }
-  chk(!threw,'the dial readout renders on both timelines'+(threw?` (${threw})`:''));
+  chk(!threw,'the dial readout renders on both timelines, with the speed line, top band and caption'+(threw?` (${threw})`:''));
+  // the eruption caption: it comes up as the playhead nears an eruption at the live rate, names it, and fades
+  try{
+    const C=HUD._cap, wh=DT.ERUPTIONS.find(e=>e.name==='Whakamaru');
+    C.e=null; C.a=0; C.until=0; C.last=0;
+    DT.dialSet(0); DT.seekTo(wh.yearsBP+3*5000); DT.geoRate=5000;
+    for(let i=0;i<3;i++) HUD.renderEruptionCaption(G,1920,1080);
+    chk(C.e===wh && C.title==='The Whakamaru eruption' && C.date==='349,000 years ago' && C.lines && C.lines.length>0,
+        `the caption names the eruption ahead (${C.title} · ${C.date})`);
+    DT.geoRate=0; DT.seekTo(wh.yearsBP+400000); C.until=0;
+    HUD._updateCaption(G, C.last+10000, 1920);
+    chk(C.e===null && C.a===0, '…and lets it go once nothing is near');
+  }catch(e){ chk(false,'eruption caption threw: '+e.message); }
   chk(HUD._dialLabel(5000)==='>> 5,000 yrs/s' && HUD._dialLabel(DT.dialTargetRate(1))==='>> 6 yrs/s','the readout names the detent rate, rounded');
 
   // the console page's key + wheel bindings emit the dial actions (secondscreen/input.js, own context)
@@ -2730,10 +2743,12 @@ try{
       `the wrong climate: "${TG.text()}" (grey, nothing grows)`);
   // (c) the answer: the verdict in the climate colour, a bigger boost, a white outline easing to colour.
   DT.seekTo(122000); tick();
-  const f0=count('flax'), b0=sim.getSpeciesCount('mantells_moa');
+  const f0=count('flax'), b0=sim.getSpeciesCount('mantells_moa'), gs0=DT.goalsSolved;
   TB.boost({ plantKey:'flax', plantName:'Harakeke', fauna:['mantells_moa'] });
   chk(TG.verdict() && TG.verdict().kind==='answer' && TG.text()===TG.format(TGL.text.answer,'Harakeke','interglacial',cond),
       `the answer: "${TG.text()}"`);
+  chk(DT.goalsSolved===gs0+1 && DT.solvedKeys.indexOf('flax')!==-1,
+      `the answer counts as a goal solved, and harakeke joins the top band's row (${gs0} → ${DT.goalsSolved})`);
   chk(TG.color()===TBO.outlineInterglacial, 'the answer verdict takes the interglacial boost colour (green)');
   chk(count('flax')-f0 > TBO.matchedSeed, `the answer gets a bigger boost than a normal one (${count('flax')-f0} > ${TBO.matchedSeed} harakeke)`);
   chk(sim.getSpeciesCount('mantells_moa')-b0 > TBO.faunaRecruit,
@@ -2806,17 +2821,26 @@ try{
       'under the year: "The climate is INTERGLACIAL", the state in green');
   d=lineAt(30000);
   chk(d.some(([s,c])=>s==='GLACIAL' && c===TBO.outlineGlacial), '…and "GLACIAL" in blue in a glacial');
-  // 9. The tally under the climate line: right-for-the-climate boosts count, wrong ones do not, and a
-  //    restarted timeline (DeepTime.reset, on every soft reset) starts it again at 0.
+  //    …and under it the speed readout: the paused invitation at rest, the live rate in round numbers when moving.
+  DT.dialReset(); DT.geoRate=0; d=lineAt(122000);
+  chk(d.some(([s])=>s===IH.SPEED_PAUSED), 'under the climate line at rest: the paused invitation to turn the dial');
+  DT.geoRate=4870; drawn.length=0; IH._speed=null; IH.renderVisitorYear(G,1920,1080);
+  chk(drawn.some(([s])=>s==='1 second = 5,000 years'), 'moving: "1 second = 5,000 years" (the live rate, snapped to a round number)');
+  DT.geoRate=0; IH._speed=null;
+  // 9. The top band's tallies: right-for-the-climate boosts count, wrong ones do not, and a restarted
+  //    timeline (DeepTime.reset, on every soft reset) starts them again at 0.
   const coldKey=['tussock','snow_tussock','dracophyllum','coprosma','hebe'].find(k=>TG.fitOf(k)==='cold');
   DT.reset(); DT.seekTo(122000);
   boost({ plantKey:'tawa' }); boost({ plantKey:'tawa' });
   if(coldKey) boost({ plantKey:coldKey });                  // a cold plant in an interglacial: wrong, not counted
-  drawn.length=0; IH.renderVisitorYear(G,1920,1080);
-  chk(DT.boostsOk===2 && drawn.some(([s])=>s===IH.BOOSTS_PREFIX+'2'),
-      `under the climate line: "Successful boosts: 2" after two right boosts${coldKey?' and one wrong':''} (counted ${DT.boostsOk})`);
-  G.resetEcosystem(); drawn.length=0; IH.renderVisitorYear(G,1920,1080);
-  chk(DT.boostsOk===0 && drawn.some(([s])=>s===IH.BOOSTS_PREFIX+'0'), '…and a soft reset (timeline restart) zeroes it');
+  drawn.length=0; IH.renderVisitorTopBand(G,1920,1080);
+  chk(DT.boostsOk===2 && drawn.some(([s])=>s==='2') && drawn.some(([s])=>s===IH.TALLY_BOOSTS),
+      `the top band: "2 successful boosts" after two right boosts${coldKey?' and one wrong':''} (counted ${DT.boostsOk})`);
+  chk(drawn.some(([s])=>s===IH.HEALTH_TITLE) && drawn.some(([s])=>IH.HEALTH_WORDS.some(w=>w[1]===s)),
+      '…beside the ecosystem-health meter and its state word');
+  G.resetEcosystem(); drawn.length=0; IH.renderVisitorTopBand(G,1920,1080);
+  chk(DT.boostsOk===0 && DT.goalsSolved===0 && DT.solvedKeys.length===0 && drawn.some(([s])=>s==='0'),
+      '…and a soft reset (timeline restart) zeroes both tallies');
   IH._blitText=bt;
 
   } finally { TGL.list=realBook; TG._rand=realRand; TG.reset(); DT.reset(); G._boostHi=null; G.resetEcosystem(); }
@@ -4846,7 +4870,11 @@ try{
   const ay=HUD._visAxisY(H), goalCy=ay-HUD.VIS_GOAL_GAP, lh=HUD.VIS_GOAL_SIZE*HUD.GOAL_LINE_H;
   const hudPts=[[W/2,goalCy-lh-HUD.VIS_GOAL_SIZE*0.6,'goal (2nd line up)'],[W/2,goalCy,'goal'],[W*0.12,ay-HUD.TL_MARKER_H-10,'eruption pin label'],
                 [W*0.5,ay,'timeline axis'],[W/2,ay+HUD.VIS_YEAR_BELOW,'year'],[W/2-HUD.VIS_CLIMATE_SIZE*6,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW,'climate line'],
-                [W/2,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW+HUD.VIS_BOOSTS_BELOW,'boost count']];
+                [W/2,ay+HUD.VIS_YEAR_BELOW+HUD.VIS_CLIMATE_BELOW+HUD.VIS_SPEED_BELOW,'speed readout'],
+                [W*HUD.VIS_INSET+40,ay+HUD.TL_END_BELOW+HUD.TL_END_LINE_H,'start end-label'],
+                [W*(1-HUD.VIS_INSET)-40,ay+HUD.TL_END_BELOW+HUD.TL_END_LINE_H,'end end-label'],
+                [HUD._tbGeom(W).numR-20,HUD._tbGeom(W).row1,'boost tally'],[HUD._tbGeom(W).lx+30,HUD._tbGeom(W).iconBot-20,'solved-plant row'],
+                [HUD._tbGeom(W).barX+30,HUD._tbGeom(W).barTop+10,'health bar'],[HUD._tbGeom(W).barX+30,HUD._tbGeom(W).hBird,'bird-kind line']];
   for(const [x,y,what] of hudPts) chk(ko.rects.some(r=>inRect(x,y,r,0)),`the visitor keep-out covers the ${what} at (${x|0},${y|0})`);
   chk(ko.top>=HUD.TOP_H,'the top strip is kept clear in visitor mode too');
   const mode0=DBG.mode; DBG.mode='off'; const sigV=HUD.labelSig(); DBG.mode='compact'; const kd=RN.keepOut(W,H), sigD=HUD.labelSig(); DBG.mode=mode0;

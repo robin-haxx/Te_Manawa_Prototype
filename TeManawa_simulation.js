@@ -135,6 +135,7 @@ class Simulation {
 
     this.activeSpecies = { moa: [], eagle: [] };
     this.otherEntities = {};
+    this.ecoRichness = null; this.ecoBirdKinds = 0; this.ecoBirdTotal = 0;   // the HUD's ecosystem readout (_updateEcoReadout)
     this._speciesStableTimes = {};
     this._speciesLastAlive = {};
 
@@ -1075,6 +1076,60 @@ class Simulation {
     }
   }
 
+  // ---- the HUD's ecosystem readout (InstallHUD.renderVisitorTopBand) ----------------------------
+  // Two numbers, recomputed on the real clock once a second, never per frame:
+  //   ecoRichness  0..1, the plant stock the visitor has EARNED: the live count over every plant-bearing
+  //                habitat ÷ what those habitats would hold at full lift (homeoLiftMaxSteps), capped by
+  //                maxLivePlants. An unattended land sits near ½ (homeoBaseFrac is the open floor); correct
+  //                boosts lift it toward 1 as the seedlings actually grow in; a wrong boost resets the lift
+  //                and the surplus thins back out. It reads the census, so it lags the button by design.
+  //   ecoBirdKinds / ecoBirdTotal  how many of the founded bird kinds are alive now.
+  // ecoRichness stays null/undefined with plant homeostasis off (the HUD then reads ½).
+  _updateEcoReadout(rdt) {
+    this._ecoTimer = (this._ecoTimer || 0) + rdt;
+    if (this._ecoTimer < 60 && this._ecoSeen) return;
+    this._ecoTimer = 0;
+    // Earned plant stock.
+    const H = this._homeo;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    if (H && H.dens && M.plantHomeostasis !== false) {
+      const maxSteps = M.homeoLiftMaxSteps ?? 4;
+      let n = 0, full = 0;
+      for (const k in H.dens) {
+        const base = H.dens[k] * (H.cells[k] || 0);
+        if (!(base > 0)) continue;
+        const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
+        full += base + maxSteps * step;
+        n += H.count[k] || 0;
+      }
+      const cap = M.maxLivePlants || 900;
+      if (full > cap) full = cap;
+      this.ecoRichness = full > 0 ? Math.max(0, Math.min(1, n / full)) : null;
+    }
+    // Bird kinds alive: one pass over the cast into a reused flag table.
+    const seen = this._ecoSeen || (this._ecoSeen = {});
+    for (const k in seen) seen[k] = false;
+    const AS = this.activeSpecies || {};
+    let total = 0;
+    const lists = [AS.moa, AS.eagle];
+    for (let l = 0; l < lists.length; l++) {
+      const L = lists[l];
+      if (L) for (let i = 0; i < L.length; i++) { seen[L[i]] = false; total++; }
+    }
+    for (const k in this.otherEntities) { if (Array.isArray(this.otherEntities[k])) { seen[k] = false; total++; } }
+    for (let i = 0; i < this.moas.length; i++) { const m = this.moas[i]; if (m.alive && m.speciesKey) seen[m.speciesKey] = true; }
+    for (let i = 0; i < this.eagles.length; i++) { const e = this.eagles[i]; if (e.alive && e.speciesKey) seen[e.speciesKey] = true; }
+    for (const k in this.otherEntities) {
+      const L = this.otherEntities[k];
+      if (!Array.isArray(L)) continue;
+      for (let i = 0; i < L.length; i++) if (L[i] && L[i].alive) { seen[k] = true; break; }
+    }
+    let kinds = 0;
+    for (const k in seen) if (seen[k]) kinds++;
+    this.ecoBirdKinds = kinds;
+    this.ecoBirdTotal = total;
+  }
+
   // One seedling into habitat k: beside a standing plant of that habitat (seed rain from a parent,
   // which also lands reliably in a thin corridor), else a few random map tries. The species: `type`
   // if given, else a palette species under its floor, else a palette draw leaning toward the last
@@ -1758,6 +1813,7 @@ class Simulation {
     this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
     this._updateHomeostasis(rdt);       // hold each habitat at its (boost-lifted) target, on real time
+    this._updateEcoReadout(rdt);        // the HUD's ecosystem-health meter + bird-kind count, once a second
 
     if (this.seasonManager.justChanged) this.onSeasonChange();
     

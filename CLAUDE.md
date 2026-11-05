@@ -102,7 +102,7 @@ TeManawa_glbatch.js        the default WebGL entity layer (DOM-stacked); falls b
 TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored; SEA_ANCHORS
 TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the time dial
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) — pure, p5-free
-TeManawa_hud.js            InstallHUD: timeline, visitor year/goal, the five buttons (debug), storm/ash/wind FX
+TeManawa_hud.js            InstallHUD: timeline (climate ribbon, eruption pins + end labels), visitor year/goal/speed, the top band (tallies + ecosystem health), eruption captions, the five buttons (debug), storm/ash/wind FX
 TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
 TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only attract sequence (idle + end-of-window), its own clock, the names of the time — see TEMANAWA_PALAEO_ATTRACT.md
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON

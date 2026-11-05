@@ -189,7 +189,13 @@ const TMBus = (function () {
     // goal's answer more so), a mismatched boost seeds nothing and the scene desaturates (the
     // regime-fit lesson below).
     const n = matched ? ((isAnswer && GL.answerSeed) || TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
-    if (matched && typeof DeepTime !== 'undefined') DeepTime.boostsOk++;   // the tally under the climate line
+    if (matched && typeof DeepTime !== 'undefined') DeepTime.boostsOk++;   // the top band's boost tally
+    // The goal tally beside it: a solve is the live goal's answer boosted in the right climate. The
+    // plant joins the band's row of sprites once (a repeat solve still counts).
+    if (isAnswer && matched && typeof DeepTime !== 'undefined') {
+      DeepTime.goalsSolved++;
+      if (DeepTime.solvedKeys.indexOf(key) === -1) DeepTime.solvedKeys.push(key);
+    }
     // Plant homeostasis (Simulation._updateHomeostasis): a matched boost lifts the target of every
     // habitat this plant grows in (the answer by more), so correct boosts accumulate; a wrong one
     // drops every habitat back to its original floor. Lift BEFORE seeding so the seedlings fit it.

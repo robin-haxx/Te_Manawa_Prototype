@@ -75,13 +75,16 @@ class GameUI {
     } else {
       this._tmButtons = [];                 // nothing clickable off-debug
       InstallHUD.renderVisitorTimeline(g, W, H);
-      InstallHUD.renderVisitorYear(g, W, H);
+      InstallHUD.renderVisitorYear(g, W, H);   // the year, the climate line and the speed readout
       InstallHUD.renderVisitorGoal(g, W, H);   // the interglacial/glacial objective, above the timeline
+      InstallHUD.renderVisitorTopBand(g, W, H);   // the tallies (top-left) + ecosystem health (top-right)
     }
 
     if (debug) this.renderMessages(W, H);
     InstallHUD.renderAshFlash(g, W, H);     // white wash over everything
     InstallHUD.renderAshCloud(g, W, H);     // rolling ash cover rides on top of it
+    // The eruption caption rides OVER the ash cloud, so an eruption is named while it covers the wall.
+    if (!debug) InstallHUD.renderEruptionCaption(g, W, H);
 
     if (debug) Debug.render(g, W, H);
   }
