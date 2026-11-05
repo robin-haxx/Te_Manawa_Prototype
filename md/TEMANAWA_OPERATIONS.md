@@ -108,7 +108,7 @@ about 500 MB.
 |---|---|
 | `index.html`, `style.css`, `p5.min.js`, `p5.sound.min.js` | the page and p5 |
 | `TeManawa_*.js`, `levels/`, `geo/manawatu.geo.js` | the engine, the level, the geography |
-| `sprites/` | all of it except `sprites/Environmental/AshCloud/` (222 MB, unused) and `sprites/_retired/` |
+| `sprites/` | all of it except `sprites/_retired/` (retired art, including the unused 222 MB `AshCloud/` cover) |
 | `typefaces/OpenDyslexic.ttf`, `typefaces/NF-Nadira-Pro-Regular.ttf`, `typefaces/NF-Nadira-Pro-Regular.otf` | the three fonts in use |
 | `audio/` | not needed while audio is off (nothing loads it); keep it only if audio returns |
 | `secondscreen/` | the console page and its assets |

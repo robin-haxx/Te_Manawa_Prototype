@@ -620,12 +620,12 @@ Found in the 2026-11-02 audit; items 1–6 **fixed the same day** (harness secti
   frame are all still wired; the storm now distracts the harrier straight from the HUD. Only
   `placeableSprites` (clouds, lightning, wind) is live. With it, the rest of the economy residue in
   `CONFIG`, `GAME_STATE` and the level format (`archive/TEMANAWA_REORG.md` §5).
-- **Unused assets:** `sprites/Environmental/AshCloud/` (86 frames, 222 MB — the cover plays
-  `VolcanicAsh/`), `sprites/Environmental/VolcanicAshCloud_Sprite_00001.png`, about 30 superseded
-  sprites at the top of `sprites/` (`eagle_*`, `moa_*`, `moa_juvenile_*`, `LB_moa_*`, `Rimu_*`,
-  `mantis_talk`, `Kereru_*`; to `_retired/`), the unused fonts (FreckleFace, GroceryRounded, the
-  OpenDyslexic `.otf` set), the August `geo/manawatu_0…5.svg` drafts, and the duplicate
-  `exports/terrain_geology_timeline - Copy*` folders.
+- ✅ **Unused assets (cleared 2026-11-06).** Retired to `sprites/_retired/`: `Environmental/AshCloud/` (86 frames,
+  222 MB — the cover plays `VolcanicAsh/`), `VolcanicAshCloud_Sprite_00001.png` and the 45 superseded sprites
+  at the top of `sprites/` (`eagle_*`, `moa_*`, `LB_moa_*`, the old plant state sets, `mantis_talk`,
+  `Kereru_Perched`). Deleted: the unloaded fonts (FreckleFace-Regular, GroceryRounded, the OpenDyslexic `.otf`
+  set; the HUD's `FreckleFace` is NF Nadira), the August `geo/manawatu_0…5.svg` drafts and the duplicate
+  `exports/terrain_geology_timeline - Copy*` folders. The history still carries them.
 - **Ship a deploy copy, not a clone** (`TEMANAWA_OPERATIONS.md` §5): the wall needs about 95 MB; the git
   history alone is about 500 MB.
 
