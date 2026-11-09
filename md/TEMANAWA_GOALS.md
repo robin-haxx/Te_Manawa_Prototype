@@ -23,11 +23,18 @@ At any moment some goals are **live**. A goal is live when all of these hold:
    - a date window, e.g. Ōkatia only once the river has taken shape (from 400 ka);
    - enough grown plants, e.g. at least 10 tōtara standing;
    - birds present, e.g. kererū and kōkako both alive;
-   - an eruption has happened this session (the scrub-after-a-volcano goal).
+   - an eruption has happened this session (the post-eruption goal, `ash-bloom`).
 
-**An eruption moves the line** to one of those post-eruption goals, ahead of the sequence below, and the
-draw keeps to them until one is answered or each has had its two chances. Answering it counts double
-(`md/TEMANAWA_PLAN_V3.md` §7).
+**An eruption moves the line** to the post-eruption goal, ahead of the sequence below. It gets its two
+chances, then the line moves on to the rest of the book (never straight to another post-eruption goal),
+so it is up at most twice in a row. Answering it counts double (`md/TEMANAWA_PLAN_V3.md` §7).
+
+**One post-eruption goal (2026-11-08).** "Boost a plant that spreads after a big eruption!" → pūrei,
+scrub, mānuka. Visitors guessed wrong at it: `scrub-after-volcano` stood beside it with other answers, so
+a visitor who read pūrei's eruption line was told pūrei is "not a scrub", and in an interglacial its only
+answer, mānuka, had nothing about volcanoes on its card. Now `scrub-after-volcano` is off, mānuka's card
+says it spreads onto bare volcanic ash, every answer's words are bold, and pūrei and mānuka answer it in
+either climate (the scrub in a glacial). The harness holds all three to it.
 
 Among the live goals, **one is drawn at random**, so two visitors at the same point in the timeline
 can get different goals. The draw follows the **bird sequence**:
@@ -81,7 +88,7 @@ seventeen; **§2.1 lists the 35 added from the encyclopedia cards.**
 | ✅ Boost a plant that was rarer in ancient times than today | harakeke | either climate | *Harakeke was an interglacial plant, and was rarer in ancient times than today!* |
 | ✅ Boost a plant that is much rarer today than in ancient times! | kahikatea | interglacial | *…and was much more common in ancient times than today!* |
 | ✅ Boost the tallest plant! | kahikatea | interglacial | *…and was New Zealand's tallest tree!* |
-| ✅ Boost a scrub that grows back after a volcano! | grey/subalpine scrub | glacial, **after an eruption this session** | *Grey Scrub was a glacial plant, and was a scrub that grows back after a volcano!* |
+| *off 2026-11-08, folded into `ash-bloom` →* Boost a scrub that grows back after a volcano! | grey/subalpine scrub | glacial, **after an eruption this session** | *Grey Scrub was a glacial plant, and was a scrub that grows back after a volcano!* |
 
 ### Harrier
 | Goal | Answers | When | Success line |
@@ -215,7 +222,6 @@ wording narrowed to the card's own fact:
 
 A both-worlds answer now gets its own success line (`TM_GOALS.text.answerNeutral`: "… grew in both
 climates, and was …") instead of "a glacial plant" or "an interglacial plant" by the clock.
-`blue-wattles` is live but no card mentions the kōkako's wattles yet.
 
 ### 2.4 The card terms: what shows in bold (2026-11-05)
 
@@ -228,15 +234,13 @@ they show plain.
 A rewrite of a card has to keep each phrase word for word, or it loses its bold. The harness ("plant
 goals") fails on any term no longer on a card of that plant.
 
-**Answers with no term.** 27 live answers have nothing to bold, because their card doesn't state the
+**Answers with no term.** 21 live answers have nothing to bold, because their card doesn't state the
 fact. The goal is true of the plant (§2.3 widened answers so the wall never says a false "is not"), but a
-visitor can't find it by reading. The harness lists them on each run. Two goals have no term on any card,
-so nothing on the touchscreen can answer them yet. Add the line to the card to close a gap:
+visitor can't find it by reading. The harness lists them on each run. `no-wings` and `blue-wattles` closed
+this gap on 2026-11-06 with a line on each of their cards. Add the line to the card to close a gap:
 
 | Goal | Answers whose card doesn't say it |
 |---|---|
-| **`no-wings`** | every answer: kahikatea, harakeke, scrub, mānuka, *Dracophyllum* |
-| **`blue-wattles`** | its only answer: nīkau |
 | `similar-species` | tree ferns, scrub, tussock, pūrei, tī kōuka, tōtara |
 | `both-worlds` | harakeke, mānuka, pūrei, wharariki |
 | `regrow-from-base` | harakeke, wharariki, pūrei |
@@ -247,6 +251,44 @@ so nothing on the touchscreen can answer them yet. Add the line to the card to c
 | `ash-bloom` | mānuka |
 
 Proposed shorter card copy that keeps every term: `TEMANAWA_CARD_TRIMS.md` (not applied).
+
+### 2.5 When a goal leaves unanswered (2026-11-08)
+
+**The playtest finding.** Visitors tried an answer and missed, then went back to the console to hunt for
+the right one. They didn't expect a new goal. By the time they pressed their "second try", the wall had
+moved on, so it was judged against a goal they had not read, and usually missed again. There were two ways a
+goal left behind their back:
+
+- **Out of chances.** The second miss draws a new goal when its verdict clears, at the end of the
+  time-lapse. By then the visitor is at the console.
+- **The climate turned.** A boost plays the clock to the next glacial turn. A goal whose answers no longer
+  fit the new climate is replaced, even after one miss.
+
+**What the wall does now** (no new words on it):
+
+1. **Pips.** The chances are drawn after the line: a full disc is a chance left, and a miss shrinks one to an
+   empty ring (`InstallHUD._drawGoalPips`). They show with the miss verdicts too.
+2. **Reveal.** When a goal leaves after at least one try, its question comes back once the last verdict
+   clears, for `revealMs` (4 s) with its pips empty. The answer plants are ringed white, the answer's
+   own colour. A goal that leaves untried (the dial carried the clock over a turn, or an eruption) leaves quietly.
+3. **Entrance.** Then the new goal slides up and settles, and its pips grow in one after another. A goal
+   coming back after one miss just crossfades, as before. `TMGoals.shownSerial()` tells the two apart.
+4. **Late answer.** For `lateGraceMs` (15 s) after the new goal appears, or during the reveal, if the
+   **first** press is the old goal's answer, `TMGoals.judgeLate` makes it a late answer. Its line is the old
+   goal's answer line in green for `lateHoldMs` (5 s), and the tally counts a goal solved. **It is not a
+   boost**: no seeding, no time-lapse, no health, no birds, no outline, and no chance spent on the new goal.
+   Then the new goal comes back. It does not need to fit the climate, because the climate has usually turned
+   since that goal was up. Any other first press closes the window. A press that answers the new goal too is
+   the new goal's answer, a real boost.
+
+**The console's goal strip** (one row along the bottom) shows the same, where the visitors are standing:
+the question and its pips on the left under the plants, and the last goal's ending on the right under the card. That is *"The answer was <plant>"* in
+white for a goal that ran out, or *"Answered! <plant>"* in green for a solve or a late answer. It shows for
+20 s under the new goal. It is fed by `TMGoals.telemetry()` on the `goal` message
+(`TEMANAWA_SECOND_SCREEN.md` §3.2, §6.5).
+
+The harness ("plant goals", 7d) holds all of it. It checks that a late answer changes nothing but the
+tally and the line.
 
 ### Through the timeline
 
@@ -262,8 +304,7 @@ only plant is tōtara, a warm tree. A glacial harrier goal needs harrier copy on
 for example "Eyles' harrier hunted the forest edge and shrubland" on a scrub card.
 
 - **Glacials** carry the two beech goals, both-worlds, similar species, yellow flowers, tūī flowers and
-  harakeke rarer. The scrub-after-a-volcano goal joins from the first glacial after an eruption
-  (Kaukatea, 900 ka). There are no live harrier goals in the cold, because tōtara is a warm plant.
+  harakeke rarer. The post-eruption goal joins after an eruption (Kaukatea, 900 ka), in either climate. There are no live harrier goals in the cold, because tōtara is a warm plant.
 - **The lowland stage is the thin one**: only both-worlds is live in either climate. The drafts give
   it 4–7 goals.
 - **Ōkatia** first appears in the 342–314 ka interglacial: the river has taken shape and tōtara forest
@@ -474,10 +515,10 @@ Draft lines from the existing research, for you to edit:
 ## 4. Suggested goals (⏸ drafts)
 
 > **2026-10-19: twelve of the drafts below are now live** (§2.1), the ones whose fact is on the
-> answer's card. **Five stay drafts** because no card says it yet: *no wings at all* (moa), *owl-like
-> hearing* and *harrier scrub* (harrier), *blue wattles* (kōkako) and *nostrils at the beak tip*
-> (kiwi). Add the line to the card's bird section, then delete `off: true`. The tables below are the
-> original proposal, kept for the reasoning.
+> answer's card. *No wings at all* (moa) and *blue wattles* (kōkako) followed on 2026-11-06. **Three
+> stay drafts** because no card says it yet: *owl-like hearing* and *harrier scrub* (harrier) and
+> *nostrils at the beak tip* (kiwi). Add the line to the card's bird section, then delete `off: true`.
+> The tables below are the original proposal, kept for the reasoning.
 
 Seventeen goals, wired with `off: true` so the harness already checks their answers, macrons and
 line lengths. Delete `off: true` to switch one on. They lean on **things the sim really does** (so the

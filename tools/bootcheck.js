@@ -1383,6 +1383,9 @@ try{
   const d0=DT.dialStep; G.handleKey(DT.DIAL_KEYS.faster[0]);
   chk(DT.dialStep===Math.min(DT.dialSteps,d0+1), 'locked: the time dial still works');
   DT.dialSet(d0);
+  { const TBh=vm.runInContext('TMBus',ctx), h0=TBh.hint; let hinted=0; TBh.hint=()=>{ hinted++; };
+    G.handleKey('h'); G.handleKey('H'); TBh.hint=h0;
+    chk(hinted===2, `locked: 'h' / 'H' (the hint) still works (${hinted})`); }
   K.devMode=true; G.handleKey('d'); G.handleKeyUp('d');          // a tap: the gallery replays it to Debug on key-up
   chk(DB.mode!==mode0, "with ?dev 'd' cycles the debug overlay");
   DB.mode=mode0;
@@ -1466,7 +1469,7 @@ try{
   K.devMode=true; K.lastInputAt=Date.now(); K.lastHeartbeat=Date.now();
   for(let i=_errors.length-1;i>=errs0;i--) if(/\[Kiosk\]|location\.reload called|\[Palaeo\]/.test(_errors[i])) _errors.splice(i,1);
   console.log(fail? `kiosk hardening: ${fail} FAILURES`
-    : "kiosk hardening: keys locked to 1–5 + the dial off ?dev (blocked keys are presence); 03:00 reloads once, never from its own boot; a draw() error is recovered and the loop survives, a storm hard-reloads, ?dev still throws; a recovery aborts the attract; audio off loads nothing; the console logs, bursts reload, 03:00 once");
+    : "kiosk hardening: keys locked to 1–5, H + the dial off ?dev (blocked keys are presence); 03:00 reloads once, never from its own boot; a draw() error is recovered and the loop survives, a storm hard-reloads, ?dev still throws; a recovery aborts the attract; audio off loads nothing; the console logs, bursts reload, 03:00 once");
 }catch(e){ console.log('KIOSK FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- eruption aftermath: the ash covers one boost/goal cycle (DeepTime.AFTERMATH) ----------------
@@ -1731,7 +1734,7 @@ try{
 
   // (e2) the dial: forward, paused, reverse; the sea's breath gated on the rate; the window never reads it
   const CLm=vm.runInContext('Climate',ctx);
-  chk(P.begin(G,'manual'), 'begin() for the dial check');
+  chk(P.begin(G,'idle'), 'begin() for the dial check (a wall run: the holds and the landing stay its own)');
   let fd=0; while (P.state!=='play' && fd<3000) { FRAME(ctx.draw); fd++; }
   for (let i=0;i<150;i++) FRAME(ctx.draw);
   const yF=P.yearsBP; chk(P.rateMult()===1 && yF<4000000, `the sequence opens forward at ×1 (${P.speedLabel()})`);
@@ -1750,11 +1753,61 @@ try{
   P.skip(); let fe=0; while (P.state!=='idle' && fe<30000) { FRAME(ctx.draw); fe++; }
   chk(P.state==='idle' && CLm.PRE_WINDOW_SEA.scale===0, 'the dial-driven sequence lands and leaves the sea scale at 0');
 
-  // (f) the paths
-  K.lastInputAt=0; K.tick(); chk(P.state==='dipIn', 'the idle tick starts the sequence');
-  P._abort('harness'); G._palaeo=null;
-  G._ashCloudUntil=0;   // (e2)'s landing eruption left its cloud up; an idle stage is refused under a live cover, by design
-  TMP.enabled=false; K.lastInputAt=0; G._tmAttractErAt=0; K.tick(); chk(!!G._tmAttractErAt && P.state==='idle', 'with the sequence off, idle stages the eruption instead'); G._tmAttractErAt=0; TMP.enabled=true;
+  // (e3) the warp: in a P run the wheel drives the clock through the REAL handler, never skips, never
+  // reaches DeepTime's dial, parks at 1 Ma instead of landing, and goes back; only a key lands it.
+  const Kf=TMP.keyframes, yOld=Kf[0][0], yEnd=Kf[Kf.length-1][0];
+  for (let i=0;i<400;i++) FRAME(ctx.draw);                   // the last landing's cloud clears
+  chk(P.begin(G,'manual'), 'begin() for the warp check (a P run)');
+  let fw=0; while (P.state!=='play' && fw<3000) { FRAME(ctx.draw); fw++; }
+  chk(P._holdLeft>0 && !P._warp, 'a P run left alone keeps its holds');
+  const dtStep0=DT.dialStep, dtYear0=DT.yearsBP, runsW=P.runs;
+  const wret=ctx.mouseWheel({ deltaY:-100 });
+  chk(wret===false && P.dialStep===TMP.dialStart+1 && P._warp && !P._skipping && DT.dialStep===dtStep0, 'a wheel tick turns the sequence dial: no skip, DeepTime\'s dial untouched');
+  FRAME(ctx.draw);
+  chk(P._holdLeft===0 && P.yearsBP<yOld, `the warp drops the hold and the clock moves (${Math.round(P.yearsBP/1000)} ka)`);
+  ctx.mouseWheel({ deltaY:-1000 }); chk(P.rateMult()===TMP.dialSpeeds[TMP.dialSpeeds.length-1], 'the wheel reaches the top speed');
+  let fw2=0; while (P.yearsBP!==yEnd && fw2<20000) { FRAME(ctx.draw); fw2++; }
+  for (let i=0;i<900;i++) FRAME(ctx.draw);
+  chk(P.active && P.state==='play' && P.yearsBP===yEnd && P.runs===runsW, 'warped forward to the end, it parks at 1 Ma and does not land');
+  chk(P._bakedYear===yEnd && P._bakedAll, 'the parked land is the landing bake (all four buffers)');
+  chk(P.speedLabel()==='any key lands', `the caption says how to leave (${P.speedLabel()})`);
+  chk(DT.dialStep===dtStep0 && DT.yearsBP===dtYear0, 'the sim\'s clock and dial never moved');
+  ctx.mouseWheel({ deltaY:900 }); chk(P.rateMult()<0, `the wheel reverses off the end (${P.speedLabel()})`);
+  let fw3=0; while (P.yearsBP<1300000 && fw3<20000) { FRAME(ctx.draw); fw3++; }
+  chk(P.yearsBP>=1300000 && P.state==='play', `reverse leaves 1 Ma (${Math.round(P.yearsBP/1000)} ka)`);
+  const yBack=P.yearsBP; P.dialSet(3); FRAME(ctx.draw);
+  chk(P.state==='play' && P.yearsBP<yBack && yBack-P.yearsBP<100000, `forward again carries on from there (${Math.round(yBack/1000)} → ${Math.round(P.yearsBP/1000)} ka), no snap to 1 Ma`);
+  P.dialSet(-6); let fw4=0; while (P.yearsBP!==yOld && fw4<20000) { FRAME(ctx.draw); fw4++; }
+  for (let i=0;i<300;i++) FRAME(ctx.draw);
+  chk(P.yearsBP===yOld && P._leg===0 && P.state==='play', 'reversed to the start, it parks at 4 Ma');
+  P.dialSet(6); for (let i=0;i<40;i++) FRAME(ctx.draw);
+  const yMid=P.yearsBP;
+  G.handleKey('p');
+  chk(P._skipping && P.active, 'a key mid-warp skips (the same key that started it)');
+  const speedSkip=P.rateMult(); let fw5=0; while (P.state!=='idle' && fw5<30000) { FRAME(ctx.draw); fw5++; }
+  chk(speedSkip===TMP.skipMult && P.state==='idle' && P.runs===runsW+1 && yMid<yOld, 'the key lands the warped run');
+  chk(Math.round(DT.yearsBP)===yEnd && T._morphCuts===cuts0 && DT.dialStep===dtStep0, 'the warped run lands at 1 Ma, no cut, DeepTime\'s dial still where it was');
+  for (let i=0;i<400;i++) FRAME(ctx.draw);
+  // … and on the wall the dial never parks it, and a turn back and forward never snaps to the landing.
+  const runsWall=P.runs;
+  chk(P.begin(G,'idle'), 'begin() for the wall dial check');
+  fw=0; while (P.state!=='play' && fw<3000) { FRAME(ctx.draw); fw++; }
+  P.dialSet(3); chk(!P._warp, 'a wall run never warps');
+  const keepClock={ leg:P._leg, y:P.yearsBP };
+  P._leg=Kf.length-1; P.yearsBP=yEnd+200000; P._holdLeft=0; P._holdPending=false;
+  P._advanceClock(P._now(), 1/60);
+  chk(P.state==='play' && P.yearsBP>yEnd+100000, `a wall run turned back off 1 Ma and forward again carries on (${Math.round(P.yearsBP/1000)} ka), no snap into the landing`);
+  P._leg=keepClock.leg; P.yearsBP=keepClock.y;
+  P.dialSet(6); let fw6=0; while (P.state!=='idle' && fw6<30000) { FRAME(ctx.draw); fw6++; }
+  chk(P.state==='idle' && P.runs===runsWall+1, 'a wall run at the top of the dial lands by itself');
+
+  // (f) the paths. Since 2026-11-08 the sequence is OFF the wall (the dev P key only): the idle tick
+  // enters the attract (TeManawa_attract.js, its own section), and with that off it stages the eruption.
+  { const AT=vm.runInContext('Attract',ctx), TA=vm.runInContext('TM_ATTRACT',ctx);
+    G._ashCloudUntil=0;   // (e2)'s landing eruption left its cloud up; an idle stage is refused under a live cover, by design
+    K.lastInputAt=0; K.tick(); chk(P.state==='idle' && AT.mode==='enter', 'the idle tick enters the attract, never the sequence');
+    AT._stop(); AT.mode='off';
+    TA.enabled=false; K.lastInputAt=0; G._tmAttractErAt=0; K.tick(); chk(!!G._tmAttractErAt && P.state==='idle', 'with the attract off, idle stages the eruption instead'); G._tmAttractErAt=0; TA.enabled=true; }
   const rc=K.resetCount; K.recover(); chk(P.state==='idle' && K.resetCount===rc+1, 'error recovery is the synchronous reset, never the sequence');
   chk(P.begin(G,'manual'), 'begin() for the bus check');
   for (let i=0;i<50;i++) FRAME(ctx.draw);
@@ -1899,22 +1952,26 @@ const g=vm.runInContext('game',ctx);
   DT.endTimelapse();
 
   // end of window hands off rather than stalling (a timelapse — or a deep burst — can reach it).
-  // With the attract sequence on (TeManawa_palaeo.js) the hand-off is Palaeo.begin('end-of-window'),
-  // which lands on the reset ~a minute later (its own section runs one through); off, it is the
-  // bare resetToAttract. Both cues are asserted here; the sequence is aborted so the clock-only
-  // sections after this one see a live sim, not a parked one.
+  // The hand-off is the OUTRO (TeManawa_attract.js, 2026-11-08), which lands on the attract a little
+  // later (its own section runs one through); with it off, the bare resetToAttract. The deep-time
+  // sequence (TeManawa_palaeo.js) is off the wall's path and must NOT begin. Both cues are asserted;
+  // the outro is stood down so the clock-only sections after this one see a live sim.
   DT.reset(); DT.yearsBP=DT.yearsEnd; DT.update(1);
   chk(DT.hasEnded(),'hasEnded() must fire at the end of the window');
-  const PAL=vm.runInContext('Palaeo',ctx), TMPAL=vm.runInContext('TM_PALAEO',ctx);
+  const PAL=vm.runInContext('Palaeo',ctx), AT=vm.runInContext('Attract',ctx), TMAT=vm.runInContext('TM_ATTRACT',ctx);
+  // a jump straight to the end is no crossing (an eruption on the way would make the outro wait for it;
+  // the attract section plays that case through)
+  G._autoPrevYear=DT.yearsEnd; G._tmAutoErAt=0; G._tmAutoErupt=null; G._ashCloudUntil=0; G._tmAshUntil=0;
   DT.yearsBP=DT.yearsEnd; G.update(1);
-  chk(PAL.active && PAL.reason==='end-of-window','end of window must begin the attract sequence (the land before the window)');
-  PAL._abort('harness'); DT.reset();
-  TMPAL.enabled=false;
+  chk(AT.mode==='outro' && AT.reason==='end-of-window','end of window must begin the outro');
+  chk(!PAL.active,'…and never the deep-time sequence, which is off the wall');
+  AT._stop(); DT.reset();
+  TMAT.enabled=false;
   DT.yearsBP=DT.yearsEnd; DT.update(1);
   const before=vm.runInContext('Kiosk',ctx).resetCount;
   DT.yearsBP=DT.yearsEnd; G.update(1);
-  chk(vm.runInContext('Kiosk',ctx).resetCount>before,'with the sequence off, end of window must trigger the attract reset');
-  TMPAL.enabled=true;
+  chk(vm.runInContext('Kiosk',ctx).resetCount>before,'with the outro off, end of window must trigger the attract reset');
+  TMAT.enabled=true;
   DT.reset();
 
   console.log(fail? `deep time: ${fail} FAILURES` : 'deep time: all checks pass'
@@ -2432,13 +2489,16 @@ try{
   s=fresh(); for(let i=0;i<30;i++) storm(M.healthStormCalmS+1);
   chk(s.ecoHealth<=CAP+1e-9, `…and one at a time with a calm between, never past the cap (${reader(s)})`);
 
-  // 6. An eruption takes it down a little, from any level, on every path.
-  const er=DT.ERUPTIONS[1];
+  // 6. An eruption takes its TIER's dip (how hard it hit the lower North Island), from any level, never
+  //    under healthEruptionFloor on its own. The full sweep (every eruption, every path) is "eruption severity".
+  const er=DT.ERUPTIONS[1], erDip=(e)=>M.healthEruptionDipByTier[e.tier];
   for(const from of [M.healthStart, 1]){
     s=fresh(from); G._fireEruptionInPlace(er);
-    chk(near(from-s.ecoHealth,M.healthEruptionDip), `from ${from}: an eruption in place takes it down a little (${reader(s)})`);
+    chk(near(from-s.ecoHealth,erDip(er)), `from ${from}: an eruption in place takes its tier's dip (${er.tier}: ${reader(s)})`);
   }
-  chk(M.healthEruptionDip<(1-M.healthPoor)/M.healthStepsToPoor/2, 'a little: under half of what a wrong goal costs from full');
+  { const D=M.healthEruptionDipByTier;
+    chk(D.minor<D.major && D.major<D.catastrophic, `the dip follows the severity (${D.minor} < ${D.major} < ${D.catastrophic})`);
+    chk(D.catastrophic<(1-M.healthPoor)/M.healthStepsToPoor, 'the worst eruption still costs less than one wrong goal from full'); }
 
   // 7. The eruption puts its goal up; answering it counts double, in everything an answer earns.
   s=fresh(null,[gHara, gErupt]); TG._rand=()=>0;
@@ -2549,7 +2609,7 @@ try{
   //     or a visitor's eruption erases what they have done. The two ways a new visitor starts must not.
   s=fresh(0.9); G.applyEruptionAt(er.yearsBP, er);
   chk(G.simulation!==s, 'the eruption button rebuilds the living world (a new Simulation)');
-  chk(near(G.simulation.ecoHealth,0.9-M.healthEruptionDip), `…and the land's health survives it, less the dip (${f2(G.simulation.ecoHealth)})`);
+  chk(near(G.simulation.ecoHealth,0.9-erDip(er)), `…and the land's health survives it, less the dip (${f2(G.simulation.ecoHealth)})`);
   s=fresh(0.9); K.landAttract(G,'bootcheck');
   chk(G.simulation.ecoHealth===M.healthStart, 'the attract landing is a new visitor: back to the start');
   s=fresh(0.9); K.resetToAttract(G,'error',{ reseed:false });
@@ -2557,8 +2617,343 @@ try{
   } finally { TGL.list=realBook; TG._rand=realRand; TG.reset(); DT.reset(); G._boostHi=null; G._tmStormUntil=0; G._stormOveruse=false; G._stormPressure=0; G._ashCover=0; G._ashCloudUntil=0;
               G.terrain.morphTo(DT.yearsStart,1); G._bakedYearsBP=DT.yearsStart; G.resetEcosystem(); }
   console.log(fail? `health ledger: ${fail} FAILURES`
-    : 'health ledger: from any level, four right answers fill it (the readouts light green/blue) and four wrong goals or five storms leave it poor; only an answer passes 75 %, a right-climate boost above it slips back; a first storm improves it; an eruption takes a little and its goal counts double; birds, plants and the ground follow the bar');
+    : 'health ledger: from any level, four right answers fill it (the readouts light green/blue) and four wrong goals or five storms leave it poor; only an answer passes 75 %, a right-climate boost above it slips back; a first storm improves it; an eruption takes its tier\'s dip and its goal counts double; birds, plants and the ground follow the bar');
 }catch(e){ console.log('HEALTH LEDGER FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- the climate's turnover: a healthy glacial is open country, not a forest the ledger kept -----
+// The report (2026-11-08): with the health high, too many warm trees lived on into the glacials. The
+// podocarp habitat (0.30–0.40) sits inside the glacial forest band, so nothing ever took its tawa,
+// Tōtara and tree ferns, and a high ledger only raised its target. Now a habitat turns over to its
+// glacialPlantTypes in the cold (Simulation._homeoTurnover): the warm trees go down to a refugial
+// remnant, the highest first, the cold cover (tussock, scrub, beech) replaces them, and it reverses in
+// the interglacial. Health raises the palette's stock either way. Staged at an interglacial and a deep
+// glacial date on the harness land, through the real census.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), CL=vm.runInContext('Climate',ctx),
+        M=vm.runInContext('LEVEL_MECHANICS',ctx), PT=vm.runInContext('PLANT_TYPES',ctx),
+        SP=vm.runInContext('SPRITE_PLANTS',ctx), GR=vm.runInContext('TM_GROW',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const warm=(t)=>(PT[t].coldTolerance??0.5)<=GR.warmMax;
+  // the palettes are real: plants with art, none warm, and the modifier habitat exists
+  const biomes=G.terrain.biomeArray, forest=[];
+  for(const b of biomes){
+    if(!b || !b.glacialPlantTypes) continue;
+    for(const t of b.glacialPlantTypes){
+      chk(!!PT[t], `${b.key}: glacial palette plant ${t} is a PLANT_TYPE`);
+      chk(PT[t] && !warm(t), `${b.key}: ${t} is not a warm plant`);
+      chk(SP.has(t), `${b.key}: ${t} has sprite art`);
+    }
+    chk(!b.glacialModifierAs || biomes.some(x=>x && x.key===b.glacialModifierAs), `${b.key}: glacialModifierAs ${b.glacialModifierAs} is a habitat`);
+    if(b.plantTypes.some(t=>warm(t) && !PT[t].disturbanceRecruit)) forest.push(b.key);
+  }
+  chk(forest.indexOf('podocarp')>=0 && forest.indexOf('montane')>=0, `the forest habitats declare a glacial palette (${forest.join(', ')})`);
+  let glacialYr=null; for(let y=200000;y>40000;y-=1000){ if(CL.glacialIndexAt(y)>=0.85){ glacialYr=y; break; } }
+  const interYr=122000;
+  chk(glacialYr && CL.glacialIndexAt(interYr)<0.3, `staged dates: interglacial ${interYr}, glacial ${glacialYr}`);
+  const seat=(y)=>{ DT.seekTo(y); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP; };
+  const step=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(1); G.simulation.update(1,1); } };
+  const tally=(sim,k)=>{ let n=0, warmUp=0, cold=0, kahi=0;
+    for(const p of sim.plants){ if(p.biomeKey!==k || p._senescent || p._fallKind==='thin') continue; n++;
+      if(PT[p.type].disturbanceRecruit){ if(p.alive) kahi++; continue; }
+      if(warm(p.type)){ if(p.alive && p.growth>0.05) warmUp++; } else cold++; }
+    return { n, warmUp, cold, kahi, base:(sim._homeo.dens[k]||0)*(sim._homeo.cells[k]||0), target:sim.homeoTarget(k)||0 }; };
+  const res={};
+  try{
+    for(const h of [M.healthStart, 1]){
+      seat(interYr); G.resetEcosystem(); seat(interYr); let sim=G.simulation; sim._healthSet(h); step(60*10);
+      const I=tally(sim,'podocarp');
+      chk(I.warmUp>I.n*0.5, `h ${h}, interglacial: the podocarp habitat is forest (${I.warmUp} of ${I.n} warm trees standing)`);
+      seat(glacialYr); step(60*35);
+      const P=tally(sim,'podocarp'), Mo=tally(sim,'montane'), keep=M.turnoverRefuge.atTurn;
+      // the remnant is the warm trees AND the podocarp's kahikatea together: it goes with the forest
+      chk(P.warmUp+P.kahi<=Math.ceil(P.base*keep)+2, `h ${h}, glacial: the warm trees keep only their refugia (podocarp ${I.warmUp}+${I.kahi} → ${P.warmUp}+${P.kahi} kahikatea, remnant ≤ ${Math.ceil(P.base*keep)})`);
+      chk(Mo.warmUp<=Math.ceil(Mo.base*keep)+2, `h ${h}, glacial: …on the hills too (montane ${Mo.warmUp} standing)`);
+      chk(P.cold>=P.target*0.75, `h ${h}, glacial: the cold cover replaced them (${P.cold} cold plants, target ${Math.round(P.target)})`);
+      // the cold cover on old forest ground reads the open country's modifier: it is not wilting
+      let wilt=0, tus=0; for(const p of sim.plants){ if(p.biomeKey!=='montane' || p.type!=='tussock' || !p.alive || p._senescent) continue; tus++; if(p.effectiveModifier<0.5) wilt++; }
+      chk(tus>0 && wilt===0, `h ${h}, glacial: tussock on the hills thrives on the subalpine modifier (${wilt} of ${tus} wilting)`);
+      res[h]={ cold:P.cold+Mo.cold, warm:P.warmUp+Mo.warmUp };
+      seat(interYr); step(60*40);
+      const B=tally(sim,'podocarp');
+      chk(B.warmUp>B.n*0.5, `h ${h}, back to the interglacial: the forest returns (${B.warmUp} of ${B.n} warm)`);
+    }
+    chk(res[1].cold>res[M.healthStart].cold*1.15, `a healthy glacial is lusher open country (${res[1].cold} vs ${res[M.healthStart].cold} cold plants on the forest habitats)`);
+    chk(res[1].warm<=res[M.healthStart].warm+3, `…and keeps no more warm trees than a new visitor's (${res[1].warm} vs ${res[M.healthStart].warm})`);
+    // a world built in the cold opens on its cold cover
+    seat(glacialYr); G.resetEcosystem(); seat(glacialYr);
+    { const P=tally(G.simulation,'podocarp'); chk(P.warmUp===0 && P.n>0, `a land built in a glacial spawns no warm podocarp trees (${P.warmUp} of ${P.n})`); }
+  } finally { DT.reset(); G.resetEcosystem(); }
+  console.log(fail? `glacial turnover: ${fail} FAILURES`
+    : 'glacial turnover: the forest habitats turn over to tussock, scrub and beech in the cold (warm trees to their low refugia, kahikatea too) and back in the interglacial; a healthy glacial is denser open country, not more forest');
+}catch(e){ console.log('GLACIAL TURNOVER FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- eruption severity: by tier, and the same on every path ---------------------------------------
+// The report (2026-11-08): eruptions were inconsistent, little effect one time and a great loss the
+// next. The dip was flat, but the BUTTON's rebuild re-founded the birds and dropped every banked lift,
+// while one off the timeline kept them. Now the dip and the lift lost follow the tier (how hard it hit
+// the lower North Island), an eruption alone never takes the land under healthEruptionFloor, and the
+// rebuild carries the land across (Simulation.carryState/restoreCarry).
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), M=vm.runInContext('LEVEL_MECHANICS',ctx),
+        K=vm.runInContext('Kiosk',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const near=(a,b,e=1e-6)=>Math.abs(a-b)<=e, f2=(v)=>v.toFixed(3);
+  const D=M.healthEruptionDipByTier, L=M.healthEruptionLiftByTier, FL=M.healthEruptionFloor;
+  const seat=(y)=>{ DT.seekTo(y); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null; };
+  const fresh=(y,h)=>{ seat(y); G.resetEcosystem(); seat(y); const s=G.simulation; s._healthSet(h); ctx.__tick(1); s.update(1,1); return s; };
+  try{
+    chk(FL>vm.runInContext('TM_MILESTONE.warnAt',ctx), `the eruption floor (${FL}) sits above the milestone warning`);
+    for(const er of DT.ERUPTIONS){
+      const s=fresh(er.yearsBP, 1); G._fireEruptionInPlace(er);
+      chk(near(1-s.ecoHealth, D[er.tier]), `${er.name} (${er.tier}): −${D[er.tier]} from full (${f2(s.ecoHealth)})`);
+      const s2=fresh(er.yearsBP, FL+0.01); G._fireEruptionInPlace(er);
+      chk(near(s2.ecoHealth, Math.max(FL, FL+0.01-D[er.tier])), `${er.name}: never under the floor on its own (${f2(s2.ecoHealth)})`);
+      const s3=fresh(er.yearsBP, FL-0.05); G._fireEruptionInPlace(er);
+      chk(near(s3.ecoHealth, FL-0.05), `${er.name}: a land already under the floor takes nothing (${f2(s3.ecoHealth)})`);
+      const s4=fresh(er.yearsBP, 0.8); const k=Object.keys(s4._homeo.dens)[0]; s4._homeo.lift[k]=3;
+      G._fireEruptionInPlace(er);
+      chk((s4._homeo.lift[k]||0)===Math.max(0,3-L[er.tier]), `${er.name}: takes ${L[er.tier]} lift step(s) (${k}: 3 → ${s4._homeo.lift[k]||0})`);
+    }
+    // the button against the timeline, on the same staged land: the same health, the lifts carried, the birds kept
+    const er=DT.ERUPTIONS[0];
+    const stage=()=>{ const s=fresh(er.yearsBP, 0.9); for(const k in s._homeo.dens) s._homeo.lift[k]=2; s._fauna && (s._fauna.timer=Infinity);
+      for(let i=0;i<60*20;i++){ ctx.__tick(1); s.update(1,1); } return s; };
+    let s=stage(); const birds0=s._fauna.keys.reduce((a,k)=>a+s._faunaCount(k),0);
+    G._fireEruptionInPlace(er); for(let i=0;i<3;i++){ ctx.__tick(1); s.update(1,1); }
+    const inPlace={ h:s.ecoHealth, birds:s._fauna.keys.reduce((a,k)=>a+s._faunaCount(k),0), lift:JSON.stringify(s._homeo.lift) };
+    s=stage(); const old=s;
+    G.applyEruptionAt(er.yearsBP, er); s=G.simulation; for(let i=0;i<3;i++){ ctx.__tick(1); s.update(1,1); }
+    const button={ h:s.ecoHealth, birds:s._fauna.keys.reduce((a,k)=>a+s._faunaCount(k),0), lift:JSON.stringify(s._homeo.lift) };
+    chk(s!==old && near(button.h,inPlace.h), `the button and the timeline cost the same health (${f2(button.h)} vs ${f2(inPlace.h)})`);
+    chk(button.lift===inPlace.lift, `…the same banked lift (${button.lift} vs ${inPlace.lift})`);
+    chk(button.birds>=inPlace.birds*0.85, `…and the button no longer re-founds the birds (${button.birds} vs ${inPlace.birds} in place, ${birds0} before)`);
+    // a new visitor carries nothing across, though it lands through an eruption
+    stage(); K.resetToAttract(G,'error',{ reseed:false });
+    s=G.simulation; ctx.__tick(1); s.update(1,1);
+    chk(s.ecoHealth===M.healthStart && Object.keys(s._homeo.lift).length===0, `an error recovery is a fresh land (${f2(s.ecoHealth)}, lift ${JSON.stringify(s._homeo.lift)})`);
+  } finally { DT.reset(); G._ashCover=0; G._ashCloudUntil=0; G._tmAshUntil=0; G.terrain.morphTo(DT.yearsStart,1); G._bakedYearsBP=DT.yearsStart; G.resetEcosystem(); }
+  console.log(fail? `eruption severity: ${fail} FAILURES`
+    : `eruption severity: by tier (${D.minor} / ${D.major} / ${D.catastrophic}, lift ${L.minor}/${L.major}/${L.catastrophic}), never under ${FL} on its own; the button's rebuild carries the land, so it costs what the timeline's does`);
+}catch(e){ console.log('ERUPTION SEVERITY FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- the health milestones: full fades to white onto the thriving land, 25 % to black --------------
+// The design (2026-11-08): full health fades the wall to white and back, every piece of UI gone, the
+// land playing in real time for 15 s with a congratulations and the count of each bird kind, fading in
+// and out; at 25 % the same through black onto a desaturated land, with a warning. Driven through
+// Game.update / draw() and the real input seams.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), MS=vm.runInContext('Milestone',ctx),
+        T=vm.runInContext('TM_MILESTONE',ctx), TB=vm.runInContext('TMBus',ctx), K=vm.runInContext('Kiosk',ctx),
+        M=vm.runInContext('LEVEL_MECHANICS',ctx), H=vm.runInContext('HEALTH',ctx), TG=vm.runInContext('TMGoals',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const t=()=>vm.runInContext('millis()',ctx), FR=16;
+  const quiet=()=>{ DT.endTimelapse(); DT.dialSet(0); DT._dialRate=0; DT._deepUntil=0; G._ashCloudUntil=0; G._tmAshUntil=0;
+    G._tmStormUntil=0; G._tmErDownAt=0; G._tmAutoErAt=0; G._tmAttractErAt=0; K._fadeUntil=0; G._ashCover=0; };
+  const stage=(h)=>{ MS._stop(); MS._state='idle'; MS._pendingKind=null;
+    DT.seekTo(122000); G.resetEcosystem(); DT.seekTo(122000); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP; quiet();
+    ctx.__tick(1); G.update(1); G.simulation._healthSet(h); return G.simulation; };
+  const frame=(n=1,draw=false)=>{ for(let i=0;i<n;i++){ if(draw) FRAME(ctx.draw); else { ctx.__tick(1); G.update(1); } } };
+  const untilState=(st,max=3000)=>{ let n=0; while(MS._state!==st && n<max){ frame(1); n++; } return n; };
+  try{
+    // 1. full: queued at once, waits for the bar's ease, and for a boost's time-lapse to land
+    let s=stage(1); frame(1);
+    chk(MS._state==='pending' && s.milestones.full===false, 'full health queues the full beat');
+    DT.beginTimelapse(DT.yearsBP-20000);
+    frame(Math.ceil(T.settleMs/FR)+20);
+    chk(MS._state==='pending', 'it waits while a boost\'s time-lapse plays');
+    DT.endTimelapse(); quiet();
+    const waited=untilState('in');
+    chk(MS._state==='in' && MS.kind==='thriving', `…and starts when the land is at rest (${waited} frames)`);
+    // 2. the veil: white, up over ≥ 500 ms, smooth
+    chk(T.thriving.veil.join()==='255,255,255' && T.warning.veil.join()==='0,0,0', 'white for full, black for the warning');
+    let up=0, maxStep=0, last=MS.veilAlpha(), uiRise=1;
+    while(MS.veilAlpha()<1 && up<400){ uiRise=Math.min(uiRise,MS.uiAlpha()); frame(1, up%15===0); const v=MS.veilAlpha(); maxStep=Math.max(maxStep,v-last); last=v; up++; }
+    chk(up*FR>=500, `the white rises over ≥ 500 ms (${up*FR} ms)`);
+    chk(maxStep<=0.05, `…with no jump in it (${maxStep.toFixed(3)} a frame at most)`);
+    chk(uiRise===1, 'the UI goes under the rising veil with the land, not before it');
+    // 3. under the white the land is staged: the clock held, grown to its targets, the UI gone
+    untilState('show');
+    s=G.simulation;
+    chk(DT.held && MS.uiAlpha()===0, 'under the white: the clock held and every piece of UI gone');
+    // (a few frames have passed since the settle: grazers have pruned a few, a kererū may have dropped a seed)
+    let ungrown=0, standing=0; for(const p of s.plants){ if(!p.alive || p._senescent || p._toppling || p.suppressed) continue;
+      const b=s._biomeByKey(p.biomeKey); if(!b || !s._inPalette(b,p.type,s._homeoGlacial())) continue; standing++; if(p.growth<0.7) ungrown++; }
+    chk(ungrown<=Math.max(8, standing*0.03), `the thriving land is grown in (${ungrown} of ${standing} plants still small)`);
+    let short=0; for(const k in s._homeo.dens){ const tg=s.homeoTarget(k); if(tg>=10 && (s._homeo.count[k]||0)<tg-s._homeoDeadband(tg)-1) short++; }
+    chk(short<=1, `…every habitat at its target, a thin corridor allowing (${short} short)`);
+    const F=s._fauna; let bShort=0; for(const k of F.keys) if(s._faunaCount(k)<F.targets[k]) bShort++;
+    chk(bShort<=2, `…and every bird kind at its target (${bShort} short, the caps allowing)`);
+    // 4. the card: every kind the census tracks, named for a visitor, counted off the land
+    chk(!!MS._card && MS.counts && MS.counts.length===F.keys.length, `the card counts every bird kind (${MS.counts&&MS.counts.length} of ${F.keys.length})`);
+    chk(MS.counts.every(r=>Math.abs(r.n-s._faunaCount(r.key))<=1), 'the counts are the land\'s (snapshot under the white)');
+    chk(MS.counts.some(r=>r.name==='Kererū') && MS.counts.some(r=>r.name==='Tūī'), 'the names carry their macrons');
+    // 5. the land plays in real time: no geology whatever the dial says, life at 1×, input is presence only
+    const yr=DT.yearsBP, h0=s.ecoHealth, boosts=DT.boostsOk; DT.dialSet(20);
+    frame(60);
+    chk(DT.yearsBP===yr && DT.timeScale===1, `the clock stands still under the dial (${yr} → ${DT.yearsBP}), life at 1×`);
+    DT.dialSet(0); DT._dialRate=0;
+    TB.dispatch({ type:'boost', plantKey:'tawa' }); TB.dispatch({ type:'storm' }); G.handleKey('4'); G.handleKey(']'); G.handleClick(960,540);
+    chk(s.ecoHealth===h0 && DT.boostsOk===boosts && !DT.isTimelapsing() && !(G._tmStormUntil>t()) && DT.dialStep===0,
+        'while it plays a boost, a storm, a key or a touch changes nothing (presence only)');
+    // 6. the show: 15 s from the veil's fall to the UI's return; the card fades in, then out before the end
+    const marks=MS._marks(), showStart=MS._t0+marks.show;
+    let cardMax=0; let cardInAt=null;
+    while(MS._state==='show'){ frame(1, (t()%400)<FR); const a=MS.cardAlpha(); cardMax=Math.max(cardMax,a); if(cardInAt===null && a>0) cardInAt=t()-showStart; }
+    const shown=t()-showStart;
+    chk(Math.abs(shown-T.showMs)<=2*FR, `the land plays with no UI for ${T.showMs} ms (${shown} ms)`);
+    chk(cardMax>0.99 && cardInAt>=T.fadeOutMs*0.5, `the card fades in once the veil is mostly down (at ${cardInAt} ms), all the way`);
+    chk(MS.cardAlpha()===0, '…and is gone again before the UI returns');
+    frame(Math.ceil(T.endMs/FR)+2);
+    chk(MS._state==='idle' && !DT.held && MS.uiAlpha()===1 && MS._card===null, 'then the UI fades back, the clock is free and the card is freed');
+    // 7. once per climb: a slip and back does not replay it; falling to the cap and back does
+    frame(200); chk(MS._state==='idle', 'full again does not replay it');
+    s._healthSet(0.94); frame(5); s._healthSet(1); frame(5);
+    chk(MS._state==='idle', 'a slip and back to full: not again');
+    s._healthSet(T.rearmFullBelow); frame(5); s._healthSet(1); frame(5);
+    chk(MS._state==='pending', 'back down to the cap and up to full again: it plays again');
+    MS._stop(); MS._state='idle'; MS._pendingKind=null;
+    // 8. the warning: black, onto a desaturated land, and the colour back after
+    s=stage(T.warnAt-0.05); frame(1);
+    chk(MS._state==='pending', 'at 25 % the warning queues');
+    untilState('show');
+    chk(MS.kind==='warning' && MS.satCap()<=T.warnSat+1e-6, `the warning's land is desaturated (cap ${MS.satCap().toFixed(2)})`);
+    frame(90);
+    chk(G._sceneSat<=T.warnSat+0.02, `…the ground follows, on the slew cap (${G._sceneSat.toFixed(2)})`);
+    chk(MS._card && MS.counts.length>0, 'the warning carries the counts too');
+    untilState('idle', 2000);
+    frame(120);
+    chk(MS.satCap()===1 && G._sceneSat>H.satFloor-0.01, `afterwards the land's colour comes back to the ledger's (${G._sceneSat.toFixed(2)})`);
+    // 9. an eruption alone never brings the warning on; a new visitor starts fresh
+    s=stage(M.healthEruptionFloor+0.01); frame(1);
+    G._fireEruptionInPlace(DT.ERUPTIONS[2]); quiet(); frame(Math.ceil(T.settleMs/FR)+10);
+    chk(MS._state==='idle' && s.ecoHealth>T.warnAt, `the worst eruption alone does not bring on the warning (${s.ecoHealth.toFixed(3)})`);
+    s=stage(1); frame(1); K.landAttract(G,'bootcheck'); frame(Math.ceil(T.settleMs/FR)+10);
+    chk(MS._state==='pending' ? false : (G.simulation.milestones.full && G.simulation.milestones.warn), 'a new visitor\'s land re-arms both beats');
+    // 10. a rebuild under it stands it down
+    s=stage(1); MS.play('thriving'); frame(1); untilState('show');
+    G.resetEcosystem(); frame(2);
+    chk(MS._state==='idle' && !DT.held, 'a rebuild under it (an error recovery) stands it down and frees the clock');
+  } finally { MS._stop(); MS._state='idle'; MS._pendingKind=null; quiet(); DT.reset(); G.resetEcosystem(); }
+  console.log(fail? `health milestones: ${fail} FAILURES`
+    : `health milestones: full fades to white and 25 % to black (≥ 500 ms each way), the land plays ${T.showMs/1000} s in real time with no UI and the bird counts, grown in under the white or desaturated under the black; input is presence only; once per climb; never from an eruption alone`);
+}catch(e){ console.log('HEALTH MILESTONES FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
+
+// ---- the attract, the intro and the outro (TeManawa_attract.js) -----------------------------------------
+// The design (2026-11-08): the deep-time attract sequence is off the wall. Idle, the wall shows the live
+// 1 Ma world with no UI and the clock held; a press fades to black, then the PRESENT-DAY MAP (the sim's
+// own land at 0 BP, lined up with its rivers) with an orientation, crossfades back to the live land, one
+// line fades in and out, then the UI. The end of the window plays an outro over the same map and lands
+// on the attract. Driven through Game.update / draw() and the real input seams.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), AT=vm.runInContext('Attract',ctx),
+        T=vm.runInContext('TM_ATTRACT',ctx), K=vm.runInContext('Kiosk',ctx), TB=vm.runInContext('TMBus',ctx),
+        CL=vm.runInContext('Climate',ctx), PAL=vm.runInContext('Palaeo',ctx), MS=vm.runInContext('Milestone',ctx),
+        M=vm.runInContext('LEVEL_MECHANICS',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const FR=16, frame=(n=1,draw=false)=>{ for(let i=0;i<n;i++){ if(draw) FRAME(ctx.draw); else { ctx.__tick(1); G.update(1); } } };
+  const quiet=()=>{ DT.endTimelapse(); DT.dialSet(0); DT._dialRate=0; DT._deepUntil=0; G._ashCloudUntil=0; G._tmAshUntil=0;
+    G._tmStormUntil=0; G._tmErDownAt=0; G._tmAutoErAt=0; G._tmAttractErAt=0; K._fadeUntil=0; G._ashCover=0; };
+  const until=(pred,max=4000,draw=false)=>{ let n=0; while(!pred() && n<max){ frame(1, draw && n%20===0); n++; } return n; };
+  try{
+    // 0. the curve knows today, without moving the window
+    chk(CL.glacialIndexAt(0)<0.2 && Math.abs(CL.seaLevelAt(0))<=2, `0 BP is an interglacial at today's sea (g ${CL.glacialIndexAt(0)}, ${CL.seaLevelAt(0)} m)`);
+    chk(CL.glacialIndexAt(25500)>0.85 && CL.seaLevelAt(25500)<-115, 'the window\'s end is still the LGM');
+    // 1. a ?dev page boots into play; the wall boots into the attract
+    chk(AT.mode==='off', 'a ?dev page boots into play, not the attract');
+    // 2. the present-day map: the sim's land at 0 BP, and the live land comes back untouched. A sliced
+    //    morph an earlier section left running is finished first (the map does the same), so the copy
+    //    below is of a finished paint, not one half-repainted.
+    const terr=G.terrain;
+    if (terr.morphInProgress) { while (terr.morphInProgress) terr.morphStep(Infinity); G._onMorphComplete(); }
+    const hm0=Float32Array.from(terr.heightMap), bm0=Uint8Array.from(terr.biomeIndexMap), pw0=terr._paintWater ? Uint8Array.from(terr._paintWater) : null;
+    AT._map=null; AT._mapKey=null;
+    chk(AT._ensureMap(G) && !!AT._map, 'the present-day map builds from the sim\'s own land');
+    let dh=0, db=0, dw=0; for(let i=0;i<hm0.length;i++){ if(hm0[i]!==terr.heightMap[i]) dh++; if(bm0[i]!==terr.biomeIndexMap[i]) db++; }
+    if(pw0) for(let i=0;i<pw0.length;i++) if(pw0[i]!==terr._paintWater[i]) dw++;
+    chk(dh===0 && db===0 && dw===0, `…and the live land is exactly as it was (${dh} height, ${db} biome, ${dw} paint-water cells differ)`);
+    chk(Array.isArray(AT.mapLabels) && AT.mapLabels.length>=3, `the map carries names (${(AT.mapLabels||[]).map(p=>p.L.text).join(', ')})`);
+    { const m1=AT._map; chk(AT._ensureMap(G) && AT._map===m1, 'a second ask on the same land reuses the map'); }
+    // 3. the idle timer: the land and the UI go to black, a fresh 1 Ma world comes up with no UI
+    DT.seekTo(400000); G._autoPrevYear=DT.yearsBP; quiet(); G.update(1); G.simulation._healthSet(0.9);
+    const sim0=G.simulation; K.lastInputAt=Date.now()-(K.idleSeconds+5)*1000; K.lastHeartbeat=Date.now(); K.tick();
+    chk(AT.mode==='enter' && !PAL.active, 'the idle timer enters the attract, never the deep-time sequence');
+    let up=0, maxStep=0, last=AT.veilAlpha(), uiLow=1;
+    while(AT._resetAt==null && up<400){ frame(1, up%20===0); const v=AT.veilAlpha(); maxStep=Math.max(maxStep, Math.abs(v-last)); last=v; uiLow=Math.min(uiLow, AT.uiAlpha()); up++; }
+    chk(up*FR>=500, `the dip to black takes ≥ 500 ms (${up*FR} ms)`);
+    chk(maxStep<=0.05, `…with no jump in it (${maxStep.toFixed(3)} a frame at most)`);
+    until(()=>AT.mode==='idle', 400, true);
+    chk(AT.mode==='idle' && G.simulation!==sim0 && DT.yearsBP===DT.yearsStart && G._bakedYearsBP===DT.yearsStart, 'under the black: a fresh world at 1 Ma, on a land baked at 1 Ma');
+    chk(G.simulation.ecoHealth===M.healthStart, 'a new visitor\'s health');
+    chk(AT.uiAlpha()===0 && DT.held, 'the attract: no UI, the clock held');
+    const yr=DT.yearsBP; DT.dialSet(20); frame(120); chk(DT.yearsBP===yr && DT.timeScale===1, 'the attract plays in real time whatever the dial says'); DT.dialSet(0); DT._dialRate=0;
+    G.simulation._healthSet(1); frame(120); chk(MS._state==='idle', 'no health milestone plays under the attract');
+    G.simulation._healthSet(M.healthStart);
+    { const s2=G.simulation; K.lastInputAt=Date.now()-(K.idleSeconds+5)*1000; K.lastHeartbeat=Date.now(); K.tick();
+      chk(AT.mode==='idle' && G.simulation===s2, 'the idle timer does not re-enter an attract that is already up'); K.lastInputAt=Date.now(); }
+    // 4. a press is presence: it breaks the attract and plays the intro, and is no button on the world
+    const h0=G.simulation.ecoHealth, b0=DT.boostsOk;
+    TB.dispatch({ type:'boost', plantKey:'tawa' });
+    chk(AT.mode==='intro' && G.simulation.ecoHealth===h0 && DT.boostsOk===b0 && !DT.isTimelapsing(), 'a console boost breaks the attract into the intro, and boosts nothing');
+    G.handleKey('4'); chk(!(G._tmStormUntil>vm.runInContext('millis()',ctx)), '…nor does a key bring a storm');
+    let sawBlack=false, sawMap=false, sawCard=false, sawLine=false, uiBeforeLine=0, mapStep=0, lm=0;
+    const t0=vm.runInContext('millis()',ctx);
+    while(AT.mode==='intro' && vm.runInContext('millis()',ctx)-t0 < 60000){
+      frame(1, (vm.runInContext('millis()',ctx)%480)<FR);
+      if(AT.veilAlpha()>0.99) sawBlack=true;
+      if(AT.mapAlpha()>0.99) sawMap=true;
+      if(AT.cardAlpha()>0.99) sawCard=true;
+      if(AT.lineAlpha()>0.99) sawLine=true;
+      if(!sawLine) uiBeforeLine=Math.max(uiBeforeLine, AT.uiAlpha());
+      mapStep=Math.max(mapStep, Math.abs(AT.mapAlpha()-lm)); lm=AT.mapAlpha();
+    }
+    const introMs=vm.runInContext('millis()',ctx)-t0;
+    chk(sawBlack && sawMap && sawCard && sawLine, `the intro: black, the map, its card, the line over the land (${[sawBlack,sawMap,sawCard,sawLine].join(' ')})`);
+    chk(uiBeforeLine===0, 'the UI stays off until the line has played');
+    chk(mapStep<=0.05, `the map comes and goes on a fade (${mapStep.toFixed(3)} a frame at most)`);
+    chk(AT.mode==='off' && !DT.held && AT.uiAlpha()===1, `then the UI is back and the clock is the visitor's (${introMs} ms)`);
+    // 5. the map can be skipped once it has been up a while, but not before
+    AT.mode='idle'; AT._idleSince=vm.runInContext('millis()',ctx); AT.onInput(G); AT._mapChecked=true;
+    const mk=AT._introMarks(), natural=AT._mapEnd;
+    frame(Math.ceil((mk.mapUp+200)/FR)); AT.onInput(G);
+    chk(AT._mapEnd===natural, 'a press as the map comes up does not skip it');
+    frame(Math.ceil(T.skipAfterMs/FR)); AT.onInput(G);
+    chk(AT._mapEnd<natural, 'a press once it has been up a while moves on to the land');
+    until(()=>AT.mode==='off', 3000);
+    // 6. the end of the window: the outro over the map, then the attract on a fresh 1 Ma world
+    quiet(); DT.seekTo(DT.yearsEnd+300); G._autoPrevYear=DT.yearsBP; DT.dialSet(30);
+    let erSeen=false;
+    until(()=>{ if(G._tmAutoErAt || (G._ashCloudUntil||0)>vm.runInContext('millis()',ctx)) erSeen=true; return AT.active; }, 1500);
+    DT.dialSet(0); DT._dialRate=0;
+    chk(AT.mode==='outro' && !PAL.active, 'the end of the window plays the outro, not the deep-time sequence');
+    chk(erSeen && !G._tmAutoErAt && !((G._ashCloudUntil||0)>vm.runInContext('millis()',ctx)), 'the terminal eruption plays out before the outro takes the wall');
+    let oMap=false, oCard=false; const sim1=G.simulation;
+    until(()=>{ if(AT.mapAlpha()>0.99) oMap=true; if(AT.cardAlpha()>0.99) oCard=true; return AT.mode==='idle'; }, 3000, true);
+    chk(oMap && oCard, 'the outro shows the map with its card');
+    chk(AT.mode==='idle' && G.simulation!==sim1 && DT.yearsBP===DT.yearsStart && !DT.hasEnded(), 'then the attract, on a fresh world at 1 Ma');
+    // 6b. a press is never lost: on the way down to black, or during the outro, the intro follows the reset
+    AT.mode='off'; quiet(); chk(AT.enter(G,'idle'), 'enter from play');
+    frame(10); AT.onInput(G);
+    until(()=>AT.mode!=='enter', 600);
+    chk(AT.mode==='intro' && DT.yearsBP===DT.yearsStart, 'a press on the way down: the intro starts once the world is reset');
+    until(()=>AT.mode==='off', 3000);
+    quiet(); chk(AT.outro(G), 'the outro, again');
+    until(()=>AT.mapAlpha()>0.99, 600); AT.onInput(G);
+    until(()=>AT.mode!=='outro', 3000);
+    chk(AT.mode==='intro', 'a press during the outro: the intro follows it, not the idle land');
+    until(()=>AT.mode==='off', 3000);
+    // 6c. a world swapped under the attract (an error recovery lands on an eruption checkpoint) is put back at the opening
+    AT.mode='off'; quiet(); AT.enter(G,'idle'); until(()=>AT.mode==='idle', 600);
+    K.resetToAttract(G,'error',{ reseed:false }); quiet(); frame(2);
+    until(()=>AT.mode==='idle', 600);
+    chk(AT.mode==='idle' && DT.yearsBP===DT.yearsStart, `a recovery under the attract: back at 1 Ma (${DT.yearsBP})`);
+    // 7. the copy: no emoji, the macrons, the cast's numbers
+    const C=T.copy, all=[C.intro.title, C.intro.body, C.line, C.outro.title, C.outro.body].join(' ');
+    chk(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(all), 'no emoji in the copy');
+    chk(/Manawatū/.test(all) && /Āpiti/.test(T.labels.map(l=>l.text).join(' ')), 'the names carry their macrons');
+  } finally { AT._stop(); AT.mode='off'; quiet(); DT.reset(); G.resetEcosystem(); }
+  console.log(fail? `attract: ${fail} FAILURES`
+    : 'attract: idle shows the live 1 Ma land with no UI and the clock held; a press plays the present-day map (the sim\'s own 0 BP land, the live land untouched) and an orientation, then the line and the UI; the end of the window plays the outro and lands on the attract; the deep-time sequence is off the wall');
+}catch(e){ console.log('ATTRACT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
 // ---- earned health + fauna homeostasis ----------------------------------------------------------
 // The birds: held at their founding numbers by a new visitor's ledger (they must not multiply without
@@ -2755,6 +3150,32 @@ try{
     const fb=new Set((TBC.faunaLinks[pk]||[]).filter(k=>k.indexOf('young_')!==0));
     chk(fb.size===birds.size && [...birds].every(b=>fb.has(b)),`TM_BOOST.faunaLinks['${pk}'] matches its cards (${[...birds].join(',')||'none'})`);
   }
+
+  // THE LANDING PAGE'S BIRDS (TM_LANDING_BIRDS): every bird on a card is there once, with real art and a
+  // plant to go to, laid out like the switch: a bird whose plants are all interglacial stands above the
+  // card, all glacial below, both at the sides (between the two bands). On the stage, clear of the goal
+  // strip (y ≥ 1008) and the climate rail (x ≤ 84).
+  const LB=vm.runInContext('TM_LANDING_BIRDS',ectx), CLIM=vm.runInContext('TM_SCREEN_CLIMATE',ectx);
+  const onCardFauna=new Set(); for(const h of Object.values(HAB)) for(const p of h.plants) for(const fk of (p.fauna||[])) onCardFauna.add(fk);
+  const seenLB=new Set();
+  for(const b of LB){
+    const f=FAUNA[b.fauna], tag=`landing bird '${b.fauna}'`;
+    chk(!!f && !seenLB.has(b.fauna),`${tag}: a defined bird, there once`); seenLB.add(b.fauna);
+    if(!f) continue;
+    chk(fs.existsSync(path.join(sdir,f.sprites[0])),`${tag}: its sprite exists`);
+    const eras=new Set(); for(const h of Object.values(HAB)) for(const p of h.plants) if((p.fauna||[]).includes(b.fauna)) eras.add(h.era);
+    chk(eras.size>0,`${tag}: has a plant to go to`);
+    const band = eras.size===2 ? 'side' : (eras.has('interglacial') ? 'above' : 'below');
+    const at = b.cy<330 ? 'above' : (b.cy>760 ? 'below' : 'side');
+    chk(band===at,`${tag}: stands ${band} the card, like its habitats on the switch (cy ${b.cy})`);
+    chk(b.cx-60>84 && b.cx<1920-60 && b.cy-b.h/2>0 && b.cy+b.h/2<1008,`${tag}: on the stage, clear of the rail and the goal strip`);
+  }
+  for(const fk of onCardFauna) chk(seenLB.has(fk),`card bird '${fk}' is on the landing page`);
+  // The background's climate gradient: every position has a value in 0..1, the interglacial forest is the
+  // texture as drawn (0), and it only grows colder down the switch.
+  chk(ORDER.every(k=>typeof CLIM[k]==='number' && CLIM[k]>=0 && CLIM[k]<=1),'every switch position has a climate tint in 0..1');
+  chk(CLIM.forest===0,'the interglacial forest is the background as drawn (tint 0)');
+  chk(ORDER.every((k,i)=>i===0 || CLIM[k]>=CLIM[ORDER[i-1]]) && CLIM[ORDER[ORDER.length-1]]===1,'the tint grows colder down the switch, to full glacial at the bottom');
 
   // The art-sharing types draw with their source's frames, and a scale override stays on the alias.
   const PS=vm.runInContext('plantSprites',ctx);
@@ -2994,7 +3415,7 @@ try{
   const runsOf=(s,k)=>TG.termRuns(s,k).map(r=>(r.bold?'['+r.text+']':r.text)).join('');
   chk(runsOf('Kahikatea is New Zealand\'s tallest tree!','kahikatea')==='Kahikatea is [New Zealand\'s tallest tree]!',
       'termRuns bolds a live goal\'s phrase in place');
-  chk(runsOf('Its red berries, those red berries.','nikau')==='Its [red berries], those [red berries].', 'termRuns bolds every occurrence');
+  chk(runsOf('Its seeds float, those seeds float.','kowhai')==='Its [seeds float], those [seeds float].', 'termRuns bolds every occurrence');
   chk(runsOf('Used for butter boxes.','kahikatea')==='Used for butter boxes.', 'an off goal\'s terms stay plain');
   chk(runsOf('Aotearoa has more kinds of Dracophyllum than anywhere else in the world!','dracophyllum')
       ==='Aotearoa has [more kinds of Dracophyllum than anywhere else in the world]!', 'overlapping terms merge into one run');
@@ -3003,6 +3424,16 @@ try{
   const noTerm=[];
   for(const gl of realBook) if(!gl.off) for(const k of gl.answer) if(!(gl.terms&&gl.terms[k])) noTerm.push(gl.id+'/'+k);
   console.log(`plant goals: ${noTerm.length} live answers have no bold term, their card doesn't state the fact: ${noTerm.join(', ')}`);
+  // THE POST-ERUPTION GOAL is the one visitors guessed at (2026-11-08): it must be answerable in EITHER climate
+  // (an eruption can land in an interglacial too), and every answer's card must say it, so a reader who looks
+  // finds it. One live post-eruption goal, not two near-twins with different answers.
+  const eruptLive=realBook.filter(gl=>!gl.off && gl.requires && gl.requires.eruption);
+  chk(eruptLive.length===1, `exactly one live post-eruption goal (${eruptLive.map(g=>g.id).join(', ')})`);
+  for(const gl of eruptLive){
+    chk(gl.answer.some(k=>TG.fits(k,true)) && gl.answer.some(k=>TG.fits(k,false)),
+        `${gl.id}: an answer fits a glacial and one fits an interglacial (${gl.answer.map(k=>k+':'+TG.fitOf(k)).join(', ')})`);
+    for(const k of gl.answer) chk(gl.terms && gl.terms[k] && gl.terms[k].length>0, `${gl.id}: '${k}' has its words bold on its card`);
+  }
   chk(TG.fitOf('flax')==='neutral' && TG.fitOf('tawa')==='warm' && TG.fitOf('beech')==='cold',
       'TMGoals.fitOf (shared with the boost gate): harakeke neutral, tawa warm, beech cold');
   chk(TG.format('{a} {regime}','X','interglacial','')==='an interglacial' && TG.format('{a} {regime}','X','glacial','')==='a glacial',
@@ -3233,7 +3664,10 @@ try{
     chk(TG.verdict() && TG.verdict().kind==='wrong' && TG.live()===a, '…the second miss (here the wrong climate) is judged against it, and its verdict holds');
     DT.seekTo(122000); release();
     const b=TG.live();
-    chk(b && b!==a && !TG.verdict() && TG.text()===b.prompt, `…and when that verdict releases a new goal comes up (live: ${b&&b.id})`);
+    chk(b && b!==a && !TG.verdict() && TG.revealing() && TG.text()===a.prompt,
+        `…and when that verdict releases a new goal is drawn (live: ${b&&b.id}), the old question staying up for its reveal`);
+    _t+=TGL.revealMs; tick();
+    chk(TG.text()===b.prompt, '…then the new goal comes up');
     chk(TG._stage===0, '…without moving the bird sequence on: only a solve does');
     miss(); release();
     chk(TG.live()===b, 'the new goal gets its own two chances');
@@ -3253,20 +3687,19 @@ try{
     miss(); miss(); miss(); release();
     chk(TG.live()===gA && TG._misses===3, 'missLimit 0 holds a goal until it is solved');
     TGL.missLimit=lim;
-    // After an eruption: both of the book's post-eruption goals take mānuka, so a lock that only ended on an
-    // answer would swap one for the other forever. Each gets its chances, then the whole book opens again.
+    // After an eruption: its goal is up for two chances at most, then the line moves on to the book, even with
+    // another post-eruption goal live (2026-11-08: two in turn ran four guesses at the volcano in a row).
     const fe=G._firedEruptions, stagedFe=!fe.has(1); if(stagedFe) fe.add(1);
     const gE1=Object.assign(mk('t-e1','lowland'),{ requires:{ eruption:true } }), gE2=Object.assign(mk('t-e2','lowland'),{ requires:{ eruption:true } });
     TGL.list=[gA,gE1,gE2]; TG.reset(); tick(); TG.onEruption(); tick();
     const e1=TG.live();
     chk(TG.isEruptionGoal(e1), `an eruption moves the line to a post-eruption goal (live: ${e1&&e1.id})`);
-    miss(); miss(); release();
-    const e2=TG.live();
-    chk(TG.isEruptionGoal(e2) && e2!==e1, `out of chances, it moves to the other post-eruption goal (live: ${e2&&e2.id})`);
-    miss(); miss(); release();
-    chk(TG.live()===gA, `when both are out of chances the line leaves them (live: ${TG.live()&&TG.live().id})`);
+    miss(); release();
+    chk(TG.live()===e1, '…it comes back after the first miss');
+    miss(); release();
+    chk(TG.live()===gA, `…and after the second the line moves on to the book, not to another post-eruption goal (live: ${TG.live()&&TG.live().id})`);
     TG.onEruption(); tick();
-    chk(TG.isEruptionGoal(TG.live()), 'the next eruption gives them their chances again');
+    chk(TG.isEruptionGoal(TG.live()), 'the next eruption puts a post-eruption goal up again');
     if(stagedFe) fe.delete(1);
   }
 
@@ -3332,6 +3765,133 @@ try{
       DT.endTimelapse(); ctx.setTimeout=realST; fired.delete(er.yearsBP);
     }
     G.resetEcosystem(); atRest(); TG.reset();
+  }
+
+  // 7d. WHEN A GOAL LEAVES UNANSWERED (2026-11-08 playtest: visitors missed, walked back to the console to hunt
+  //     for the answer and pressed it, by then on a new goal they had not read). The wall shows the chances as
+  //     pips; once the last verdict clears the old question stays up revealMs with its answer ringed white; the
+  //     new goal then comes up as a new draw (the HUD slides it in); and for lateGraceMs a FIRST press of the old
+  //     answer is a late answer: green, a goal solved, and not a boost. md/TEMANAWA_GOALS.md §2.5.
+  {
+    const sim=G.simulation, count=(k)=>sim.plants.filter(p=>p.alive && p.type===k).length;
+    const atRest=()=>{ DT.endTimelapse(); DT.seekTo(122000); G.seasonManager.update(1); G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null; };
+    const release=()=>{ _t+=TGL.holdMs+1; tick(); };
+    const coldKey=['tussock','snow_tussock','dracophyllum','coprosma','hebe'].find(k=>TG.fitOf(k)==='cold');
+    const press=(key,name)=>{ _t+=TBO.topUpGapMs; boost({ plantKey:key, plantName:name }); };
+    const miss=()=>press(coldKey);                          // a cold plant in an interglacial: neither goal's answer
+    const gOld=Object.assign(mk('t-old','moa'),{ answer:['flax'] }), gNew=Object.assign(mk('t-new','moa'),{ answer:['tawa'] });
+    const begin=(list)=>{ atRest(); TGL.list=list; TG.reset(); G._boostHi=null; tick(); };
+    // the old goal runs out of chances; its reveal plays; the new goal is up and the late window open
+    const leave=(list)=>{ begin(list||[gOld,gNew]); miss(); release(); miss(); release(); _t+=TGL.revealMs; tick(); };
+    chk(!!coldKey, 'a cold plant to miss with');
+    begin([gOld,gNew]);
+    const s1=TG.shownSerial();
+    chk(TG.live()===gOld && s1>0 && TG.chancesShown()===TGL.missLimit, `a new goal shows all its chances as pips (${TG.chancesShown()} of ${TGL.missLimit})`);
+    miss();
+    chk(TG.verdict() && TG.chancesShown()===TGL.missLimit-1, 'a miss empties a pip, shown with its verdict');
+    release();
+    chk(TG.live()===gOld && TG.shownSerial()===s1 && !TG.revealing(), 'the same goal comes back as the same draw (no new-goal entrance)');
+    miss(); release();
+    chk(TG.live()===gNew && TG.revealing() && TG.text()===gOld.prompt && TG.shownSerial()===s1 && TG.chancesShown()===0,
+        'out of chances: the new goal is drawn, but the old question stays up for the reveal, its pips empty');
+    chk(G._boostHi && G._boostHi.keys.has('flax') && G._boostHi.color===TGL.revealOutline && G._boostHi.until===_t+TGL.revealMs,
+        '…with its answer plants ringed white for the reveal');
+    let tel=TG.telemetry();
+    chk(tel.revealing && tel.revealKey==='flax' && tel.prompt===gOld.prompt && tel.chances===0 && tel.missLimit===TGL.missLimit,
+        'the console is told of the reveal and its answer');
+    _t+=TGL.revealMs; tick();
+    chk(!TG.revealing() && TG.text()===gNew.prompt && TG.shownSerial()>s1 && TG.chancesShown()===TGL.missLimit,
+        'after the reveal the new goal comes up as a new draw, with all its pips');
+    tel=TG.telemetry();
+    chk(tel.late && tel.last && tel.last.outcome==='missed' && tel.last.key==='flax' && tel.last.prompt===gOld.prompt,
+        '…and the console keeps the old goal\'s answer');
+    // the late answer
+    const snapL=()=>JSON.stringify({ h:sim.ecoHealth, ok:DT.boostsOk, misses:TG._misses, live:TG.live()&&TG.live().id, tl:DT.isTimelapsing(),
+      lift:sim._homeo.lift, fauna:sim._fauna&&sim._fauna.link, moa:sim.getSpeciesCount('mantells_moa'), stage:TG._stage, warm:G._tmGrowWarmUntil, cold:G._tmGrowColdUntil });
+    G._boostHi=null; const before=snapL(), n0=DT.goalsSolved, f0=count('flax');
+    press('flax','Harakeke');
+    const lv=TG.verdict();
+    chk(lv && lv.kind==='lateAnswer' && lv.col===(TGL.colLate||TBO.outlineInterglacial), `a first press of the old answer is a late answer, in green (${lv&&lv.kind})`);
+    chk(lv && lv.text.indexOf('Harakeke')===0 && lv.text.indexOf(gOld.cond)>0, `…its line names the plant and the old goal (${lv&&lv.text})`);
+    chk(DT.goalsSolved===n0+1 && DT.solvedKeys.includes('flax'), '…it counts as a goal solved, its plant on the tally');
+    chk(snapL()===before && count('flax')===f0 && !G._boostHi,
+        '…and is not a boost: no seeding, time-lapse, health, lift, birds, outline, climate lesson or chance on the new goal');
+    chk(TG.chancesShown()<0 && TG.telemetry().last.outcome==='late', '…no pips with it; the console shows the old goal answered');
+    _t+=TGL.lateHoldMs+1; tick();
+    chk(!TG.verdict() && TG.live()===gNew && TG.text()===gNew.prompt && TG._misses===0 && TG.chancesShown()===TGL.missLimit,
+        'then the new goal comes back, untouched');
+    press('flax');
+    chk(TG.verdict() && TG.verdict().kind==='matched' && TG._misses===1, 'a second press of the old answer is an ordinary boost again');
+    // only the FIRST press after the goal left can be late, and only for lateGraceMs
+    leave(); miss(); release(); press('flax');
+    chk(TG.verdict() && TG.verdict().kind==='matched', 'any other first press closes the window: the old answer after it is judged against the new goal');
+    leave(); _t+=TGL.lateGraceMs+1; tick(); press('flax');
+    chk(TG.verdict() && TG.verdict().kind==='matched', `the window closes after ${TGL.lateGraceMs} ms`);
+    begin([gOld,gNew]); miss(); release(); miss(); release();
+    chk(TG.revealing(), '(mid-reveal)');
+    press('flax');
+    chk(TG.verdict() && TG.verdict().kind==='lateAnswer' && !TG.revealing(), 'the old answer pressed during the reveal is late too, and ends the reveal');
+    // a press that answers the new goal too is the new goal's answer, a real boost
+    const gBoth=Object.assign(mk('t-both','moa'),{ answer:['tawa','flax'] });
+    leave([gOld,gBoth]); const ok0=DT.boostsOk; press('flax');
+    chk(TG.verdict() && TG.verdict().kind==='answer' && DT.boostsOk===ok0+1, 'a press that answers the new goal as well is the new goal\'s answer, a real boost');
+    // a goal that leaves untried has no reveal and no late answer; a solved one is recorded as answered
+    begin([gOld,gNew]); TG._force=true; tick();
+    chk(TG.live()===gNew && !TG.revealing() && !TG._left.phase && !TG.telemetry().last, 'a goal that leaves untried leaves quietly: no reveal, no late window');
+    begin([gOld,gNew]); press('flax','Harakeke'); release();
+    tel=TG.telemetry();
+    chk(TG.live()===gNew && !TG.revealing() && tel.last && tel.last.outcome==='solved' && tel.last.key==='flax', 'a solved goal is recorded as answered, with no reveal');
+    // the climate turn a boost's time-lapse lands on can also retire a goal after one try: same treatment
+    const gWarm=Object.assign(mk('t-warm1','moa'),{ answer:['tawa'] });   // first in the list and in the stage: it is the one drawn
+    begin([gWarm,gOld]); miss();
+    // the land, now glacial: tawa can't fit (the seek is not a crossing: no eruption fires on the way)
+    DT.endTimelapse(); DT.seekTo(30000); G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null; G.seasonManager.update(1); tick();
+    chk(TG.live()===gOld && TG.verdict() && TG._left.phase===1, `(a glacial turn under the verdict replaces the warm goal; phase ${TG._left.phase})`);
+    release();
+    chk(TG.revealing() && TG.text()===gWarm.prompt && TG.chancesShown()===TGL.missLimit-1,
+        `…its reveal waits for the verdict, and shows the chance it had left (phase ${TG._left.phase}, chances ${TG.chancesShown()}, live ${TG.live()&&TG.live().id})`);
+    DT.seekTo(122000);
+    // THE HINT (H, either window): the answers to the goal on the line that fit the climate now ring white
+    // for hintMs, and nothing else moves; the bus hands the console the keys (secondscreen/app.js showHint).
+    {
+      const gMix=Object.assign(mk('t-mix','moa'),{ answer:['tawa','flax'] });
+      begin([gMix,gNew]); G._boostHi=null;
+      const hs=()=>JSON.stringify({ h:sim.ecoHealth, ok:DT.boostsOk, solved:DT.goalsSolved, misses:TG._misses, live:TG.live()&&TG.live().id, v:!!TG.verdict(), tl:DT.isTimelapsing() });
+      const before=hs(); let h=TG.hint(G,_t);
+      chk(h.keys.join()==='tawa,flax' && !h.glacial && h.goalId==='t-mix' && h.ms===TGL.hintMs, `the hint names the live goal's answers that fit an interglacial (${h.keys})`);
+      chk(G._boostHi && G._boostHi.keys.has('tawa') && G._boostHi.keys.has('flax') && G._boostHi.color===TGL.revealOutline && G._boostHi.until===_t+TGL.hintMs,
+          '…rings them white on the wall for hintMs');
+      chk(hs()===before, '…and moves nothing else: no chance, verdict, health, tally or time-lapse');
+      DT.seekTo(30000); G._autoPrevYear=DT.yearsBP; G._tmAutoErAt=0; G._tmAutoErupt=null; G._boostHi=null;
+      h=TG.hint(G,_t);
+      chk(h.glacial && h.keys.join()==='flax', `in a glacial a warm answer is left out (${h.keys})`);
+      atRest(); G._boostHi=null; TB.hint();
+      chk(G._boostHi && G._boostHi.keys.has('flax'), 'the bus\'s hint (the H key, or the console\'s) does the same');
+      begin([gOld,gNew]); miss(); release(); miss(); release(); G._boostHi=null;
+      h=TG.hint(G,_t);
+      chk(TG.revealing() && h.goalId==='t-old' && h.keys.join()==='flax', 'during a reveal the hint is for the goal on the line, the one revealed');
+      TGL.list=[]; TG.reset(); tick(); G._boostHi=null; h=TG.hint(G,_t);
+      chk(h.keys.length===0 && h.goalId===null && !G._boostHi, 'with no plant goal up the hint rings nothing (the console points to the climate\'s habitats)');
+    }
+    // reset clears it all
+    leave(); TG.reset();
+    chk(!TG._left.phase && !TG.telemetry().last && TG.shownSerial()===0, 'a soft reset clears the reveal, the late window and the record');
+    // the wall: a new goal slides in with its pips growing; a miss shrinks one; the same goal back just crossfades
+    const frames=(n)=>{ for(let i=0;i<n;i++){ _t+=50; tick(); IH.renderVisitorGoal(G,1920,1080); } };
+    IH._goalFade=null; IH._goalSerSeen=0; IH._pipFill=null;
+    begin([gOld,gNew]); frames(1);
+    chk(IH._goalFade.cur.text===gOld.prompt && IH._goalFade.cur.enter>=0, 'the wall slides a new goal in');
+    frames(30);
+    chk(IH._pipFill.length===TGL.missLimit && IH._pipFill.every(f=>f>0.99), `…its pips grow in (${IH._pipFill.map(f=>f.toFixed(2))})`);
+    miss(); frames(20);
+    chk(IH._pipFill[TGL.missLimit-1]<0.01 && IH._pipFill[0]>0.99, `a miss shrinks the last pip (${IH._pipFill.map(f=>f.toFixed(2))})`);
+    release(); frames(1);
+    chk(IH._goalFade.cur.text===gOld.prompt && IH._goalFade.cur.enter<0, 'the same goal back after a miss crossfades, with no entrance');
+    miss(); release(); frames(1);
+    chk(IH._goalFade.cur.text===gOld.prompt && IH._goalFade.cur.enter<0, 'the reveal brings the old question back without an entrance');
+    _t+=TGL.revealMs; frames(1);
+    chk(IH._goalFade.cur.text===gNew.prompt && IH._goalFade.cur.enter>=0, '…and after it the new goal slides in');
+    G._boostHi=null; G.resetEcosystem(); atRest(); TG.reset();
   }
 
   // 8. The climate line above the timeline, under the goal: "The climate is INTERGLACIAL / GLACIAL", the state in green / blue.

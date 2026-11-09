@@ -1,5 +1,10 @@
 # Te Manawa — The land before the window: the palaeogeography attract sequence
 
+> **Off the wall since 2026-11-08.** The idle attract is now the live 1 Ma land with no UI, a press plays
+> an intro over the present-day map, and the end of the window an outro (`TeManawa_attract.js`,
+> `CLAUDE.md`). This sequence is kept, working and tested, behind the dev `P` key only. What follows
+> records it as built.
+
 *The sim's window (1 Ma → 25.5 ka) barely moves the land: the ranges rise, the river sharpens, the coast
 breathes with the glacial cycle, the habitats turn over. The emergence that made the Manawatū — a deep
 sea basin, a low finger of basement across it, a strait that opened and closed over that finger, then
@@ -123,6 +128,13 @@ strait drowned below 0.10 reads as sea, not as a wide river. No classify change.
   them and a pause never ends one; in reverse the clock returns to the keyframe it left and holds
   there, and the oldest date holds. The caption shows the reading (`>> × 2`, `paused`, `<< × 0.5`).
   Default pacing: 15 kyr/s with 10 / 8 / 10 / 8 / 8 s holds ≈ 4 min at ×1.
+- **The warp (authoring, 2026-11-06)**: in a run started by `P` (`reason === 'manual'`, so `?dev=1`), the
+  first turn of the dial sets `Palaeo._warp` and hands it the clock (`_warpClock`): no holds and no landing
+  of its own. Warped forward it parks at 1 Ma, on the landing bake, with the caption reading
+  `any key lands`, and goes back as far as 4 Ma. Before this, a warp ran off the end into the eruption, where
+  the wheel did nothing, and then onto `DeepTime`'s dial, which started the sim's fast-forward. Any
+  other key is still the skip, which lands it. A `P` run left alone plays and lands like a wall run, and a
+  wall run never warps: nobody is there to land it.
 - **The sea's breath before the window**: slowed to ≤ `seaBreathBelow` (5 kyr/s — a 41-kyr cycle
   every ≥ 8 s) the pre-window sea breathes a synthetic pre-MPT cycle (`Climate.PRE_WINDOW_SEA`:
   41 kyr, −70 … 0 m, phased to join the window's first anchor; gone by `seaBreathOff` 10 kyr/s, where

@@ -84,6 +84,41 @@ const TM_SCREEN_ORDER = ['wetland', 'forest', 'select', 'alpine', 'lowland'];
 // it when set: drop e.g. assets/bg_alpine.png in and point that habitat's bg at it.
 const TM_BG_DEFAULT = 'assets/Background_Base.png';
 
+// How GLACIAL each switch position looks, 0 (interglacial) → 1 (full glacial). The background
+// texture is colour-shifted by it (app.js applyClimateTint: green → icy blue, a little paler), easing
+// as the switch moves, so the screens read as one gradient from the warm habitats above to the cold
+// ones below. 0 is the texture as drawn: the interglacial forest. The climate rail on the left edge
+// takes its stop colours from the same numbers.
+const TM_SCREEN_CLIMATE = { wetland: 0, forest: 0, select: 0.45, alpine: 0.85, lowland: 1 };
+
+// ---- THE LANDING PAGE'S BIRDS (the 'select' screen) ------------------------
+// Every bird in TM_FAUNA, standing round the "Habitat Explorer" card. Tapping one scrolls the switch
+// position by position to a screen with a plant that helps it, then highlights that plant (app.js
+// goToBird). Laid out like the switch: the birds of the warm (interglacial) plants ABOVE the card, the
+// cold (glacial) ones BELOW, and the two found in both at the sides. A bird on two plants goes to the
+// one in the climate the wall is in now, else the nearer. `fauna` is a TM_FAUNA key; (cx, cy, h) as for
+// plants: the sprite CENTRED, h px tall; `flip` mirrors it. tools/bootcheck.js ("encyclopedia
+// roster") checks that every bird is here once and has a plant to go to.
+const TM_LANDING_BIRDS = [
+  // interglacial: above the card
+  { fauna: 'eyles_harrier',          cx: 330,  cy: 130, h: 150 },
+  { fauna: 'kokako',                 cx: 540,  cy: 130, h: 140 },
+  { fauna: 'kereru',                 cx: 750,  cy: 130, h: 140 },
+  { fauna: 'little_bush_moa',        cx: 960,  cy: 130, h: 150 },
+  { fauna: 'mantells_moa',           cx: 1170, cy: 130, h: 150 },
+  { fauna: 'takahe',                 cx: 1380, cy: 135, h: 130, flip: true },
+  { fauna: 'kiwi',                   cx: 1590, cy: 140, h: 120, flip: true },
+  // both climates: at the sides
+  { fauna: 'tui',                    cx: 225,  cy: 520, h: 140 },
+  { fauna: 'finschs_duck',           cx: 1700, cy: 525, h: 130, flip: true },
+  // glacial: below the card
+  { fauna: 'huia_male',              cx: 560,  cy: 915, h: 140 },
+  { fauna: 'huia_female',            cx: 760,  cy: 915, h: 140, flip: true },
+  { fauna: 'giant_goose',            cx: 960,  cy: 915, h: 140 },
+  { fauna: 'north_island_giant_moa', cx: 1160, cy: 912, h: 180, flip: true },
+  { fauna: 'stout_legged_moa',       cx: 1360, cy: 915, h: 150, flip: true }
+];
+
 // `era` is the climate the habitat belongs to ('interglacial' | 'glacial'): data for the
 // harness gate check (and any future era label), not rendered today.
 const TM_HABITATS = {
@@ -115,7 +150,8 @@ const TM_HABITATS = {
         ],
         birdDesc: [
           "Bush moa lived in thick forest. Over many generations they evolved a strong beak for snipping twigs and leaves. They ate lots of fern fronds, and may have helped spread fern spores through the forest!",
-          "Bush moa browsed the young plants of the swamp forest floor. Their nibbling trimmed seedlings back but rarely killed them: the forest and the moa lived together for millions of years."
+          "Bush moa browsed the young plants of the swamp forest floor. Their nibbling trimmed seedlings back but rarely killed them: the forest and the moa lived together for millions of years.",
+          "Moa had no trace of wing bones."
         ],
         crop: 'bottom', sceneShift: -60, fauna: ['little_bush_moa'],
         // a bush moa browsing the seedlings at its foot
@@ -128,7 +164,8 @@ const TM_HABITATS = {
           "Harakeke was actually less common in ancient times. It spread through the Manawatū after the swamps were drained and the rivers stopbanked, and it fed a huge flax-milling industry. Flax was so valuable that people mapped the Moutoa swamp just to manage the crop."
         ],
         birdDesc: [
-          "Mantell's moa was a stocky moa of lowland swamps and dunes, with a strong bill suited to tough, fibrous plants like harakeke."
+          "Mantell's moa was a stocky moa of lowland swamps and dunes, with a strong bill suited to tough, fibrous plants like harakeke.",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['mantells_moa'],
         // Mantell's moa tugging at the tough leaves
@@ -199,7 +236,7 @@ const TM_HABITATS = {
           "It grows in the Manawatū's lowland forest, and in ancient times at the edges of wetlands. Its red berries feed forest birds."
         ],
         birdDesc: [
-          "Kōkako filled the forest with song in the warm interglacials, eating many kinds of forest fruit and leaves.",
+          "Kōkako are wattlebirds, with bright blue wattles at the base of the beak. They filled the forest with song in the warm interglacials, eating many kinds of forest fruit and leaves.",
           "As kōkako feed on nīkau's red berries, they carry some of the seeds away and help plant new forest.",
         ],
         crop: 'top', birdScale: 1.45, fauna: ['kokako'],
@@ -321,7 +358,8 @@ const TM_HABITATS = {
         ],
         birdDesc: [
           "The North Island giant moa roamed all the way from the coast up to the mountaintops, into the herbfields and grasslands above the trees.",
-          "Did giant moa eat Dracophyllum's stiff, needle-like leaves? Nobody knows for sure! Scientists find out what moa ate by studying their fossil droppings and the food left in their gizzards."
+          "Did giant moa eat Dracophyllum's stiff, needle-like leaves? Nobody knows for sure! Scientists find out what moa ate by studying their fossil droppings and the food left in their gizzards.",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['north_island_giant_moa'],
         sceneShift: -100,   // slide the plant left to make room for the moa
@@ -339,6 +377,7 @@ const TM_HABITATS = {
           "The giant moa browsed on coprosma, even up in the rising ranges!",
           "The North Island giant moa was one of the tallest birds that ever lived. The females were far bigger than the males: about one and a half times as tall, and nearly three times as heavy!",
           "Giant moa browsed leaves, twigs and fruit, and could reach branches three metres up. They lived everywhere from the coast to the mountaintops, and there were more of them in patchy, shrubby country than in thick forest.",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['north_island_giant_moa'], cx: 650, cy: 760, h: 317 }
     ]
@@ -354,11 +393,13 @@ const TM_HABITATS = {
     plants: [
       { key: 'manuka', name: 'Mānuka', en: 'Tea tree', sci: 'Leptospermum scoparium',   // ✓ mockup card (its kōkako link moved to nīkau)
         desc: "The tough pioneer of poor ground, holding the dry sand plains and leached terraces. "
+            + "After an eruption, it spreads onto the bare volcanic ash. "
             + "The stout-legged moa browsed this open, dry scrub. New Zealand mānuka has evolved "
             + "apart from Australia's for about ten million years.",
         birdDesc: [
           "The stout-legged moa was short and heavy, with thick, powerful legs. It lived in the drier, more open lowlands and along the coast, eating leaves and fruit.",
-          "Stout-legged moa came in very different sizes: the smallest lived in the far north, and they grew bigger the further south they lived. Around the Manawatū, they were some of the biggest in the North Island!"
+          "Stout-legged moa came in very different sizes: the smallest lived in the far north, and they grew bigger the further south they lived. Around the Manawatū, they were some of the biggest in the North Island!",
+          "Moa had no trace of wing bones."
         ],
         crop: 'bottom', fauna: ['stout_legged_moa'],
         // a stout-legged moa browsing under the scrub
@@ -374,7 +415,8 @@ const TM_HABITATS = {
         birdDesc: [
           "The North Island giant moa was one of the tallest birds that ever lived. The females were far bigger than the males: about one and a half times as tall, and nearly three times as heavy!",
           "Giant moa browsed leaves, twigs and fruit, and could reach branches three metres up. They lived everywhere from the coast to the mountaintops, and there were more of them in patchy, shrubby country than in thick forest.",
-          "Look at those tangled branches: could a moa get its beak in there?"
+          "Look at those tangled branches: could a moa get its beak in there?",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['north_island_giant_moa'], cx: 495, cy: 350, h: 264 },
       { key: 'tussock', name: 'Tussock', reo: 'Wī, pātītī', sci: 'Poa, Festuca, Rytidosperma',

@@ -137,6 +137,20 @@
          See md/TEMANAWA_PALAEO_ATTRACT.md. -->
     <script src="TeManawa_palaeo.js"></script>
 
+    <!-- The attract, the intro and the outro (replaces the land-before-the-window sequence on the wall,
+         which is now only the dev P key): the live 1 Ma land with no UI while idle; a press plays the
+         present-day map (TerrainGenerator.snapshotYear(0)) and an orientation, then the live land and
+         the UI; the end of the window plays the outro over the same map. After palaeo.js (it stands
+         down while the dev sequence runs) and before UI.js / sketch.js / bus.js, which call into it. -->
+    <script src="TeManawa_attract.js"></script>
+
+    <!-- The health milestones: full health fades to white and back to the thriving land with no UI for
+         15 s (a congratulations and the bird counts); 25 % does the same through black on a desaturated
+         land, with a warning. After goals.js + hud.js (colours, the climate line), after palaeo.js (it
+         stands down while the attract runs); before UI.js and sketch.js, which read Milestone.uiAlpha
+         and call its update/render, and bus.js, which swallows console intents while it plays. -->
+    <script src="TeManawa_milestone.js"></script>
+
     <!-- Debug overlay (press D; the page needs ?dev=1, see Kiosk.keyAllowed) -->
     <script src="TeManawa_debug.js"></script>
 

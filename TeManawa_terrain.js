@@ -4393,6 +4393,48 @@ class TerrainGenerator {
 
   get morphInProgress() { return !!this._morphJob; }
 
+  // A morph's phase 0: reshape the sim-facing land to yearsBP. Cheap per-cell combines over the geo
+  // cache, biome classify off the cached wobble. Pure per year (the estuary state is refilled, the
+  // meanders re-derived), which is what lets snapshotYear() visit another date and come back.
+  _reshapeTo(yearsBP) {
+    this._geoT = TerrainGenerator.geoTimeFactors(yearsBP);
+    this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(yearsBP);   // relative sea level (m) → coastal shift at the morph year
+    this._geoT.coastShiftU = TerrainGenerator.coastShiftU(yearsBP);      // the coast's move, for the dune belt
+    this._geoT.estuary = TerrainGenerator.estuaryStrength(yearsBP);      // drowned-valley highstand at the morph year
+    this._geoT.estFillAge = TerrainGenerator.stillstandAge(yearsBP);     // the Opiki cycle's clock
+    this._geoT.estMax = TerrainGenerator.estuaryMax(yearsBP);            // … and its memory
+    if (this._geoUpliftOverride != null) this._geoT.uplift = this._geoUpliftOverride;   // GEO.uplift() authoring preview
+    if (!this._geoCache) { this._prepGeo(); this._buildGeoCache(); }
+    this._applyGeoToHeightMap();
+    this._rebuildBiomeMap();
+    this._initSnowColors();
+    this._initColdCover();
+  }
+
+  // THE LAND AT ANOTHER DATE, without moving the live one (TeManawa_attract.js: the present-day map).
+  // Reshapes to yearsBP (phase 0), paints it (passes 1–2) and bakes ONE glacial-phase buffer, calls
+  // visit(this) while that land is live (paintLiftAt / waterTypeAt read it), then reshapes and repaints
+  // back to restoreYearsBP, the date the live buffers were baked at. The live season buffers are never
+  // touched, and every step is pure per year, so the land comes back identical. Returns a pooled bake
+  // buffer (the caller hands it back with _releaseBakeBuffer), or null while a morph job is running.
+  // Synchronous: about one morph's paint and bake, so call it under a cover.
+  snapshotYear(yearsBP, restoreYearsBP, seasonKey = 'interglacial', visit = null) {
+    if (this._morphJob || !this._baseNoise || restoreYearsBP == null) return null;
+    const paintAt = (y) => {
+      this._reshapeTo(y);
+      this._paintGridBegin();
+      this._paintGridPass1(0, this._paintH);
+      this._paintGridPass2(0, this._paintH);
+    };
+    paintAt(yearsBP);
+    const st = this._bakeSeasonBegin(seasonKey);
+    this._bakeSeasonColumns(st, 0, this._paintW);
+    const buf = this._bakeSeasonEnd(st);
+    if (visit) visit(this);
+    paintAt(restoreYearsBP);
+    return buf;
+  }
+
   // Rows (or columns) per morph chunk: the whole lines that fit in `cells`, never fewer than one.
   // `span` is the line length (paint width for row bands, height for column bands). Pure, so
   // tools/bootcheck.js asserts it.
@@ -4438,20 +4480,7 @@ class TerrainGenerator {
 
     do {
       if (job.phase === 0) {
-        // Reshape the sim-facing land: cheap per-cell combines over the geo
-        // cache, biome classify off the cached wobble. Same calls as morphTo().
-        this._geoT = TerrainGenerator.geoTimeFactors(job.yearsBP);
-        this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(job.yearsBP);   // relative sea level (m) → coastal shift at the morph year
-        this._geoT.coastShiftU = TerrainGenerator.coastShiftU(job.yearsBP);      // the coast's move, for the dune belt
-        this._geoT.estuary = TerrainGenerator.estuaryStrength(job.yearsBP);      // drowned-valley highstand at the morph year
-        this._geoT.estFillAge = TerrainGenerator.stillstandAge(job.yearsBP);     // the Opiki cycle's clock
-        this._geoT.estMax = TerrainGenerator.estuaryMax(job.yearsBP);            // … and its memory
-        if (this._geoUpliftOverride != null) this._geoT.uplift = this._geoUpliftOverride;   // GEO.uplift() authoring preview
-        if (!this._geoCache) { this._prepGeo(); this._buildGeoCache(); }
-        this._applyGeoToHeightMap();
-        this._rebuildBiomeMap();
-        this._initSnowColors();
-        this._initColdCover();
+        this._reshapeTo(job.yearsBP);
         job.phase = 1;
       } else if (job.phase === 1) {
         this._bakeScaleOverride = job.bakeScale;

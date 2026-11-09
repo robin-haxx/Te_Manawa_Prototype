@@ -93,6 +93,7 @@ const DeepTime = {
   _dialRate:   0,         // the eased dial rate (yr/s) update() actually plays
   _dialAt:     0,         // millis() of the last dial turn, for the HUD readout's fade
   geoRate:     0,         // yr/s the geology actually played last frame (any source), for readouts
+  held:        false,     // a health milestone is playing: the clock stands still (update), Milestone sets and clears it
   boostsOk:    0,         // successful (right-for-the-climate) boosts since the timeline last restarted; the top band's big numeral
   goalsSolved: 0,         // plant goals answered (a boost of the live goal's answer, in the right climate) since the restart
   solvedKeys:  [],        // the plant keys that answered them, unique, oldest first: the top band draws their sprites
@@ -109,6 +110,7 @@ const DeepTime = {
     this._ended     = false;
     this._timelapse = false;
     this._tlTarget  = 0;
+    this.held       = false;   // a rebuilt world is never mid-milestone (Milestone stands down on the next frame)
   },
 
   // ---- seek: jump the clock to a date ----------------------
@@ -341,6 +343,9 @@ const DeepTime = {
   // Returns the multiplier the rest of the sim should run at.
   // ==========================================================
   update(dt) {
+    // HELD (TeManawa_milestone.js): while a health milestone plays, the land plays in real time. Geology
+    // stands still whatever the dial says (its detent is kept, and resumes after) and life runs at 1×.
+    if (this.held) { this.timeScale = 1; this.geoRate = 0; return 1; }
     // The GEOLOGY clock (yearsBP) and the LIFE clock are decoupled now (md/TEMANAWA_SECOND_SCREEN.md
     // §0). yearsBP moves only under a timelapse (a boost), a legacy deep burst (button 1) or the time dial;
     // otherwise it is PAUSED — the land holds at one date. But the ambient world keeps living, so

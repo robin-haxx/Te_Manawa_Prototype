@@ -17,6 +17,16 @@ polling, no network. On the install PC, open both in one Chrome instance, one pe
 (`--window-position` / `--kiosk`). The full install — flags, focus, what to deploy, recovery — is
 `../md/TEMANAWA_OPERATIONS.md`.
 
+The **goal strip** (one row along the bottom) is always on: the wall's goal with its chances as
+pips under the plants, and how the last goal ended under the card, from the sim's `goal` telemetry (`app.js` `renderGoalStrip`;
+`../md/TEMANAWA_GOALS.md` §2.5).
+
+The **climate rail** (left edge) says up = interglacial, down = glacial, and the background shifts from
+the forest green to icy blue down the switch (`TM_SCREEN_CLIMATE` in `encyclopedia.js`). The landing
+page's **birds** (`TM_LANDING_BIRDS`) scroll to a plant that helps them when tapped. **H** is the
+**hint**: the wall rings the goal's answers white and the rail points to their screen
+(`../md/TEMANAWA_SECOND_SCREEN.md` §1.2).
+
 **Debug mode** shows the "extra stuff" — the timeline/goal readout strip **and** the on-screen
 test buttons (for driving the page without the physical rig). It is **off by default** (a clean
 kiosk screen). Turn it on with `…/secondscreen/?debug=1`, or toggle it live with the **backtick

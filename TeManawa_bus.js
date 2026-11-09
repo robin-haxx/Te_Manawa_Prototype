@@ -24,6 +24,9 @@
 //   · plant goals              : each boost is judged against the live goal (TMGoals.judge); the
 //                                answer gets a bigger boost + a white-to-climate outline. A press
 //                                during a boost's time-lapse is only a seed top-up (onBoost).
+//   · hint                     : the H key, in either window (onHint): the goal's answers ringed white
+//                                on the wall (TMGoals.hint), and {type:'hint', keys, glacial, ms} back so
+//                                the console's climate rail points up or down to them.
 // ============================================================
 
 // Boost / timelapse tunables — console-tunable like TM_TIME / TM_GROW / TM_EDGE.
@@ -122,6 +125,12 @@ const TMBus = (function () {
       } else Palaeo.skip();
       return;
     }
+    // THE ATTRACT, THE INTRO, THE OUTRO (TeManawa_attract.js): a console intent is presence. It breaks
+    // the attract (the intro plays) or skips the map, and is never a button on the world.
+    if (typeof Attract !== 'undefined' && Attract.active && m.type !== 'hello') { Attract.onInput(g); return; }
+    // A HEALTH MILESTONE playing (TeManawa_milestone.js): its 15 s on the wall plays out, so a console
+    // intent is presence only (noted above). The console's `hello` still gets its clock and goal.
+    if (typeof Milestone !== 'undefined' && Milestone.active && m.type !== 'hello') return;
 
     switch (m.type) {
       case 'hello':
@@ -145,6 +154,9 @@ const TMBus = (function () {
       case 'boost':
         onBoost(m); break;
 
+      case 'hint':
+        onHint(); break;
+
       case 'dial':   // the macro pad's TIME DIAL, relayed when the console window has focus
         if (typeof DeepTime !== 'undefined' && DeepTime.dialTurn) {
           if (m.reset) DeepTime.dialReset();
@@ -157,6 +169,14 @@ const TMBus = (function () {
         // Accepted; no sim-side effect yet (optional highlight/focus, §3.1).
         break;
     }
+  }
+
+  // THE HINT: the H key in this window (Game.handleKey) or the console's (relayed as {type:'hint'}). The
+  // answers ring white here; the console is told which plants, so its rail can point up or down to them.
+  function onHint() {
+    if (typeof TMGoals === 'undefined' || !TMGoals.hint) return;
+    const h = TMGoals.hint(G(), (typeof millis === 'function') ? millis() : 0);
+    reply({ type: 'hint', keys: h.keys, glacial: h.glacial, ms: h.ms, goalId: h.goalId });
   }
 
   // THE BOOST (md/TEMANAWA_SECOND_SCREEN.md §6.1). Regime-fit gate → seed especially the chosen
@@ -194,6 +214,22 @@ const TMBus = (function () {
       return;
     }
     _lastPressAt = nowMs;
+
+    // A LATE ANSWER (TMGoals.judgeLate): the first press after a goal left unanswered, and it is that
+    // goal's answer. Visitors miss, walk back to the console to find the answer and press it, by then on a
+    // new goal. It counts as that goal solved (the tally and its plant), its answer line shows in green,
+    // and then the new goal comes back. It is NOT a boost: no seeding, no time-lapse, no health, no birds,
+    // no outline, and no chance spent on the new goal.
+    const late = (typeof TMGoals !== 'undefined' && TMGoals.judgeLate) ? TMGoals.judgeLate(key, m.plantName, nowMs) : null;
+    if (late) {
+      if (typeof DeepTime !== 'undefined') {
+        DeepTime.goalsSolved++;
+        if (DeepTime.solvedKeys.indexOf(key) === -1) DeepTime.solvedKeys.push(key);
+      }
+      reply({ type: 'boostResult', plantKey: key, matched: null, late: true, goal: late.kind, text: late.text });
+      emitGoal();
+      return;
+    }
 
     // The plant goal (TeManawa_goals.js): judge this boost against the live goal BEFORE seeding, so
     // the ANSWER gets the bigger boost below. The verdict replaces the goal line above the timeline
@@ -369,10 +405,13 @@ const TMBus = (function () {
   function emitGoal() {
     if (!ch || typeof DeepTime === 'undefined') return;
     const goal = nextRegimeBoundary(DeepTime.yearsBP);
-    // prompt: the live plant goal's line (TeManawa_goals.js), or null when the regime objective shows.
+    // prompt: the plant goal's question on the wall (TeManawa_goals.js), or null when the regime objective
+    // shows. plant: the console's goal strip — which draw it is, its chances, a reveal, the last goal's end.
     const prompt = (typeof TMGoals !== 'undefined') ? TMGoals.promptText() : null;
-    if (goal) reply({ type: 'goal', targetYearsBP: goal.targetYearsBP,
-                      targetStage: goal.targetStage, targetStageName: goal.targetStageName, prompt: prompt });
+    const plant = (typeof TMGoals !== 'undefined' && TMGoals.telemetry) ? TMGoals.telemetry() : null;
+    if (goal || plant) reply({ type: 'goal', targetYearsBP: goal ? goal.targetYearsBP : null,
+                      targetStage: goal ? goal.targetStage : null, targetStageName: goal ? goal.targetStageName : null,
+                      prompt: prompt, plant: plant });
   }
 
   // Live timelapse state off the real ramp (DeepTime): progress + the current yr/s the ramp is at.
@@ -411,6 +450,8 @@ const TMBus = (function () {
     available() { return !!ch; },
     emitClock, emitGoal, emitTimelapse, nextRegimeBoundary,
     boost: onBoost,       // testable entry point (also usable from the console)
+    hint: onHint,         // the H key (Game.handleKey) and the harness
+    busy() { return !!(_pendingEruption || _eruptionDue); },   // an eruption a boost stopped short of is still to fire (Milestone waits for it)
     dispatch: onMessage,  // the channel's message handler, exposed so bootcheck can drive intents
     heartbeat: tick       // one beat of the telemetry timer, which never starts without a channel (the harness)
   };

@@ -17,7 +17,22 @@
 //
 // A goal gets TWO CHANCES (TM_GOALS.missLimit). After the first miss the same goal comes back; after the
 // second, a new one is drawn when the verdict releases. Without this a both-worlds answer never left: it
-// is live in either climate, so nothing but a solve or an eruption moved the line.
+// is live in either climate, so nothing but a solve or an eruption moved the line. The wall shows the
+// chances as drawn pips after the line (InstallHUD._drawGoalPips); a miss empties one.
+//
+// WHEN A GOAL LEAVES UNANSWERED after a try (out of chances, or its answer no longer fits the climate a
+// boost's time-lapse landed on): visitors walk back to the console to hunt for the answer, and their
+// "second try" used to land on a new goal they had not read. So, without more words on the wall:
+//   1. REVEAL: once the last verdict clears, the old question stays up revealMs with its answer plants
+//      ringed white (g._boostHi), so "this was the answer" reads against the question it answers.
+//   2. ENTRANCE: then the new goal slides up with its pips filling (a goal coming back after one miss
+//      just crossfades), so a new question looks new. shownSerial() tells the two apart.
+//   3. LATE ANSWER: for lateGraceMs after the new goal appears, if the FIRST press is the old goal's
+//      answer (and does not answer the new one) it is a late answer (judgeLate): the old goal's answer
+//      line in green for lateHoldMs, a goal solved on the tally, and nothing else. It is NOT a boost: no
+//      seeding, no time-lapse, no health, no chance spent on the new goal. Then the new goal comes back.
+// The console shows the same thing under its plants (secondscreen/app.js, the goal strip), from
+// telemetry() over the bus. md/TEMANAWA_GOALS.md §2.5.
 //
 // WHICH GOAL IS UP. Every goal that is LIVE right now (below) is a candidate, and one is drawn at
 // random, so two visitors at the same point in the timeline can get different goals. The draw leans
@@ -71,6 +86,16 @@ const TM_GOALS = {
   recentMemory: 3,              // skip the last N goals shown while there is another choice
   missLimit: 2,                 // a goal's chances: this many boosts in a row that don't answer it and a new
                                 // goal is drawn when the last verdict releases (0 = hold it until it is solved)
+  // A goal that leaves unanswered after a try (header, "WHEN A GOAL LEAVES UNANSWERED").
+  revealMs:     4000,           // the old question stays up this long, its answer plants ringed white (0 = no reveal)
+  revealOutline: [255, 255, 255],
+  revealOutlinePx: 8,
+  lateGraceMs:  15000,          // then, this long after the new goal appears, a first press of the old answer is a late answer
+  lateHoldMs:   5000,           // the late answer's line holds this long before the new goal comes back
+  colLate:      null,           // its colour; null = the interglacial green (TM_BOOST.outlineInterglacial)
+  // THE HINT (the H key, in either window; TMGoals.hint): the answers to the goal on the line that can be
+  // boosted now are ringed white on the wall this long, and the console's climate rail points to them.
+  hintMs:       6000,
 
   list: [
     // ---- MOA: kahikatea (little bush moa), harakeke (Mantell's moa), mānuka (stout-legged moa) ----
@@ -100,7 +125,10 @@ const TM_GOALS = {
     // eruption has happened this session (Kaukatea, Whakamaru and Ōruanui all fall in glacials).
     // Mānuka too (2026-11-05): the scrub New Zealanders know as the pioneer of disturbed ground (its card:
     // "the tough pioneer of poor ground"), so a "not a scrub that grows back" verdict on it would be false.
-    { id: 'scrub-after-volcano', group: 'moa',
+    // OFF 2026-11-08: folded into ash-bloom, the one post-eruption goal. Up beside it, visitors read pūrei's
+    // eruption line, boosted pūrei for "a scrub" and were told no; in an interglacial its only answer was
+    // mānuka, whose card said nothing about a volcano.
+    { id: 'scrub-after-volcano', group: 'moa', off: true,
       prompt: 'Boost a scrub that grows back after a volcano!',
       cond:   'a scrub that grows back after a volcano',
       answer: ['coprosma', 'manuka'],
@@ -127,7 +155,7 @@ const TM_GOALS = {
       answer: ['kahikatea'],
       terms:  { kahikatea: ['butter boxes'] } },
     // Subalpine scrub: "It's so thick that trampers once had to crawl underneath it, or walk across the top!"
-    { id: 'crawl-under-scrub', group: 'moa',
+    { id: 'crawl-under-scrub', group: 'moa', off: true,
       prompt: 'Boost a scrub so thick that trampers had to crawl under it!',
       cond:   'a scrub so thick that trampers had to crawl under it',
       answer: ['coprosma'],
@@ -301,7 +329,7 @@ const TM_GOALS = {
         nikau: ['retreated in the ice ages'] } },
     // Tōtara and kahikatea "berries" are fleshy red stalks under the seed; nīkau's are true fruit.
     // Coprosma too (2026-11-05): many have orange to red berries. Cold, so this is live in glacials too.
-    { id: 'red-berries', group: 'forest',
+    { id: 'red-berries', group: 'forest', off: true,
       prompt: 'Boost a plant with red berries!',
       cond:   'a plant with red berries',
       answer: ['nikau', 'Totara', 'kahikatea', 'coprosma'],
@@ -409,8 +437,8 @@ const TM_GOALS = {
 
     // ---- SUGGESTED — sim mechanics and bird traits to fill the timeline. Each one's facts and the gap
     // it fills: md/TEMANAWA_GOALS.md §4. Those whose fact is on the answer's card were switched on
-    // 2026-10-19. Five stay drafts (off: true) because no card says it yet: no wings, owl-like
-    // hearing, harrier scrub, blue wattles, kiwi nostrils. Add the line to the card, then switch on.
+    // 2026-10-19; no wings and blue wattles followed on 2026-11-06. Three stay drafts (off: true) because
+    // no card says it yet: owl-like hearing, harrier scrub, kiwi nostrils. Add the line to the card, then switch on.
     // Moa
     { id: 'flood-tree', group: 'moa',              // sim: kahikatea recruits only on flood silt
       prompt: 'Boost a tree that needs a flood to grow!',
@@ -418,10 +446,13 @@ const TM_GOALS = {
       answer: ['kahikatea'],
       terms:  { kahikatea: ['seedlings need fresh, wet silt'] } },
     { id: 'no-wings', group: 'moa',                 // trait: moa had no wings at all
-      prompt: 'Boost a plant that fed a bird with no wing bones at all!',
-      cond:   'food for a bird with no wing bones at all',
+      prompt: 'Boost a plant that fed the birds with no wing bones at all!',
+      cond:   'food for the birds with no wing bones at all',
       answer: ['kahikatea', 'flax', 'coprosma', 'manuka', 'dracophyllum'],   // every card whose bird is a moa
-      text:   { answer: '{plant} fed a moa, a bird with no wings at all! Even the kiwi has traces of wing bones.' } },
+      terms:  {
+        kahikatea: ['no trace of wing bones'], flax: ['no trace of wing bones'], coprosma: ['no trace of wing bones'],
+        manuka: ['no trace of wing bones'], dracophyllum: ['no trace of wing bones'] },
+      text:  { answer: '{plant} fed a moa, a bird with no wings at all! Even the kiwi has traces of wing bones.' } },
     { id: 'tangled-shrub', group: 'moa', off: true,           // trait: divaricating shrubs vs moa browsing
       prompt: 'Boost a tangled shrub that may have grown that way to keep moa off!',
       cond:   'a tangled shrub that may have kept moa off',
@@ -444,16 +475,21 @@ const TM_GOALS = {
       cond:   "a scrub where Eyles' harrier hunted",
       answer: ['coprosma', 'manuka'] },
     // Lowland animals
-    // sim: an eruption blooms the wetland. Pūrei's card: "ash-silted swamp margins widen and sedges spread".
-    // Scrub too (2026-11-05): both scrub cards say it pioneers the regrowth after an eruption, and this goal
-    // can be up beside scrub-after-volcano, so the two must not contradict each other (mānuka with it).
+    // THE post-eruption goal (the only one since 2026-11-08; scrub-after-volcano folded in). sim: an
+    // eruption blooms the wetland. Every answer's card says it, in the prompt's own words ("after a big
+    // eruption … spread"), and it can be answered in EITHER climate: pūrei and mānuka are both-worlds,
+    // the scrub is glacial. Pūrei: "After a big eruption, ash-silted swamp margins widen and sedges spread".
+    // Scrub (both cards): "pioneer the forest's regrowth after a super-volcanic eruption". Mānuka: "After an
+    // eruption, it spreads onto the bare volcanic ash" (it colonises fresh tephra, e.g. Tarawera 1886).
+    // The harness ("plant goals") holds every post-eruption goal to both climates and a term per answer.
     { id: 'ash-bloom', group: 'lowland',
-      prompt: 'Boost a plant that spreads after volcanic ash falls!',
-      cond:   'a plant that spreads after volcanic ash falls',
+      prompt: 'Boost a plant that spreads after a big eruption!',
+      cond:   'a plant that spreads after a big eruption',
       answer: ['sedge', 'coprosma', 'manuka'],
       terms:  {
-        sedge: ['ash-silted swamp margins widen and sedges spread'],
-        coprosma: ['regrowth after a super-volcanic eruption'] },
+        sedge: ['After a big eruption', 'ash-silted swamp margins widen and sedges spread'],
+        coprosma: ['regrowth after a super-volcanic eruption'],
+        manuka: ['After an eruption, it spreads onto the bare volcanic ash'] },
       requires: { eruption: true } },
     { id: 'flightless-goose', group: 'lowland', off: true,    // trait: the North Island goose couldn't fly
       prompt: "Boost the grass that fed a goose that couldn't fly!",
@@ -490,6 +526,7 @@ const TM_GOALS = {
       prompt: 'Boost a plant for the bird with bright blue wattles!',
       cond:   'a plant for the bird with bright blue wattles',
       answer: ['nikau'],
+      terms:  { nikau: ['bright blue wattles'] },
       text:   { answer: '{plant} feeds the kōkako, the bird with bright blue wattles!' } },
     { id: 'beak-tip-nose', group: 'forest', off: true,        // trait: kiwi nostrils at the tip of the beak
       prompt: 'Boost a plant for the bird that smells with the tip of its beak!',
@@ -508,7 +545,10 @@ const TM_GOALS = {
     matched:      '{plant} was in {regime} habitats, but is not {cond}...',
     wrong:        '{plant} was not {regime}, and was not {cond}',
     // The right plant boosted in the wrong climate (only possible for a warm or cold answer).
-    answerWrongClimate: '{plant} was {cond}, but was not {regime}...'
+    answerWrongClimate: '{plant} was {cond}, but was not {regime}...',
+    // A late answer to the goal that just left (judgeLate). No {regime}: the climate has usually turned
+    // since that goal was up. A goal's own `answer` line wins (none of them names the climate).
+    lateAnswer:   '{plant} was {cond}!'
   },
 
   colPrompt: [236, 244, 240],   // the goal line and a matched-but-not-the-answer verdict (the year's colour)
@@ -547,11 +587,21 @@ const TMGoals = {
   _afterEruption: false,   // an eruption is waiting for its goal to be answered: the draw takes a post-eruption goal
   _misses: 0,         // boosts in a row that didn't answer the live goal (TM_GOALS.missLimit)
   _spent: null,       // the goal that just ran out of chances: the next draw passes over it if it can
-  _eruptionSpent: [], // ids of the post-eruption goals out of chances since the last eruption
   _solved: false,     // the live goal has been answered: its release draws a new one, whatever verdict came after
   _rand: Math.random, // the draw's random source (bootcheck swaps in a fixed sequence)
+  _serial: 0,         // counts draws: every new goal on the line (even the same goal redrawn) gets a new number
+  _liveGlacial: null, // the regime the live goal was drawn in (which of its answers the console shows)
+  _solvedKey: null,   // the plant that answered the live goal
+  // The goal that just left unanswered after a try (header, "WHEN A GOAL LEAVES UNANSWERED"). One
+  // reused object. phase 0 none · 1 waiting for its last verdict to clear · 2 REVEAL (its question back
+  // up, its answer ringed) · 3 the LATE window (the new goal up, a press of the old answer still counts).
+  _left: { goal: null, serial: 0, chances: 0, key: null, phase: 0, until: 0 },
+  // The goal before the one on the line and how it ended, for the console's goal strip: outcome
+  // 'solved' | 'missed' | 'late' (a late answer) | null (it left untried, so there is nothing to say).
+  _last: { serial: 0, prompt: null, outcome: null, key: null },
   // The current verdict. ONE reused object (no allocation on the frame path); kind null = none.
-  _verdict: { kind: null, text: null, col: null, t0: 0, goalId: null },
+  // `hold`: how long it stays up at least; `serial`: the draw it judged.
+  _verdict: { kind: null, text: null, col: null, t0: 0, goalId: null, hold: 0, serial: 0 },
 
   // ---- the boost gate's climate fit, shared with TeManawa_bus.js onBoost -----------------------
   // A warm species (low coldTolerance) wants the interglacial, a cold one the glacial; a mid-tolerance
@@ -626,8 +676,8 @@ const TMGoals = {
   // Choose the goal to show. `keep`: hold the live goal if it is still live (a climate flip or a land
   // morph shouldn't churn the line). Otherwise draw: skip the recent few if there's another choice,
   // then usually (sequenceBias) take one from the current bird-sequence stage, else any live goal.
-  // After an eruption the draw is the post-eruption goals alone, whatever the sequence says, until each
-  // has had its chances. A goal that just ran out of chances is passed over unless it is the only one live.
+  // After an eruption the draw is the post-eruption goals alone, whatever the sequence says, until one is
+  // answered or runs out of its chances; then the whole book again. A goal that just ran out of chances is passed over unless it is the only one live.
   // Event-driven (a solve, a miss limit, a regime flip, a land morph, a reset), never per frame: it scans
   // the plants and hasHabitat scans the biome map.
   _pick(g, glacial, yearsBP, keep) {
@@ -640,8 +690,14 @@ const TMGoals = {
     this._live = null; this._misses = 0; this._spent = null;
     if (!live.length) return;
     const tied = this._afterEruption
-      ? live.filter(gl => this.isEruptionGoal(gl) && this._eruptionSpent.indexOf(gl.id) < 0) : null;
+      ? live.filter(gl => this.isEruptionGoal(gl)) : null;
     if (tied && tied.length) live = tied;
+    // A post-eruption goal out of chances hands over to the book, not to another post-eruption goal (even a
+    // recently shown book goal beats one: the recent memory below only applies among what is left).
+    if (spent && this.isEruptionGoal(spent)) {
+      const book = live.filter(gl => !this.isEruptionGoal(gl));
+      if (book.length) live = book;
+    }
     let pool = live.filter(gl => this._recent.indexOf(gl.id) < 0);
     if (!pool.length) pool = live;
     if (spent && pool.length > 1) pool = pool.filter(gl => gl !== spent);
@@ -651,6 +707,7 @@ const TMGoals = {
     if (!(tied && tied.length) && inStage.length && this._rand() < (TM_GOALS.sequenceBias != null ? TM_GOALS.sequenceBias : 0.75)) pool = inStage;
     const pick = pool[Math.min(pool.length - 1, Math.floor(this._rand() * pool.length))];
     this._live = pick;
+    this._serial++; this._liveGlacial = glacial; this._solvedKey = null;
     this._recent.push(pick.id);
     while (this._recent.length > (TM_GOALS.recentMemory || 0)) this._recent.shift();
   },
@@ -661,16 +718,20 @@ const TMGoals = {
   // Allocation-free on the common path.
   update(g, now) {
     const v = this._verdict;
-    if (v.kind && now - v.t0 >= TM_GOALS.holdMs && !this._timeMoving()) {
-      if (this._solved) { this._solved = false; this._stage++; this._force = true; }
+    let solvedNow = false;
+    if (v.kind && now - v.t0 >= (v.hold || TM_GOALS.holdMs) && !this._timeMoving()) {
+      if (this._solved) { this._solved = false; solvedNow = true; this._stage++; this._force = true; }
       else if (TM_GOALS.missLimit && this._misses >= TM_GOALS.missLimit && this._live) {
         this._spent = this._live;
-        if (this.isEruptionGoal(this._live)) this._eruptionSpent.push(this._live.id);
+        // An eruption's goal gets its two chances, then the line moves on to the whole book: the draw is
+        // no longer tied to post-eruption goals (it was, and ran several of them back to back).
+        if (this.isEruptionGoal(this._live)) this._afterEruption = false;
         this._force = true;
       }
       v.kind = null; v.text = null; v.col = null;
     }
     if (typeof DeepTime === 'undefined') return;
+    this._stepLeft(g, now);
     const glacial = this.glacialNow();
     // A FRESH GOAL PAST A GLACIAL TURN (decided 2026-11-02): when the time dial or a deep burst carries
     // the clock across a glacial/interglacial turn, draw a new goal instead of holding the old one
@@ -682,8 +743,80 @@ const TMGoals = {
     if (this._force || this._dirty || glacial !== this._glacial || baked !== this._baked) {
       const keep = !this._force;
       this._force = false; this._dirty = false; this._glacial = glacial; this._baked = baked;
+      const prev = this._live, misses = this._misses, prevGlacial = this._liveGlacial, prevSerial = this._serial;
+      const solved = solvedNow || this._solved, solvedKey = this._solvedKey;
       this._pick(g, glacial, DeepTime.yearsBP, keep);
+      if (prev && this._live !== prev) this._onLeave(g, now, prev, prevSerial, misses, solved, solvedKey, prevGlacial);
     }
+  },
+
+  // ---- a goal leaving the line (header, "WHEN A GOAL LEAVES UNANSWERED") -------------------------
+  // Called when a draw replaced `prev`. A solved goal goes in the console's record as answered; one
+  // that leaves after a try starts the reveal (now, or once its last verdict has cleared); one that
+  // leaves untried (a climate turn under the dial, an eruption) leaves quietly. Event-driven.
+  _onLeave(g, now, prev, serial, misses, solved, solvedKey, glacial) {
+    const L = this._last, F = this._left;
+    L.serial = serial; L.prompt = prev.prompt;
+    F.phase = 0; F.goal = null;
+    if (solved) { L.outcome = 'solved'; L.key = solvedKey || this._answerKey(prev, glacial); return; }
+    if (misses < 1) { L.outcome = null; L.key = null; return; }
+    L.outcome = 'missed'; L.key = this._answerKey(prev, glacial);
+    F.goal = prev; F.serial = serial; F.key = L.key;
+    F.chances = TM_GOALS.missLimit ? Math.max(0, TM_GOALS.missLimit - misses) : -1;
+    F.phase = 1;
+    this._stepLeft(g, now);
+  },
+  // The answer to show for a goal: the first that fitted the climate it was drawn in.
+  _answerKey(goal, glacial) {
+    const A = goal.answer || [];
+    for (let i = 0; i < A.length; i++) if (glacial == null || this.fits(A[i], glacial)) return A[i];
+    return A[0] || null;
+  },
+  // Moves the left goal through its phases on the real clock. Per frame, allocation-free except the
+  // one ring set made when the reveal starts.
+  _stepLeft(g, now) {
+    const F = this._left;
+    if (!F.phase) return;
+    if (F.phase === 1) {
+      if (this._verdict.kind || this._timeMoving()) return;    // its verdict is still being read
+      const ms = TM_GOALS.revealMs || 0;
+      if (ms > 0) {
+        F.phase = 2; F.until = now + ms;
+        if (g && F.goal) g._boostHi = { keys: new Set(F.goal.answer), color: TM_GOALS.revealOutline || [255, 255, 255],
+                                        until: now + ms, t0: now, from: null, fadeMs: 0,
+                                        px: TM_GOALS.revealOutlinePx || 8, _col: null };
+        return;
+      }
+      F.phase = 3; F.until = now + (TM_GOALS.lateGraceMs || 0);
+      return;
+    }
+    if (now < F.until) return;
+    if (F.phase === 2) { F.phase = 3; F.until = now + (TM_GOALS.lateGraceMs || 0); return; }
+    F.phase = 0; F.goal = null;                                 // the late window has passed
+  },
+
+  // A LATE ANSWER (TeManawa_bus.js onBoost, before judge): the first press after a goal left unanswered,
+  // while its question is still on the way out or the new goal has been up less than lateGraceMs. If it
+  // is the old goal's answer, and not also the new goal's (then the new goal's verdict wins), this returns
+  // the late verdict and the bus counts a goal solved and does nothing else. Any first press closes the
+  // window, so only that press can be late.
+  judgeLate(key, plantName, now) {
+    const F = this._left;
+    if (!F.phase || !F.goal || !key) return null;
+    const goal = F.goal, serial = F.serial;
+    F.phase = 0; F.goal = null;
+    if (goal.answer.indexOf(key) === -1) return null;
+    if (this._live && this._live.answer.indexOf(key) !== -1) return null;
+    const v = this._verdict;
+    v.kind = 'lateAnswer';
+    const name = (TM_GOALS.verdictNames && TM_GOALS.verdictNames[key]) || plantName || this.nameOf(key);
+    v.text = this.format((goal.text && goal.text.answer) || TM_GOALS.text.lateAnswer, name, '', goal.cond);
+    v.col = TM_GOALS.colLate || this.climateColor(false);
+    v.t0 = now || 0; v.hold = TM_GOALS.lateHoldMs || TM_GOALS.holdMs;
+    v.goalId = goal.id; v.serial = serial;
+    const L = this._last;
+    if (L.serial === serial) { L.outcome = 'late'; L.key = key; }
+    return v;
   },
   _timeMoving() {
     if (typeof DeepTime === 'undefined') return false;
@@ -700,9 +833,10 @@ const TMGoals = {
   // A goal that only makes sense after an eruption (requires.eruption). When one fires (Game.applyAsh)
   // the line moves to such a goal, so what to do about the eruption is the next thing on the wall, and
   // answering it counts healthEruptionMult× (TeManawa_bus.js onBoost). The draw keeps to them until one
-  // is answered or each has had its chances, so the release of an older verdict cannot draw past it.
+  // is answered or has had its two chances (missLimit), so the release of an older verdict cannot draw
+  // past it; then the line moves on to the whole book, so a post-eruption goal is up at most twice in a row.
   isEruptionGoal(goal) { return !!(goal && goal.requires && goal.requires.eruption); },
-  onEruption() { this._afterEruption = true; this._force = true; this._eruptionSpent.length = 0; },
+  onEruption() { this._afterEruption = true; this._force = true; },
 
   // ---- the verdict -------------------------------------------------------------------------------
   // Judge a boost against the live goal (TeManawa_bus.js onBoost, BEFORE it seeds, so an answer gets
@@ -715,7 +849,7 @@ const TMGoals = {
     const kind = isAnswer ? (matched ? 'answer' : 'answerWrongClimate') : (matched ? 'matched' : 'wrong');
     if (kind === 'answer' && this.isEruptionGoal(goal)) this._afterEruption = false;
     this._misses = (kind === 'answer') ? 0 : this._misses + 1;
-    if (kind === 'answer') this._solved = true;
+    if (kind === 'answer') { this._solved = true; this._solvedKey = key; }
     const regime = glacial ? 'glacial' : 'interglacial';
     const v = this._verdict;
     v.kind = kind;
@@ -727,8 +861,8 @@ const TMGoals = {
     v.text = this.format(tpl, name, regime, goal.cond);
     v.col = (kind === 'answer') ? this.climateColor(glacial)
           : (kind === 'matched' ? TM_GOALS.colPrompt : TM_GOALS.colWrong);
-    v.t0 = now || 0;
-    v.goalId = goal.id;
+    v.t0 = now || 0; v.hold = TM_GOALS.holdMs;
+    v.goalId = goal.id; v.serial = this._serial;
     return v;
   },
 
@@ -792,19 +926,79 @@ const TMGoals = {
   // ---- read by the HUD and the bus ---------------------------------------------------------------
   // The line to show: the verdict while one holds, else the live goal's prompt; null → the HUD's
   // regime objective. color() pairs with text(); both return stable references (the HUD compares them).
-  text()  { return this._verdict.kind ? this._verdict.text : (this._live ? this._live.prompt : null); },
+  // During a REVEAL the line is the goal that left, not the live one.
+  text()  { return this._verdict.kind ? this._verdict.text : this.promptText(); },
   color() { return this._verdict.kind ? this._verdict.col : TM_GOALS.colPrompt; },
   live()  { return this._live; },
   verdict() { return this._verdict.kind ? this._verdict : null; },
-  promptText() { return this._live ? this._live.prompt : null; },
+  revealing() { return this._left.phase === 2 && !!this._left.goal; },
+  // The question on the line (no verdict): the revealed goal's, else the live goal's.
+  promptText() { return this.revealing() ? this._left.goal.prompt : (this._live ? this._live.prompt : null); },
+  // Which draw that question is (0 = none): a new number means a new goal, so the HUD slides it in.
+  shownSerial() { return this.revealing() ? this._left.serial : (this._live ? this._serial : 0); },
+  // The live goal's chances left, or -1 when chances are unlimited (missLimit 0) or no goal is live.
+  chancesLeft() {
+    if (!this._live || !TM_GOALS.missLimit) return -1;
+    return Math.max(0, TM_GOALS.missLimit - this._misses);
+  },
+  // The pips to draw after the line now: the chances of the goal the line is about, or -1 for none (an
+  // answer, a late answer, a verdict on a goal that has since been replaced, the regime objective).
+  chancesShown() {
+    const v = this._verdict;
+    if (v.kind) {
+      if (v.kind === 'answer' || v.kind === 'lateAnswer') return -1;
+      if (v.serial === this._serial && this._live) return this.chancesLeft();
+      if (this._left.goal && v.serial === this._left.serial) return this._left.chances;
+      return -1;
+    }
+    if (this.revealing()) return this._left.chances;
+    return this.chancesLeft();
+  },
+  // THE HINT (TeManawa_bus.js onHint, from the H key in either window). The answers to the goal on the
+  // line (the revealed one during a reveal) that fit the climate now, and have habitat if any do, are
+  // ringed white on the wall for hintMs. The console turns `keys` into a direction on its climate rail
+  // (secondscreen/app.js showHint). With no plant goal up, keys is empty and the console points to the
+  // climate's own habitats. Event-driven (allocates). Returns { keys, glacial, ms, goalId }.
+  hint(g, now) {
+    const glacial = this.glacialNow();
+    const goal = this.revealing() ? this._left.goal : this._live;
+    const sim = g ? g.simulation : null, keys = [];
+    if (goal) {
+      for (const k of goal.answer) {
+        if (!this.fits(k, glacial)) continue;
+        if (sim && typeof sim.hasHabitat === 'function' && !sim.hasHabitat(k, TM_GOALS.minHabitatCells)) continue;
+        keys.push(k);
+      }
+      if (!keys.length) for (const k of goal.answer) if (this.fits(k, glacial)) keys.push(k);
+    }
+    const ms = TM_GOALS.hintMs || 6000;
+    if (g && keys.length) g._boostHi = { keys: new Set(keys), color: TM_GOALS.revealOutline || [255, 255, 255],
+                                         until: (now || 0) + ms, t0: now || 0, from: null, fadeMs: 0,
+                                         px: TM_GOALS.revealOutlinePx || 8, _col: null };
+    return { keys, glacial, ms, goalId: goal ? goal.id : null };
+  },
+
+  // The console's goal strip (TeManawa_bus.js emitGoal, ~4/s off the frame loop; allocates).
+  telemetry() {
+    const F = this._left, L = this._last;
+    return {
+      serial: this.shownSerial(), prompt: this.promptText(),
+      chances: this.revealing() ? F.chances : this.chancesLeft(), missLimit: TM_GOALS.missLimit || 0,
+      revealing: this.revealing(), revealKey: this.revealing() ? F.key : null,
+      late: F.phase === 3,
+      last: L.outcome ? { serial: L.serial, prompt: L.prompt, outcome: L.outcome, key: L.key } : null
+    };
+  },
 
   // Soft reset (Game.resetEcosystem → a new visitor): drop any verdict, restart the bird sequence and
   // draw afresh on the next update. Allocation-free (the recent list is emptied in place).
   reset() {
     this._live = null; this._stage = 0; this._recent.length = 0;
     this._force = true; this._dirty = true; this._afterEruption = false;
-    this._misses = 0; this._spent = null; this._eruptionSpent.length = 0; this._solved = false;
-    const v = this._verdict; v.kind = null; v.text = null; v.col = null; v.goalId = null;
+    this._misses = 0; this._spent = null; this._solved = false; this._solvedKey = null;
+    const v = this._verdict; v.kind = null; v.text = null; v.col = null; v.goalId = null; v.hold = 0; v.serial = 0;
+    const F = this._left; F.phase = 0; F.goal = null; F.key = null;
+    const L = this._last; L.outcome = null; L.prompt = null; L.key = null; L.serial = 0;
   }
 };
 try { if (typeof window !== 'undefined') window.TMGoals = TMGoals; } catch (_) {}

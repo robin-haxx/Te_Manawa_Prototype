@@ -73,7 +73,8 @@ const Kiosk = {
     // overlay, the authoring overlays, P) needs ?dev. The console's own keys land here whenever this
     // window has focus; they count as presence but do nothing.
     const dial = (typeof DeepTime !== 'undefined' && DeepTime.DIAL_KEYS) || { faster: [], slower: [], reset: [] };
-    this._wallKeys = new Set(['1', '2', '3', '4', '5', ...dial.faster, ...dial.slower, ...dial.reset]);
+    // H is the HINT (Game.handleKey → TMBus.hint): the goal's answers ringed white, the console's rail pointing.
+    this._wallKeys = new Set(['1', '2', '3', '4', '5', 'h', 'H', ...dial.faster, ...dial.slower, ...dial.reset]);
 
     // --- error capture -> ring buffer -> soft reset ----------
     window.addEventListener('error', (e) => {
@@ -192,20 +193,19 @@ const Kiosk = {
       return;
     }
 
-    // 2. Idle -> the attract. THE LAND BEFORE THE WINDOW (TeManawa_palaeo.js, md/TEMANAWA_PALAEO_ATTRACT.md):
-    //    the land-only sequence from 4 Ma plays, and lands on a fresh 1 Ma world (Palaeo.begin → … →
-    //    landAttract). It is refused while one is already running; begin() restarts the idle timer.
-    //    With TM_PALAEO.enabled false, the older staging: a VOLCANIC EVENT — the same charge the
-    //    timeline/button eruptions use (rumble + ash-cloud roll-down); InstallHUD.update() performs the
-    //    actual reset at the crest, hidden under the ash cover, then plays the reveal. The reset itself
-    //    stays synchronous (resetToAttract is untouched); only the idle TRIGGER pre-rolls. If a charge/ash
-    //    window is already live the arm is refused and we retry on the next tick (lastInputAt only
-    //    advances once it takes).
+    // 2. Idle -> the attract (TeManawa_attract.js, 2026-11-08): the land and the UI go to black, and a
+    //    fresh 1 Ma world comes up with no UI, living in real time until a visitor breaks it (the intro
+    //    plays). Refused while it is already up (or the intro/outro runs), so lastInputAt only advances
+    //    once it takes. The deep-time sequence (TeManawa_palaeo.js) is no longer on the wall's path; it
+    //    stays behind the dev P key. With TM_ATTRACT.enabled false, the older eruption-staged reset: a
+    //    VOLCANIC EVENT (the charge the timeline/button eruptions use) whose crest InstallHUD.update()
+    //    turns into resetToAttract under the ash cover.
     if (now - this.lastInputAt > this.idleSeconds * 1000) {
       const g = this.game;
       if (g && g.terrain) {
-        if (this._palaeoOn()) { if (Palaeo.begin(g, 'idle')) this.lastInputAt = now; }
-        else if (this.beginAttractEruption(g)) this.lastInputAt = now;
+        if (typeof Attract !== 'undefined' && typeof TM_ATTRACT !== 'undefined' && TM_ATTRACT.enabled) {
+          if (Attract.enter(g, 'idle')) this.lastInputAt = now;
+        } else if (this.beginAttractEruption(g)) this.lastInputAt = now;
       }
     }
 
@@ -311,7 +311,7 @@ const Kiosk = {
       // (idle / once per cycle), well short of the watchdog. See TEMANAWA_BUILD_V3.md §5.1.
       const target = (typeof DeepTime !== 'undefined') ? this._attractTarget(reason) : null;
       if (!reseed && target != null && typeof g.applyEruptionAt === 'function') {
-        g.applyEruptionAt(target, DeepTime.eruptionByYear(target));
+        g.applyEruptionAt(target, DeepTime.eruptionByYear(target), { fresh: true });   // a new visitor: nothing of the last one's land carries
       } else if (reseed) {
         g.init();                                                     // full restart at 1 Ma (+ reseed the land)
       } else {

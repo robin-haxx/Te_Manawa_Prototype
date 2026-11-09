@@ -1237,18 +1237,31 @@ const InstallHUD = {
     const gt = goals ? goals.text() : null;
     const want = gt || (c.label || null);
     const col = gt ? goals.color() : this._goalPromptCol();
+    // Which draw the line is about (a new number = a new goal) and its chances (pips; -1 = none).
+    const ser = (gt && goals.shownSerial) ? goals.shownSerial() : 0;
+    const pips = (gt && goals.chancesShown) ? goals.chancesShown() : -1;
+    const isPrompt = !!(gt && goals.verdict && !goals.verdict());
     const now = millis();
     let F = this._goalFade;
-    if (!F) F = this._goalFade = { cur: { text: null, col: null, lines: null, t0: -1e9, a0: 1 },
-                                   out: { text: null, col: null, lines: null, t0: -1e9, a0: 0 } };
-    if (want !== F.cur.text || col !== F.cur.col) {
+    if (!F) F = this._goalFade = {
+      cur: { text: null, col: null, lines: null, t0: -1e9, a0: 1, ser: 0, pips: -1, lastW: 0, enter: -1 },
+      out: { text: null, col: null, lines: null, t0: -1e9, a0: 0, ser: 0, pips: -1, lastW: 0, enter: -1 } };
+    if (want !== F.cur.text || col !== F.cur.col || ser !== F.cur.ser) {
       const fade = this.GOAL_FADE_MS;
       const shown = Math.min(1, (now - F.cur.t0) / fade);  // how far the old line had faded in
       const o = F.out; F.out = F.cur; F.cur = o;
       F.out.a0 = shown; F.out.t0 = now;
-      F.cur.text = want; F.cur.col = col; F.cur.t0 = now;
+      F.cur.text = want; F.cur.col = col; F.cur.t0 = now; F.cur.ser = ser; F.cur.pips = pips;
       F.cur.lines = want ? this._wrapGoal(want, W) : null;
+      F.cur.lastW = F.cur.lines ? this._goalLineW(F.cur.lines[F.cur.lines.length - 1]) : 0;
+      // A NEW goal's question slides up and its pips fill in; the same goal back after a miss (or after
+      // its verdict) just crossfades, so the two read differently from across the room.
+      F.cur.enter = -1;
+      if (isPrompt && ser > 0 && ser !== this._goalSerSeen) { F.cur.enter = now; this._resetPips(0); }
+      if (isPrompt && ser > 0) this._goalSerSeen = ser;
     }
+    F.cur.pips = pips;                                    // the live layer's pips follow the chances
+    this._stepPips(F.cur, now);
 
     const ay = this._visAxisY(H);                         // the bottom timeline axis (see renderVisitorTimeline)
     const cx = W / 2, cy = ay - this.VIS_GOAL_GAP;
@@ -1256,9 +1269,92 @@ const InstallHUD = {
     const aOut = F.out.a0 * (1 - Math.min(1, (now - F.out.t0) / fade));
     const aIn  = Math.min(1, (now - F.cur.t0) / fade);
     push();
-    if (aOut > 0.004 && F.out.lines) this._drawGoalLines(F.out.lines, F.out.col, aOut, cx, cy);
-    if (aIn > 0.004 && F.cur.lines)  this._drawGoalLines(F.cur.lines, F.cur.col, aIn, cx, cy);
+    if (aOut > 0.004 && F.out.lines) this._drawGoalLayer(F.out, aOut, cx, cy, now, false);
+    if (aIn > 0.004 && F.cur.lines)  this._drawGoalLayer(F.cur, aIn, cx, cy, now, true);
     pop();
+  },
+
+  // ---- the goal's chances: drawn pips after the line (TM_GOALS.missLimit) --------------------------
+  // A full disc is a chance left; a miss shrinks one to an empty ring (a change in SIZE, never in
+  // brightness: photosensitivity). A new goal's pips grow in one after another as it slides up.
+  GOAL_PIP_D: 20,             // pip diameter, px
+  GOAL_PIP_GAP: 12,           // px between pips
+  GOAL_PIP_LEAD: 24,          // px from the end of the line to the first pip
+  GOAL_PIP_RING: 3,           // the ring's weight
+  GOAL_PIP_MS: 260,           // a pip's grow / shrink
+  GOAL_PIP_STAGGER: 160,      // a new goal's pips start growing this far apart…
+  GOAL_PIP_DELAY: 320,        // …after this long
+  GOAL_ENTER_MS: 700,         // a new goal's slide up
+  GOAL_ENTER_RISE: 30,        // …from this far below
+  GOAL_ENTER_POP: 0.08,       // …and this much larger, settling to 1
+  _goalSerSeen: 0,            // the last draw whose question was shown: a different number slides in as new
+  _pipFill: null,             // eased fill per pip, 0..1 (sized to missLimit, reallocated only if that changes)
+  _pipLast: 0,
+  _resetPips(v) {
+    const n = Math.max(1, (typeof TM_GOALS !== 'undefined' && TM_GOALS.missLimit) || 1);
+    if (!this._pipFill || this._pipFill.length !== n) this._pipFill = new Array(n);
+    for (let i = 0; i < n; i++) this._pipFill[i] = v;
+  },
+  _stepPips(L, now) {
+    if (!this._pipFill) this._resetPips(1);
+    const n = this._pipFill.length;
+    if ((typeof TM_GOALS !== 'undefined' && TM_GOALS.missLimit || 1) !== n) this._resetPips(1);
+    let d = this._pipLast ? (now - this._pipLast) / this.GOAL_PIP_MS : 0;
+    if (d > 0.25) d = 0.25;                                         // a long frame gap never jumps it
+    this._pipLast = now;
+    const P = this._pipFill;
+    for (let i = 0; i < P.length; i++) {
+      let want = (L.pips >= 0 && i < L.pips) ? 1 : 0;
+      if (L.enter >= 0 && now - L.enter < this.GOAL_PIP_DELAY + i * this.GOAL_PIP_STAGGER) want = 0;
+      P[i] += Math.max(-d, Math.min(d, want - P[i]));
+    }
+  },
+  _goalLineW(str) {
+    if (!str || typeof textWidth !== 'function') return 0;
+    push(); textFont(FreckleFace); textSize(this.VIS_GOAL_SIZE);
+    const w = textWidth(str); pop();
+    return w;
+  },
+  // One crossfade layer: its lines, shifted left by half the pips so line + pips sit centred, then the
+  // pips after the last line. `live`: the layer fading in (its pips ease; the outgoing layer's are frozen).
+  _drawGoalLayer(L, alpha, cx, cy, now, live) {
+    const n = (L.pips >= 0 && this._pipFill) ? this._pipFill.length : 0;
+    const pipsW = n ? this.GOAL_PIP_LEAD + n * this.GOAL_PIP_D + (n - 1) * this.GOAL_PIP_GAP : 0;
+    let x = cx - pipsW / 2, y = cy, s = 1;
+    if (live && L.enter >= 0) {
+      const t = Math.min(1, (now - L.enter) / this.GOAL_ENTER_MS), e = 1 - (1 - t) * (1 - t) * (1 - t);
+      y += (1 - e) * this.GOAL_ENTER_RISE;
+      s = 1 + (1 - e) * this.GOAL_ENTER_POP;
+      if (t >= 1) L.enter = -1;
+    }
+    if (s !== 1) {
+      push(); translate(x, y); scale(s);
+      this._drawGoalLines(L.lines, L.col, alpha, 0, 0);
+      if (n) this._drawGoalPips(L.lastW / 2 + this.GOAL_PIP_LEAD, 0, n, live ? this._pipFill : null, L.pips, alpha);
+      pop();
+      return;
+    }
+    this._drawGoalLines(L.lines, L.col, alpha, x, y);
+    if (n) this._drawGoalPips(x + L.lastW / 2 + this.GOAL_PIP_LEAD, y, n, live ? this._pipFill : null, L.pips, alpha);
+  },
+  // `fills` eased per pip, or null for a frozen layer (then the first `left` are full).
+  _drawGoalPips(x0, cy, n, fills, left, alpha) {
+    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null;
+    const a0 = dc ? dc.globalAlpha : 1;
+    if (dc) dc.globalAlpha = a0 * alpha;
+    const D = this.GOAL_PIP_D, Sh = this.GOAL_SHADOW, C = this._goalPromptCol();
+    push();
+    for (let i = 0; i < n; i++) {
+      const x = x0 + D / 2 + i * (D + this.GOAL_PIP_GAP), y = cy + 1;
+      const f = fills ? fills[i] : (i < left ? 1 : 0);
+      noFill(); stroke(Sh[0], Sh[1], Sh[2], Sh[3]); strokeWeight(this.GOAL_PIP_RING + 2);
+      ellipse(x + 2, y + 3, D, D);                                  // the drop shadow, as the line's
+      stroke(C[0], C[1], C[2]); strokeWeight(this.GOAL_PIP_RING);
+      ellipse(x, y, D, D);
+      if (f > 0.01) { noStroke(); fill(C[0], C[1], C[2]); ellipse(x, y, D * f, D * f); }
+    }
+    pop();
+    if (dc) dc.globalAlpha = a0;
   },
 
   // Where the HUD stands over the world, for overlays lettered over it (RiverNames) to keep clear of:
@@ -1744,8 +1840,9 @@ const InstallHUD = {
     const breath = Math.sin((now / E.breatheMs) * Math.PI * 2);
     const alpha = Math.max(0, E.baseAlpha * (1 + E.breatheAmp * breath));
 
+    const ga0 = dc.globalAlpha;   // the caller's fade (GameUI under a health milestone) multiplies in
     dc.save();
-    dc.globalAlpha = alpha;
+    dc.globalAlpha = ga0 * alpha;
     dc.fillStyle = c.top;    dc.fillRect(0, 0, W, depth);
     dc.fillStyle = c.bottom; dc.fillRect(0, H - depth, W, depth);
     dc.fillStyle = c.left;   dc.fillRect(0, 0, depth, H);
@@ -1767,7 +1864,7 @@ const InstallHUD = {
           grd.addColorStop(1,    'rgba(' + pr + ',' + pg + ',' + pb + ',0)');
           return grd;
         };
-        dc.globalAlpha = pa;
+        dc.globalAlpha = ga0 * pa;
         dc.fillStyle = pmk(0, 0, 0, depth);       dc.fillRect(0, 0, W, depth);
         dc.fillStyle = pmk(0, H, 0, H - depth);   dc.fillRect(0, H - depth, W, depth);
         dc.fillStyle = pmk(0, 0, depth, 0);       dc.fillRect(0, 0, depth, H);

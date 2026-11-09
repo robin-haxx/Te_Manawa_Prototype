@@ -32,6 +32,9 @@
 //   (eruptLanding false: dipOut — fade to dark · the same landing — then rise2, fade up on the world)
 //
 // Any input skips: the remaining legs run at skipMult with no holds, then the landing is the same.
+// THE WARP (authoring): in a run started by P, the first turn of the dial hands the clock over. No holds,
+// no landing of its own: it parks at 1 Ma and goes back as far as 4 Ma until a key lands it. A wall run
+// (idle, end-of-window) always lands by itself, because nobody is there to land it.
 // Photosensitivity (TEMANAWA_BUILD_V3.md §3): the dips ≥ 500 ms, every terrain swap the existing
 // ≥ 500 ms crossfade, the names crossfade (≥ 500 ms), the eruption's flash a 4.5 s ramp and a 1.6 s
 // fall, its cover a 500 ms ramp. No per-frame allocation on the draw path: the labels are built once,
@@ -108,6 +111,7 @@ const Palaeo = {
   _skipping: false,
   dialStep: 3,         // the dial's detent while the sequence runs (TM_PALAEO.dialSpeeds; 0 = paused, − = reverse)
   _wheelAcc: 0,
+  _warp:    false,     // a P run whose dial has been touched: the dial alone drives the clock (_warpClock)
   _veil:    0,         // 0..1 dark overlay
   _bakedYear: NaN, _bakedAll: false,
   _reseed:  false,
@@ -127,7 +131,7 @@ const Palaeo = {
     this.active = true; this.state = 'dipIn'; this.reason = reason || 'manual'; this.game = g;
     this._t0 = now; this._leg = 0; this._holdLeft = 0; this._holdPending = false; this._skipping = false; this._veil = 0;
     this.bakes = 0; this._bakedYear = NaN; this._bakedAll = false;
-    this.dialStep = TM_PALAEO.dialStart; this._wheelAcc = 0;
+    this.dialStep = TM_PALAEO.dialStart; this._wheelAcc = 0; this._warp = false;
     this._setSeaBreath(0);
     this.yearsBP = this._kf(0)[0];
     // The reseed-every-Nth of the attract loop: decided here, done under the opening dark.
@@ -159,6 +163,7 @@ const Palaeo = {
   dialSet(step) {
     const n = TM_PALAEO.dialSpeeds.length;
     this.dialStep = Math.max(-n, Math.min(n, step | 0));
+    if (this.active && this.reason === 'manual') this._warp = true;
     return this.dialStep;
   },
   dialReset() { return this.dialSet(TM_PALAEO.dialStart); },
@@ -184,11 +189,12 @@ const Palaeo = {
     if (!d) return 0;
     return (d > 0 ? 1 : -1) * S[Math.min(S.length, Math.abs(d)) - 1];
   },
-  // "paused" / ">> × 2" / "<< × 0.5" / ">> skip", for the caption.
+  // "paused" / ">> × 2" / "<< × 0.5" / ">> skip" / the warp parked at the end, for the caption.
   speedLabel() {
     if (this._skipping) return '>> skip';
     const m = this.rateMult();
     if (m === 0) return 'paused';
+    if (this._warp && m > 0 && this.yearsBP === this._last()[0]) return 'any key lands';
     const a = Math.abs(m), s = a >= 1 ? String(a) : a.toFixed(2).replace(/0+$/, '');
     return (m > 0 ? '>> × ' : '<< × ') + s;
   },
@@ -320,7 +326,8 @@ const Palaeo = {
   // target is the keyframe just left (or, from a keyframe, the older one), and the oldest date holds.
   _advanceClock(now, sec) {
     const K = TM_PALAEO.keyframes, last = K.length - 1, mult = this.rateMult();
-    if (this._holdPending) {                                   // on a keyframe, its land not yet shown
+    if (this._warp && !this._skipping) { this._warpClock(mult, sec); return; }
+    if (this._holdPending) {                                 // on a keyframe, its land not yet shown
       this.yearsBP = K[this._leg][0];
       if (this._skipping) this._holdPending = false; else return;
     }
@@ -333,20 +340,33 @@ const Palaeo = {
     if (mult === 0) return;                                    // paused
     const yrs = TM_PALAEO.kyrPerSec * 1000 * Math.abs(mult) * sec;
     if (mult > 0) {
-      if (this._leg >= last) {                                 // the last hold is over → land
+      // Turned back off a keyframe and forward again: that keyframe is next, not the one after it.
+      const ti = (this.yearsBP > K[this._leg][0]) ? this._leg : this._leg + 1;
+      if (ti > last) {                                         // the last hold is over → land
         this.yearsBP = K[last][0];
         this._beginLanding(this.game, now);
         return;
       }
-      const next = K[this._leg + 1];
       this.yearsBP -= yrs;
-      if (this.yearsBP <= next[0]) { this.yearsBP = next[0]; this._leg++; this._holdPending = true; }   // armed by _onBaked once the land shows
+      if (this.yearsBP <= K[ti][0]) { this.yearsBP = K[ti][0]; this._leg = ti; this._holdPending = true; }   // armed by _onBaked once the land shows
     } else {
       const ti = (this.yearsBP < K[this._leg][0]) ? this._leg : this._leg - 1;
       if (ti < 0) { this.yearsBP = K[0][0]; return; }          // the oldest date: nothing further back
       this.yearsBP += yrs;
       if (this.yearsBP >= K[ti][0]) { this.yearsBP = K[ti][0]; this._leg = ti; this._holdPending = true; }
     }
+  },
+
+  // The warp's clock: the dial alone, clamped to the sequence's ends. _leg stays the newest keyframe
+  // reached, so a key mid-warp skips on from the right leg (and from 1 Ma, straight to the landing).
+  _warpClock(mult, sec) {
+    const K = TM_PALAEO.keyframes, last = K.length - 1;
+    this._holdPending = false; this._holdLeft = 0;
+    const y = this.yearsBP - TM_PALAEO.kyrPerSec * 1000 * mult * sec;
+    this.yearsBP = Math.max(K[last][0], Math.min(K[0][0], y));
+    let leg = 0;
+    while (leg < last && this.yearsBP <= K[leg + 1][0]) leg++;
+    this._leg = leg;
   },
 
   // The keyframe's land is on screen: start its hold (none while skipping).
@@ -363,7 +383,10 @@ const Palaeo = {
       return;
     }
     if (T._morphFade) return;
-    const want = this.yearsBP, onHold = this._holdPending || this._holdLeft > 0 || this._leg >= TM_PALAEO.keyframes.length - 1;
+    const want = this.yearsBP;
+    // A warp stopped anywhere (paused, or parked at the oldest date) settles on exactly that date.
+    const onHold = this._holdPending || this._holdLeft > 0 || this._leg >= TM_PALAEO.keyframes.length - 1 ||
+                   (this._warp && (this.rateMult() === 0 || want === this._kf(0)[0]));
     const moved = Math.abs(want - this._bakedYear) >= TM_PALAEO.minYears;
     // The sea's breath can change the land at a fixed date too (the dial slowed): re-bake for it.
     const breath = this._seaScale(), breathMoved = Math.abs(breath - (this._bakedBreath || 0)) > 0.05;

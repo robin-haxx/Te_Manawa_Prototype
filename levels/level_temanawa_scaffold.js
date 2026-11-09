@@ -112,6 +112,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   //   walkable / canHavePlants / canPlace / plantTypes
   //       Simulation, not look. plantTypes must exist in PLANT_TYPES.
   //
+  //   glacialPlantTypes / glacialModifierAs   (optional; Simulation._paletteOf, 2026-11-08)
+  //       What the habitat's cover BECOMES in a glacial (the glacial index past the regime line). The
+  //       census turns a habitat over to it: the plants outside it are retired down to a refugial
+  //       remnant and replaced from it (_homeoTurnover; knobs turnover* in mechanics), and every spawn,
+  //       recruit and seeding path draws from it while the cold lasts. Without one, the glacial palette
+  //       is plantTypes less its warm species. Weighted like plantTypes. glacialModifierAs names the
+  //       habitat whose climate modifier (TeManawa_seasons.js plantModifiers) that cold cover answers
+  //       to, so tussock on old forest ground thrives like open country instead of wilting with the
+  //       forest's modifier. Research: md/ecology/TEMANAWA_ECOLOGY_OPEN.md §4.
+  //
   //   coldCover: { colors, refuge, amount, refugeAmount }   (forest bands only)
   //       What this band's ground turns into ABOVE the glacial treeline. The treeline is
   //       LEVEL_MECHANICS.forestBandByStage[stage].max, the same band the live trees
@@ -156,7 +166,9 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
                  colors:habitatCols.grassland, contourColor:'#2d3a27', outlineColor:'#ffffff',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai','coprosma'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai','coprosma'],
+                 // the glacial flats: the same plants, tussock and grey scrub leading (nothing to retire, only the recruits reweighted)
+                 glacialPlantTypes:['tussock','tussock','tussock','coprosma','coprosma','manuka','flax','cabbagetree','kowhai'], canPlace:true },
     // WETLAND — the Manawatū's riverbank is back-swamp + kahikatea, not beach. This is NOT
     // an elevation band: its 0.16–0.29 range is deliberately SHADOWED by grassland (0.15–0.30),
     // so getBiomeFromElevation never returns it (validateBiomeBands WILL warn — that is intended,
@@ -175,7 +187,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#ffffff',
                  coldCover:{ colors:habitatCols.glacialOpen, refuge:habitatCols.beechRefuge[0], amount:0.85, refugeAmount:0.6 },
-                 walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'],
+                 // in the cold the lowland forest goes to tussock-shrubland, with beech in shelter and kōwhai
+                 // holding on; the podocarps keep only their low refugia (turnoverRefuge)
+                 glacialPlantTypes:['tussock','tussock','coprosma','coprosma','manuka','beech','kowhai'], glacialModifierAs:'grassland',
+                 canPlace:true },
     // MONTANE — podocarp-broadleaf, NOT beech forest. Black beech is famously ABSENT from the
     // Manawatū (the "beech gap": tawa is in every forest type EXCEPT beech; the only beech in
     // Esler's survey is the ~526 ha Aokautere anomaly on leached terraces — TEMANAWA_ECOLOGY.md
@@ -185,7 +201,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#ffffff',
                  coldCover:{ colors:habitatCols.glacialOpen, refuge:habitatCols.beechRefuge[0], amount:0.85, refugeAmount:0.6 },
-                 walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'],
+                 // in the cold the hill forest goes to the subalpine mosaic come down the slopes: tussock and
+                 // scrub, beech (~88% of LGM forest pollen) the one tree that holds
+                 glacialPlantTypes:['tussock','tussock','coprosma','coprosma','beech','beech','manuka'], glacialModifierAs:'subalpine',
+                 canPlace:true },
     // SUBALPINE — the glacial-mosaic tops: tussock, grey scrub, Dracophyllum, mānuka heath, and
     // wharariki (mountain flax, art shared with harakeke; Esler records it on the Arawaru summit).
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
@@ -365,6 +385,19 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     homeoRecruitRadius:  40,     // half the recruit tries land within this of a standing plant of the same habitat
     homeoDensityRadius:  12,     // a recruit site is refused with ≥3 live plants inside this radius
     homeoGraceMs:        25000,  // plants younger than this (real ms) are never thinned (lets a boost or bloom play out)
+    // THE CLIMATE'S TURNOVER (Simulation._homeoTurnover, 2026-11-08). In a glacial a habitat's cover is
+    // its glacialPlantTypes (biomes above), not its forest: the census retires what has fallen out of the
+    // climate's palette, the highest plants first, and recruits the gap from it. Health raises the
+    // palette's stock either way, so a healthy glacial is dense tussock-shrubland with beech, not a
+    // forest that the ledger kept standing. The interglacial does the same in reverse.
+    paletteTurnover:     true,
+    turnoverRefuge:      { atTurn: 0.12, atFull: 0.04 },   // warm trees kept as refugia in a glacial, as a share of the habitat's base stock: at the glacial line → at the coldest
+    turnoverColdKeep:    0,      // cold cover left standing in a habitat whose interglacial palette lacks it (the forest takes the ground back)
+    turnoverRate:        0.2,    // share of the excess retired per census…
+    turnoverMaxPerTick:  8,      // …at most this many standing plants per habitat per census (~1 s): a forest turns over in ~15–25 s
+    turnoverJitter:      0.04,   // elevation jitter on "highest first", so the retreat downhill has no contour-line edge
+    turnoverGrowRate:    0.012,  // growth per plant-update of a colonist (a recruit into a habitat that just turned over; 0.002 otherwise)
+    turnoverColonistMs:  60000,  // a habitat's recruits count as colonists for this long after its last turnover
     disperseDensityRadius: 26,                   // a kererū seed only establishes where the canopy is
     disperseDensityMax: 3,                       // sparse: < this many live plants within the radius
     kereruMaxPopulation: 16,                     // flock cap (breeding stops at it); founders spawn 8
@@ -473,7 +506,13 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     //                       healthMatchedCap; above it, nothing); each one after it is a down step, so the
     //                       fifth in succession lands on healthPoor. A boost, or healthStormCalmS real
     //                       seconds without a storm, ends the run
-    //   ERUPTION            − healthEruptionDip, flat: a little
+    //   ERUPTION            − healthEruptionDipByTier[its tier]: by how hard it hit the lower North Island
+    //                       (below), the same on every path (the button's rebuild carries the land's lifts,
+    //                       links and stock across, so it lands where an eruption in place would). Never
+    //                       below healthEruptionFloor on its own, so an eruption alone never brings on the
+    //                       25 % warning: what the visitor does next decides. It also takes
+    //                       healthEruptionLiftByTier steps off every habitat's and bird's banked lift, and
+    //                       starts a fresh run, so its goal's double answer brings the land back fast.
     healthStart:         0.5,
     healthPoor:          0.2,    // the poor state: the bar's ochre, the birds at faunaShockFloor, the plants at homeoPoorFrac
     healthMin:           0.05,   // the bar never quite empties
@@ -486,7 +525,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     healthMatchedDrop:   0.0625, // the notch above the cap: one answer's step from the cap, so an answer and a miss cancel
     healthStormGain:     0.15,
     healthStormCalmS:    40,     // > TM_TIME.stormSeconds: pressing again as the last storm clears is still "in succession"
-    healthEruptionDip:   0.08,
+    healthEruptionDip:   0.08,   // fallback for an eruption with no tier
+    // Severity in the lower North Island is magnitude × the cover standing when it hit, the tiers of
+    // DeepTime.ERUPTIONS (md/archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §2): Kaukatea (~0.9 Ma) a minor
+    // pulse, a light dusting; Kidnappers (Potaka, ~1 Ma) and Ōruanui (Kawakawa, 25.5 ka) major, one over
+    // a land still mostly sea, the other over sparse glacial cover; Whakamaru (Rangitawa, ~349 ka) the
+    // biggest, near-total clearing. The worst still costs less than one wrong goal from full
+    // ((1−healthPoor)/healthStepsToPoor), and its goal's double answer wins most of it back.
+    healthEruptionDipByTier:  { minor: 0.04, major: 0.10, catastrophic: 0.16 },
+    healthEruptionLiftByTier: { minor: 0, major: 1, catastrophic: 2 },
+    healthEruptionFloor: 0.32,   // an eruption alone never takes the bar under this (above the milestone warning, TM_MILESTONE.warnAt)
     healthEruptionMult:  2,      // the post-eruption goal's answer: this × the health, lift, seedlings and birds of an answer
 
     // FAUNA HOMEOSTASIS (Simulation._updateFaunaHomeostasis, 2026-11-05) — the birds, like the plants,
