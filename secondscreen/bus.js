@@ -53,6 +53,7 @@ const TMBus = (function () {
     deep()                    { this.send({ type: 'deep' }); },
     dial(delta)               { this.send({ type: 'dial', delta: delta }); },   // time dial: ±detents
     dialReset()               { this.send({ type: 'dial', reset: true }); },    // time dial push: back to real time
+    hint()                    { this.send({ type: 'hint' }); },    // the H key: answers ringed on the wall, {type:'hint'} back
     hello()                   { this.send({ type: 'hello' }); }
   };
 })();

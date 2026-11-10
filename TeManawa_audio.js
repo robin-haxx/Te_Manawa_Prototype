@@ -84,6 +84,11 @@ const AUDIO_CUES = {
   boost_answer: { files: ['ui/ui_note'], bus: 'ui', prio: 3, gain: 0.65, cooldownMs: 700, fallback: 'ui_tick',
                   steps: [{ at: 0, rate: 1.0 }, { at: 0.12, rate: 1.26, gain: 0.9 }, { at: 0.24, rate: 1.5, gain: 0.9 }] },
   boost_wrong:  { files: ['ui/ui_note'], bus: 'ui', prio: 3, gain: 0.50, cooldownMs: 700, fallback: 'ui_tick', rate: 0.5 },
+  // ---- the health milestones (TeManawa_milestone.js) ----
+  milestone_full: { files: ['ui/ui_note'], bus: 'ui', prio: 4, gain: 0.70, cooldownMs: 5000, noFatigue: true,
+                    steps: [{ at: 0, rate: 1.0 }, { at: 0.18, rate: 1.26, gain: 0.9 }, { at: 0.36, rate: 1.5, gain: 0.9 }, { at: 0.60, rate: 2.0, gain: 0.8 }] },
+  milestone_warn: { files: ['ui/ui_note'], bus: 'ui', prio: 4, gain: 0.60, cooldownMs: 5000, noFatigue: true,
+                    steps: [{ at: 0, rate: 0.6 }, { at: 0.35, rate: 0.5, gain: 0.9 }] },
   // ---- the world answering a press ----
   deep:       { files: ['sfx/sfx_whoosh_deep'], bus: 'world', prio: 2, gain: 0.70, cooldownMs: 900,  rateVar: 0.05, fallback: 'ui_tick' },
   timelapse:  { files: ['sfx/sfx_whoosh_long'], bus: 'world', prio: 2, gain: 0.55, cooldownMs: 4000 },
@@ -150,7 +155,7 @@ class AudioManager {
     this._lastFile = {};           // cue → index last used (no immediate repeat)
     this._birdLastAt = -1e9; this._birdLastKey = null; this._birdSpeciesAt = {};
     this._birdNextAt = 0;
-    this._seenAsh = 0; this._seenDial = -1; this._seenTimelapse = false;
+    this._seenAsh = 0; this._seenDial = -1; this._seenTimelapse = false; this._seenAttract = 'off'; this._seenMilestone = null;
     this.stats = { played: 0, cooled: 0, fallback: 0, stolen: 0, dropped: 0, birds: 0 };
     this._applyURLFlags();
   }
@@ -532,8 +537,25 @@ class AudioManager {
       this._seenTimelapse = tl;
     }
 
-    // The birds: silent while the land before the window plays (nothing lives there).
-    if (!(typeof Palaeo !== 'undefined' && Palaeo.active)) this._ambientBirds(g, now);
+    // The attract, the intro and the outro (TeManawa_attract.js): a whoosh as a press wakes the wall
+    // into the present-day map, and as the window closes into the outro.
+    const mode = (typeof Attract !== 'undefined') ? Attract.mode : 'off';
+    if (mode !== this._seenAttract) {
+      if (mode === 'intro' || mode === 'outro') this.cue('timelapse');
+      this._seenAttract = mode;
+    }
+    // The health milestones (TeManawa_milestone.js): the full land is greeted with the rising notes,
+    // the struggling land with the low one. Once per beat, as its veil starts.
+    const ms1 = (typeof Milestone !== 'undefined') ? Milestone.kind : null;
+    if (ms1 !== this._seenMilestone) {
+      if (ms1 === 'thriving') this.cue('milestone_full');
+      else if (ms1 === 'warning') this.cue('milestone_warn');
+      this._seenMilestone = ms1;
+    }
+
+    // The birds: silent while the land before the window plays (nothing lives there) and while the
+    // intro or outro map covers the land.
+    if (!(typeof Palaeo !== 'undefined' && Palaeo.active) && mode !== 'intro' && mode !== 'outro') this._ambientBirds(g, now);
   }
 
   _dialOpts(f) {

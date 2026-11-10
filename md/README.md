@@ -69,6 +69,7 @@ If you are about to write code, read `BUILD_V3.md` §5 (the budgets) and `../CLA
 | **`TEMANAWA_NATURAL_HISTORY.md`** | **The synthesis.** What makes the Manawatū's deep past unusual: a river older than mountains, the lost hunter, the shifting forest. Maps each onto the code and says where the build takes licence |
 | `TEMANAWA_ENCYCLOPEDIA_FLORA.md` | **The console's plant roster, checked.** The era verdict on each habitat's plants, the boost-gate conflicts, the plant–bird pairing (§2.6), and the write-ups behind `secondscreen/encyclopedia.js` |
 | `TEMANAWA_ENCYCLOPEDIA_CARDS.md` | **Draft three-part cards** (fun facts · role · what a boost does) for every plant, with measured boost trials. Longer than the cards on screen; needs a layout decision. Draft, not on screen |
+| `TEMANAWA_CARD_TRIMS.md` | **Proposal, not applied.** Shorter copy for the 15 cards that scroll, measured, with what each cut removes. Keeps every plant-goal term |
 | `TEMANAWA_SPRITE_BRIEF.md` | **The art brief.** Footprint rules, tiers, states. Its asset count (132) predates the art that arrived; re-count before commissioning more (`PLAN_V3.md` §12) |
 | `blog/` | Blog drafts: `post1_land_draft.md` (the long version) and `post1_land_tidied.md` |
 

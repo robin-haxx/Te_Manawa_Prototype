@@ -97,7 +97,7 @@ Cut from Freesound's high-quality MP3 previews (the originals need a login to do
 | `sfx_rustle_03` | growth | https://freesound.org/s/178615/ "The Rustle of a Bush" | Montacue |
 | `sfx_wingflap_01` | the harrier's strike | https://freesound.org/s/414671/ "short pigeon wing flap" | zouzmusic |
 | `ui_tick` | cards, the dial, a press inside another cue's cooldown | https://freesound.org/s/692828/ "Woodblock-soft.wav" | hollandm |
-| `ui_note` | the boost verdicts (rising = right, low = wrong) | https://freesound.org/s/659909/ "Kalimba.wav" | PanPiper5 |
+| `ui_note` | the boost verdicts (rising = right, low = wrong) and the two health milestones | https://freesound.org/s/659909/ "Kalimba.wav" | PanPiper5 |
 
 ## Known limits
 

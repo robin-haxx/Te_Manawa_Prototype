@@ -95,6 +95,24 @@ glacial habitats below it, with Forest and Alpine one detent from the centre (re
 plant on a screen passes the boost gate in that screen's era. Rosters and the evidence behind them:
 `TEMANAWA_ENCYCLOPEDIA_FLORA.md`.
 
+**The page says it too (2026-11-08).** The playtest showed visitors did not know which way was warm:
+
+- **The climate rail** (left edge, every screen). An up chevron and the word *Interglacial* in the wall's
+  green, a down chevron and *Glacial* in its icy blue. Between them is a green → blue track with a stop per
+  switch position, and the current one is marked large.
+- **The background gradient.** The texture is colour-shifted by position (`TM_SCREEN_CLIMATE` in
+  `encyclopedia.js`, 0 → 1): the forest is the texture as drawn, and it turns icy blue and a little paler
+  down the switch, easing over the scroll.
+- **The landing page's birds** (`TM_LANDING_BIRDS`). Every card bird stands round the *Habitat Explorer*
+  card, laid out like the switch: the birds of warm habitats above it, of cold habitats below, and the two
+  found in both (tūī, Finsch's duck) at the sides. A tap scrolls the switch **one position at a time**,
+  as a visitor moving it would, to a screen with a plant that helps that bird, then highlights the plant
+  once the last scroll lands (`app.js` `goToBird`). A bird on two plants goes to the one in the wall's
+  current climate, else the nearer. Any move of the visitor's own cancels it on its way.
+- **The hint** (the **H** key, in either window). The wall rings the goal's answers white
+  (`TMGoals.hint`), and the rail points to them: the end toward that screen bobs, and its stop swells
+  until the hint runs out (`TM_GOALS.hintMs`, 6 s). It works on the wall without `?dev`.
+
 ---
 
 ## 2. The touchscreen page
@@ -163,16 +181,18 @@ sim sends *telemetry* so the readout tracks the clock.
 | `storm` | — | `InstallHUD.press(game,'storm')` — works today, unchanged |
 | `eruption` | `phase` (`down`/`up`) | eruption skip; maps to `InstallHUD.erDown/erUp` (tap = revert, hold = skip) |
 | `deep` | — | legacy plain deep-time press (kept for parity; the boost replaces it on the wall) |
+| `hint` | — | the H key: the goal's answers that fit the climate ring white on the wall (`TMGoals.hint`); the sim replies `hint` |
 
 ### 3.2 Sim → touchscreen (telemetry)
 
 | `type` | fields | drives |
 |---|---|---|
 | `clock` | `yearsBP`, `glacialIndex`, `stage`, `stageName`, `mis` | the KYA date + glacial/interglacial label (sent ~4/s) |
-| `goal` | `targetYearsBP`, `targetStage`, `targetStageName`, `prompt` | the goal readout: the live plant goal's line (`prompt`, §6.5), else the next glacial/interglacial |
+| `goal` | `targetYearsBP`, `targetStage`, `targetStageName`, `prompt`, `plant` | the goal readout: the live plant goal's line (`prompt`, §6.5), else the next glacial/interglacial. `plant` (`TMGoals.telemetry()`) feeds the goal strip: `serial` (a new number = a new goal), `prompt`, `chances`, `missLimit`, `revealing` + `revealKey`, `late` (the late window is open), `last` (`{serial, prompt, outcome: solved/missed/late, key}` or null) |
 | `timelapse` | `active`, `progress` (0..1), `yrPerSec`, `achieved` (bool/null) | the timelapse progress bar + goal-met indicator |
-| `boostResult` | `plantKey`, `matched` (bool), `goal` (`answer`/`matched`/`wrong`/`answerWrongClimate`/null), `text` | the immediate regime-fit verdict (right species for the climate?) and the plant-goal verdict line the diorama shows (§6.5) |
+| `boostResult` | `plantKey`, `matched` (bool), `goal` (`answer`/`matched`/`wrong`/`answerWrongClimate`/null), `text`; a top-up (§6.5) adds `topUp: true`, `seeded`; a late answer (§6.5) is `late: true`, `goal: 'lateAnswer'`, `matched: null` | the immediate regime-fit verdict (right species for the climate?) and the plant-goal verdict line the diorama shows (§6.5) |
 | `eruptionSoon` | `name`, `yearsBP` | when a timelapse will stop early at a looming eruption (§6.3) |
+| `hint` | `keys` (the answer plant keys, empty with no plant goal), `glacial`, `ms`, `goalId` | the climate rail points to the nearest screen with one of `keys` in the wall's climate (with none, to that climate's screens) for `ms` (§1.2) |
 
 The screen never assumes the sim is up: it renders from its own state and simply reflects
 telemetry when it arrives. The sim never assumes the screen is up: the diorama is fully
@@ -330,12 +350,49 @@ time-lapse is over:
 | Boost | Line | What else happens |
 |---|---|---|
 | The answer, right climate | *"Harakeke was an interglacial plant, and was rarer in ancient times than today!"*, in the climate boost colour (green/blue) | A **bigger** boost (`answerSeed` 24 seedlings, `answerFauna` 4 birds), and a **solid white** outline on the plant + its bird that eases to green/blue over 6 s. When the verdict fades, the **next goal** in the book comes up. |
-| Another plant, right climate | *"Tōtara was in interglacial habitats, but is not rarer in ancient times than today..."*, in the goal colour | The normal matched boost: outline, rim pulse, time-lapse trails. Same goal after. |
-| Wrong climate | *"Tawa was not glacial, and was not rarer in ancient times than today"*, **grey** | The normal wrong boost: nothing grows, grey pulse, the scene desaturates. Same goal after. |
-| The answer, wrong climate | *"… was rarer in …, but was not glacial..."*, grey | As a wrong boost. Only possible when a goal has both a warm and a cold answer. |
+| Another plant, right climate | *"Tōtara was in interglacial habitats, but is not rarer in ancient times than today..."*, in the goal colour | The normal matched boost: outline, rim pulse, time-lapse trails. One of the goal's two chances. |
+| Wrong climate | *"Tawa was not glacial, and was not rarer in ancient times than today"*, **grey** | The normal wrong boost: nothing grows, grey pulse, the scene desaturates. One of the goal's two chances. |
+| The answer, wrong climate | *"… was rarer in …, but was not glacial..."*, grey | As a wrong boost, and one of the goal's two chances. Only possible when a goal has both a warm and a cold answer. |
 
 The verdict holds at least `holdMs` (7 s) and until the time-lapse ends, then crossfades back
 (`InstallHUD.GOAL_FADE_MS`, 800 ms). Long lines wrap, balanced, and stack upward from the anchor.
+After a goal's first miss the same goal comes back; after its second a new one is drawn
+(`TM_GOALS.missLimit`). The chances are **drawn pips** after the line, and a miss shrinks one to an empty ring.
+
+**When a goal leaves unanswered after a try** (out of chances, or its answer no longer fits the climate the
+boost's time-lapse landed on). The 2026-11-08 playtest found that visitors who missed walked back to the console to hunt for the
+answer and pressed it, by then on a new goal they had not read. Without adding words to the wall
+(`TEMANAWA_GOALS.md` §2.5):
+
+1. **Reveal.** Once the last verdict clears, the old question stays up `revealMs` (4 s) with its pips
+   empty, and its answer plants are ringed **white**.
+2. **Entrance.** Then the new goal **slides up** with its pips growing in. A goal coming back after one
+   miss just crossfades, so a new question looks new.
+3. **Late answer.** For `lateGraceMs` (15 s) after the new goal appears, if the **first** press is the
+   old goal's answer (and not the new goal's too), it is a late answer: the old goal's answer line in
+   **green** for `lateHoldMs` (5 s), and a goal solved on the tally. It is **not a boost**: no seeding,
+   time-lapse, health, birds or outline, and no chance spent on the new goal. Then the new goal comes back.
+
+**The goal strip** on the console (one row along the bottom) shows the same thing where visitors are
+standing: the question with its pips on the left, under the plants, and how the last goal ended on the right, under the card. A goal that ran out shows
+*"The answer was <plant>"* in white. A solve or a late answer shows *"Answered! <plant>"* in green, with
+a drawn tick. That line stays 20 s under a new goal. It reads `plant` on the `goal` message.
+
+**One boost per glacial turn or served goal.** A boost plays the clock to the next turn, or to an eruption
+that serves a new goal. Until that has happened (its time-lapse, then the beat before a held-back eruption
+fires) a press is a **top-up** (`TeManawa_bus.js` `onBoost`): at most one per `TM_BOOST.topUpGapMs` (2 s,
+counted from the boost), seeding `topUpSeed` (2) more of the plant if it fits the climate. A top-up is not
+judged: no verdict, no chance used, no health or habitat lift, no birds, no tally, and the time-lapse carries
+on as it was. So hammering the button adds a few seedlings and nothing else.
+
+**The health bar reads these verdicts** (`md/TEMANAWA_PLAN_V3.md` §7): four answers in a row fill it, four
+*totally wrong* boosts in a row leave it poor, and the two half-right rows above count for less. Another
+plant in the right climate lifts it only as far as 75 %, and above that takes it down a notch toward 75 %, so
+the top quarter can only be reached by answering. **After an
+eruption** the line moves to a goal that only makes sense after one (`requires.eruption`: the scrub that
+grows back, the plant that spreads after ash), and stays on those until one is answered or each has had its
+two chances. Answering it counts
+double: the health, the habitat lift, the seedlings and the birds (`LEVEL_MECHANICS.healthEruptionMult`).
 
 **Where it lives.** `TeManawa_goals.js`: `TM_GOALS` (the goal book, the verdict templates, colours,
 the answer's bigger boost) and `TMGoals` (which goal is live, `judge()`, release). The bus calls

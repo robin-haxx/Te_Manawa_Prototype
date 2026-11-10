@@ -67,7 +67,13 @@ const Climate = {
     [ 40000, 0.60],
     [ 30000, 0.80],
     [ 21000, 1.00],   // MIS 2: Last Glacial Maximum
-    [ 18000, 0.95]
+    [ 18000, 0.95],
+    // ---- past the window: the Holocene, to today ---------------------------------
+    // The clock stops at 25.5 ka; these are read only by the present-day map (TeManawa_attract.js,
+    // TerrainGenerator.snapshotYear(0)), which must stand in today's interglacial.
+    [ 11700, 0.30],   // the Holocene begins
+    [  8000, 0.05],
+    [     0, 0.05]    // today: an interglacial, like MIS 5e
   ],
 
   // Named intervals for the timeline and the debug overlay, spanning 1 Ma to the
@@ -85,7 +91,7 @@ const Climate = {
     [300000, 245000, 'MIS 8'],  [245000, 190000, 'MIS 7'],
     [190000, 130000, 'MIS 6'],  [130000,  80000, 'MIS 5'],
     [ 80000,  57000, 'MIS 4'],  [ 57000,  29000, 'MIS 3'],
-    [ 29000,  14000, 'MIS 2']
+    [ 29000,  14000, 'MIS 2'],  [ 14000,      0, 'MIS 1']
   ],
 
   // ---- SEA LEVEL: its own curve, NOT a coefficient on glacialIndex ------------------------
@@ -144,7 +150,12 @@ const Climate = {
     [  28000, -115],
     [  26000, -122],
     [  21000, -126],  // LGM
-    [  18000, -113]
+    [  18000, -113],
+    // past the window (read only by the present-day map, as ANCHORS above): the post-glacial rise
+    [  11500,  -60],
+    [   9000,  -25],
+    [   7000,    1],  // the mid-Holocene highstand: the sea reaches today's coast and stays
+    [      0,    0]
   ],
   seaLevelWarm:   6,      // the curve's warm and cold ends, for anything still wanting the range
   seaLevelCold: -126,

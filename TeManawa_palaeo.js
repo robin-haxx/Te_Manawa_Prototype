@@ -32,10 +32,13 @@
 //   (eruptLanding false: dipOut — fade to dark · the same landing — then rise2, fade up on the world)
 //
 // Any input skips: the remaining legs run at skipMult with no holds, then the landing is the same.
+// THE WARP (authoring): in a run started by P, the first turn of the dial hands the clock over. No holds,
+// no landing of its own: it parks at 1 Ma and goes back as far as 4 Ma until a key lands it. A wall run
+// (idle, end-of-window) always lands by itself, because nobody is there to land it.
 // Photosensitivity (TEMANAWA_BUILD_V3.md §3): the dips ≥ 500 ms, every terrain swap the existing
-// ≥ 500 ms crossfade, the caption and the names crossfade (≥ 500 ms), the eruption's flash a 4.5 s
-// ramp and a 1.6 s fall, its cover a 500 ms ramp. No per-frame allocation on the draw path: the
-// labels are built once, the caption strings are quantised.
+// ≥ 500 ms crossfade, the names crossfade (≥ 500 ms), the eruption's flash a 4.5 s ramp and a 1.6 s
+// fall, its cover a 500 ms ramp. No per-frame allocation on the draw path: the labels are built once,
+// the date string is quantised.
 // ============================================================
 
 // Console-tunable like TM_TIME / TM_RIVER_NAMES. Sizes in 1080-space px; dates in yearsBP.
@@ -67,27 +70,14 @@ const TM_PALAEO = {
   // in under its cover. false = the older dip to dark and back.
   eruptLanding: true,
   coverLeadMs: 900,       // the cloud opens this long before the swap (its backdrop is opaque from 500 ms on)
-  eruptionNote: 'The Kidnappers eruption, far to the north, rains ash across the young land.',   // co-design placeholder, as EPOCHS
   skipMult:    12,        // an input plays the rest at this × kyrPerSec, with no holds
   dateQuant:   50000,     // the travelling date is rounded to this (a few strings for the text cache, ~1 change/s)
-  notes:       true,      // the one-line note under the date (co-design placeholder copy; EPOCHS[].note)
   spelling:    'Whanganui',   // the basin's spelling on the wall: the district's (and the blog's). Trewick & Bland write 'Wanganui'
   riverProtoUntil: 1250000,   // the main stem is 'proto-Manawatū' while its arm still flows east (GEO_EPOCHS.mainArmFrom)
   labelSize:   24,        // the region names' lettering (the river names' mainSize is 26)
   labelFadeMs: 700,       // a name's fade in / out (≥ 500)
   captionSize: 42,        // the date (InstallHUD.VIS_YEAR_SIZE)
-  noteSize:    26,        // the note under it
-  noteFadeMs:  800,       // the note's crossfade on change
-  // The epochs' one-line notes, keyed by the OLDER bound (the first whose `from` ≥ the date wins).
-  // Co-design placeholder copy — sourced in md/TEMANAWA_PALAEO_ATTRACT.md §1; cut with notes:false.
-  EPOCHS: [
-    { from: 4000000, note: 'The Manawatū is deep sea. A low finger of basement rock stands where the ranges will rise.' },
-    { from: 3350000, note: 'The sea breaks across the gorge: the Manawatū Strait opens as a narrow seaway.' },
-    { from: 2950000, note: 'The strait closes. The sea planes the low basement flat.' },
-    { from: 2500000, note: 'The strait at its widest: a shallow sea where the southern Ruahine and northern Tararua now stand.' },
-    { from: 1650000, note: 'The strait closes for good. The basin begins to shoal into land.' },
-    { from: 1300000, note: 'The ranges begin their rapid rise. The river, older than the mountains, holds its course west.' }
-  ],
+  captionUp:   186,       // px from the bottom edge up to the date's centre (the sequence draws no timeline, so it keeps its own spot)
   // The names on the map, each for its dated window (from = older bound, to = younger), anchored at a
   // map fraction (u 0 west → 1 east, v 0 north → 1 south) and lettered at `deg` on screen (−90 … 90 so it
   // reads left to right / bottom to top). `on` is the surface the anchor must sit on at the date, read off
@@ -121,12 +111,12 @@ const Palaeo = {
   _skipping: false,
   dialStep: 3,         // the dial's detent while the sequence runs (TM_PALAEO.dialSpeeds; 0 = paused, − = reverse)
   _wheelAcc: 0,
+  _warp:    false,     // a P run whose dial has been touched: the dial alone drives the clock (_warpClock)
   _veil:    0,         // 0..1 dark overlay
   _bakedYear: NaN, _bakedAll: false,
   _reseed:  false,
   _labels:  null,      // built label instances (lazily, needs p5)
   _labelKey: '',
-  _cap:     null,      // caption state { date, note slots }
   _anchorSig: '',
   _coverAt: 0,         // millis() the landing eruption's cloud opened (0 = not yet)
   lastCoverMs: 0,      // how long the cloud had been up when the world was swapped (the harness reads it)
@@ -141,7 +131,7 @@ const Palaeo = {
     this.active = true; this.state = 'dipIn'; this.reason = reason || 'manual'; this.game = g;
     this._t0 = now; this._leg = 0; this._holdLeft = 0; this._holdPending = false; this._skipping = false; this._veil = 0;
     this.bakes = 0; this._bakedYear = NaN; this._bakedAll = false;
-    this.dialStep = TM_PALAEO.dialStart; this._wheelAcc = 0;
+    this.dialStep = TM_PALAEO.dialStart; this._wheelAcc = 0; this._warp = false;
     this._setSeaBreath(0);
     this.yearsBP = this._kf(0)[0];
     // The reseed-every-Nth of the attract loop: decided here, done under the opening dark.
@@ -173,6 +163,7 @@ const Palaeo = {
   dialSet(step) {
     const n = TM_PALAEO.dialSpeeds.length;
     this.dialStep = Math.max(-n, Math.min(n, step | 0));
+    if (this.active && this.reason === 'manual') this._warp = true;
     return this.dialStep;
   },
   dialReset() { return this.dialSet(TM_PALAEO.dialStart); },
@@ -198,11 +189,12 @@ const Palaeo = {
     if (!d) return 0;
     return (d > 0 ? 1 : -1) * S[Math.min(S.length, Math.abs(d)) - 1];
   },
-  // "paused" / ">> × 2" / "<< × 0.5" / ">> skip", for the caption.
+  // "paused" / ">> × 2" / "<< × 0.5" / ">> skip" / the warp parked at the end, for the caption.
   speedLabel() {
     if (this._skipping) return '>> skip';
     const m = this.rateMult();
     if (m === 0) return 'paused';
+    if (this._warp && m > 0 && this.yearsBP === this._last()[0]) return 'any key lands';
     const a = Math.abs(m), s = a >= 1 ? String(a) : a.toFixed(2).replace(/0+$/, '');
     return (m > 0 ? '>> × ' : '<< × ') + s;
   },
@@ -334,7 +326,8 @@ const Palaeo = {
   // target is the keyframe just left (or, from a keyframe, the older one), and the oldest date holds.
   _advanceClock(now, sec) {
     const K = TM_PALAEO.keyframes, last = K.length - 1, mult = this.rateMult();
-    if (this._holdPending) {                                   // on a keyframe, its land not yet shown
+    if (this._warp && !this._skipping) { this._warpClock(mult, sec); return; }
+    if (this._holdPending) {                                 // on a keyframe, its land not yet shown
       this.yearsBP = K[this._leg][0];
       if (this._skipping) this._holdPending = false; else return;
     }
@@ -347,20 +340,33 @@ const Palaeo = {
     if (mult === 0) return;                                    // paused
     const yrs = TM_PALAEO.kyrPerSec * 1000 * Math.abs(mult) * sec;
     if (mult > 0) {
-      if (this._leg >= last) {                                 // the last hold is over → land
+      // Turned back off a keyframe and forward again: that keyframe is next, not the one after it.
+      const ti = (this.yearsBP > K[this._leg][0]) ? this._leg : this._leg + 1;
+      if (ti > last) {                                         // the last hold is over → land
         this.yearsBP = K[last][0];
         this._beginLanding(this.game, now);
         return;
       }
-      const next = K[this._leg + 1];
       this.yearsBP -= yrs;
-      if (this.yearsBP <= next[0]) { this.yearsBP = next[0]; this._leg++; this._holdPending = true; }   // armed by _onBaked once the land shows
+      if (this.yearsBP <= K[ti][0]) { this.yearsBP = K[ti][0]; this._leg = ti; this._holdPending = true; }   // armed by _onBaked once the land shows
     } else {
       const ti = (this.yearsBP < K[this._leg][0]) ? this._leg : this._leg - 1;
       if (ti < 0) { this.yearsBP = K[0][0]; return; }          // the oldest date: nothing further back
       this.yearsBP += yrs;
       if (this.yearsBP >= K[ti][0]) { this.yearsBP = K[ti][0]; this._leg = ti; this._holdPending = true; }
     }
+  },
+
+  // The warp's clock: the dial alone, clamped to the sequence's ends. _leg stays the newest keyframe
+  // reached, so a key mid-warp skips on from the right leg (and from 1 Ma, straight to the landing).
+  _warpClock(mult, sec) {
+    const K = TM_PALAEO.keyframes, last = K.length - 1;
+    this._holdPending = false; this._holdLeft = 0;
+    const y = this.yearsBP - TM_PALAEO.kyrPerSec * 1000 * mult * sec;
+    this.yearsBP = Math.max(K[last][0], Math.min(K[0][0], y));
+    let leg = 0;
+    while (leg < last && this.yearsBP <= K[leg + 1][0]) leg++;
+    this._leg = leg;
   },
 
   // The keyframe's land is on screen: start its hold (none while skipping).
@@ -377,7 +383,10 @@ const Palaeo = {
       return;
     }
     if (T._morphFade) return;
-    const want = this.yearsBP, onHold = this._holdPending || this._holdLeft > 0 || this._leg >= TM_PALAEO.keyframes.length - 1;
+    const want = this.yearsBP;
+    // A warp stopped anywhere (paused, or parked at the oldest date) settles on exactly that date.
+    const onHold = this._holdPending || this._holdLeft > 0 || this._leg >= TM_PALAEO.keyframes.length - 1 ||
+                   (this._warp && (this.rateMult() === 0 || want === this._kf(0)[0]));
     const moved = Math.abs(want - this._bakedYear) >= TM_PALAEO.minYears;
     // The sea's breath can change the land at a fixed date too (the dial slowed): re-bake for it.
     const breath = this._seaScale(), breathMoved = Math.abs(breath - (this._bakedBreath || 0)) > 0.05;
@@ -475,14 +484,6 @@ const Palaeo = {
     return this.yearsBP >= TM_PALAEO.riverProtoUntil ? 'proto-Manawatū' : 'Manawatū';
   },
 
-  // The note for a date (the first epoch whose `from` ≥ it), or null.
-  epochNote(y) {
-    const E = TM_PALAEO.EPOCHS;
-    let best = null;
-    for (let i = 0; i < E.length; i++) if (E[i].from >= y && (best === null || E[i].from < best.from)) best = E[i];
-    return best ? best.note : null;
-  },
-
   // The names showing at date `y` on their surfaces (text → the surface check runs on the live land).
   labelsAt(y) {
     return TM_PALAEO.LABELS.filter(L => y <= L.from && y >= L.to).map(L => this._labelText(L));
@@ -541,8 +542,14 @@ const Palaeo = {
       // stream on the proto-Ruahine used to hide its name whenever the fan's geometry put one there).
       L.ok = (D.on === 'sea') ? wt === 1 : (D.on === 'land') ? wt !== 1 : true;
       const lift = T.paintLiftAt ? T.paintLiftAt(x, y) : T.getElevationAt(x, y);
-      const cx = vx + vz * Projection.projX(x), cy = vy + vz * Projection.groundY(y, lift);
+      let cx = vx + vz * Projection.projX(x), cy = vy + vz * Projection.groundY(y, lift);
       const ang = (D.deg || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
+      // Keep the whole tilted name on screen: the anchor is a map fraction, and the cover fit crops the
+      // map's sides differently per aspect (Ruataniwha Strait, near the east edge, ran off the right).
+      const m = (typeof TM_RIVER_NAMES !== 'undefined' ? TM_RIVER_NAMES.marginX : 28), hh = TM_PALAEO.labelSize * 0.7;
+      const ex = L.len / 2 * Math.abs(ca) + hh * Math.abs(sa) + m, ey = L.len / 2 * Math.abs(sa) + hh * Math.abs(ca) + m;
+      if (2 * ex < W) cx = Math.min(W - ex, Math.max(ex, cx));
+      if (2 * ey < H) cy = Math.min(H - ey, Math.max(ey, cy));
       let cum = 0;
       for (let j = 0; j < L.n; j++) {
         const s = cum + L.gs[j].adv / 2 - L.len / 2;
@@ -578,11 +585,11 @@ const Palaeo = {
     dc.globalAlpha = ga0;
   },
 
-  // The date where the HUD puts its year, and the epoch's note under it (crossfaded on change).
+  // The date where the HUD puts its year.
   _renderCaption(W, H) {
     const HUD = (typeof InstallHUD !== 'undefined') ? InstallHUD : null;
     if (!HUD || !HUD._blitText || typeof FreckleFace === 'undefined') return;
-    const cx = W / 2, cy = (HUD._visAxisY ? HUD._visAxisY(H) : H - 232) + (HUD.VIS_YEAR_BELOW || 46);
+    const cx = W / 2, cy = H - TM_PALAEO.captionUp;
     const halo = [8, 14, 12, 170], ink = [236, 244, 240], size = TM_PALAEO.captionSize;
     const date = this.dateLabel();
     HUD._blitText(date, FreckleFace, 'freckle', size, CENTER, CENTER, cx + 2, cy + 3, halo);
@@ -592,31 +599,6 @@ const Palaeo = {
       const xEnd = W - Math.round(W * (HUD.VIS_INSET || 0.10)), by = H - (HUD.VIS_STRIP_H || 64) + 16;
       HUD._blitText(this.speedLabel(), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, xEnd, by, [240, 240, 240]);
     }
-    if (!TM_PALAEO.notes) return;
-    const note = (this.state === 'erupt' && TM_PALAEO.eruptionNote) ? TM_PALAEO.eruptionNote : this.epochNote(this.yearsBP);
-    const now = this._now(), fade = Math.max(500, TM_PALAEO.noteFadeMs);
-    let c = this._cap;
-    if (!c) c = this._cap = { cur: { text: null, t0: -1e9 }, out: { text: null, t0: -1e9, a0: 0 } };
-    if (note !== c.cur.text) {
-      const shown = Math.min(1, (now - c.cur.t0) / fade);
-      const o = c.out; c.out = c.cur; c.cur = o;
-      c.out.a0 = shown; c.out.t0 = now;
-      c.cur.text = note; c.cur.t0 = now;
-    }
-    const ny = cy + (HUD.VIS_CLIMATE_BELOW || 42), ns = TM_PALAEO.noteSize;
-    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null, ga0 = dc ? dc.globalAlpha : 1;
-    const aOut = c.out.a0 * (1 - Math.min(1, (now - c.out.t0) / fade)), aIn = Math.min(1, (now - c.cur.t0) / fade);
-    if (c.out.text && aOut > 0.004) {
-      if (dc) dc.globalAlpha = ga0 * aOut;
-      HUD._blitText(c.out.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx + 2, ny + 2, halo);
-      HUD._blitText(c.out.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx, ny, ink);
-    }
-    if (c.cur.text && aIn > 0.004) {
-      if (dc) dc.globalAlpha = ga0 * aIn;
-      HUD._blitText(c.cur.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx + 2, ny + 2, halo);
-      HUD._blitText(c.cur.text, FreckleFace, 'freckle', ns, CENTER, CENTER, cx, ny, ink);
-    }
-    if (dc) dc.globalAlpha = ga0;
   },
 
   // A still frame (tools/export_frames.js): the names of date `y` on terrain `T` as it stands (seated
@@ -643,16 +625,10 @@ const Palaeo = {
       }
       if (buf && buf.push && typeof FreckleFace !== 'undefined') {
         const HUD = (typeof InstallHUD !== 'undefined') ? InstallHUD : null;
-        const cx = W / 2, cy = (HUD && HUD._visAxisY ? HUD._visAxisY(H) : H - 232) + ((HUD && HUD.VIS_YEAR_BELOW) || 46);
+        const cx = W / 2, cy = H - TM_PALAEO.captionUp;
         buf.push(); buf.textFont(FreckleFace); buf.textAlign(CENTER, CENTER); buf.noStroke();
         buf.textSize(TM_PALAEO.captionSize); buf.fill(8, 14, 12, 170); buf.text(this.dateLabel(), cx + 2, cy + 3);
         buf.fill(236, 244, 240); buf.text(this.dateLabel(), cx, cy);
-        const note = TM_PALAEO.notes ? this.epochNote(y) : null;
-        if (note) {
-          const ny = cy + ((HUD && HUD.VIS_CLIMATE_BELOW) || 42);
-          buf.textSize(TM_PALAEO.noteSize); buf.fill(8, 14, 12, 170); buf.text(note, cx + 2, ny + 2);
-          buf.fill(236, 244, 240); buf.text(note, cx, ny);
-        }
         buf.pop();
       }
     } finally {

@@ -135,6 +135,12 @@ class Simulation {
 
     this.activeSpecies = { moa: [], eagle: [] };
     this.otherEntities = {};
+    this.ecoHealth = (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.healthStart != null) ? LEVEL_MECHANICS.healthStart : 0.5;   // the ledger (_healthSet): the HUD's bar, read by the birds, the plants and the ground's colour
+    this.ecoEarned = 0;   // its upper half, 0..1: 0 at healthStart, 1 at full
+    this._ecoRun = { dir: 0, step: 0 };     // the run of boosts the next step belongs to (_healthUp / _healthDown)
+    this._ecoStorm = { n: 0, at: -Infinity };   // the storms in succession (onStorm)
+    this._fauna = null;   // fauna homeostasis state (_updateFaunaHomeostasis), built on its first tick
+    this.milestones = { full: true, warn: true };   // the health milestones still to play this climb (TeManawa_milestone.js); carried through a rebuild
     this._speciesStableTimes = {};
     this._speciesLastAlive = {};
 
@@ -462,23 +468,59 @@ class Simulation {
     const baseFrac = (M && M.plantHomeostasis !== false) ? (M.homeoBaseFrac ?? 1) : 1;
     const density = this.config.plantDensity * ((this.config.viewAreaGain > 0) ? this.config.viewAreaGain : 1) * baseFrac;
     const terrain = this.terrain;
-    
+    // The land is spawned in the climate's palette (_paletteOf): a world built in a glacial opens on its
+    // cold cover, not on a forest the census would then have to turn over.
+    const glacial = this._homeoGlacial();
+
     for (let row = 0; row < spawnRows; row++) {
       for (let col = 0; col < spawnCols; col++) {
         const x = col * spawnScale + random(-1, 1);
         const y = row * spawnScale + random(-1, 1);
         const biome = terrain.getBiomeAt(x, y);
-        
+
         // Per-biome density multiplier: a thin-corridor habitat (the riverbank WETLAND) reads
         // sparse at the uniform global density, so it can ask for more via biome.plantDensityMult.
         if (biome.canHavePlants && random() < density * (biome.plantDensityMult || 1) && this._plantSiteIsLand(x, y)) {
-          const plantTypes = biome.plantTypes;
-          const plantType = plantTypes[(random() * plantTypes.length) | 0];
+          const plantTypes = this._paletteOf(biome, glacial);
+          let plantType = plantTypes[(random() * plantTypes.length) | 0];
+          for (let r = 0; r < 4 && !this._inPalette(biome, plantType, glacial); r++) plantType = plantTypes[(random() * plantTypes.length) | 0];
+          if (!this._inPalette(biome, plantType, glacial)) continue;
           this.plants.push(new Plant(x, y, plantType, terrain, biome.key));
         }
       }
     }
   }
+
+  // ============================================================
+  // THE CLIMATE'S PALETTE (2026-11-08). A forest habitat in the glacial is not its interglacial forest
+  // minus a few trees: it TURNS OVER. At the LGM the lower North Island was two-thirds open tussock and
+  // shrubland, with beech in shelter and the podocarps in a few low refugia
+  // (md/ecology/TEMANAWA_ECOLOGY_OPEN.md §4). biome.glacialPlantTypes (the scaffold) is what a habitat
+  // becomes in the cold; without one, its glacial palette is plantTypes less the warm species. The
+  // spawn, the founders, the census recruits, every seeding path and the representation floors draw
+  // from the palette of the regime now, and _homeoTurnover retires what has fallen out of it, down to
+  // a refugial remnant, so the census replaces the forest with the cold cover (and the cold cover
+  // with the forest when the interglacial returns). Health no longer shelters warm trees in the cold:
+  // the lift it earns raises whatever the climate's palette is, so a healthy glacial is lush OPEN
+  // country, a different kind of vibrant. Knobs: turnover* in the scaffold mechanics.
+  // ============================================================
+  _paletteOf(biome, glacial) {
+    const G = biome && biome.glacialPlantTypes;
+    return (glacial && G && G.length) ? G : biome.plantTypes;
+  }
+
+  // Is `type` part of this habitat's cover in this regime? Kahikatea (disturbanceRecruit) answers to the
+  // river's clock, not the warm cut: it stays wherever the regime's palette lists it, so on the wetland
+  // (no glacial palette) it rides out the cold, and in the podocarp forest it goes with the forest.
+  // Any other warm species is no habitat's cover in a glacial.
+  _inPalette(biome, type, glacial) {
+    const d = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES[type] : null;
+    if (!d || !biome || !biome.plantTypes) return false;
+    if (d.disturbanceRecruit) return this._paletteOf(biome, glacial).indexOf(type) !== -1;
+    if (glacial && (d.coldTolerance ?? 0.5) <= ((typeof TM_GROW !== 'undefined' && TM_GROW.warmMax != null) ? TM_GROW.warmMax : 0.65)) return false;
+    return this._paletteOf(biome, glacial).indexOf(type) !== -1;
+  }
+
 
   // KERERŪ SEED DISPERSAL. Grows the plant population, cap-guarded like every spawn path and held
   // to the habitat's homeostasis target (_updateHomeostasis). Plants a FOREST seedling (a warm, large-fruited
@@ -501,11 +543,12 @@ class Simulation {
       const biome = terrain.getBiomeAt(px, py);
       if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
       if (!this._plantSiteIsLand(px, py)) continue;   // never disperse onto river/sea water
-      // kererū disperse LARGE forest fruit → only warm (low coldTolerance) types recruit
-      const warm = [];
-      for (let i = 0; i < biome.plantTypes.length; i++) {
-        const t = biome.plantTypes[i], d = PLANT_TYPES[t];
-        if (d && d.coldTolerance <= warmMax && !d.disturbanceRecruit) warm.push(t);   // kahikatea needs a river disturbance, not a kererū
+      // kererū disperse LARGE forest fruit → only warm (low coldTolerance) types recruit, and only where
+      // the climate's palette still has them (in a glacial, nowhere: _paletteOf)
+      const warm = [], glacial = this._homeoGlacial(), pal = this._paletteOf(biome, glacial);
+      for (let i = 0; i < pal.length; i++) {
+        const t = pal[i], d = PLANT_TYPES[t];
+        if (d && d.coldTolerance <= warmMax && !d.disturbanceRecruit && this._inPalette(biome, t, glacial)) warm.push(t);   // kahikatea needs a river disturbance, not a kererū
       }
       if (!warm.length) continue;
       // Homeostasis: a habitat already over its target takes no more seed (it would only be thinned).
@@ -550,10 +593,10 @@ class Simulation {
       const biome = terrain.getBiomeAt(px, py);
       if (!biome || !biome.canHavePlants || !biome.plantTypes) continue;
       if (!this._plantSiteIsLand(px, py)) continue;   // never seed onto river/sea water
-      // Only the requested set from THIS biome's palette — so the seed lands in matching habitat.
-      const set = [];
-      for (let i = 0; i < biome.plantTypes.length; i++) {
-        const t = biome.plantTypes[i], d = TYPES[t];
+      // Only the requested set from THIS biome's palette (the climate's: _paletteOf) — so the seed lands in matching habitat.
+      const set = [], pal = this._paletteOf(biome, this._homeoGlacial());
+      for (let i = 0; i < pal.length; i++) {
+        const t = pal[i], d = TYPES[t];
         if (!d || d.disturbanceRecruit) continue;   // kahikatea recruits only on a river disturbance, not the FOREST button
         const ct = d.coldTolerance ?? 0.5;
         if (warm ? (ct <= G.warmMax) : (ct >= G.coldMin)) set.push(t);
@@ -638,9 +681,10 @@ class Simulation {
     return seeded;
   }
 
-  // Can a biome take this species? Its palette lists it; a river recruit (kahikatea) only the wetland.
+  // Can a biome take this species? The climate's palette lists it (_paletteOf: a tussock boost in a
+  // glacial seeds the open ground the forest has become); a river recruit (kahikatea) only the wetland.
   _biomeTakes(b, plantKey, riverOnly) {
-    return !!(b && b.canHavePlants && b.plantTypes && b.plantTypes.indexOf(plantKey) >= 0 &&
+    return !!(b && b.canHavePlants && b.plantTypes && this._paletteOf(b, this._homeoGlacial()).indexOf(plantKey) >= 0 &&
               (!riverOnly || b.key === 'wetland'));
   }
 
@@ -679,14 +723,18 @@ class Simulation {
     const moaKeys   = (this.activeSpecies && this.activeSpecies.moa)   || [];
     const eagleKeys = (this.activeSpecies && this.activeSpecies.eagle) || [];
     let added = 0;
+    // Under fauna homeostasis the recruits fill the bird's LIVE target (already raised by liftFauna) up to
+    // its band, never past it, or the next census would retire them again; otherwise target + this burst.
+    const homeo = !!(M && M.faunaHomeostasis && this._fauna && this._fauna.ready);
     for (const key of keys) {
       if (!key || key.indexOf('young_') === 0) continue;   // outline-only juvenile variant, not a recruit target
       const isEagle = eagleKeys.indexOf(key) !== -1;
       const isMoa   = moaKeys.indexOf(key) !== -1;
-      const ceil = this._speciesTarget(key) + count;       // top up toward the comfortable target (+ this burst)
+      const ceil = this._speciesTarget(key) + (homeo ? (M.faunaBand ?? 1) : count);
       for (let i = 0; i < count; i++) {
         if (isEagle) {
           if (this.countAliveEagles() >= eagleCap) break;
+          if (homeo && this._faunaCount(key) >= ceil) break;
           this.spawnEagle(key);
         } else if (isMoa) {
           if (this.getSpeciesCount(key) >= ceil) break;
@@ -777,7 +825,9 @@ class Simulation {
       const biome = terrain.getBiomeAt(px, py);
       if (!biome || biome.key !== 'wetland' || !biome.plantTypes) continue;
       if (!this._plantSiteIsLand(px, py)) continue;
-      const type = biome.plantTypes[(random() * biome.plantTypes.length) | 0];
+      const glacial = this._homeoGlacial(), pal = this._paletteOf(biome, glacial);
+      const type = pal[(random() * pal.length) | 0];
+      if (!this._inPalette(biome, type, glacial)) continue;   // no nīkau bloom in the cold
       const p = new Plant(px, py, type, terrain, biome.key);
       p.growth = 0.06; p._matured = false;          // fresh seedling — un-matured so a tree still grows in from a sapling
       this.plants.push(p);
@@ -847,8 +897,10 @@ class Simulation {
   // the habitats they serve, one step each, so a run of right answers grows those habitats back to
   // full and past it, through the climate swings; a wrong-for-the-climate boost drops every habitat
   // back to its floor and the surplus thins out over the next ~20 s. A plant counts while it is in
-  // the list (rootstock and regrowing dead included), so a glacial die-back or an eruption never
-  // triggers a refill. Kahikatea is counted but left to its own disturbance clock.
+  // the list (rootstock and regrowing dead included), so an eruption never triggers a refill. A
+  // glacial does, on purpose: the climate's turnover (_homeoTurnover, THE CLIMATE'S PALETTE) retires
+  // the warm trees that have fallen out of the palette and the census recruits the cold cover in their
+  // place. Kahikatea is counted but left to its own disturbance clock.
   //
   // REPRESENTATION. However open the floor, each habitat keeps every species of its palette (its
   // characteristic plants: tawa + Tōtara + tree fern + beech on the montane, tussock + Dracophyllum on
@@ -858,7 +910,7 @@ class Simulation {
   // ============================================================
   _initHomeostasis() {
     this._homeo = { lift: {}, favour: {}, cells: {}, dens: {}, count: {}, members: {}, typeCount: {},
-                    timer: 0, areaStale: true };
+                    turnAt: {}, timer: 0, areaStale: true };
     const H = this._homeo, terrain = this.terrain;
     if (!terrain || !terrain.biomeArray) return;
     this._homeoArea();
@@ -866,17 +918,17 @@ class Simulation {
     // the open floor never opens on a habitat missing one of its characteristic plants.
     this._homeoCensus();
     const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
-    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65 };
     const glacial = this._homeoGlacial();
     for (const b of terrain.biomeArray) {
       if (!b || !b.canHavePlants || !b.plantTypes || !TYPES) continue;
       const n = H.count[b.key] || 0;
       if (!n) continue;
-      const floor = this._homeoSpeciesFloor(b, n), tc = H.typeCount[b.key] || (H.typeCount[b.key] = {});
-      for (let i = 0; i < b.plantTypes.length; i++) {
-        const t = b.plantTypes[i], d = TYPES[t];
-        if (b.plantTypes.indexOf(t) !== i || !d || d.disturbanceRecruit) continue;
-        if (glacial && (d.coldTolerance ?? 0.5) <= G.warmMax) continue;
+      const floor = this._homeoSpeciesFloor(b, n, glacial), tc = H.typeCount[b.key] || (H.typeCount[b.key] = {});
+      const pal = this._paletteOf(b, glacial);
+      for (let i = 0; i < pal.length; i++) {
+        const t = pal[i], d = TYPES[t];
+        if (pal.indexOf(t) !== i || !d || d.disturbanceRecruit) continue;
+        if (!this._inPalette(b, t, glacial)) continue;
         // Each species on its own, a few misses allowed: a thin corridor rejects many sites.
         for (let miss = 0; (tc[t] || 0) < floor && miss < 8; ) if (!this._homeoRecruit(b.key, t, true)) miss++;
       }
@@ -899,7 +951,14 @@ class Simulation {
     H.areaStale = false;
   }
 
+  // The regime the plants answer to (the boost gate's cut). Read off the clock, not the season manager,
+  // which samples it once a frame: a world rebuilt at an eruption's year is spawned and settled before
+  // the next frame, and must be spawned in that year's palette. The same number whenever both are current.
   _homeoGlacial() {
+    if (typeof Climate !== 'undefined' && typeof DeepTime !== 'undefined' && Climate.glacialIndexAt) {
+      const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
+      return Climate.glacialIndexAt(DeepTime.yearsBP) >= thr;
+    }
     const sm = this.seasonManager;
     return !!(sm && sm.getWinterness && sm.getWinterness() >= 0.5);
   }
@@ -930,16 +989,16 @@ class Simulation {
 
   // The share of a habitat each palette species is guaranteed: homeoSpeciesShare of the stock, at
   // least homeoSpeciesMin plants, but never so much that the floors together crowd out the rest.
-  // Kahikatea (its own disturbance clock) has no floor.
-  _homeoSpeciesFloor(biome, stock) {
+  // Kahikatea (its own disturbance clock) has no floor. The palette is the climate's (_paletteOf).
+  _homeoSpeciesFloor(biome, stock, glacial = this._homeoGlacial()) {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
     const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
     let distinct = 0;
-    const list = biome.plantTypes;
+    const list = this._paletteOf(biome, glacial);
     for (let i = 0; i < list.length; i++) {
       if (list.indexOf(list[i]) !== i) continue;
       const d = TYPES && TYPES[list[i]];
-      if (d && !d.disturbanceRecruit) distinct++;
+      if (d && !d.disturbanceRecruit && this._inPalette(biome, list[i], glacial)) distinct++;
     }
     if (!distinct) return 0;
     const want = Math.max(M.homeoSpeciesMin ?? 3, stock * (M.homeoSpeciesShare ?? 0.06));
@@ -951,13 +1010,12 @@ class Simulation {
   _homeoUnderFloor(biome, stock, glacial) {
     const H = this._homeo, TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
     if (!TYPES || !biome.plantTypes) return null;
-    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65 };
-    const floor = this._homeoSpeciesFloor(biome, stock);
+    const floor = this._homeoSpeciesFloor(biome, stock, glacial);
     const tc = H.typeCount[biome.key] || {};
     let best = null, bestRatio = 1;
-    for (const t of biome.plantTypes) {
+    for (const t of this._paletteOf(biome, glacial)) {
       const d = TYPES[t];
-      if (!d || d.disturbanceRecruit || (glacial && (d.coldTolerance ?? 0.5) <= G.warmMax)) continue;
+      if (!d || d.disturbanceRecruit || !this._inPalette(biome, t, glacial)) continue;
       const r = (tc[t] || 0) / floor;
       if (r < bestRatio) { bestRatio = r; best = t; }
     }
@@ -977,6 +1035,9 @@ class Simulation {
   }
 
   // The stock a habitat is held at: its base (density × area) plus any lift earned by correct boosts.
+  // The ledger moves it both ways, so the plants say what the bar says: below healthStart the base itself
+  // thins, to homeoPoorFrac of it in the poor state; above it every habitat holds at least its share of
+  // the earned lift (homeoEarnedShare), boosted or not, and the habitats actually boosted stand above that.
   homeoTarget(biomeKey) {
     const H = this._homeo;
     if (!H || H.dens[biomeKey] == null) return null;
@@ -985,7 +1046,8 @@ class Simulation {
     // The floor on a step helps a thin habitat (the wetland corridor) read the lift, but never more
     // than half its base: a habitat that barely exists yet (a few stray subalpine cells) stays tiny.
     const step = Math.max(base * (M.homeoLiftStep ?? 0.15), Math.min(M.homeoLiftStepMin ?? 6, base * 0.5));
-    return base + (H.lift[biomeKey] || 0) * step;
+    const earned = (this.ecoEarned || 0) * (M.homeoLiftMaxSteps ?? 4) * (M.homeoEarnedShare ?? 0.5);
+    return base * this._healthLevel(M.homeoPoorFrac ?? 0.7) + Math.max(H.lift[biomeKey] || 0, earned) * step;
   }
 
   _homeoDeadband(target) {
@@ -1002,12 +1064,14 @@ class Simulation {
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
     if (M.plantHomeostasis === false) return 0;
     const maxSteps = M.homeoLiftMaxSteps ?? 4;
+    const glacial = this._homeoGlacial();
     let lifted = 0;
     for (const b of biomes) {
       if (!b || !b.canHavePlants || !b.plantTypes || !b.plantTypes.length) continue;
+      const pal = this._paletteOf(b, glacial);   // the climate's cover: a glacial tussock boost lifts the forest ground it has taken over
       let hit = 0;
-      for (let i = 0; i < b.plantTypes.length; i++) if (keys.indexOf(b.plantTypes[i]) !== -1) hit++;
-      if (!hit || hit / b.plantTypes.length < minShare) continue;
+      for (let i = 0; i < pal.length; i++) if (keys.indexOf(pal[i]) !== -1) hit++;
+      if (!hit || hit / pal.length < minShare) continue;
       H.lift[b.key] = Math.min(maxSteps, (H.lift[b.key] || 0) + steps);
       if (keys.length === 1) H.favour[b.key] = keys[0];   // its recruits lean toward the boosted species
       lifted++;
@@ -1031,12 +1095,15 @@ class Simulation {
     return this.liftHabitats(keys, M.homeoButtonShare ?? 0.34);
   }
 
-  // A WRONG-for-the-climate boost: every habitat drops back to its original floor.
-  resetHabitatLift() {
+  // A WRONG boost or an overused storm: every habitat gives back `steps` of its lift (homeoLiftMaxSteps
+  // of them takes the land to its floor). A habitat with nothing left forgets the species it favoured.
+  dropHabitatLift(steps = 1) {
     const H = this._homeo;
     if (!H) return;
-    for (const k in H.lift) delete H.lift[k];
-    for (const k in H.favour) delete H.favour[k];
+    for (const k in H.lift) {
+      if (H.lift[k] > steps) H.lift[k] -= steps;
+      else { delete H.lift[k]; delete H.favour[k]; }
+    }
   }
 
   // The census. Real clock (rdt), every homeoIntervalFrames, so a time-lapse neither speeds the
@@ -1058,6 +1125,9 @@ class Simulation {
     for (const k in H.dens) {
       const target = this.homeoTarget(k);
       if (target == null) continue;
+      // The climate's turnover first (_homeoTurnover): what it retires is a gap the recruits below fill
+      // from the palette, so the forest is REPLACED by the cold cover rather than thinned to nothing.
+      if (M.paletteTurnover !== false) H.count[k] -= this._homeoTurnover(k, glacial);
       const n = H.count[k] || 0, band = this._homeoDeadband(target);
       if (n < target - band) {
         const want = Math.min(maxPer, Math.ceil((target - n) * (M.homeoRecruitRate ?? 0.25)));
@@ -1075,12 +1145,495 @@ class Simulation {
     }
   }
 
+  // THE TURNOVER (see THE CLIMATE'S PALETTE). Retire habitat k's plants that have fallen out of the
+  // regime's palette, down to a remnant: in a glacial the warm trees' refugia (turnoverRefuge of the
+  // habitat's BASE stock, shrinking as the cold deepens; the base, not the target, so a high ledger does
+  // not keep more warm trees), in an interglacial the cold cover's (turnoverColdKeep). Bare rootstock
+  // and the dead go at once, there is nothing to see; standing plants fade (fall 'thin') a few a census,
+  // the HIGHEST first with a little jitter, so the forest falls back downhill to its lowest pockets
+  // instead of vanishing at random. A habitat that turns over is stamped (H.turnAt) and the recruits that
+  // replace it grow in at turnoverGrowRate (Plant._colonist), so the new cover reads within one boost's
+  // beat. Returns how many left the count. Census path: allocation-free, ≤ a few hundred members.
+  _homeoTurnover(k, glacial) {
+    const H = this._homeo, members = H.members[k];
+    if (!members || !members.length) return 0;
+    const biome = this._biomeByKey(k);
+    if (!biome || !biome.plantTypes) return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const tc = H.typeCount[k] || {};
+    let out = 0;
+    for (const t in tc) if (tc[t] > 0 && !this._inPalette(biome, t, glacial)) out += tc[t];
+    if (!out) return 0;
+    const base = (H.dens[k] || 0) * (H.cells[k] || 0);
+    let excess = out - Math.round(base * this._turnoverKeep(glacial));
+    if (excess <= 0) return 0;
+    let done = 0;
+    // 1. rootstock and the regrowing dead: invisible, so the whole excess of them at once
+    for (let i = 0; i < members.length && excess > 0; i++) {
+      const p = members[i];
+      if (p._senescent || p._toppling || (p.alive && p.growth > 0.05) || this._inPalette(biome, p.type, glacial)) continue;
+      p.alive = false; p.growth = 0; p._senescent = true; p._matured = false;
+      tc[p.type]--; excess--; done++;
+    }
+    // 2. the standing: a few a census, highest first
+    const J = M.turnoverJitter ?? 0.04;
+    let want = Math.min(M.turnoverMaxPerTick ?? 8, Math.ceil(excess * (M.turnoverRate ?? 0.2)));
+    while (want-- > 0 && excess > 0) {
+      let best = null, bestE = -Infinity;
+      for (let i = 0; i < members.length; i++) {
+        const p = members[i];
+        if (!p.alive || p._senescent || p._fallKind || this._inPalette(biome, p.type, glacial)) continue;
+        const e = p.elevation + p.visualOffset * J;   // visualOffset: a stable per-plant -1..1
+        if (e > bestE) { bestE = e; best = p; }
+      }
+      if (!best) break;
+      if (best._toppling) best._fallKind = 'thin';   // already falling (the band's die-back): let that fall be its last
+      else best.fall('thin');
+      tc[best.type]--; excess--; done++;
+    }
+    if (done) H.turnAt[k] = (typeof millis === 'function') ? millis() : 0;
+    return done;
+  }
+
+  // The remnant a turnover leaves, as a share of the habitat's base stock: the warm refugia shrink from
+  // turnoverRefuge.atTurn at the glacial threshold to .atFull at the coldest; in the interglacial, what
+  // is left of the cold cover in the returning forest.
+  _turnoverKeep(glacial) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    if (!glacial) return M.turnoverColdKeep ?? 0;
+    const R = M.turnoverRefuge || { atTurn: 0.15, atFull: 0.04 };
+    const sm = this.seasonManager, g = (sm && sm.getWinterness) ? sm.getWinterness() : 1;
+    let u = (g - 0.5) / 0.5;
+    u = u < 0 ? 0 : (u > 1 ? 1 : u);
+    return R.atTurn + (R.atFull - R.atTurn) * u;
+  }
+
+  // ============================================
+  // THE HEALTH LEDGER — what the visitor has done to the land, as one number (2026-11-05).
+  // ----------------------------------------------
+  // ecoHealth 0..1 is the HUD's bar. It is moved by events, never by a census: a census ratio jitters as
+  // plants recruit and thin, and steps whenever a land morph changes a habitat's area (tools/boostprobe.js).
+  // The world reads it the other way round: above healthStart it raises the bird and plant targets
+  // (ecoEarned), below it thins them (_healthLevel), and it drains the ground's colour (Game._updateHabitatHealth),
+  // so the numbers on the land follow the bar on their own clocks. The knobs and the rules are in the
+  // scaffold (ECOSYSTEM HEALTH).
+  //   A step's size is set when a run begins, from where the land stands then, which is what makes "four
+  //   right answers fill it" and "four wrong goals leave it poor" true from ANY level, not just the start.
+  //   Mixed play settles between the two. It holds until the visitor changes it: an idle wall lands the
+  //   attract sequence, whose fresh Simulation is at healthStart.
+  // ============================================
+  _healthSet(h) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const lo = M.healthMin ?? 0.05, start = M.healthStart ?? 0.5;
+    h = h < lo ? lo : (h > 1 - 1e-6 ? 1 : h);
+    this.ecoHealth = h;
+    this.ecoEarned = h > start ? (h - start) / (1 - start) : 0;
+    if (this._fauna) this._fauna.timer = Infinity;   // the birds' census runs at once, on the same beat as the bar
+  }
+
+  // One step up the run toward full. mult scales this step only; the run keeps its size.
+  _healthUp(mult = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, R = this._ecoRun;
+    if (R.dir !== 1) { R.dir = 1; R.step = (1 - this.ecoHealth) / (M.healthAnswersToFull ?? 4); }
+    this._healthSet(this.ecoHealth + R.step * mult);
+  }
+
+  // One step down the run toward poor. weight < 1 for a half-right boost.
+  _healthDown(weight = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, R = this._ecoRun;
+    if (R.dir !== -1) {
+      R.dir = -1;
+      R.step = Math.max(M.healthDownMinStep ?? 0.04, (this.ecoHealth - (M.healthPoor ?? 0.2)) / (M.healthStepsToPoor ?? 4));
+    }
+    this._healthSet(this.ecoHealth - R.step * weight);
+  }
+
+  // A share of the gap to full, for the gains that are not an answer: a right-climate boost, a storm taken
+  // alone. They stop at healthMatchedCap, because only an answer takes the bar past it. Ends a downward
+  // run but not an upward one, so it cannot cost a visitor the step they are on.
+  _healthGain(share) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const cap = M.healthMatchedCap ?? 0.75, h = this.ecoHealth;
+    if (this._ecoRun.dir === -1) this._ecoRun.dir = 0;
+    if (h < cap) this._healthSet(Math.min(cap, h + (1 - h) * share));
+  }
+
+  // The right climate but not the answer, above the cap: a notch back toward it, and never past it. An
+  // upward run carries on, its step widened if need be so four answers still fill the bar from here.
+  _healthSlip() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, R = this._ecoRun;
+    if (R.dir === -1) R.dir = 0;
+    this._healthSet(Math.max(M.healthMatchedCap ?? 0.75, this.ecoHealth - (M.healthMatchedDrop ?? 0.0625)));
+    if (R.dir === 1) R.step = Math.max(R.step, (1 - this.ecoHealth) / (M.healthAnswersToFull ?? 4));
+  }
+
+  // Below healthStart the living world thins with the ledger: 1 at the start, `poorLevel` in the poor
+  // state, a straight line between. Above the start it is 1 (the earned half lifts the targets instead).
+  _healthLevel(poorLevel) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const start = M.healthStart ?? 0.5, poor = M.healthPoor ?? 0.2, h = this.ecoHealth;
+    if (h >= start) return 1;
+    const t = (h - poor) / (start - poor);
+    return poorLevel + (1 - poorLevel) * (t > 0 ? t : 0);
+  }
+
+  // A correct boost. isAnswer: the live goal's answer (mult > 1: the goal an eruption put up). Otherwise
+  // the right climate but not the answer: a smaller gain up to healthMatchedCap, a notch back down above it.
+  onRightBoost(isAnswer, mult = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    this._ecoStorm.n = 0;                  // doing anything else ends a run of storms
+    if (isAnswer) this._healthUp(mult);
+    else if (this.ecoHealth > (M.healthMatchedCap ?? 0.75)) this._healthSlip();
+    else this._healthGain(M.healthMatchedGain ?? 0.18);
+  }
+
+  // A WRONG boost (the console's or the FOREST/TUSSOCK buttons'). weight < 1: the right plant in the wrong
+  // climate, half wrong. Birds and plants each give back a step, starting on the same beat as the bar.
+  onWrongBoost(weight = 1) {
+    this._ecoStorm.n = 0;
+    this._healthDown(weight);
+    this._healthHurt();
+  }
+
+  // A STORM. The first in a run clears dead wood and opens the ground, and the land is better for it. Each
+  // one after it, within healthStormCalmS of the last and with no boost between, is a step down.
+  onStorm() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {}, S = this._ecoStorm;
+    const now = (typeof millis === 'function') ? millis() : 0;
+    if (now - S.at > (M.healthStormCalmS ?? 40) * 1000) S.n = 0;
+    S.at = now; S.n++;
+    if (S.n === 1) this._healthGain(M.healthStormGain ?? 0.15);
+    else { this._healthDown(1); this._healthHurt(); }
+  }
+
+  // An ERUPTION (Game.applyAsh, which every eruption path reaches), by its TIER: how hard it hit the lower
+  // North Island (healthEruptionDipByTier). On its own it never takes the bar under healthEruptionFloor,
+  // and a land already under it takes nothing: nature knocks a land back, the visitor decides whether it
+  // fails (and the 25 % warning is theirs, not the timeline's). The bigger ones also take steps off every
+  // habitat's and bird's banked lift (healthEruptionLiftByTier). A fresh run from here, so the double
+  // answer to its goal wins most of it back. Returns the dip taken.
+  onEruption(tier) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    this._ecoRun.dir = 0;
+    const D = M.healthEruptionDipByTier;
+    const dip = (D && tier && D[tier] != null) ? D[tier] : (M.healthEruptionDip ?? 0.08);
+    const h = this.ecoHealth, floor = M.healthEruptionFloor ?? 0;
+    this._healthSet(Math.max(Math.min(h, floor), h - dip));
+    const L = M.healthEruptionLiftByTier, steps = (L && tier && L[tier]) || 0;
+    if (steps > 0) { this.dropHabitatLift(steps); this.dropFaunaLift(steps); }
+    return h - this.ecoHealth;
+  }
+
+  // Every bird's banked link steps (F.link, or the steps a rebuild is carrying until the census starts) less `steps`.
+  dropFaunaLift(steps = 1) {
+    const L = this._fauna ? this._fauna.link : this._pendingLink;
+    if (!L) return;
+    for (const k in L) { if (L[k] > steps) L[k] -= steps; else delete L[k]; }
+    if (this._fauna) this._fauna.timer = Infinity;
+  }
+
+  // ============================================
+  // THE LAND THROUGH A REBUILD, AND AT ONCE (2026-11-08).
+  // ----------------------------------------------
+  // The eruption BUTTON builds a new Simulation at the eruption's year (Game.applyEruptionAt), but the
+  // visitor has not changed. What they made of the land (the ledger, every habitat's banked lift and
+  // favoured species, every bird's link steps) comes across in carryState()/restoreCarry(), and the new
+  // land is filled to the targets that implies (settle), so the ash lands on the land an eruption in
+  // place would have hit. Before this a button eruption re-founded the birds and dropped every lift, so
+  // on a healthy land it cost far more than the same eruption off the timeline.
+  // settle() is the instant version of the census: each habitat recruited up to its target as grown
+  // plants, and each bird kind up to its target on the next census (_faunaFill). mature also grows up
+  // every standing plant of the climate's palette (the full-health milestone's reveal). Only ever under
+  // a cover: the ash cloud, the milestone's white. Off the draw path.
+  // ============================================
+  carryState() {
+    const H = this._homeo, F = this._fauna;
+    return { health: this.ecoHealth, milestones: Object.assign({}, this.milestones),
+             lift: H ? Object.assign({}, H.lift) : null, favour: H ? Object.assign({}, H.favour) : null,
+             link: F ? Object.assign({}, F.link) : (this._pendingLink ? Object.assign({}, this._pendingLink) : null) };
+  }
+
+  restoreCarry(c) {
+    if (!c) return;
+    this._healthSet(c.health);
+    if (c.milestones) Object.assign(this.milestones, c.milestones);
+    const H = this._homeo;
+    if (H && c.lift) for (const k in c.lift) if (H.dens[k] != null) H.lift[k] = c.lift[k];
+    if (H && c.favour) for (const k in c.favour) if (H.dens[k] != null) H.favour[k] = c.favour[k];
+    if (c.link) { if (this._fauna && this._fauna.ready) Object.assign(this._fauna.link, c.link); else this._pendingLink = c.link; }
+    this.settle(false);
+  }
+
+  settle(mature = false) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const H = this._homeo;
+    let added = 0;
+    if (H && M.plantHomeostasis !== false) {
+      if (H.areaStale) this._homeoArea();
+      this._homeoCensus();
+      this.updateSpatialGrids();                   // the density gate must see the standing land, then each recruit as it lands
+      const cap = M.maxLivePlants || 900, glacial = this._homeoGlacial();
+      if (M.paletteTurnover !== false) for (const k in H.dens) H.count[k] -= this._homeoTurnoverAll(k, glacial);
+      for (const k in H.dens) {
+        const target = this.homeoTarget(k);
+        if (target == null) continue;
+        let n = H.count[k] || 0;
+        for (let miss = 0; n < target && miss < 12 && this.plants.length < cap; ) {
+          if (this._homeoRecruit(k, null, true, true)) { n++; added++; } else miss++;
+        }
+        H.count[k] = n;
+      }
+      if (mature) {
+        const biomes = this.terrain && this.terrain.biomeArray;
+        for (let i = 0; i < this.plants.length; i++) {
+          const p = this.plants[i];
+          if (!p.alive || p._senescent || p._toppling || p.suppressed || p.growth >= 1) continue;
+          const b = this._biomeByKey(p.biomeKey);
+          if (!b || !this._inPalette(b, p.type, glacial)) continue;
+          p.growth = 1; p.dormant = false;
+          if (p._tree) p._matured = true;
+        }
+      }
+    }
+    this._settleBirds = true;
+    if (this._fauna) this._fauna.timer = Infinity;
+    return added;
+  }
+
+  // A settle's turnover: the whole excess at once (the cover hides it), rootstock and standing alike, the
+  // highest first like _homeoTurnover, so the refugia it leaves are the same low pockets. Allocates a
+  // short candidate list: a settle is an event, never a frame.
+  _homeoTurnoverAll(k, glacial) {
+    const H = this._homeo, members = H.members[k];
+    const biome = this._biomeByKey(k);
+    if (!members || !members.length || !biome) return 0;
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const J = M.turnoverJitter ?? 0.04, tc = H.typeCount[k] || {};
+    const out = [];
+    for (let i = 0; i < members.length; i++) {
+      const p = members[i];
+      if (!p._senescent && !p._fallKind && !this._inPalette(biome, p.type, glacial)) out.push(p);
+    }
+    const excess = out.length - Math.round((H.dens[k] || 0) * (H.cells[k] || 0) * this._turnoverKeep(glacial));
+    if (excess <= 0) return 0;
+    out.sort((a, b) => (b.elevation + b.visualOffset * J) - (a.elevation + a.visualOffset * J));
+    for (let i = 0; i < excess; i++) {
+      const p = out[i];
+      p.alive = false; p.growth = 0; p._senescent = true; p._matured = false; p._toppling = false;
+      tc[p.type]--;
+    }
+    return excess;
+  }
+
+  // The living world's side of a wrong boost or an overused storm: every habitat and every linked bird
+  // gives back a step, and the census runs fast for a while, so the crash is plain to see.
+  _healthHurt() {
+    this.dropHabitatLift(1);
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null, F = this._fauna;
+    if (!M || !M.faunaHomeostasis || !F) return;
+    for (const k in F.link) { if (F.link[k] > 1) F.link[k]--; else delete F.link[k]; }
+    F.crashT = (M.faunaCrashS ?? 12) * 60;
+    F.timer = Infinity;
+  }
+
+  // ============================================
+  // FAUNA HOMEOSTASIS — the birds are held at a level the visitor earns, like the plants (2026-11-05).
+  // ----------------------------------------------
+  // At healthStart each species is held at its FOUNDING number (or its floor, if that is higher), so the
+  // birds do not multiply on their own and the sim can run for hours without a visitor. The upper half
+  // of the ledger (ecoEarned) raises every target toward the configured speciesTargets level; a matched
+  // boost of a plant a bird is linked to (TM_BOOST.faunaLinks / the card's m.fauna) adds a step on top
+  // for that bird. The climate sets each species' PROMINENCE: forest birds lead in the interglacial, the
+  // open-country grazers in the glacial (ClimateAffinity, from the same seasonalModifiers the sim keys
+  // off; the forest flyers carry none and count as warm). The lower half of the ledger is F.shock: every
+  // target falls with it, to faunaShockFloor of itself in the poor state, and stays there until the
+  // visitor turns the land around. Breeding tapers to the target (the existing gates read _speciesTarget);
+  // above target + faunaBand the census retires the hungriest birds, slowly as a climate turn or a lost
+  // lift settles, fast for faunaCrashS after a wrong boost or an overused storm (F.crashT), so the crash
+  // is plain to see; below it a newcomer arrives now and then (_faunaRecruit), so the favoured kinds rise
+  // too. Never below a floor. On the real clock, once a second, off the draw path.
+  // Knobs in the scaffold's ECOLOGY FEEDBACK; measured with tools/boostprobe.js.
+  // ============================================
+  _updateFaunaHomeostasis(rdt) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    if (!M || !M.faunaHomeostasis) return;
+    let F = this._fauna;
+    if (!F) F = this._fauna = { timer: 0, ready: false, keys: [], kind: {}, clim: {}, base: {}, link: {}, targets: {}, shock: 1, crashT: 0 };
+    if (F.crashT > 0) F.crashT -= rdt;
+    F.timer += rdt;
+    if (F.ready && F.timer < (M.faunaIntervalFrames ?? 60)) return;
+    F.timer = 0;
+    if (!F.ready) this._faunaInit(F);
+    this._faunaRetarget(F, M);
+    this._faunaCull(F, M);
+    const fill = !!this._settleBirds;   // a settle (THE LAND THROUGH A REBUILD): every kind to its target now
+    this._settleBirds = false;
+    this._faunaRecruit(F, M, fill);
+  }
+
+  // Below its target a kind takes in a newcomer now and then (from beyond the map), with a chance of
+  // faunaRecruitRate × its shortfall per census: so the climate's favoured kinds RISE to their
+  // prominence instead of waiting minutes on breeding, and a crash refills once it has passed.
+  // In a crash only a kind that natural losses have taken under its FLOOR is topped up (the floor is
+  // the protected minimum; the land is failing the rest). Never past the caps. Huia arrive as a pair.
+  // fill (a settle): no chance roll and no crash rule, every kind straight up to its target.
+  _faunaRecruit(F, M, fill = false) {
+    const rate = M.faunaRecruitRate ?? 0.1;
+    if (!fill && !(rate > 0)) return;
+    const shocked = F.crashT > 0 && !fill;
+    const moaCap = (typeof CONFIG !== 'undefined' && CONFIG.maxMoaPopulation) || 60;
+    const eagleCap = M.eagleMaxPopulation || 12;
+    let added = 0;
+    for (let i = 0; i < F.keys.length; i++) {
+      const key = F.keys[i], kind = F.kind[key], per = (key === 'huia') ? 2 : 1;
+      const short = (shocked ? this._speciesFloor(key) : F.targets[key]) - this._faunaCount(key);
+      if (short < per) continue;
+      if (!fill && random() >= Math.min(1, short * rate)) continue;
+      const n = fill ? Math.floor(short / per) : 1;
+      for (let j = 0; j < n; j++) {
+        if (kind === 'moa') {
+          if (this.getMoaPopulation() >= moaCap) break;
+          this.spawnMoas(1, key);
+          this._invalidateCache();               // getMoaPopulation is cached per frame: a fill must see its own adds
+        } else if (kind === 'eagle') {
+          if (this.countAliveEagles() >= eagleCap) break;
+          this.spawnEagle(key);
+        } else {
+          const sp = (typeof REGISTRY !== 'undefined') ? REGISTRY.getSpecies(key) : null;
+          const cap = (sp && sp.config && sp.config.maxPopulation) || M.kereruMaxPopulation || 16;
+          if (this._faunaCount(key) + per > cap) break;
+          this._spawnOtherEntities(key, per);
+        }
+        added++;
+      }
+    }
+    if (added) {
+      this.stats.homeoRecruits = (this.stats.homeoRecruits || 0) + added;
+      this._invalidateCache();
+    }
+  }
+
+  // First tick, once the founders are down: which kinds are tracked, each one's climate leaning, and
+  // its unattended level (the founding number, at least its floor).
+  _faunaInit(F) {
+    const add = (key, kind, cfg) => {
+      if (!key || F.kind[key]) return;
+      F.keys.push(key); F.kind[key] = kind;
+      const aff = (typeof ClimateAffinity !== 'undefined') ? ClimateAffinity.ofSpeciesConfig(cfg) : 'neutral';
+      // the forest flyers carry no seasonalModifiers (their hunger keys off fruit, not the phase): warm
+      F.clim[key] = (kind === 'other' && !(cfg && cfg.seasonalModifiers)) ? 'warm' : aff;
+      F.base[key] = Math.max(this._speciesFloor(key), this._faunaCount(key));
+    };
+    const cfgOf = (key) => { const sp = (typeof REGISTRY !== 'undefined') ? REGISTRY.getSpecies(key) : null; return sp && sp.config; };
+    for (const k of (this.activeSpecies.moa || [])) add(k, 'moa', cfgOf(k));
+    for (const k of (this.activeSpecies.eagle || [])) add(k, 'eagle', cfgOf(k));
+    for (const k in this.otherEntities) {
+      const L = this.otherEntities[k];
+      if (!Array.isArray(L) || !L.length || !L[0].isFlyer) continue;
+      add(k, 'other', cfgOf(k));
+    }
+    // a rebuild's carried link steps (restoreCarry) land now the kinds are known
+    if (this._pendingLink) {
+      for (const k in this._pendingLink) if (F.kind[k]) F.link[k] = this._pendingLink[k];
+      this._pendingLink = null;
+    }
+    F.ready = true;
+  }
+
+  // Live birds of one species (grazers, harriers or flyers).
+  _faunaCount(key) {
+    let n = 0;
+    const L = this.otherEntities[key];
+    if (Array.isArray(L)) { for (let i = 0; i < L.length; i++) if (L[i] && L[i].alive) n++; return n; }
+    for (let i = 0; i < this.moas.length; i++) { const m = this.moas[i]; if (m.alive && m.speciesKey === key) n++; }
+    for (let i = 0; i < this.eagles.length; i++) { const e = this.eagles[i]; if (e.alive && e.speciesKey === key) n++; }
+    return n;
+  }
+
+  // A species' prominence now: 1 for a neutral bird, else its leaning's factor for the REGIME (the same
+  // cut as the boost gate and the HUD's climate line). A hard split, not a blend: a boost's time-lapse
+  // lands just past the regime boundary, where any blend sits halfway and the contrast vanished in
+  // every visitor session (tools/boostprobe.js). The census still eases the birds over — the surplus
+  // goes at faunaCullRate, the favoured kinds breed up — so the target's step is never seen as a cut.
+  _faunaClimate(F, M, key) {
+    const c = F.clim[key];
+    if (c !== 'warm' && c !== 'cold') return 1;
+    const T = c === 'warm' ? (M.faunaClimateWarm || { interglacial: 1.3, glacial: 0.6 })
+                           : (M.faunaClimateCold || { interglacial: 0.7, glacial: 1.4 });
+    const sm = this.seasonManager, gi = (sm && sm.getWinterness) ? sm.getWinterness() : 0;
+    const thr = (typeof Climate !== 'undefined' && Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
+    return gi >= thr ? T.glacial : T.interglacial;
+  }
+
+  _faunaRetarget(F, M) {
+    const earned = this.ecoEarned || 0, linkStep = M.faunaLinkStep ?? 0.15;
+    F.shock = this._healthLevel(M.faunaShockFloor ?? 0.4);
+    for (let i = 0; i < F.keys.length; i++) {
+      const key = F.keys[i], base = F.base[key], full = Math.max(base, this._speciesFullTarget(key));
+      let t = base + (full - base) * earned + linkStep * full * (F.link[key] || 0);
+      t *= this._faunaClimate(F, M, key) * F.shock;
+      F.targets[key] = Math.max(this._speciesFloor(key), Math.round(t));
+    }
+  }
+
+  // Retire the surplus over target + band: the hungriest bird first (the one the land was failing).
+  _faunaCull(F, M) {
+    const shocked = F.crashT > 0, maxPer = M.faunaCullMaxPerTick ?? 3;
+    // In a crash there is no band: with targets of 2–4 a bird's grace per species would swallow it.
+    const band = shocked ? (M.faunaShockBand ?? 0) : (M.faunaBand ?? 1);
+    const rate = shocked ? (M.faunaShockCullRate ?? 0.4) : (M.faunaCullRate ?? 0.12);
+    let culled = 0;
+    for (let i = 0; i < F.keys.length; i++) {
+      const key = F.keys[i], n = this._faunaCount(key), over = n - F.targets[key] - band;
+      if (over <= 0) continue;
+      const k = Math.min(maxPer, Math.ceil(over * rate));
+      for (let j = 0; j < k; j++) if (this._faunaCullOne(F.kind[key], key)) culled++;
+    }
+    if (culled) {
+      this.stats.homeoCulls = (this.stats.homeoCulls || 0) + culled;
+      this.stats.deaths += culled;
+      this._invalidateCache();
+    }
+  }
+
+  _faunaCullOne(kind, key) {
+    const L = kind === 'eagle' ? this.eagles : kind === 'other' ? (this.otherEntities[key] || []) : this.moas;
+    let pick = null;
+    for (let i = 0; i < L.length; i++) {
+      const o = L[i];
+      if (!o || !o.alive || (kind !== 'other' && o.speciesKey !== key)) continue;
+      if (!pick || (o.hunger || 0) > (pick.hunger || 0)) pick = o;
+    }
+    if (!pick) return false;
+    pick.alive = false;                    // the death fade arms on its own (see handleEagleCatch)
+    if (kind === 'eagle' && this.stats.eagleDeaths !== undefined) this.stats.eagleDeaths++;
+    return true;
+  }
+
+  // A matched boost of a plant these birds are linked to: a lasting step on their targets (capped),
+  // applied now so the recruits that follow (boostFauna) fit under it.
+  liftFauna(keys, steps = 1) {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const F = this._fauna;
+    if (!M || !M.faunaHomeostasis || !F || !F.ready || !Array.isArray(keys)) return 0;
+    const max = M.faunaLinkMaxSteps ?? 3;
+    let n = 0;
+    for (const key of keys) {
+      if (!key || key.indexOf('young_') === 0 || !F.kind[key]) continue;
+      F.link[key] = Math.min(max, (F.link[key] || 0) + steps); n++;
+    }
+    if (n) this._faunaRetarget(F, M);
+    return n;
+  }
+
   // One seedling into habitat k: beside a standing plant of that habitat (seed rain from a parent,
   // which also lands reliably in a thin corridor), else a few random map tries. The species: `type`
   // if given, else a palette species under its floor, else a palette draw leaning toward the last
-  // boosted species there, skipping kahikatea (its own disturbance clock) and, in a glacial, the warm
-  // trees the cold would only suppress. founder=true plants it mature (the founding mix at init).
-  _homeoRecruit(k, type = null, founder = false) {
+  // boosted species there, skipping kahikatea (its own disturbance clock) and anything outside the
+  // climate's palette (_paletteOf). founder=true plants it mature (the founding mix at init, a settle);
+  // index=true also files it in the plant grid at once, so a settle's density gate sees its own recruits.
+  // A recruit into a habitat that has just turned over (_homeoTurnover) is a colonist: it grows in fast.
+  _homeoRecruit(k, type = null, founder = false, index = false) {
     const H = this._homeo, terrain = this.terrain;
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
     const biome = this._biomeByKey(k);
@@ -1112,8 +1665,13 @@ class Simulation {
       for (let i = 0; i < near.length; i++) { if (near[i].alive && ++live >= 3) break; }
       if (live >= 3) continue;
       const p = new Plant(px, py, type, terrain, k);
-      if (!founder) { p.growth = 0.08; p._matured = false; }   // a seedling that grows in visibly
+      if (!founder) {
+        p.growth = 0.08; p._matured = false;   // a seedling that grows in visibly
+        const now = (typeof millis === 'function') ? millis() : 0;
+        if (H.turnAt[k] != null && now - H.turnAt[k] < (M.turnoverColonistMs ?? 60000)) p._colonist = true;
+      }
       this.plants.push(p);
+      if (index && this.plantGrid) this.plantGrid.insert(p);
       const tc = H.typeCount[k] || (H.typeCount[k] = {});
       tc[type] = (tc[type] || 0) + 1;
       if (members) members.push(p);
@@ -1125,13 +1683,12 @@ class Simulation {
   _homeoPickType(biome, glacial, favour) {
     const TYPES = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
-    const G = (typeof TM_GROW !== 'undefined') ? TM_GROW : { warmMax: 0.65 };
     const ok = (t) => {
       const d = TYPES && TYPES[t];
-      return !!d && !d.disturbanceRecruit && !(glacial && (d.coldTolerance ?? 0.5) <= G.warmMax);
+      return !!d && !d.disturbanceRecruit && this._inPalette(biome, t, glacial);
     };
-    if (favour && biome.plantTypes.indexOf(favour) !== -1 && ok(favour) && random() < (M.homeoFavourChance ?? 0.4)) return favour;
-    const list = biome.plantTypes;
+    const list = this._paletteOf(biome, glacial);
+    if (favour && list.indexOf(favour) !== -1 && ok(favour) && random() < (M.homeoFavourChance ?? 0.4)) return favour;
     for (let tries = 0; tries < 8; tries++) {
       const t = list[(random() * list.length) | 0];
       if (ok(t)) return t;
@@ -1553,11 +2110,19 @@ class Simulation {
   // ----------------------------------------------
   // The comfortable population for a species (target) and the protected minimum
   // (floor). Drive the surplus-aware harrier (crop the abundant, spare the rare)
-  // and the grazer breeding gate (breed up to target, then trickle). Both are
-  // static, so resolve once and cache.
+  // and the grazer breeding gate (breed up to target, then trickle). With fauna
+  // homeostasis on, the target is the LIVE one the census sets (founding level →
+  // earned, by climate, thinned by a poor ledger); _speciesFullTarget is the
+  // authored, earned-in-full level, static, resolved once and cached.
   // ============================================
 
   _speciesTarget(key) {
+    const F = this._fauna;
+    if (F && F.ready && F.targets[key] != null) return F.targets[key];
+    return this._speciesFullTarget(key);
+  }
+
+  _speciesFullTarget(key) {
     const cache = this._targetCache || (this._targetCache = {});
     if (cache[key] !== undefined) return cache[key];
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
@@ -1758,6 +2323,7 @@ class Simulation {
     this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
     this._updateHomeostasis(rdt);       // hold each habitat at its (boost-lifted) target, on real time
+    this._updateFaunaHomeostasis(rdt);  // hold each bird at its earned, climate-led target; the crash of a wrong boost
 
     if (this.seasonManager.justChanged) this.onSeasonChange();
     

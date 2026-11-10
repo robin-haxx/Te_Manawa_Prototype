@@ -9,10 +9,12 @@
 /* The distinctive display face. If NF Nadira Pro is not the mockup title face,
    swap the src here — nothing else changes. Body stays a system sans (offline,
    deterministic on the Windows kiosk). */
+/* The TTF first, the same file the sim loads. Chrome draws the OTF's capital W hollow, as two thin
+   outlines ("Wetland", "Wharariki"); Firefox doesn't, so it only shows on the browser the wall runs. */
 @font-face {
   font-family: 'Nadira';
-  src: url('../typefaces/NF-Nadira-Pro-Regular.otf') format('opentype'),
-       url('../typefaces/NF-Nadira-Pro-Regular.ttf') format('truetype');
+  src: url('../typefaces/NF-Nadira-Pro-Regular.ttf') format('truetype'),
+       url('../typefaces/NF-Nadira-Pro-Regular.otf') format('opentype');
   font-display: swap;
 }
 
@@ -53,7 +55,8 @@ html, body {
 #bg {
   position: absolute; inset: 0;
   background-size: cover; background-position: center;
-  transition: background-color 800ms ease;   /* the tint under the image eases rather than snapping (= app.js SCROLL_MS) */
+  /* the tint under the image, and the climate colour shift (app.js applyClimateTint), ease rather than snap (= app.js SCROLL_MS) */
+  transition: background-color 800ms ease, filter 800ms ease;
 }
 /* Per-habitat tint + soft vignette, shown until/behind the 1080p artist image. */
 .theme-forest  { background-color: #24422a; }
@@ -101,7 +104,8 @@ html, body {
   width: 845px; height: 840px;
   background: var(--card-bg); border: 1px solid var(--card-br);
   border-radius: 26px; padding: 54px;
-  backdrop-filter: blur(2px);
+  /* No backdrop-filter here: the blur is a separate rounded layer whose corners can part from the
+     fill and border under the stage's fractional scale. At 2 px under a 60% fill it hardly showed. */
   transition: box-shadow 300ms ease, border-color 300ms ease;
 }
 #card.matched    { border-color: rgba(120, 200, 120, 0.55); box-shadow: 0 0 40px rgba(90,180,90,0.25); }
@@ -169,6 +173,7 @@ html, body {
 #cardFauna .ground.right  { right: -84px; transform: scaleX(-1); }
 /* Upright: only the Regular Nadira is loaded, so italic here was a browser-faked oblique (soft) */
 #cardName { font-family: var(--display); font-style: normal; font-size: 58px; line-height: 1.05; color: var(--cream); }
+#cardAlt  { font-size: 30px; line-height: 1.2; color: var(--cream); margin-top: 8px; }   /* the card's other common name(s) */
 #cardSci  { font-style: italic; font-size: 28px; color: var(--orange); margin-top: 6px; }
 /* The write-up scrolls by touch: a scroll container with pan-y overrides the page's
    touch-action:none inside it. A thin cream bar shows the position; the fade at the bottom
@@ -179,6 +184,7 @@ html, body {
   font-size: 24px; line-height: 1.5; color: var(--body);
 }
 #cardBody p { margin-bottom: 14px; }
+#cardBody strong { font-weight: 700; color: #fff; }   /* the words a plant goal rests on (app.js addPara) */
 #cardBody .card-boost {
   margin: 22px 0 8px; font-style: italic; font-weight: normal; font-size: 26px; color: var(--orange);
 }
@@ -218,20 +224,37 @@ html, body {
 #habitatScreen { position: absolute; inset: 0; }
 .scrollGhost { pointer-events: none; }
 /* habitat → habitat with a card change: the outgoing card fades its contents only (the live box stays) */
-.scrollGhost #card.bare { background: none; border-color: transparent; box-shadow: none; backdrop-filter: none; }
+.scrollGhost #card.bare { background: none; border-color: transparent; box-shadow: none; }
 #selectScreen {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
 }
+/* Sized to leave a band above and below it for the landing birds (#landingBirds): the warm
+   habitats' birds stand above the card, the cold ones below (2026-11-08; was 80px padding, a 640px logo). */
 #selectCard {
+  position: relative; z-index: 1;
   width: 1180px; max-width: 78%;
   background: var(--card-bg); border: 1px solid var(--card-br); border-radius: 26px;
-  padding: 80px 90px; text-align: center;
+  padding: 40px 90px 40px; text-align: center; margin-top: -24px;
 }
 /* The logo's viewBox carries ~2.4% margin on every side, so the negative top margin
    keeps its visual gap to the card edge in line with the padding. */
-#selectCard .logo { display: block; width: 640px; height: auto; margin: -24px auto 0; }
-#selectCard h1 { font-family: var(--display); font-style: italic; font-size: 96px; color: var(--cream); }
+#selectCard .logo { display: block; width: 380px; height: auto; margin: -12px auto 0; }
+#selectCard h1 { font-family: var(--display); font-style: italic; font-size: 82px; color: var(--cream); }
+#selectCard .prompt-birds { margin-top: 22px; font-size: 26px; color: var(--cream); opacity: 0.85; }
+
+/* ---- the landing birds (TM_LANDING_BIRDS; app.js renderLandingBirds) ---- */
+#landingBirds { position: absolute; inset: 0; pointer-events: none; }
+.landBird {
+  position: absolute; transform: translate(-50%, -50%);
+  background: none; border: none; padding: 0; cursor: none; pointer-events: auto;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.45));
+  transition: transform 160ms ease;
+}
+.landBird img { height: 100%; width: auto; display: block; pointer-events: none; }
+.landBird.flip img { transform: scaleX(-1); }
+.landBird.tapped { transform: translate(-50%, -50%) scale(1.15); }
+body.debug .landBird { cursor: pointer; }
 /* Nadira's outlines are hand-inked (an 'H' is ~180 points), so drawn 1:1 the micro-wobbles alias
    into a crunchy edge; the main screen hides this by downscaling its canvas, which averages
    neighbouring pixels. A sub-pixel blur does the same averaging here. (A text-shadow halo was
@@ -243,6 +266,100 @@ html, body {
 .select-tree.left  { left: 90px; }
 .select-tree.right { right: 90px; }
 
+/* ---- the goal strip, under the plants (app.js renderGoalStrip) ---- */
+/* One row along the bottom edge: the wall's question with its chances as pips on the left, under the
+   plant cluster; how the last goal ended on the right, under the card. ONE row, one line each, so it
+   stays under the lowest sticker (the wetland pūrei reaches y 995; this row starts ~1008). The pips and
+   the tick are drawn (no emoji glyphs). */
+#goalStrip {
+  position: absolute; left: 60px; right: 60px; bottom: 14px;
+  display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 24px;
+  pointer-events: none;
+}
+#goalPrev, #goalNow {
+  display: flex; align-items: center; gap: 14px; min-width: 0; height: 58px;
+  background: var(--card-bg); border: 1px solid var(--card-br); border-radius: 22px;
+}
+#goalPrev {
+  order: 2; flex: none; padding: 0 22px 0 18px; font-size: 24px; color: var(--body); white-space: nowrap;
+  transition: border-color 300ms ease, box-shadow 300ms ease;
+}
+#goalPrev img { height: 44px; width: auto; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.5)); }
+#goalPrevName { font-weight: 600; color: var(--cream); }
+#goalPrev .tick { display: none; }
+/* answered (a solve, or a late answer): green, with a drawn tick */
+#goalPrev.answered { border-color: rgba(120, 200, 120, 0.65); box-shadow: 0 0 30px rgba(90, 180, 90, 0.30); }
+#goalPrev.answered #goalPrevLabel { color: #9fe39a; font-weight: 600; }
+#goalPrev.answered .tick {
+  display: block; width: 12px; height: 22px; margin: -6px 4px 0 6px;
+  border-right: 4px solid #9fe39a; border-bottom: 4px solid #9fe39a; transform: rotate(45deg);
+}
+/* the answer of a goal that ran out: white, as the ring round its plants on the wall */
+#goalPrev.reveal { border-color: rgba(255, 255, 255, 0.70); box-shadow: 0 0 30px rgba(255, 255, 255, 0.22); }
+#goalNow { order: 1; flex: 0 1 auto; padding: 0 26px; }
+#goalNowText {
+  font-size: 28px; line-height: 1.2; color: var(--cream); font-style: italic;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+#goalPips { display: flex; gap: 10px; flex: none; }
+#goalPips .pip {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid var(--cream); background: var(--cream);
+  transition: background-color 300ms ease, transform 300ms ease;
+}
+#goalPips .pip.used { background: transparent; transform: scale(0.85); }
+
+/* ---- the climate rail, left edge (app.js renderRail / showHint) ---- */
+/* UP to the interglacial habitats (green, as the wall's interglacial), DOWN to the glacial ones (icy
+   blue, as the wall's glacial), a stop per switch position on a green → blue track, the current one
+   large. The HINT points it: the chevron toward the answer's screen bobs and that stop swells. Motion
+   and size only, never a flash (photosensitivity). */
+#climateRail {
+  position: absolute; left: 16px; top: 150px; bottom: 96px; width: 68px; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  pointer-events: none;
+}
+.railEnd { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.railLabel {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  font-size: 22px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+}
+.railEnd.up .railLabel   { color: #8fe596; }
+.railEnd.down .railLabel { color: #bfe2f6; }
+.railChev {
+  width: 26px; height: 26px; margin: 8px 0;
+  border-left: 6px solid; border-top: 6px solid; border-radius: 3px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+.railEnd.up .railChev   { color: #54d260; transform: rotate(45deg); }
+.railEnd.down .railChev { color: #96cdec; transform: rotate(225deg); }
+#railTrack {
+  flex: 1; width: 8px; border-radius: 4px; margin: 6px 0;
+  background: linear-gradient(to bottom, #54d260, #96cdec);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+}
+.railStop {
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  border: 3px solid rgba(10, 20, 12, 0.85);
+  transition: transform 400ms ease, box-shadow 400ms ease;
+}
+.railStop.centre { width: 16px; height: 16px; border-radius: 4px; transform: rotate(45deg); }
+.railStop.here { transform: scale(1.7); box-shadow: 0 0 0 3px var(--cream); }
+.railStop.centre.here { transform: rotate(45deg) scale(1.7); }
+/* the hint */
+#climateRail.hint-up .railEnd.up     { animation: railBobUp 0.9s ease-in-out infinite; }
+#climateRail.hint-down .railEnd.down { animation: railBobDown 0.9s ease-in-out infinite; }
+#climateRail.hint-up .railEnd.up .railChev,
+#climateRail.hint-down .railEnd.down .railChev { width: 34px; height: 34px; border-width: 8px; }
+.railStop.target { animation: railSwell 0.9s ease-in-out infinite; box-shadow: 0 0 0 4px #fff; }
+.railStop.centre.target { animation: railSwellDiamond 0.9s ease-in-out infinite; }
+@keyframes railBobUp   { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes railBobDown { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(14px); } }
+@keyframes railSwell        { 0%, 100% { transform: scale(1.5); } 50% { transform: scale(2.1); } }
+@keyframes railSwellDiamond { 0%, 100% { transform: rotate(45deg) scale(1.5); } 50% { transform: rotate(45deg) scale(2.1); } }
+
 /* ---- the readout strip (KYA · stage · goal · timelapse) - */
 /* The readout is "extra stuff" — hidden on the kiosk, shown only in debug mode. */
 #readout {
@@ -252,7 +369,7 @@ html, body {
   background: rgba(6, 12, 8, 0.55); border: 1px solid var(--card-br);
   color: var(--body); font-size: 26px; white-space: nowrap;
 }
-body.debug #readout { display: flex; }
+body.debug #readout { display: flex; bottom: 90px; }   /* above the goal strip */
 #clockLabel { font-variant-numeric: tabular-nums; min-width: 200px; }
 .pill {
   padding: 6px 20px; border-radius: 20px; font-size: 24px; font-weight: 600;

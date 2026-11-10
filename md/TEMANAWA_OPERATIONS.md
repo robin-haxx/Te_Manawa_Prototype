@@ -108,7 +108,7 @@ about 500 MB.
 |---|---|
 | `index.html`, `style.css`, `p5.min.js` | the page and p5 (`p5.sound.min.js` is no longer loaded) |
 | `TeManawa_*.js`, `levels/`, `geo/manawatu.geo.js` | the engine, the level, the geography |
-| `sprites/` | all of it except `sprites/Environmental/AshCloud/` (222 MB, unused) and `sprites/_retired/` |
+| `sprites/` | all of it except `sprites/_retired/` (retired art, including the unused 222 MB `AshCloud/` cover) |
 | `typefaces/OpenDyslexic.ttf`, `typefaces/NF-Nadira-Pro-Regular.ttf`, `typefaces/NF-Nadira-Pro-Regular.otf` | the three fonts in use |
 | `audio/birds/`, `audio/sfx/`, `audio/ui/`, `audio/CREDITS.md` | the sound (about 9 MB). The older `.mp3` files directly under `audio/` are not loaded and need not be deployed. Set the room level with `TM_AUDIO.master` in `TeManawa_audio.js`; `?audio=0` on the URL runs silent |
 | `secondscreen/` | the console page and its assets |
