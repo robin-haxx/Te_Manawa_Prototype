@@ -307,8 +307,9 @@ own layer (`secondscreen/kiosk.js`); `serve.js` survives a malformed URL; audio 
 room — one limiter, four capped buses, a cooldown per cue with a soft-tick fallback so a press is
 never silent and never stacked, fatigue on repeats, one bird call at a time. Loops and the eruption
 blast follow game state from `audioManager.update(game)`, so no reset path strands a sound. The clips
-were chosen by measurement, not by ear: **listen on the install speakers**. The moa, the huia and
-Finsch's duck have no voice; three extinct birds use a living relative (`standIn`, `audio/CREDITS.md`).
+were chosen by measurement, not by ear: **listen on the install speakers**. The moa (RNZ), the huia and
+Finsch's duck (Te Papa) use recreated calls (`recreated`; copyright, not open-licensed, clearance to confirm);
+three extinct birds use a living relative (`standIn`). Sources: `audio/CREDITS.md`.
 
 **Built 2026-11-02** (PLAN §14.2): the eruption aftermath covers **one boost/goal cycle**
 (`DeepTime.AFTERMATH` — the ash no longer waits on sim-years that never pass while geology is paused);

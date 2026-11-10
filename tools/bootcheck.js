@@ -1490,7 +1490,14 @@ try{
     t+=TA.birdGapMs+1;
     chk(m.birdCall('tui',0.2)===false && m.birdCall('kokako',0.5)===true, 'past the gap another species may call, the same one may not');
     t+=TA.birdGapMs+1;
-    chk(m.birdCall('north_island_giant_moa',0.5)===false && m.birdCall('huia',0.5)===false, 'the moa and the huia have no voice (nothing recorded, nothing invented)');
+    chk(m.birdCall('north_island_giant_moa',0.5)===true, 'a moa calls (the recreated voice)');
+    t+=TA.birdGapMs+1;
+    chk(m.birdCall('little_bush_moa',0.5)===false && m.birdCall('huia',0.5)===true, 'the four moa share one voice for the no-repeat rule; the huia has its own');
+    t+=TA.birdGapMs+1;
+    TA.birdRecreated=false; const rc=m.birdCall('finschs_duck',0.5); TA.birdRecreated=true;
+    chk(rc===false && BV.finschs_duck.recreated===true && m.birdCall('finschs_duck',0.5)===true, 'recreated voices are marked and can be switched off');
+    t+=TA.birdGapMs+1;
+    chk(m.birdCall('upland_moa',0.5)===false, 'a species with no entry stays silent');
     TA.birdStandIns=false; const st=m.birdCall('north_island_takahe',0.5); TA.birdStandIns=true;
     chk(st===false && BV.north_island_takahe.standIn===true && m.birdCall('north_island_takahe',0.5)===true, 'stand-in voices are marked and can be switched off');
 

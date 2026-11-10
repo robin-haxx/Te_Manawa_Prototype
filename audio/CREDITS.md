@@ -14,6 +14,7 @@ The CC0 clips need no credit. These do, and a line on the credits panel or label
 
 > Bird recordings: Department of Conservation (NZ), CC BY 4.0. Cape Barren goose: Beeld en Geluid,
 > CC BY-SA 3.0. Hen harrier: Benoît Van Hecke (xeno-canto XC558933), CC BY-SA 4.0. Recordings edited.
+> Recreated moa call: RNZ. Recreated huia and Finsch's duck calls: Te Papa. (Wording to be agreed with each.)
 
 CC BY-SA also asks that the edited clips stay under the same licence if they are passed on.
 
@@ -44,13 +45,31 @@ Whether a relative's voice is acceptable on the wall is a curatorial decision, n
 | `bird_goose_01` `bird_goose_02` | North Island goose (*Cnemiornis*) | Cape Barren goose (*Cereopsis*), a zoo recording (Artis, Amsterdam) | Wikimedia Commons, "Artis, hoendergans - SoundCloud - Beeld en Geluid.ogg", by Beeld en Geluid; 0.9–4.1 s and 10.4–13.6 s | CC BY-SA 3.0 |
 | `bird_harrier_01` `bird_harrier_02` | Eyles' harrier (*Circus teauteensis*) | hen harrier (*Circus cyaneus*) — same genus, not the closest relative | Wikimedia Commons, "Circus cyaneus - Hen Harrier XC558933.mp3", by Benoît Van Hecke (xeno-canto XC558933); 7.3–8.8 s and 17.2–19.7 s | CC BY-SA 4.0 |
 
-## Birds with no voice
+## Birds — extinct species, recreated calls (not openly licensed)
 
-| Species | Why |
-|---|---|
-| The four moa | Extinct before any recording. No evidence-based reconstruction of a moa call exists to license; inventing one would be presenting a guess as a fact. |
-| Huia | Extinct 1907, never recorded. The only record of its call is a 1949 recording of Hēnare Hāmana whistling an imitation, held by Ngā Taonga Sound & Vision — not openly licensed. It can be requested from them. |
-| Finsch's duck | Extinct. Its nearest living relative is the Australian wood duck (*Chenonetta jubata*); no openly licensed (non-NC) recording was found. |
+Marked `recreated: true` in `AUDIO_BIRD_VOICES`; `TM_AUDIO.birdRecreated = false` silences all three.
+These are **copyright works, not open-licensed**. The source files were supplied by the project
+(Robbie, 2026-11-10), who gave the go-ahead to cut them for this installation. Before opening,
+confirm that RNZ and Te Papa have agreed to this use and how each wants to be credited, and note
+that committing the clips puts copies in the repository (a concern if it is public).
+
+| Clip | Cast species | Source | Owner | Cut (s) |
+|---|---|---|---|---|
+| `bird_moa_01` `bird_moa_02` `bird_moa_03` | all four founded moa (one shared voice; the recording does not say which species) | `birds-20210323-0859-moa-128.mp3` (RNZ bird-call slot, 23 March 2021) | RNZ | 0.0–2.3, 5.7–8.8, 15.7–18.3 |
+| `bird_huia_01` `bird_huia_02` `bird_huia_03` `bird_huia_04` | huia | "Aotearoa's Recreated Extinct Bird Sounds - Huia.mp3" | Te Papa | 2.55–4.65, 14.45–16.15, 25.55–27.75, 32.85–34.45 |
+| `bird_duck_01` `bird_duck_02` `bird_duck_03` `bird_duck_04` | Finsch's duck | "Aotearoa's Recreated Extinct Bird Sounds - Finsch's duck.mp3" | Te Papa | 23.15–24.25, 24.85–26.35, 27.35–28.75, 31.95–33.15 |
+
+How the cuts were chosen (by measurement, not by ear):
+
+- **Moa.** The file has five long, low calls (0–8.8 s and 15.7–21.7 s), a run of short low bursts
+  between them (9–15.7 s), and a passage from 21.75 s whose energy sits in the speech band. The
+  clips are three of the long calls. The passage from 21.75 s is taken to be the voiceover and is
+  not used; the short bursts are not used either, because they could not be told apart from speech
+  with confidence. Check by ear that no clip carries a voice.
+- **Huia.** The first 35 s are separate whistles with silence between them; the clips are four of
+  those. The continuous passage after 35 s is not used.
+- **Finsch's duck.** The clips are four of the separate calls in the last 16 s. The continuous
+  passage from 3.5 s to 22 s is not used.
 
 A better harrier stand-in would be the swamp harrier / kāhu (*Circus approximans*); no openly
 licensed recording was found either. xeno-canto has both species, but mostly under

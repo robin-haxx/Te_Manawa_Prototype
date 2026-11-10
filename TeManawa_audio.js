@@ -58,6 +58,7 @@ const TM_AUDIO = {
   birdIdleGain:     0.6,   // idle calls are quieter too
   birdPan:          0.7,   // how far a bird at the edge of the map pans (0 = mono)
   birdStandIns:     true,  // false silences the species voiced by a living relative (see audio/CREDITS.md)
+  birdRecreated:    true,  // false silences the recreated calls of the moa, the huia and Finsch's duck
 
   // ---- the loops ----
   rainGain:     0.5,
@@ -106,8 +107,10 @@ const AUDIO_LOOPS = {
 // ------------------------------------------------------------
 // THE VOICES OF THE CAST. Keyed by species key. `standIn` marks a species that is extinct and
 // voiced by its closest living relative (audio/CREDITS.md says which, and why); TM_AUDIO.
-// birdStandIns = false silences those. The moa, the huia and Finsch's duck have NO voice here:
-// nothing recorded, and nothing honest to stand in for them.
+// birdStandIns = false silences those. `recreated` marks a modern reconstruction of an extinct bird's
+// call (RNZ's moa, Te Papa's huia and Finsch's duck), supplied for this installation;
+// TM_AUDIO.birdRecreated = false silences those. `id` lets several species share one voice (the four
+// moa), so the room hears it as one bird for the no-repeat rules.
 // ------------------------------------------------------------
 const AUDIO_BIRD_VOICES = {
   north_island_brown_kiwi: { files: ['birds/bird_kiwi_male_01', 'birds/bird_kiwi_female_01'], gain: 0.75 },
@@ -119,6 +122,16 @@ const AUDIO_BIRD_VOICES = {
   eyles_harrier:           { files: ['birds/bird_harrier_01', 'birds/bird_harrier_02'], gain: 0.65, standIn: true }  // a living harrier (Circus)
 };
 AUDIO_BIRD_VOICES.young_eyles_harrier = AUDIO_BIRD_VOICES.eyles_harrier;
+AUDIO_BIRD_VOICES.huia         = { files: ['birds/bird_huia_01', 'birds/bird_huia_02', 'birds/bird_huia_03', 'birds/bird_huia_04'], gain: 0.75, recreated: true };
+AUDIO_BIRD_VOICES.finschs_duck = { files: ['birds/bird_duck_01', 'birds/bird_duck_02', 'birds/bird_duck_03', 'birds/bird_duck_04'], gain: 0.65, recreated: true };
+// One recreated moa call for all four founded moa (the recording does not say which species it is).
+const AUDIO_MOA_VOICE = { id: 'moa', files: ['birds/bird_moa_01', 'birds/bird_moa_02', 'birds/bird_moa_03'], gain: 0.80, recreated: true };
+for (const k of ['north_island_giant_moa', 'little_bush_moa', 'mantells_moa', 'stout_legged_moa']) AUDIO_BIRD_VOICES[k] = AUDIO_MOA_VOICE;
+
+// Is this voice allowed to sound under the current switches?
+function audioVoiceAllowed(v) {
+  return !!v && !(v.standIn && !TM_AUDIO.birdStandIns) && !(v.recreated && TM_AUDIO.birdRecreated === false);
+}
 
 class AudioManager {
   // opts (the harness): { ctx: a stand-in AudioContext, now: () => ms }
@@ -402,14 +415,15 @@ class AudioManager {
   birdCall(speciesKey, fx, gainMul) {
     if (!this.enabled) return false;
     const v = AUDIO_BIRD_VOICES[speciesKey];
-    if (!v || (v.standIn && !TM_AUDIO.birdStandIns)) return false;
+    if (!audioVoiceAllowed(v)) return false;
+    const id = v.id || speciesKey;
     const now = this._clock();
     if (now - this._birdLastAt < TM_AUDIO.birdGapMs) return false;
-    const sp = this._birdSpeciesAt[speciesKey];
+    const sp = this._birdSpeciesAt[id];
     if (sp != null && now - sp < TM_AUDIO.birdSpeciesMs) return false;
     if (!this._ensureGraph()) return false;
     let idx = Math.floor(Math.random() * v.files.length);
-    const lk = 'bird:' + speciesKey;
+    const lk = 'bird:' + id;
     if (v.files.length > 1 && idx === this._lastFile[lk]) idx = (idx + 1) % v.files.length;
     const buf = this._buffers[v.files[idx]];
     if (!buf) return false;
@@ -417,7 +431,7 @@ class AudioManager {
     const rate = 1 + (Math.random() * 2 - 1) * 0.02;
     if (!this._start(buf, 'birds', v.gain * (gainMul != null ? gainMul : 1), rate, pan, 0, 2, now)) return false;
     this._lastFile[lk] = idx;
-    this._birdLastAt = now; this._birdSpeciesAt[speciesKey] = now; this._birdLastKey = speciesKey;
+    this._birdLastAt = now; this._birdSpeciesAt[id] = now; this._birdLastKey = id;
     this.stats.birds++; this.stats.played++;
     return true;
   }
@@ -457,9 +471,10 @@ class AudioManager {
         const b = list[i];
         if (!b || !b.alive) continue;
         const v = AUDIO_BIRD_VOICES[b.speciesKey];
-        if (!v || (v.standIn && !TM_AUDIO.birdStandIns)) continue;
-        if (b.speciesKey === this._birdLastKey) continue;                 // not the same species twice running
-        const sp = this._birdSpeciesAt[b.speciesKey];
+        if (!audioVoiceAllowed(v)) continue;
+        const id = v.id || b.speciesKey;
+        if (id === this._birdLastKey) continue;                           // not the same voice twice running
+        const sp = this._birdSpeciesAt[id];
         if (sp != null && now - sp < TM_AUDIO.birdSpeciesMs) continue;
         n++;
         if (n === want) return b;
