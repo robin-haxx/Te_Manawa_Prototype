@@ -22,13 +22,19 @@
 //   · clock / goal / timelapse : live telemetry; goal from Climate.nextRegimeBoundary (§7.1), plus
 //                                the live plant goal's prompt (TeManawa_goals.js).
 //   · plant goals              : each boost is judged against the live goal (TMGoals.judge); the
-//                                answer gets a bigger boost + a white-to-climate outline.
+//                                answer gets a bigger boost + a white-to-climate outline. A press
+//                                during a boost's time-lapse is only a seed top-up (onBoost).
+//   · hint                     : the H key, in either window (onHint): the goal's answers ringed white
+//                                on the wall (TMGoals.hint), and {type:'hint', keys, glacial, ms} back so
+//                                the console's climate rail points up or down to them.
 // ============================================================
 
 // Boost / timelapse tunables — console-tunable like TM_TIME / TM_GROW / TM_EDGE.
 const TM_BOOST = {
   matchedSeed:        12,   // plants a climate-MATCHED boost seeds of the chosen species (generous)
   mismatchedSeed:      0,   // a wrong-for-the-climate boost seeds NOTHING — the scene desaturates (the lesson)
+  topUpSeed:           2,   // a press during a boost's time-lapse: a couple more of the plant, if it fits the climate...
+  topUpGapMs:       2000,   // ...at most this often, counted from the boost itself (onBoost)
   faunaRecruit:        2,   // birds of EACH linked species a matched boost founds on-screen (the fauna coupling)
   eruptionLeadYears: 300,   // stop a timelapse this many years BEFORE an intervening eruption...
   eruptionFireDelayMs: 2000, // ...then fire it this long after the boost result settles (§6.3)
@@ -79,7 +85,9 @@ const TMBus = (function () {
   // Per-boost state carried from onBoost() to the timelapse-end handler.
   let _boostMatched = null;      // the regime-fit verdict at boost time → the goal 'achieved' flag
   let _pendingEruption = null;   // an eruption the timelapse stopped short of, fired a beat after it ends
+  let _eruptionDue = false;      // ...and the beat itself: the timelapse is over, that eruption has yet to fire
   let _wasTimelapsing = false;   // edge-detect the timelapse ending, in the heartbeat
+  let _lastPressAt = -Infinity;  // the last boost press that took effect, for TM_BOOST.topUpGapMs
 
   // ---- regime-boundary finder ------------------------------
   // Delegates to the pure Climate.nextRegimeBoundary (§7.1) so the goal readout and the timelapse
@@ -117,6 +125,12 @@ const TMBus = (function () {
       } else Palaeo.skip();
       return;
     }
+    // THE ATTRACT, THE INTRO, THE OUTRO (TeManawa_attract.js): a console intent is presence. It breaks
+    // the attract (the intro plays) or skips the map, and is never a button on the world.
+    if (typeof Attract !== 'undefined' && Attract.active && m.type !== 'hello') { Attract.onInput(g); return; }
+    // A HEALTH MILESTONE playing (TeManawa_milestone.js): its 15 s on the wall plays out, so a console
+    // intent is presence only (noted above). The console's `hello` still gets its clock and goal.
+    if (typeof Milestone !== 'undefined' && Milestone.active && m.type !== 'hello') return;
 
     switch (m.type) {
       case 'hello':
@@ -140,6 +154,9 @@ const TMBus = (function () {
       case 'boost':
         onBoost(m); break;
 
+      case 'hint':
+        onHint(); break;
+
       case 'dial':   // the macro pad's TIME DIAL, relayed when the console window has focus
         if (typeof DeepTime !== 'undefined' && DeepTime.dialTurn) {
           if (m.reset) DeepTime.dialReset();
@@ -152,6 +169,14 @@ const TMBus = (function () {
         // Accepted; no sim-side effect yet (optional highlight/focus, §3.1).
         break;
     }
+  }
+
+  // THE HINT: the H key in this window (Game.handleKey) or the console's (relayed as {type:'hint'}). The
+  // answers ring white here; the console is told which plants, so its rail can point up or down to them.
+  function onHint() {
+    if (typeof TMGoals === 'undefined' || !TMGoals.hint) return;
+    const h = TMGoals.hint(G(), (typeof millis === 'function') ? millis() : 0);
+    reply({ type: 'hint', keys: h.keys, glacial: h.glacial, ms: h.ms, goalId: h.goalId });
   }
 
   // THE BOOST (md/TEMANAWA_SECOND_SCREEN.md §6.1). Regime-fit gate → seed especially the chosen
@@ -175,12 +200,47 @@ const TMBus = (function () {
     else if (coldSpecies) matched = glacial;
     else matched = true;
 
+    // ONE BOOST PER GLACIAL TURN OR SERVED GOAL. A boost plays the clock to the next turn, or to an eruption
+    // that serves a new goal. Until that has happened a press is only a top-up: a couple more of the plant,
+    // no more than one per topUpGapMs, and it is not judged, so it costs no chance and moves no health.
+    const boostRunning = _pendingEruption || _eruptionDue || (typeof DeepTime !== 'undefined' && DeepTime.isTimelapsing && DeepTime.isTimelapsing());
+    if (boostRunning) {
+      if (nowMs - _lastPressAt >= (TM_BOOST.topUpGapMs ?? 2000)) {
+        _lastPressAt = nowMs;
+        const seeded = (matched && g && g.simulation && typeof g.simulation.seedSpecies === 'function')
+          ? g.simulation.seedSpecies(key, TM_BOOST.topUpSeed ?? 2) : 0;
+        reply({ type: 'boostResult', plantKey: key, matched: matched, topUp: true, seeded: seeded, goal: null, text: null });
+      }
+      return;
+    }
+    _lastPressAt = nowMs;
+
+    // A LATE ANSWER (TMGoals.judgeLate): the first press after a goal left unanswered, and it is that
+    // goal's answer. Visitors miss, walk back to the console to find the answer and press it, by then on a
+    // new goal. It counts as that goal solved (the tally and its plant), its answer line shows in green,
+    // and then the new goal comes back. It is NOT a boost: no seeding, no time-lapse, no health, no birds,
+    // no outline, and no chance spent on the new goal.
+    const late = (typeof TMGoals !== 'undefined' && TMGoals.judgeLate) ? TMGoals.judgeLate(key, m.plantName, nowMs) : null;
+    if (late) {
+      if (typeof DeepTime !== 'undefined') {
+        DeepTime.goalsSolved++;
+        if (DeepTime.solvedKeys.indexOf(key) === -1) DeepTime.solvedKeys.push(key);
+      }
+      reply({ type: 'boostResult', plantKey: key, matched: null, late: true, goal: late.kind, text: late.text });
+      emitGoal();
+      return;
+    }
+
     // The plant goal (TeManawa_goals.js): judge this boost against the live goal BEFORE seeding, so
     // the ANSWER gets the bigger boost below. The verdict replaces the goal line above the timeline
     // until the time-lapse is over. null when no plant goal is live (the regime objective shows).
     const GL = (typeof TM_GOALS !== 'undefined') ? TM_GOALS : null;
     const verdict = (typeof TMGoals !== 'undefined') ? TMGoals.judge(key, m.plantName, matched, glacial, nowMs) : null;
     const isAnswer = !!(GL && verdict && verdict.kind === 'answer');
+    // The goal an eruption put up (TMGoals.isEruptionGoal): answering it counts double, in everything
+    // an answer earns below, so a visitor who reads the eruption brings the land back twice as fast.
+    const LM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const mult = (isAnswer && TMGoals.isEruptionGoal(TMGoals.live())) ? (LM.healthEruptionMult ?? 2) : 1;
 
     reply({ type: 'boostResult', plantKey: key, matched: matched,
             goal: verdict ? verdict.kind : null, text: verdict ? verdict.text : null });
@@ -188,16 +248,26 @@ const TMBus = (function () {
     // Populate ESPECIALLY with the chosen species (§6.1 / §9.2): a matched boost seeds generously (the
     // goal's answer more so), a mismatched boost seeds nothing and the scene desaturates (the
     // regime-fit lesson below).
-    const n = matched ? ((isAnswer && GL.answerSeed) || TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
-    if (matched && typeof DeepTime !== 'undefined') DeepTime.boostsOk++;   // the tally under the climate line
-    // Plant homeostasis (Simulation._updateHomeostasis): a matched boost lifts the target of every
-    // habitat this plant grows in (the answer by more), so correct boosts accumulate; a wrong one
-    // drops every habitat back to its original floor. Lift BEFORE seeding so the seedlings fit it.
+    const n = matched ? ((isAnswer && GL.answerSeed * mult) || TM_BOOST.matchedSeed || 12) : (TM_BOOST.mismatchedSeed || 0);
+    if (matched && typeof DeepTime !== 'undefined') DeepTime.boostsOk++;   // the top band's boost tally
+    // The goal tally beside it: a solve is the live goal's answer boosted in the right climate. The
+    // plant joins the band's row of sprites once (a repeat solve still counts).
+    if (isAnswer && matched && typeof DeepTime !== 'undefined') {
+      DeepTime.goalsSolved++;
+      if (DeepTime.solvedKeys.indexOf(key) === -1) DeepTime.solvedKeys.push(key);
+    }
+    // The health ledger + plant homeostasis (Simulation.onRightBoost / onWrongBoost, _updateHomeostasis): a
+    // matched boost lifts the target of every habitat this plant grows in (the answer by more), so correct
+    // boosts accumulate; a wrong one takes a step back everywhere, habitats and birds alike, and only the
+    // right plant in the wrong climate is half forgiven. Lift BEFORE seeding so the seedlings fit it.
     const simH = g && g.simulation;
-    if (simH && typeof simH.liftHabitats === 'function') {
-      const LM = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
-      if (matched) simH.liftHabitats([key], 0, isAnswer ? (LM.homeoAnswerSteps ?? 2) : 1);
-      else simH.resetHabitatLift();
+    if (simH) {
+      if (matched) {
+        simH.onRightBoost(isAnswer, mult);
+        simH.liftHabitats([key], 0, isAnswer ? (LM.homeoAnswerSteps ?? 2) * mult : 1);
+      } else {
+        simH.onWrongBoost(verdict && verdict.kind === 'answerWrongClimate' ? (LM.healthHalfRight ?? 0.5) : 1);
+      }
     }
     const seeder = (g && g.simulation && typeof g.simulation.seedSpecies === 'function')
       ? g.simulation.seedSpecies.bind(g.simulation) : null;
@@ -207,10 +277,13 @@ const TMBus = (function () {
     // supports — founded on-screen so the visitor sees the animals answer the plant. A mismatched
     // boost recruits nothing (the birds don't thrive in the wrong climate either). Same link map as
     // the outline; a boost message may also carry m.fauna. `young_*` variants are skipped by boostFauna.
+    // Under fauna homeostasis the linked birds also bank a lasting step on their target (the answer
+    // two), raised BEFORE the recruits so they fit under it.
     if (matched && g && g.simulation && typeof g.simulation.boostFauna === 'function') {
       const faunaKeys = (Array.isArray(m.fauna) && m.fauna.length) ? m.fauna
                       : (TM_BOOST.faunaLinks && TM_BOOST.faunaLinks[key]);
-      if (faunaKeys) g.simulation.boostFauna(faunaKeys, (isAnswer && GL.answerFauna) || TM_BOOST.faunaRecruit || 2);
+      if (faunaKeys && typeof g.simulation.liftFauna === 'function') g.simulation.liftFauna(faunaKeys, isAnswer ? 2 * mult : 1);
+      if (faunaKeys) g.simulation.boostFauna(faunaKeys, (isAnswer && GL.answerFauna * mult) || TM_BOOST.faunaRecruit || 2);
     }
 
     if (g) {
@@ -294,6 +367,7 @@ const TMBus = (function () {
   }
 
   function fireEruptionInPlace(er) {
+    _eruptionDue = false;
     const g = G();
     if (!g) return;
     if (typeof g._fireEruptionInPlace === 'function') g._fireEruptionInPlace(er);
@@ -307,7 +381,7 @@ const TMBus = (function () {
     reply({ type: 'timelapse', active: false, progress: 1, yrPerSec: 0, achieved: _boostMatched });
     emitClock(); emitGoal();
     if (_pendingEruption) {
-      const er = _pendingEruption; _pendingEruption = null;
+      const er = _pendingEruption; _pendingEruption = null; _eruptionDue = true;
       const delay = TM_BOOST.eruptionFireDelayMs || 2000;
       try { setTimeout(() => fireEruptionInPlace(er), delay); } catch (_) { fireEruptionInPlace(er); }
     }
@@ -331,10 +405,13 @@ const TMBus = (function () {
   function emitGoal() {
     if (!ch || typeof DeepTime === 'undefined') return;
     const goal = nextRegimeBoundary(DeepTime.yearsBP);
-    // prompt: the live plant goal's line (TeManawa_goals.js), or null when the regime objective shows.
+    // prompt: the plant goal's question on the wall (TeManawa_goals.js), or null when the regime objective
+    // shows. plant: the console's goal strip — which draw it is, its chances, a reveal, the last goal's end.
     const prompt = (typeof TMGoals !== 'undefined') ? TMGoals.promptText() : null;
-    if (goal) reply({ type: 'goal', targetYearsBP: goal.targetYearsBP,
-                      targetStage: goal.targetStage, targetStageName: goal.targetStageName, prompt: prompt });
+    const plant = (typeof TMGoals !== 'undefined' && TMGoals.telemetry) ? TMGoals.telemetry() : null;
+    if (goal || plant) reply({ type: 'goal', targetYearsBP: goal ? goal.targetYearsBP : null,
+                      targetStage: goal ? goal.targetStage : null, targetStageName: goal ? goal.targetStageName : null,
+                      prompt: prompt, plant: plant });
   }
 
   // Live timelapse state off the real ramp (DeepTime): progress + the current yr/s the ramp is at.
@@ -373,6 +450,9 @@ const TMBus = (function () {
     available() { return !!ch; },
     emitClock, emitGoal, emitTimelapse, nextRegimeBoundary,
     boost: onBoost,       // testable entry point (also usable from the console)
-    dispatch: onMessage   // the channel's message handler, exposed so bootcheck can drive intents
+    hint: onHint,         // the H key (Game.handleKey) and the harness
+    busy() { return !!(_pendingEruption || _eruptionDue); },   // an eruption a boost stopped short of is still to fire (Milestone waits for it)
+    dispatch: onMessage,  // the channel's message handler, exposed so bootcheck can drive intents
+    heartbeat: tick       // one beat of the telemetry timer, which never starts without a channel (the harness)
   };
 })();

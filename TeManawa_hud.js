@@ -74,8 +74,9 @@ window.TM_GROW = TM_GROW;
 // The ambient colour band that frames the scene at all times — the on-screen twin of the
 // physical button LEDs on the wall. HUE tracks the CLIMATE (deep green interglacial → light
 // blue glacial), so the band always reads the "temperature" of the sim. SATURATION tracks
-// HABITAT HEALTH — an eruption, a wrong FOREST/TUSSOCK press, or storm overuse all drain it
-// toward grey (the same signal that quietly desaturates the ground, Game._habitatHealth).
+// HABITAT HEALTH — an eruption, a wrong FOREST/TUSSOCK press, storm overuse or a run-down health
+// ledger all drain it toward grey (the same signal that quietly desaturates the ground,
+// Game._habitatHealth).
 // The colour is low-passed and breathes on a slow sine so it EBBS rather than snaps: the
 // pulse is small and the slew gentle, keeping it inside the photosensitivity budget
 // (CLAUDE.md — ≤3 luminance transitions/s, large changes ramped ≥500 ms). Console-tunable
@@ -160,12 +161,13 @@ const InstallHUD = {
       action: (g) => { g._tmGrowWarmUntil = millis() + TM_TIME.growWarmSeconds * 1000;   // timer set either way: lights the button + drives the regime-fit desaturation lesson
                        InstallHUD.beginWind(g, 'warm');                                   // the interglacial gust blows W→E on the FOREST boost
                        if (InstallHUD._growMatches(g, true)) {                            // right for the climate → it actually grows
-                         DeepTime.boostsOk++;                                             // the tally under the climate line
+                         DeepTime.boostsOk++;                                             // the top band's boost tally
+                         if (g.simulation) g.simulation.onRightBoost(false);              // the health ledger: right climate, no goal answered
                          if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(true);   // the forest habitats hold a busier stock (homeostasis)
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
                          InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
                        } else {
-                         if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
+                         if (g.simulation) g.simulation.onWrongBoost();                   // wrong guess → the ledger, the habitats and the birds each take a step back
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // wrong boost for the climate → grey pulse, and no growth (gated in update)
                        } },
       isActive: (g) => g._tmGrowWarmUntil && millis() < g._tmGrowWarmUntil },
@@ -174,17 +176,19 @@ const InstallHUD = {
                        InstallHUD.beginWind(g, 'cold');                                   // the glacial chill blows W→E on the TUSSOCK boost
                        if (InstallHUD._growMatches(g, false)) {
                          DeepTime.boostsOk++;
+                         if (g.simulation) g.simulation.onRightBoost(false);
                          if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(false);  // the open-country habitats hold a busier stock
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
                          InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
                        } else {
-                         if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
+                         if (g.simulation) g.simulation.onWrongBoost();                   // wrong guess → the ledger, the habitats and the birds each take a step back
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // grey pulse, no growth
                        } },
       isActive: (g) => g._tmGrowColdUntil && millis() < g._tmGrowColdUntil },
     { id: 'storm',  key: '4', label: 'STORM',
       action: (g) => { g._tmStormUntil  = millis() + TM_TIME.stormSeconds  * 1000;
                        g._stormPressure = Math.min(1, (g._stormPressure || 0) + TM_TIME.stormPressureAdd);
+                       if (g.simulation) g.simulation.onStorm();   // the health ledger: the first storm in a run heals, the ones after it wear the land down
                        if (g.beginStorm) g.beginStorm();   // §10B–C habitat effects, but spread OVER the storm (staggered windthrow + gradual knockback), not one instant snap
                        InstallHUD.initStormCells(g);
                        InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs); },   // one short white blink on press, then one per lightning strike
@@ -766,7 +770,7 @@ const InstallHUD = {
   // remove()s the evicted GPU buffer (the §2.3 createGraphics-leak rule): the
   // rolling year string would otherwise accumulate a buffer every time it ticks.
   _txtCache: new Map(),        // key -> { buf, tw, th }; insertion order = LRU
-  _txtCacheMax: 48,
+  _txtCacheMax: 96,            // the top band and the eruption captions add ~30 standing strings
 
   _blitText(str, fontObj, tag, size, ah, av, x, y, col) {
     const a = (col.length > 3) ? col[3] : 255;
@@ -806,32 +810,37 @@ const InstallHUD = {
   TL_MARKER_H: 30,       // event-marker pin height (38×54 art; its tip rests on the bar)
   _tlOK(img) { return !!(img && img.width > 0 && img.height > 0); },
 
-  // The bar/track sprite stretched across [x0, x0+w], centred on the axis at `ay`. → true if drawn.
-  _tlBarSprite(x0, w, ay) {
+  // The bar/track sprite stretched across [x0, x0+w], centred on the axis at `ay`; `h` overrides the
+  // thickness (the visitor bar is thicker, so the climate ribbon fits inside it). → true if drawn.
+  _tlBarSprite(x0, w, ay, h) {
     if (!this._tlOK(this._tlBar)) return false;
-    const h = this.TL_BAR_H;
+    if (!(h > 0)) h = this.TL_BAR_H;
     noTint(); imageMode(CORNER);
     image(this._tlBar, x0, ay - h / 2, w, h);
     return true;
   },
-  // The playhead token centred on the axis at (px, ay). → true if drawn.
-  _tlPlayheadSprite(px, ay) {
+  // The playhead token centred on the axis at (px, ay); `h` overrides its height. → true if drawn.
+  _tlPlayheadSprite(px, ay, h) {
     const ph = this._tlPlayhead;
     if (!this._tlOK(ph)) return false;
-    const h = this.TL_PLAYHEAD_H, wd = h * (ph.width / ph.height);
+    if (!(h > 0)) h = this.TL_PLAYHEAD_H;
+    const wd = h * (ph.width / ph.height);
     noTint(); imageMode(CENTER);
     image(ph, px, ay, wd, h);
     imageMode(CORNER);
     return true;
   },
-  // The event-marker pin for eruption `idx` (0-based), its downward tip resting on the bar at
-  // (mx, ay) so the pin body floats above the axis. → true if drawn.
-  _tlMarkerSprite(idx, mx, ay) {
+  // The event-marker pin for eruption `idx` (0-based), its tip at (mx, ay): by default pointing down
+  // so the pin body floats above the axis; `below` flips it to hang UNDER the bar, tip up. `h`
+  // overrides the height (the visitor timeline sizes pins by tier). → true if drawn.
+  _tlMarkerSprite(idx, mx, ay, h, below) {
     const arr = this._tlMarkers, mk = arr && arr[idx % arr.length];
     if (!this._tlOK(mk)) return false;
-    const h = this.TL_MARKER_H, wd = h * (mk.width / mk.height);
+    if (!(h > 0)) h = this.TL_MARKER_H;
+    const wd = h * (mk.width / mk.height);
     noTint(); imageMode(CENTER);
-    image(mk, mx, ay - h / 2, wd, h);   // centre half a pin-height up → its bottom tip sits on the axis
+    if (below) { push(); translate(mx, ay + h / 2); scale(1, -1); image(mk, 0, 0, wd, h); pop(); }
+    else image(mk, mx, ay - h / 2, wd, h);   // centre half a pin-height up → its bottom tip sits on the axis
     imageMode(CORNER);
     return true;
   },
@@ -921,12 +930,12 @@ const InstallHUD = {
   },
 
   // VISITOR timeline — the deep-time axis relocated to a thin strip at the bottom (the top
-  // of where the buttons used to sit), with the goal line above it and the year just below it
+  // of where the buttons used to sit), with the year at the top of the stack above it and the goal under the year
   // (renderVisitorGoal / renderVisitorYear), all three keyed off _visAxisY so they move as one.
   // On the wall the five buttons are physical, so their on-screen twins only appear in debug —
   // this is the clean, uncluttered visitor layout.
   VIS_STRIP_H: 64,
-  VIS_AXIS_UP: 168,          // px from the top of the bottom strip up to the timeline axis (was 128)
+  VIS_AXIS_UP: 112,          // px from the top of the bottom strip up to the timeline axis (only the eruption pins hang under it)
   VIS_INSET: 0.10,           // horizontal inset each side, as a fraction of canvas width (compacted from the debug strip)
   _visAxisY(H) { return (H - this.VIS_STRIP_H) - this.VIS_AXIS_UP; },
   renderVisitorTimeline(g, W, H) {
@@ -938,24 +947,36 @@ const InstallHUD = {
     // the marks still have enough contrast to read (the band is now drawn under the HUD).
     //noStroke(); fill(14, 21, 19, 120); rect(0, yTop, W, stripH);
     this._visitorTimelineBody(g, x0, w, ay);
-    if (DeepTime.isDeep()) {
-      this._blitText('>> x' + DeepTime.timeScale.toFixed(1), FreckleFace, 'freckle', 15, RIGHT, BOTTOM, x0 + w, yTop + 16, [240, 240, 240]);
-    } else this._renderDialBadge(x0 + w, yTop + 16, BOTTOM, [240, 240, 240]);
+    // The speed readout lives under the year now (renderVisitorYear → _renderSpeed); the old 15 px
+    // corner badge was too small for the wall and never named a boost's time-lapse.
     pop();
   },
 
-  // The VISITOR timeline body — a deliberately spare, all-white restyle of the shared
-  // debug body (_timelineBody). One long line only (the debug strip's second full-width
-  // rule — the uplift backing bar — is dropped; uplift stays as a faint white progress
-  // wedge riding ON that single line, so the "river older than the mountains" takeaway
-  // survives). Eruption markers are white ticks + labels; the playhead is a white dot with
-  // a black outline so it stays legible over any climate colour. Assumes an active push().
+  // The VISITOR timeline body: the bar sprite, with the CLIMATE RIBBON (green interglacial, blue
+  // glacial, baked once from Climate) laid in its inner channel so the bar's outline and rim still
+  // show, and a goal's "the next glacial" is visible ahead of the playhead. Uplift stays a faint white
+  // wedge riding on it, so the "river older than the mountains" takeaway survives. Every eruption is a
+  // pin hanging UNDER the bar, sized by tier, with no name (the top-centre caption names an eruption
+  // as it happens); the two that open and close the window sit on the bar's ends. The pin of an
+  // eruption the caption is announcing grows. A
+  // trail streams behind the playhead while geology moves. Assumes an active push().
+  VIS_BAR_H: 24,             // the visitor bar's thickness (the debug strip keeps TL_BAR_H)
+  VIS_PLAYHEAD_H: 32,        // …and its playhead token, a little proud of the bar
+  PIN_TIER_SCALE: { minor: 0.95, major: 1.2, catastrophic: 1.4 },
+  PIN_GROW: 0.2,             // extra pin scale while its eruption's caption is fully up
+  PIN_TUCK: 3,               // px a pin's tip tucks up under the bar's lower edge
+  TRAIL_MAX_PX: 110,         // the playhead's trail at DeepTime.tlMaxRate
+  TRAIL_COL: [255, 214, 130],
+  _trailRate: 0,
+  // px from the axis down to the foot of a pin `ph` tall.
+  _tlPinBot(ph) { return this.VIS_BAR_H / 2 - this.PIN_TUCK + ph; },
   _visitorTimelineBody(g, x0, w, ay) {
-    const yr = DeepTime.yearsBP;
-    // ---- the bar/track (sprite, or the single white line as fallback) ----
-    if (!this._tlBarSprite(x0, w, ay)) {
+    const yr = DeepTime.yearsBP, bh = this.VIS_BAR_H;
+    // ---- the bar/track (sprite, or the single white line as fallback), then the climate ribbon in it ----
+    if (!this._tlBarSprite(x0, w, ay, bh)) {
       stroke(255); strokeWeight(1.5); line(x0, ay, x0 + w, ay);
     }
+    this._climateRibbon(x0, w, ay, bh);
     // ---- uplift: a faint white wedge on the line (no backing bar) ----
     const upNow = DeepTime.yearToX(yr, x0, w);
     const upH = 6;
@@ -965,48 +986,139 @@ const InstallHUD = {
     vertex(upNow, ay);
     vertex(upNow, ay - upH * DeepTime.progress());
     endShape(CLOSE);
-    // ---- the eruptions (marker pins, or white ticks) --------
-    let ei = 0;
-    for (const m of DEEP_TIME_MARKERS) {
-      if (m.kind !== 'eruption') continue;
-      const mx = DeepTime.yearToX(m.yearsBP, x0, w);
-      const drewPin = this._tlMarkerSprite(ei, mx, ay);
-      if (!drewPin) { stroke(255); strokeWeight(2); line(mx, ay - 5, mx, ay + 5); }
-      const atStart = mx < x0 + 40, atEnd = mx > x0 + w - 40;
-      const labelY = drewPin ? ay - this.TL_MARKER_H - 4 : ay - 8;
-      this._blitText(m.label, OpenDyslexic, 'dys', 11,
-                     atStart ? LEFT : atEnd ? RIGHT : CENTER, BOTTOM, mx, labelY, [255, 255, 255, 235]);
-      ei++;
+    // ---- the eruptions: every pin hangs under the bar, unnamed (the caption names one as it happens) ----
+    const ER = DeepTime.ERUPTIONS, labs = this._erLabels(), C = this._cap;
+    const tipY = ay + bh / 2 - this.PIN_TUCK;
+    for (let i = 0; i < ER.length; i++) {
+      const e = ER[i], L = labs[i];
+      const mx = L.end ? (L.start ? x0 : x0 + w) : DeepTime.yearToX(e.yearsBP, x0, w);
+      let sc = this.PIN_TIER_SCALE[e.tier] || 1;
+      if (C.e === e) sc *= 1 + this.PIN_GROW * C.a;
+      const ph = this.TL_MARKER_H * sc;
+      if (!this._tlMarkerSprite(i, mx, tipY, ph, true)) { stroke(255); strokeWeight(2); line(mx, tipY, mx, tipY + 12); }
+    }
+    // ---- the speed trail, behind (older than) the playhead ----
+    const px = DeepTime.yearToX(yr, x0, w);
+    const rate = DeepTime.geoRate > 0 ? DeepTime.geoRate : 0;
+    this._trailRate += (rate - this._trailRate) * 0.08;
+    if (rate === 0 && this._trailRate < 20) this._trailRate = 0;
+    const len = Math.min(1, this._trailRate / (DeepTime.tlMaxRate || 5000)) * this.TRAIL_MAX_PX;
+    if (len > 3) {
+      const N = 8, seg = len / N, T = this.TRAIL_COL;
+      noStroke();
+      // taller than the ribbon (the bar's inner channel) so it reads as a streak over it, not a tint of it
+      for (let i = 0; i < N; i++) { fill(T[0], T[1], T[2], 190 * (1 - i / N)); rect(px - seg * (i + 1), ay - 8, seg + 0.5, 16, 3); }
     }
     // ---- playhead (token sprite, or the white dot fallback) ----
-    const px = DeepTime.yearToX(yr, x0, w);
-    if (!this._tlPlayheadSprite(px, ay)) {
+    if (!this._tlPlayheadSprite(px, ay, this.VIS_PLAYHEAD_H)) {
       stroke(255); strokeWeight(1); line(px, ay - 12, px, ay + 2);
       stroke(0); strokeWeight(2); fill(255); circle(px, ay, 9);
     }
   },
 
-  // VISITOR year — the one always-on readout, centred just BELOW the timeline axis, so the
-  // timeline reads goal (above) → axis → date (below). Clears the playhead token (TL_PLAYHEAD_H).
-  // A soft dark halo keeps it legible over the busy scene; no strip behind it.
-  VIS_YEAR_SIZE: 42,
-  VIS_YEAR_BELOW: 46,        // px from the timeline axis down to the year's centre
+  // The climate ribbon: the glacial index across the window, green → blue through the regime cut, laid
+  // in the bar sprite's INNER CHANNEL (RIBBON_IN_*: where Timeline_Bar.png's dark interior runs), so
+  // the bar's outline and gold rim still frame it. Baked ONCE into a buffer at the size it is drawn
+  // (the curve is fixed and Climate is pure; the rounded ends need the true size), rebuilt only when
+  // the bar's size changes, remove()ing the old buffer (the createGraphics-leak rule). → true if drawn.
+  RIBBON_IN_TOP: 15 / 44,     // the channel's top row, as a fraction of the bar's height (44 px art)
+  RIBBON_IN_BOT: 29 / 44,     // …and the row below its bottom
+  RIBBON_IN_END: 20 / 3586,   // its inset from each end, as a fraction of the bar's width (3586 px art)
+  RIBBON_ALPHA: 225,
+  RIBBON_SOFT: 0.12,          // ± glacial index over which the colour blends at the regime cut
+  _ribbon: null,              // { buf, w, h }
+  _climateRibbon(x0, w, ay, bh) {
+    if (typeof Climate === 'undefined' || !Climate.glacialIndexAt || typeof createGraphics !== 'function') return false;
+    const top = bh * this.RIBBON_IN_TOP, rh = Math.max(2, Math.round(bh * (this.RIBBON_IN_BOT - this.RIBBON_IN_TOP)));
+    const inset = Math.max(1, w * this.RIBBON_IN_END), wi = Math.max(1, Math.round(w - 2 * inset));
+    let R = this._ribbon;
+    if (!R || R.w !== wi || R.h !== rh) {
+      if (R && R.buf && R.buf.remove) R.buf.remove();
+      const buf = createGraphics(wi, rh);
+      const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null;
+      const warm = TG ? TG.climateColor(false) : [84, 210, 96], cold = TG ? TG.climateColor(true) : [150, 205, 236];
+      const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5, soft = this.RIBBON_SOFT;
+      const span = DeepTime.yearsStart - DeepTime.yearsEnd, A = this.RIBBON_ALPHA;
+      buf.clear(); buf.noStroke();
+      for (let x = 0; x < wi; x++) {
+        // the ribbon's columns map back onto the whole bar, so a date sits under its own x on the axis
+        const gi = Climate.glacialIndexAt(DeepTime.yearsStart - ((inset + x + 0.5) / w) * span);
+        let t = (gi - (thr - soft)) / (2 * soft); t = t < 0 ? 0 : t > 1 ? 1 : t; t = t * t * (3 - 2 * t);
+        buf.fill(warm[0] + (cold[0] - warm[0]) * t, warm[1] + (cold[1] - warm[1]) * t, warm[2] + (cold[2] - warm[2]) * t, A);
+        buf.rect(x, 0, 1, rh);
+      }
+      // round the ends to follow the channel's own rounded caps
+      const dc = buf.drawingContext;
+      if (dc && dc.roundRect) {
+        dc.save(); dc.globalCompositeOperation = 'destination-in'; dc.fillStyle = '#000';
+        dc.beginPath(); dc.roundRect(0, 0, wi, rh, rh / 2); dc.fill(); dc.restore();
+      }
+      R = this._ribbon = { buf, w: wi, h: rh };
+    }
+    imageMode(CORNER); noTint();
+    image(R.buf, Math.round(x0 + inset), Math.round(ay - bh / 2 + top), wi, rh);
+    return true;
+  },
+
+  // Per-eruption pin records, built once: { end, start }. `end` marks the two that open and close the
+  // window (their pins sit on the bar's ends), `start` the opening one.
+  _erLabelCache: null,
+  _erLabels() {
+    if (this._erLabelCache) return this._erLabelCache;
+    this._erLabelCache = DeepTime.ERUPTIONS.map(e => {
+      const start = e.yearsBP >= DeepTime.yearsStart;
+      return { end: start || !!e.terminal, start };
+    });
+    return this._erLabelCache;
+  },
+  _yearsAgo(yr) {
+    if (yr >= 1e6) { const m = yr / 1e6; return (m === 1 ? '1 million' : m.toFixed(1) + ' million') + ' years ago'; }
+    return Math.round(yr).toLocaleString() + ' years ago';
+  },
+
+  // Text with the HUD's soft dark halo under it (the goal / year format).
+  _haloText(str, font, tag, size, ah, av, x, y, col) {
+    this._blitText(str, font, tag, size, ah, av, x + 2, y + 3, this._GOAL_HALO);
+    this._blitText(str, font, tag, size, ah, av, x, y, col);
+  },
+
+  // VISITOR year: the one always-on readout, the TOP of the bottom stack, so it reads
+  // year → goal → climate → axis, with only the eruption pins under the bar. It sits
+  // VIS_YEAR_GAP above the goal's top line, on the goal actually shown; a goal that wraps to more
+  // lines pushes it up, eased (_yearLift) so a crossfade never jumps it. A soft dark halo keeps it
+  // legible over the busy scene; no strip behind it. The climate line is drawn from here too.
+  VIS_YEAR_SIZE: 64,
+  VIS_YEAR_GAP: 0,           // px between the goal's top line box and the year's box (the boxes carry their own air)
+  YEAR_EASE: 0.12,           // per-frame ease of the year toward a taller/shorter goal block
+  _yearLift: null,           // eased px from the axis up to the year's centre
+  // px from the timeline axis up to the year's centre, for a goal block `lines` tall.
+  _yearAbove(lines) {
+    return this.VIS_GOAL_GAP + (lines - 1) * this.VIS_GOAL_SIZE * this.GOAL_LINE_H
+         + this.VIS_GOAL_SIZE * 0.675 + this.VIS_YEAR_GAP + this.VIS_YEAR_SIZE * 0.675;
+  },
   renderVisitorYear(g, W, H) {
-    const label = DeepTime.label();
-    const cx = W / 2, cy = this._visAxisY(H) + this.VIS_YEAR_BELOW;
+    const label = DeepTime.label(), ay = this._visAxisY(H);
+    const F = this._goalFade, n = (F && F.cur.lines) ? F.cur.lines.length : 1;
+    const want = this._yearAbove(Math.max(1, n));              // sits on the goal actually shown
+    let lift = this._yearLift;
+    lift = (lift == null) ? want : lift + (want - lift) * this.YEAR_EASE;
+    if (Math.abs(want - lift) < 0.5) lift = want;
+    this._yearLift = lift;
+    const cx = W / 2, cy = ay - lift;
     push();
     this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx + 2, cy + 3, [8, 14, 12, 170]);
-    this._blitText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, [236, 244, 240]);
-    this._renderClimateLine(cx, cy + this.VIS_CLIMATE_BELOW);
+    this._fullTick(g);
+    this._brightText(label, FreckleFace, 'freckle', this.VIS_YEAR_SIZE, CENTER, CENTER, cx, cy, this._GOAL_COL);
+    this._renderClimateLine(cx, ay - this.VIS_CLIMATE_ABOVE);
     pop();
   },
 
-  // "The climate is INTERGLACIAL / GLACIAL" under the year: the state in the climate boost colours
-  // (green / blue, as the goal verdicts and boost outlines). The same regime cut as the boost gate
-  // (TMGoals.glacialNow → Climate.regimeThreshold). Centred as one line, so the two parts' widths are
-  // measured once per regime change, never per frame.
+  // "The climate is INTERGLACIAL / GLACIAL" ABOVE the timeline, under the year: the state in the climate
+  // boost colours (green / blue, as the goal verdicts and boost outlines). The same regime cut as the
+  // boost gate (TMGoals.glacialNow → Climate.regimeThreshold). Centred as one line, so the two parts'
+  // widths are measured once per regime change, never per frame.
   VIS_CLIMATE_SIZE: 28,
-  VIS_CLIMATE_BELOW: 42,     // px from the year's centre down to this line's centre
+  VIS_CLIMATE_ABOVE: 44,     // px from this line's centre down to the timeline axis
   CLIMATE_PREFIX: 'The climate is ',
   _climateLine: null,        // { glacial, word, col, prefixW, wordW }
   _renderClimateLine(cx, cy) {
@@ -1026,23 +1138,60 @@ const InstallHUD = {
     this._blitText(this.CLIMATE_PREFIX, FreckleFace, 'freckle', s, LEFT, CENTER, x0, cy, this._GOAL_COL);
     this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW + 2, cy + 2, this._GOAL_HALO);
     this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW, cy, c.col);
-    this._renderBoostCount(cx, cy + this.VIS_BOOSTS_BELOW);
   },
 
-  // "Successful boosts: N" under the climate line: right-for-the-climate boosts (second screen or the
-  // FOREST/TUSSOCK keys) since the timeline last restarted (DeepTime.boostsOk, zeroed in DeepTime.reset).
-  // The label is rebuilt only when the count changes, never per frame.
-  VIS_BOOSTS_SIZE: 24,
-  VIS_BOOSTS_BELOW: 36,      // px from the climate line's centre down to this line's centre
-  BOOSTS_PREFIX: 'Successful boosts: ',
-  _boostLine: null,          // { n, text }
-  _renderBoostCount(cx, cy) {
-    const n = (typeof DeepTime !== 'undefined' && DeepTime.boostsOk > 0) ? DeepTime.boostsOk : 0;
-    let b = this._boostLine;
-    if (!b || b.n !== n) b = this._boostLine = { n, text: this.BOOSTS_PREFIX + n };
-    const s = this.VIS_BOOSTS_SIZE;
-    this._blitText(b.text, FreckleFace, 'freckle', s, CENTER, CENTER, cx + 2, cy + 2, this._GOAL_HALO);
-    this._blitText(b.text, FreckleFace, 'freckle', s, CENTER, CENTER, cx, cy, this._GOAL_COL);
+  // The SPEED readout, top-centre between the two top-band corners: "Time travelling forward!" over the
+  // rate in a larger line ("5,000 years per second"). It reads the LIVE rate, DeepTime.geoRate: a
+  // boost's time-lapse, the dial or a deep burst, whichever is playing, so a boost's time-lapse at the
+  // dial's rest is named too. Paused (the default) it shows nothing. The rate snaps to a short list of
+  // round numbers and a new number holds SPEED_HOLD_MS, so the text cache sees ~18 strings, never a
+  // per-frame value. It fades in and out over SPEED_FADE_MS, and yields its slot to the eruption
+  // caption while that is up (the two share the top centre; neither ever draws over the other).
+  SPEED_HEAD: 'Time travelling forward!',
+  SPEED_HEAD_SIZE: 30,
+  SPEED_RATE_SIZE: 52,
+  SPEED_LINE_GAP: 10,         // px between the two lines' boxes
+  SPEED_HALF_W: 300,          // half the block's width at its widest, for the keep-out
+  SPEED_STEPS: [1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000],
+  SPEED_HOLD_MS: 400,
+  SPEED_FADE_MS: 500,         // ≥ 500 ms (photosensitivity)
+  SPEED_COL: [255, 210, 120],
+  _speed: null,               // { step, label, at, a, last }
+  _speedLabelFor(step) { return step.toLocaleString() + (step === 1 ? ' year per second' : ' years per second'); },
+  _speedStep(rate) {
+    const S = this.SPEED_STEPS, lr = Math.log(rate);
+    let best = S[0], bd = Infinity;
+    for (let i = 0; i < S.length; i++) { const d = Math.abs(Math.log(S[i]) - lr); if (d < bd) { bd = d; best = S[i]; } }
+    return best;
+  },
+  // The two lines' centres. The head line sits on the top band's text line (_tbTextY).
+  _speedHeadY() { return this._tbTextY(); },
+  _speedRateY() { return this._tbTextY() + this.SPEED_HEAD_SIZE * 0.675 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 0.675; },
+  _speedBot()   { return this._tbTextY() + this.SPEED_HEAD_SIZE * 0.675 + this.SPEED_LINE_GAP + this.SPEED_RATE_SIZE * 1.35; },
+  _renderSpeed(W) {
+    if (typeof DeepTime === 'undefined') return;
+    const rate = DeepTime.geoRate > 0 ? DeepTime.geoRate : 0, now = millis();
+    const S = this._speed || (this._speed = { step: 0, label: null, at: -1e9, a: 0, last: 0 });
+    const step = rate > 0.5 ? this._speedStep(rate) : 0;
+    // a start shows its number at once; a change of speed waits out the hold (no number flicker on a
+    // ramp); a stop keeps the last number while it fades out
+    if (step > 0 && step !== S.step && (S.step <= 0 || now - S.at >= this.SPEED_HOLD_MS)) {
+      S.step = step; S.at = now; S.label = this._speedLabelFor(step);
+    }
+    let d = S.last ? (now - S.last) / this.SPEED_FADE_MS : 0;
+    if (d > 0.1) d = 0.1;                                           // a long frame gap never jumps the fade
+    S.last = now;
+    S.a += step > 0 ? d : -d;
+    if (S.a > 1) S.a = 1;
+    if (S.a <= 0) { S.a = 0; S.step = 0; return; }                  // gone: a restart shows its own number at once
+    const capA = (this._cap && this._cap.e) ? this._cap.a : 0;      // the eruption caption takes the slot
+    const a = S.a * S.a * (3 - 2 * S.a) * (1 - capA);
+    if (a <= 0.004 || !S.label) return;
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    dc.globalAlpha = a0 * a;                                        // the fade rides globalAlpha, never a per-frame tint
+    this._haloText(this.SPEED_HEAD, FreckleFace, 'freckle', this.SPEED_HEAD_SIZE, CENTER, CENTER, W / 2, this._speedHeadY(), this._GOAL_COL);
+    this._haloText(S.label, FreckleFace, 'freckle', this.SPEED_RATE_SIZE, CENTER, CENTER, W / 2, this._speedRateY(), this.SPEED_COL);
+    dc.globalAlpha = a0;
   },
 
   // VISITOR goal — floated ABOVE the bottom timeline in the SAME format as the year (FreckleFace,
@@ -1052,8 +1201,9 @@ const InstallHUD = {
   // before the window end. Lines wrap to the screen and stack UPWARD from the anchor, so a long
   // verdict never runs into the timeline. A change of line CROSSFADES (GOAL_FADE_MS, above the
   // 500 ms photosensitivity floor) via globalAlpha, never a per-frame tint (see per-frame tint stutter).
-  VIS_GOAL_SIZE: 50,          // the year's format (FreckleFace), a touch larger than the year itself
-  VIS_GOAL_GAP: 104,          // px above the timeline axis — clears the eruption pins + their labels
+  VIS_GOAL_SIZE: 38,          // the year's format (FreckleFace), smaller than the year, with a heavier shadow (GOAL_SHADOW)
+  VIS_GOAL_GAP: 88,           // px above the timeline axis to the goal's last line — clears the climate line under it (the year sits above the goal)
+  GOAL_SHADOW: [4, 8, 6, 235],   // the goal's drop shadow: darker and deeper than the HUD halo, two passes (_drawGoalLines)
   GOAL_WRAP: 0.88,            // max line width, as a fraction of the canvas width
   GOAL_LINE_H: 1.12,          // line spacing, × VIS_GOAL_SIZE
   GOAL_FADE_MS: 800,          // crossfade between successive lines (goal → verdict → next goal)
@@ -1087,18 +1237,31 @@ const InstallHUD = {
     const gt = goals ? goals.text() : null;
     const want = gt || (c.label || null);
     const col = gt ? goals.color() : this._goalPromptCol();
+    // Which draw the line is about (a new number = a new goal) and its chances (pips; -1 = none).
+    const ser = (gt && goals.shownSerial) ? goals.shownSerial() : 0;
+    const pips = (gt && goals.chancesShown) ? goals.chancesShown() : -1;
+    const isPrompt = !!(gt && goals.verdict && !goals.verdict());
     const now = millis();
     let F = this._goalFade;
-    if (!F) F = this._goalFade = { cur: { text: null, col: null, lines: null, t0: -1e9, a0: 1 },
-                                   out: { text: null, col: null, lines: null, t0: -1e9, a0: 0 } };
-    if (want !== F.cur.text || col !== F.cur.col) {
+    if (!F) F = this._goalFade = {
+      cur: { text: null, col: null, lines: null, t0: -1e9, a0: 1, ser: 0, pips: -1, lastW: 0, enter: -1 },
+      out: { text: null, col: null, lines: null, t0: -1e9, a0: 0, ser: 0, pips: -1, lastW: 0, enter: -1 } };
+    if (want !== F.cur.text || col !== F.cur.col || ser !== F.cur.ser) {
       const fade = this.GOAL_FADE_MS;
       const shown = Math.min(1, (now - F.cur.t0) / fade);  // how far the old line had faded in
       const o = F.out; F.out = F.cur; F.cur = o;
       F.out.a0 = shown; F.out.t0 = now;
-      F.cur.text = want; F.cur.col = col; F.cur.t0 = now;
+      F.cur.text = want; F.cur.col = col; F.cur.t0 = now; F.cur.ser = ser; F.cur.pips = pips;
       F.cur.lines = want ? this._wrapGoal(want, W) : null;
+      F.cur.lastW = F.cur.lines ? this._goalLineW(F.cur.lines[F.cur.lines.length - 1]) : 0;
+      // A NEW goal's question slides up and its pips fill in; the same goal back after a miss (or after
+      // its verdict) just crossfades, so the two read differently from across the room.
+      F.cur.enter = -1;
+      if (isPrompt && ser > 0 && ser !== this._goalSerSeen) { F.cur.enter = now; this._resetPips(0); }
+      if (isPrompt && ser > 0) this._goalSerSeen = ser;
     }
+    F.cur.pips = pips;                                    // the live layer's pips follow the chances
+    this._stepPips(F.cur, now);
 
     const ay = this._visAxisY(H);                         // the bottom timeline axis (see renderVisitorTimeline)
     const cx = W / 2, cy = ay - this.VIS_GOAL_GAP;
@@ -1106,37 +1269,142 @@ const InstallHUD = {
     const aOut = F.out.a0 * (1 - Math.min(1, (now - F.out.t0) / fade));
     const aIn  = Math.min(1, (now - F.cur.t0) / fade);
     push();
-    if (aOut > 0.004 && F.out.lines) this._drawGoalLines(F.out.lines, F.out.col, aOut, cx, cy);
-    if (aIn > 0.004 && F.cur.lines)  this._drawGoalLines(F.cur.lines, F.cur.col, aIn, cx, cy);
+    if (aOut > 0.004 && F.out.lines) this._drawGoalLayer(F.out, aOut, cx, cy, now, false);
+    if (aIn > 0.004 && F.cur.lines)  this._drawGoalLayer(F.cur, aIn, cx, cy, now, true);
     pop();
+  },
+
+  // ---- the goal's chances: drawn pips after the line (TM_GOALS.missLimit) --------------------------
+  // A full disc is a chance left; a miss shrinks one to an empty ring (a change in SIZE, never in
+  // brightness: photosensitivity). A new goal's pips grow in one after another as it slides up.
+  GOAL_PIP_D: 20,             // pip diameter, px
+  GOAL_PIP_GAP: 12,           // px between pips
+  GOAL_PIP_LEAD: 24,          // px from the end of the line to the first pip
+  GOAL_PIP_RING: 3,           // the ring's weight
+  GOAL_PIP_MS: 260,           // a pip's grow / shrink
+  GOAL_PIP_STAGGER: 160,      // a new goal's pips start growing this far apart…
+  GOAL_PIP_DELAY: 320,        // …after this long
+  GOAL_ENTER_MS: 700,         // a new goal's slide up
+  GOAL_ENTER_RISE: 30,        // …from this far below
+  GOAL_ENTER_POP: 0.08,       // …and this much larger, settling to 1
+  _goalSerSeen: 0,            // the last draw whose question was shown: a different number slides in as new
+  _pipFill: null,             // eased fill per pip, 0..1 (sized to missLimit, reallocated only if that changes)
+  _pipLast: 0,
+  _resetPips(v) {
+    const n = Math.max(1, (typeof TM_GOALS !== 'undefined' && TM_GOALS.missLimit) || 1);
+    if (!this._pipFill || this._pipFill.length !== n) this._pipFill = new Array(n);
+    for (let i = 0; i < n; i++) this._pipFill[i] = v;
+  },
+  _stepPips(L, now) {
+    if (!this._pipFill) this._resetPips(1);
+    const n = this._pipFill.length;
+    if ((typeof TM_GOALS !== 'undefined' && TM_GOALS.missLimit || 1) !== n) this._resetPips(1);
+    let d = this._pipLast ? (now - this._pipLast) / this.GOAL_PIP_MS : 0;
+    if (d > 0.25) d = 0.25;                                         // a long frame gap never jumps it
+    this._pipLast = now;
+    const P = this._pipFill;
+    for (let i = 0; i < P.length; i++) {
+      let want = (L.pips >= 0 && i < L.pips) ? 1 : 0;
+      if (L.enter >= 0 && now - L.enter < this.GOAL_PIP_DELAY + i * this.GOAL_PIP_STAGGER) want = 0;
+      P[i] += Math.max(-d, Math.min(d, want - P[i]));
+    }
+  },
+  _goalLineW(str) {
+    if (!str || typeof textWidth !== 'function') return 0;
+    push(); textFont(FreckleFace); textSize(this.VIS_GOAL_SIZE);
+    const w = textWidth(str); pop();
+    return w;
+  },
+  // One crossfade layer: its lines, shifted left by half the pips so line + pips sit centred, then the
+  // pips after the last line. `live`: the layer fading in (its pips ease; the outgoing layer's are frozen).
+  _drawGoalLayer(L, alpha, cx, cy, now, live) {
+    const n = (L.pips >= 0 && this._pipFill) ? this._pipFill.length : 0;
+    const pipsW = n ? this.GOAL_PIP_LEAD + n * this.GOAL_PIP_D + (n - 1) * this.GOAL_PIP_GAP : 0;
+    let x = cx - pipsW / 2, y = cy, s = 1;
+    if (live && L.enter >= 0) {
+      const t = Math.min(1, (now - L.enter) / this.GOAL_ENTER_MS), e = 1 - (1 - t) * (1 - t) * (1 - t);
+      y += (1 - e) * this.GOAL_ENTER_RISE;
+      s = 1 + (1 - e) * this.GOAL_ENTER_POP;
+      if (t >= 1) L.enter = -1;
+    }
+    if (s !== 1) {
+      push(); translate(x, y); scale(s);
+      this._drawGoalLines(L.lines, L.col, alpha, 0, 0);
+      if (n) this._drawGoalPips(L.lastW / 2 + this.GOAL_PIP_LEAD, 0, n, live ? this._pipFill : null, L.pips, alpha);
+      pop();
+      return;
+    }
+    this._drawGoalLines(L.lines, L.col, alpha, x, y);
+    if (n) this._drawGoalPips(x + L.lastW / 2 + this.GOAL_PIP_LEAD, y, n, live ? this._pipFill : null, L.pips, alpha);
+  },
+  // `fills` eased per pip, or null for a frozen layer (then the first `left` are full).
+  _drawGoalPips(x0, cy, n, fills, left, alpha) {
+    const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null;
+    const a0 = dc ? dc.globalAlpha : 1;
+    if (dc) dc.globalAlpha = a0 * alpha;
+    const D = this.GOAL_PIP_D, Sh = this.GOAL_SHADOW, C = this._goalPromptCol();
+    push();
+    for (let i = 0; i < n; i++) {
+      const x = x0 + D / 2 + i * (D + this.GOAL_PIP_GAP), y = cy + 1;
+      const f = fills ? fills[i] : (i < left ? 1 : 0);
+      noFill(); stroke(Sh[0], Sh[1], Sh[2], Sh[3]); strokeWeight(this.GOAL_PIP_RING + 2);
+      ellipse(x + 2, y + 3, D, D);                                  // the drop shadow, as the line's
+      stroke(C[0], C[1], C[2]); strokeWeight(this.GOAL_PIP_RING);
+      ellipse(x, y, D, D);
+      if (f > 0.01) { noStroke(); fill(C[0], C[1], C[2]); ellipse(x, y, D * f, D * f); }
+    }
+    pop();
+    if (dc) dc.globalAlpha = a0;
   },
 
   // Where the HUD stands over the world, for overlays lettered over it (RiverNames) to keep clear of:
   // { top, bottom, rects: [[x0, y0, x1, y1], …] } in 1080-space px. The top strip's height is kept
   // clear in both modes. Visitor: the goal (held at LABEL_GOAL_LINES lines, or more while a longer one
-  // shows) and the timeline with its pins as one full-width band, the year, climate line and boost
-  // count as a centred block, and the dial / fast-forward badge; the map shows round the block, below
-  // the timeline. Debug: its top strip and button bar. Allocates, so call it when labelSig() changes,
-  // not per frame.
-  LABEL_GOAL_LINES: 2,
-  LABEL_YEAR_HALF_W: 270,     // half the widest of the year / climate / boost lines ("~1,000,000 years ago")
+  // shows), the year, the climate line, the timeline and its pins as one full-width band, the two
+  // top-band corners at their largest (a full row of
+  // solved plants) and the top-centre slot the speed readout and the eruption caption share, so the
+  // keep-out never changes as the tallies grow or time starts and stops; the map shows round the
+  // blocks. Debug: its top strip and button bar. Allocates, so call it when labelSig() changes, not per frame.
+  LABEL_GOAL_LINES: 1,        // most goals fit one line at VIS_GOAL_SIZE; a longer one re-lays the names (labelSig)
   _labelGoalLines() {
     const F = this._goalFade, cur = (F && F.cur.lines) ? F.cur.lines.length : 0;
     return Math.max(this.LABEL_GOAL_LINES, cur);
+  },
+  // Half the widest year label's width ("~ 1,000,000 years ago"), measured once.
+  _yearHalfWCache: 0,
+  _yearHalfW() {
+    if (!this._yearHalfWCache) {
+      let w = this.VIS_YEAR_SIZE * 11;                    // fallback: ~0.5 em a character
+      if (typeof textWidth === 'function' && typeof FreckleFace !== 'undefined' && FreckleFace) {
+        push(); textFont(FreckleFace); textSize(this.VIS_YEAR_SIZE);
+        const m = textWidth('~ ' + (1000000).toLocaleString() + ' years ago'); pop();
+        if (m > 0) w = m;
+      }
+      this._yearHalfWCache = w / 2;
+    }
+    return this._yearHalfWCache;
   },
   _labelDebug() { return typeof Debug !== 'undefined' && !!Debug.enabled; },
   labelSig() { return this._labelGoalLines() * 2 + (this._labelDebug() ? 1 : 0); },   // changes ⇒ labelKeepOut changed
   labelKeepOut(W, H) {
     if (this._labelDebug()) return { top: this.TOP_H, bottom: H - this.BOT_H, rects: [] };
     const ay = this._visAxisY(H), lines = this._labelGoalLines();
+    // the goal's top line (_blitText's box is 1.35 em); the year above it gets its own narrow rect, so
+    // a river crossing the screen at the year's height (the Manawatū at 1 Ma) still has room beside it
     const goalTop = ay - this.VIS_GOAL_GAP - (lines - 1) * this.VIS_GOAL_SIZE * this.GOAL_LINE_H
-                  - this.VIS_GOAL_SIZE * 0.7;          // the top line's upper half (_blitText's box is 1.35 em)
-    const yearBot = ay + this.VIS_YEAR_BELOW + this.VIS_CLIMATE_BELOW + this.VIS_BOOSTS_BELOW + this.VIS_BOOSTS_SIZE * 0.7;
-    const xEnd = W - Math.round(W * this.VIS_INSET), badgeY = H - this.VIS_STRIP_H + 16;
+                  - this.VIS_GOAL_SIZE * 0.7;
+    const yCy = ay - this._yearAbove(lines), yHalf = this._yearHalfW() + 12;
+    // the deepest pin: the largest tier's, grown
+    let tmax = 1;
+    for (const k in this.PIN_TIER_SCALE) tmax = Math.max(tmax, this.PIN_TIER_SCALE[k]);
+    const pinsBot = ay + this._tlPinBot(this.TL_MARKER_H * tmax * (1 + this.PIN_GROW)) + 6;
+    const G = this._tbGeom(W);
     return { top: this.TOP_H, bottom: H, rects: [
-      [0, goalTop, W, ay + this.TL_PLAYHEAD_H / 2],                              // goal + timeline + pins
-      [W / 2 - this.LABEL_YEAR_HALF_W, ay, W / 2 + this.LABEL_YEAR_HALF_W, yearBot],   // year, climate, boosts
-      [xEnd - 240, badgeY - 24, xEnd, badgeY]                                    // the dial / fast-forward badge
+      [0, goalTop, W, pinsBot],                                                  // goal, climate, timeline, pins
+      [W / 2 - yHalf, yCy - this.VIS_YEAR_SIZE * 0.7, W / 2 + yHalf, goalTop],  // the year, above the goal
+      [W / 2 - this.SPEED_HALF_W, 0, W / 2 + this.SPEED_HALF_W, this._speedBot()],   // the speed readout / eruption caption slot
+      [0, 0, G.lx + G.lwMax, G.lyMax],                                           // the tallies, at their largest
+      [G.rx, 0, W, G.ry1]                                                        // ecosystem health
     ] };
   },
 
@@ -1145,6 +1413,309 @@ const InstallHUD = {
   },
   _GOAL_COL: [236, 244, 240],
   _GOAL_HALO: [8, 14, 12, 170],
+
+  // ---- the TOP BAND (visitor) ---------------------------------------------------------------------
+  // The visitor's progress, in the top corners, where it reads from across the room and covers the
+  // least map (the west edge is mostly sea). Top-left, the TALLIES: big numerals for successful boosts
+  // and goals solved, with the solved goals' plants drawn as their own sprites. That keeps it a
+  // collection, not a score (CLAUDE.md: a goal is "a question a plant answers"). Top-right, ECOSYSTEM
+  // HEALTH: one bar that IS the ledger (Simulation.ecoHealth): half full for a new visitor, full and
+  // glowing after four right answers, short and ochre after four wrong goals or five storms in a
+  // row. Its LENGTH says it for anyone who cannot read the colour. At full, the bar, its title, the
+  // tallies and the year all take the climate's bright green or blue (_fullTick). Top-centre, the speed readout
+  // (_renderSpeed). No backing panels: the text carries the HUD's dark halo, as the goal and year do.
+  // Every change eases (≥500 ms) or pops in SIZE, never in brightness (photosensitivity). The layout is
+  // computed once per width (_tbGeom), so a frame allocates nothing; the strings are small integers and
+  // a few labels.
+  TB_MARGIN: 36,             // px from the screen edge to each corner's block
+  TB_PAD: 22,                // inner margin of each block
+  TALLY_NUM_SIZE: 80,
+  TALLY_LABEL_SIZE: 30,
+  TALLY_NUM_COL_W: 96,       // the numerals right-align in this column, so 7 and 12 line up
+  TALLY_ROW_H: 86,
+  TALLY_ICON_H: 76,
+  TALLY_ICON_MAX: 5,         // most solved plants drawn (the newest); keeps the row clear of the eruption caption
+  TALLY_POP_MS: 650,
+  TALLY_POP: 0.2,            // extra numeral scale at the crest of a pop
+  TALLY_SHOW_ZERO: true,     // false: the tallies stay hidden until the first boost
+  TALLY_BOOSTS: 'successful boosts',
+  TALLY_GOALS:  'goals solved',
+  _TALLY_NUM_COL: [255, 236, 190],
+  HEALTH_TITLE: 'Ecosystem health',
+  HEALTH_W: 400,
+  HEALTH_BAR_H: 30,
+  HEALTH_TITLE_SIZE: 30,
+  HEALTH_EASE: 0.02,         // per-frame ease of the bar toward its target (~0.8 s at 60 fps)
+  // The bar's colour runs with its length: ochre at the poor level and below, straw at a new visitor's
+  // level, rising through green. Only when it is full does it take the climate's colour (_fullTick).
+  HEALTH_COL_POOR: [190, 118, 74],
+  HEALTH_COL_MID:  [214, 192, 108],
+  HEALTH_COL_FULL: [84, 210, 96],    // the green of a right interglacial boost (TM_BOOST.outlineInterglacial)
+  HEALTH_GLOW_FROM: 0.88,    // the glow starts to come up at this level and is at its height at full…
+  HEALTH_GLOW_MS: 2800,      // …where it breathes this slowly, within its own small band (photosensitivity)
+  HEALTH_GLOW: [[22, 26], [14, 44], [7, 76]],   // [stroke width px, alpha] around the bar, widest and faintest first
+  FULL_AT: 0.98,             // the readouts light once the ledger is full and the bar as drawn has reached this
+  FULL_FADE_MS: 700,         // ≥ 500 ms (photosensitivity), both for lighting up and for a change of climate while lit
+  _tally: null,              // { b, bAt, g, gAt, nb, ng, sB, sG }
+  _eco: null,                // { v }
+  _full: null,               // { a: lit 0..1, m: the climate's colour, 0 green .. 1 blue, last, warm, cold }
+
+  // FULL HEALTH: the year, the tallies and the gauge take the climate's bright colour (the boost colours,
+  // as "The climate is…" uses). Called more than once a frame, so it moves by elapsed time.
+  _fullTick(g) {
+    const sim = g && g.simulation, E = this._eco, now = millis();
+    const on = !!(sim && sim.ecoHealth === 1 && E && E.v >= this.FULL_AT);
+    const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null, cold = TG ? TG.glacialNow() : false;
+    let F = this._full;
+    if (!F) {
+      return this._full = { a: on ? 1 : 0, m: cold ? 1 : 0, last: now,
+        warm: TG ? TG.climateColor(false) : [84, 210, 96], cold: TG ? TG.climateColor(true) : [150, 205, 236] };
+    }
+    let d = (now - F.last) / this.FULL_FADE_MS;
+    if (d > 0.1) d = 0.1;                                            // a long frame gap never jumps the fade
+    F.last = now;
+    F.a += on ? d : -d;
+    F.a = F.a < 0 ? 0 : F.a > 1 ? 1 : F.a;
+    F.m += cold ? d : -d;
+    F.m = F.a === 0 ? (cold ? 1 : 0) : (F.m < 0 ? 0 : F.m > 1 ? 1 : F.m);   // unlit, it simply follows the climate
+    return F;
+  },
+
+  // Text in `col`, with the full-health colour laid over it as far as it is lit. The colours are fixed
+  // and the fade rides globalAlpha, so the text cache only ever sees three colours per string.
+  _brightText(str, font, tag, size, ah, av, x, y, col) {
+    const F = this._full, a = F ? F.a : 0;
+    if (a < 1) this._blitText(str, font, tag, size, ah, av, x, y, col);
+    if (a <= 0) return;
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    if (F.m < 1) { dc.globalAlpha = a0 * a; this._blitText(str, font, tag, size, ah, av, x, y, F.warm); }
+    if (F.m > 0) { dc.globalAlpha = a0 * a * F.m; this._blitText(str, font, tag, size, ah, av, x, y, F.cold); }
+    dc.globalAlpha = a0;
+  },
+  _brightHalo(str, font, tag, size, ah, av, x, y, col) {
+    this._blitText(str, font, tag, size, ah, av, x + 2, y + 3, this._GOAL_HALO);
+    this._brightText(str, font, tag, size, ah, av, x, y, col);
+  },
+
+  // The centre of the "successful boosts" label. The speed head and the health title sit on this same
+  // line: all three are FreckleFace at the same size, so sharing a centre lines up their tops.
+  _tbTextY() { return this.TB_MARGIN + this.TB_PAD + this.TALLY_NUM_SIZE * 0.55 + this.TALLY_NUM_SIZE * 0.06; },
+
+  _tbG: null,
+  _tbGeom(W) {
+    let G = this._tbG;
+    if (G && G.W === W) return G;
+    G = this._tbG || (this._tbG = {});
+    const M = this.TB_MARGIN, P = this.TB_PAD;
+    push(); textFont(FreckleFace); textSize(this.TALLY_LABEL_SIZE);
+    const lw = Math.max(textWidth(this.TALLY_BOOSTS), textWidth(this.TALLY_GOALS));
+    pop();
+    G.W = W;
+    G.lx = M; G.ly = M;
+    G.numR = M + P + this.TALLY_NUM_COL_W;           // the numerals' right edge
+    G.labX = G.numR + 18;                            // the labels' left edge
+    G.row1 = M + P + this.TALLY_NUM_SIZE * 0.55;     // the two rows' centres
+    G.row2 = G.row1 + this.TALLY_ROW_H;
+    G.iconBot = G.row2 + this.TALLY_NUM_SIZE * 0.5 + 6 + this.TALLY_ICON_H;
+    G.slotW = this.TALLY_ICON_H * 1.1 + 10;          // one solved plant's slot
+    G.lw = (G.labX + lw + P) - M;                    // block width: numerals + labels
+    G.lwMax = Math.max(G.lw, 2 * P + this.TALLY_ICON_MAX * G.slotW);
+    G.lyMax = G.iconBot + P;
+    G.rR = W - M;                                    // the health block's right edge
+    G.rx = G.rR - this.HEALTH_W - 2 * P;             // …and its left edge
+    G.barX = G.rx + P;
+    G.hTitle = this._tbTextY();
+    G.barTop = G.hTitle + this.HEALTH_TITLE_SIZE * 0.6 + 10;
+    G.ry1 = G.barTop + this.HEALTH_BAR_H + P;
+    return G;
+  },
+
+  renderVisitorTopBand(g, W, H) {
+    if (typeof DeepTime === 'undefined') return;
+    const G = this._tbGeom(W), now = millis();
+    push();
+    this._renderTallies(G, now);
+    this._renderHealth(g, G);
+    this._renderSpeed(W);
+    pop();
+  },
+
+  _popScale(t0, now) {
+    const u = (now - t0) / this.TALLY_POP_MS;
+    return (u >= 0 && u < 1) ? 1 + this.TALLY_POP * Math.sin(Math.PI * u) : 1;
+  },
+  _popText(str, font, tag, size, ah, av, x, y, col, s) {
+    if (s === 1) { this._brightHalo(str, font, tag, size, ah, av, x, y, col); return; }
+    push(); translate(x, y); scale(s); this._brightHalo(str, font, tag, size, ah, av, 0, 0, col); pop();
+  },
+
+  _renderTallies(G, now) {
+    const nB = DeepTime.boostsOk | 0, nG = DeepTime.goalsSolved | 0, keys = DeepTime.solvedKeys || [];
+    const T = this._tally || (this._tally = { b: nB, bAt: -1e9, g: nG, gAt: -1e9, nb: -1, ng: -1, sB: '', sG: '' });
+    if (nB !== T.b) { if (nB > T.b) T.bAt = now; T.b = nB; }   // a rise pops; a reset to 0 does not
+    if (nG !== T.g) { if (nG > T.g) T.gAt = now; T.g = nG; }
+    if (!this.TALLY_SHOW_ZERO && !nB && !nG) return;
+    if (T.nb !== nB) { T.nb = nB; T.sB = String(nB); }        // strings only on a change
+    if (T.ng !== nG) { T.ng = nG; T.sG = String(nG); }
+    const P = this.TB_PAD, nIcons = Math.min(keys.length, this.TALLY_ICON_MAX);
+    const NS = this.TALLY_NUM_SIZE, LS = this.TALLY_LABEL_SIZE;
+    this._popText(T.sB, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row1, this._TALLY_NUM_COL, this._popScale(T.bAt, now));
+    this._brightHalo(this.TALLY_BOOSTS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, this._tbTextY(), this._GOAL_COL);
+    this._popText(T.sG, FreckleFace, 'freckle', NS, RIGHT, CENTER, G.numR, G.row2, this._TALLY_NUM_COL, this._popScale(T.gAt, now));
+    this._brightHalo(this.TALLY_GOALS, FreckleFace, 'freckle', LS, LEFT, CENTER, G.labX, G.row2 + NS * 0.06, this._GOAL_COL);
+    // the solved goals' plants, newest on the right; the newest pops with its numeral
+    const h = this.TALLY_ICON_H;
+    let ix = G.lx + P;
+    for (let i = keys.length - nIcons; i < keys.length; i++) {
+      const im = this._plantIcon(keys[i]);
+      if (!im) { ix += G.slotW; continue; }
+      let k = Math.min(h / im.height, (h * 1.1) / im.width);
+      if (i === keys.length - 1) k *= this._popScale(T.gAt, now);
+      const dw = im.width * k, dh = im.height * k, slot = G.slotW - 10;
+      imageMode(CORNER); noTint();
+      image(im, ix + (slot - dw) / 2, G.iconBot - dh, dw, dh);
+      ix += G.slotW;
+    }
+  },
+
+  // A plant's representative sprite for the tally row: its mature state frame, else its first size
+  // variant (tōtara and the variant-grown plants), else the last growth frame. null if none loaded.
+  _plantIcon(key) {
+    const S = (typeof plantSprites !== 'undefined') ? plantSprites : null;
+    const s = S && S[key];
+    if (!s) return null;
+    if (this._tlOK(s.mature)) return s.mature;
+    if (this._tlOK(s.thriving)) return s.thriving;
+    if (s.variants && this._tlOK(s.variants[0])) return s.variants[0];
+    if (s.growing && s.growing.length && this._tlOK(s.growing[s.growing.length - 1])) return s.growing[s.growing.length - 1];
+    return null;
+  },
+
+  _renderHealth(g, G) {
+    const sim = g && g.simulation;
+    const target = (sim && sim.ecoHealth != null) ? sim.ecoHealth : 0.5;
+    let E = this._eco;
+    if (!E) E = this._eco = { v: target };
+    else E.v += (target - E.v) * this.HEALTH_EASE;
+    const v = E.v < 0 ? 0 : E.v > 1 ? 1 : E.v;
+
+    // the colour, from the length as drawn: it arrives with the bar, not ahead of it
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : {};
+    const poor = M.healthPoor ?? 0.2, start = M.healthStart ?? 0.5;
+    const A = v < start ? this.HEALTH_COL_POOR : this.HEALTH_COL_MID;
+    const B = v < start ? this.HEALTH_COL_MID : this.HEALTH_COL_FULL;
+    let t = v < start ? (v - poor) / (start - poor) : (v - start) / (1 - start);
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    // at full, the climate's bright colour: this one number is what makes the bar blue in a glacial
+    const F = this._fullTick(g), lit = F.a, m = F.m;
+    const fr = F.warm[0] + (F.cold[0] - F.warm[0]) * m, fg = F.warm[1] + (F.cold[1] - F.warm[1]) * m, fb = F.warm[2] + (F.cold[2] - F.warm[2]) * m;
+    const r0 = A[0] + (B[0] - A[0]) * t, g0 = A[1] + (B[1] - A[1]) * t, b0 = A[2] + (B[2] - A[2]) * t;
+    const r = r0 + (fr - r0) * lit, gg = g0 + (fg - g0) * lit, b = b0 + (fb - b0) * lit;
+    const FC = this.HEALTH_COL_FULL;
+    const gr = FC[0] + (fr - FC[0]) * lit, gv = FC[1] + (fg - FC[1]) * lit, gb = FC[2] + (fb - FC[2]) * lit;
+
+    this._brightHalo(this.HEALTH_TITLE, FreckleFace, 'freckle', this.HEALTH_TITLE_SIZE, LEFT, CENTER, G.barX, G.hTitle, this._GOAL_COL);
+    const bw = this.HEALTH_W, bh = this.HEALTH_BAR_H;
+    const glow = this.healthGlow();
+    if (glow > 0.01) {
+      const breath = 0.8 + 0.2 * Math.sin(millis() * TWO_PI / this.HEALTH_GLOW_MS);
+      noFill();
+      for (let i = 0; i < this.HEALTH_GLOW.length; i++) {
+        const L = this.HEALTH_GLOW[i];
+        stroke(gr, gv, gb, L[1] * glow * breath);
+        strokeWeight(L[0]);
+        rect(G.barX, G.barTop, bw, bh, bh / 2);
+      }
+    }
+    fill(8, 14, 12, 170); stroke(236, 244, 240, 150); strokeWeight(2);
+    rect(G.barX, G.barTop, bw, bh, bh / 2);
+    noStroke();
+    const fw = (bw - 6) * v;
+    if (fw > 1) { fill(r, gg, b); rect(G.barX + 3, G.barTop + 3, fw, bh - 6, (bh - 6) / 2); }
+  },
+
+  // How far the bar's glow is up, 0..1, from the bar as drawn.
+  healthGlow() {
+    const v = this._eco ? this._eco.v : 0, from = this.HEALTH_GLOW_FROM;
+    let u = (v - from) / (1 - from);
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
+    return u * u * (3 - 2 * u);
+  },
+
+  // ---- the ERUPTION CAPTION -----------------------------------------------------------------------
+  // The eruption named as a story beat, not text that is always on screen: its name and date,
+  // top-centre between the two top-band corners, in the HUD's halo text (no card). It fades in the
+  // moment an eruption is INITIATED: a timeline eruption's charge (the playhead crossing it), a button
+  // eruption or the attract's landing on Kidnappers as their ash cloud opens. It holds through the
+  // charge and the cloud (GameUI draws it AFTER the cloud), then stays up for as long as the clock stands
+  // still, and fades out once time moves on. One at a time: a new
+  // eruption waits for the old caption to fade. The names and dates come from DeepTime.ERUPTIONS.
+  CAPTION_FADE_MS: 700,       // ≥ 500 ms (photosensitivity)
+  CAPTION_TOP: 36,
+  CAPTION_TITLE_SIZE: 46,
+  CAPTION_DATE_SIZE: 28,
+  _CAP_TITLE_COL: [255, 214, 150],
+  _cap: { e: null, a: 0, until: 0, last: 0, title: null, date: null, W: 0, yr: null },   // yr: the clock when the timed hold last ran
+
+  _updateCaption(g, now, W) {
+    const C = this._cap, ER = DeepTime.ERUPTIONS, y = DeepTime.yearsBP;
+    let want = null, until = 0;
+    // a timeline eruption's charge (Game._tmAutoErupt), from its first frame; the hold covers the cloud after it
+    if (g && g._tmAutoErAt && g._tmAutoErupt) {
+      want = g._tmAutoErupt; until = now + TM_TIME.cloudMillis + 1500;
+    }
+    // an ash cloud over an eruption year: a button eruption (it seeks onto the year), the attract landing
+    // (a caption still holding from its charge keeps the cloud: the clock may have run on past its year)
+    if (!want && g && g._ashCloudUntil && now < g._ashCloudUntil && !(C.e && now < C.until)) {
+      for (let i = 0; i < ER.length; i++) if (Math.abs(y - ER[i].yearsBP) <= 25000) { want = ER[i]; break; }
+      if (want) until = g._ashCloudUntil + 1200;
+    }
+    if (want && C.e && want !== C.e) C.until = 0;                  // fade the old caption out first
+    else if (want) {
+      if (!C.e || C.W !== W) this._captionLayout(want, W);
+      C.until = Math.max(C.until, until);
+    }
+    let d = C.last ? (now - C.last) / this.CAPTION_FADE_MS : 0;
+    if (d > 0.1) d = 0.1;                                           // a long frame gap never jumps the fade
+    C.last = now;
+    // Past its timed hold the caption STAYS while the clock stands still (geology paused, no boost
+    // timelapse): it fades only once time moves on from where the hold ended. A newer eruption
+    // (C.until zeroed above) still clears it at once.
+    let on = !!C.e && now < C.until;
+    if (on) C.yr = y;
+    else if (C.e && C.until > 0 && C.yr != null && Math.abs(y - C.yr) < 1) on = true;
+    if (!on) C.yr = null;
+    C.a += on ? d : -d;
+    if (C.a > 1) C.a = 1;
+    if (C.a <= 0) { C.a = 0; if (!on) C.e = null; }
+  },
+
+  // Once per caption (not per frame): its title and date strings.
+  _captionLayout(e, W) {
+    const C = this._cap;
+    C.e = e; C.W = W;
+    C.title = 'The ' + e.name + ' eruption';
+    C.date = this._yearsAgo(e.yearsBP);
+  },
+
+  renderEruptionCaption(g, W, H) {
+    if (typeof DeepTime === 'undefined' || !DeepTime.ERUPTIONS) return;
+    const now = millis();
+    this._updateCaption(g, now, W);
+    const C = this._cap;
+    if (!C.e || C.a <= 0.004 || !C.title) return;
+    const a = C.a * C.a * (3 - 2 * C.a);
+    const TS = this.CAPTION_TITLE_SIZE, DS = this.CAPTION_DATE_SIZE, cx = W / 2;
+    push();
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    dc.globalAlpha = a0 * a;              // the fade rides globalAlpha, never a per-frame tint
+    let y = this.CAPTION_TOP + TS * 0.7;
+    this._haloText(C.title, FreckleFace, 'freckle', TS, CENTER, CENTER, cx, y, this._CAP_TITLE_COL);
+    y += TS * 0.6 + DS * 0.85;
+    this._haloText(C.date, FreckleFace, 'freckle', DS, CENTER, CENTER, cx, y, this._GOAL_COL);
+    dc.globalAlpha = a0;
+    pop();
+  },
 
   // Word-wrap to GOAL_WRAP of the width, BALANCED: as few lines as greedy wrapping needs, but at the
   // narrowest width that still fits in that many, so a two-line goal splits evenly instead of
@@ -1185,7 +1756,8 @@ const InstallHUD = {
     const lh = this.VIS_GOAL_SIZE * this.GOAL_LINE_H, n = lines.length;
     for (let i = 0; i < n; i++) {
       const ly = cy - (n - 1 - i) * lh;
-      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 2, ly + 3, this._GOAL_HALO);
+      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 3, ly + 4, this.GOAL_SHADOW);
+      this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx + 1, ly + 2, this.GOAL_SHADOW);
       this._blitText(lines[i], FreckleFace, 'freckle', this.VIS_GOAL_SIZE, CENTER, CENTER, cx, ly, col || this._GOAL_COL);
     }
     if (dc) dc.globalAlpha = a0;
@@ -1268,8 +1840,9 @@ const InstallHUD = {
     const breath = Math.sin((now / E.breatheMs) * Math.PI * 2);
     const alpha = Math.max(0, E.baseAlpha * (1 + E.breatheAmp * breath));
 
+    const ga0 = dc.globalAlpha;   // the caller's fade (GameUI under a health milestone) multiplies in
     dc.save();
-    dc.globalAlpha = alpha;
+    dc.globalAlpha = ga0 * alpha;
     dc.fillStyle = c.top;    dc.fillRect(0, 0, W, depth);
     dc.fillStyle = c.bottom; dc.fillRect(0, H - depth, W, depth);
     dc.fillStyle = c.left;   dc.fillRect(0, 0, depth, H);
@@ -1291,7 +1864,7 @@ const InstallHUD = {
           grd.addColorStop(1,    'rgba(' + pr + ',' + pg + ',' + pb + ',0)');
           return grd;
         };
-        dc.globalAlpha = pa;
+        dc.globalAlpha = ga0 * pa;
         dc.fillStyle = pmk(0, 0, 0, depth);       dc.fillRect(0, 0, W, depth);
         dc.fillStyle = pmk(0, H, 0, H - depth);   dc.fillRect(0, H - depth, W, depth);
         dc.fillStyle = pmk(0, 0, depth, 0);       dc.fillRect(0, 0, depth, H);

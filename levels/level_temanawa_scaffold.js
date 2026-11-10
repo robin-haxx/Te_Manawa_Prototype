@@ -112,6 +112,16 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
   //   walkable / canHavePlants / canPlace / plantTypes
   //       Simulation, not look. plantTypes must exist in PLANT_TYPES.
   //
+  //   glacialPlantTypes / glacialModifierAs   (optional; Simulation._paletteOf, 2026-11-08)
+  //       What the habitat's cover BECOMES in a glacial (the glacial index past the regime line). The
+  //       census turns a habitat over to it: the plants outside it are retired down to a refugial
+  //       remnant and replaced from it (_homeoTurnover; knobs turnover* in mechanics), and every spawn,
+  //       recruit and seeding path draws from it while the cold lasts. Without one, the glacial palette
+  //       is plantTypes less its warm species. Weighted like plantTypes. glacialModifierAs names the
+  //       habitat whose climate modifier (TeManawa_seasons.js plantModifiers) that cold cover answers
+  //       to, so tussock on old forest ground thrives like open country instead of wilting with the
+  //       forest's modifier. Research: md/ecology/TEMANAWA_ECOLOGY_OPEN.md §4.
+  //
   //   coldCover: { colors, refuge, amount, refugeAmount }   (forest bands only)
   //       What this band's ground turns into ABOVE the glacial treeline. The treeline is
   //       LEVEL_MECHANICS.forestBandByStage[stage].max, the same band the live trees
@@ -156,7 +166,9 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
                  walkable:true,  canHavePlants:false, canPlace:true },
     grassland: { key:'grassland', name:"Lowland",         minElevation:0.15, maxElevation:0.30,
                  colors:habitatCols.grassland, contourColor:'#2d3a27', outlineColor:'#ffffff',
-                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai','coprosma'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tussock','flax','cabbagetree','manuka','kowhai','coprosma'],
+                 // the glacial flats: the same plants, tussock and grey scrub leading (nothing to retire, only the recruits reweighted)
+                 glacialPlantTypes:['tussock','tussock','tussock','coprosma','coprosma','manuka','flax','cabbagetree','kowhai'], canPlace:true },
     // WETLAND — the Manawatū's riverbank is back-swamp + kahikatea, not beach. This is NOT
     // an elevation band: its 0.16–0.29 range is deliberately SHADOWED by grassland (0.15–0.30),
     // so getBiomeFromElevation never returns it (validateBiomeBands WILL warn — that is intended,
@@ -175,7 +187,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     podocarp:  { key:'podocarp',  name:"Podocarp Forest", minElevation:0.30, maxElevation:0.40,
                  colors:habitatCols.podocarp, contourColor:'#1e3d29', outlineColor:'#ffffff',
                  coldCover:{ colors:habitatCols.glacialOpen, refuge:habitatCols.beechRefuge[0], amount:0.85, refugeAmount:0.6 },
-                 walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['Totara','kahikatea','tawa','fern','nikau','kowhai'],
+                 // in the cold the lowland forest goes to tussock-shrubland, with beech in shelter and kōwhai
+                 // holding on; the podocarps keep only their low refugia (turnoverRefuge)
+                 glacialPlantTypes:['tussock','tussock','coprosma','coprosma','manuka','beech','kowhai'], glacialModifierAs:'grassland',
+                 canPlace:true },
     // MONTANE — podocarp-broadleaf, NOT beech forest. Black beech is famously ABSENT from the
     // Manawatū (the "beech gap": tawa is in every forest type EXCEPT beech; the only beech in
     // Esler's survey is the ~526 ha Aokautere anomaly on leached terraces — TEMANAWA_ECOLOGY.md
@@ -185,7 +201,11 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     montane:   { key:'montane',   name:"Montane Forest",  minElevation:0.40, maxElevation:0.60,
                  colors:habitatCols.montane, contourColor:'#335740', outlineColor:'#ffffff',
                  coldCover:{ colors:habitatCols.glacialOpen, refuge:habitatCols.beechRefuge[0], amount:0.85, refugeAmount:0.6 },
-                 walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'], canPlace:true },
+                 walkable:true,  canHavePlants:true, plantTypes:['tawa','Totara','fern','tawa','beech'],
+                 // in the cold the hill forest goes to the subalpine mosaic come down the slopes: tussock and
+                 // scrub, beech (~88% of LGM forest pollen) the one tree that holds
+                 glacialPlantTypes:['tussock','tussock','coprosma','coprosma','beech','beech','manuka'], glacialModifierAs:'subalpine',
+                 canPlace:true },
     // SUBALPINE — the glacial-mosaic tops: tussock, grey scrub, Dracophyllum, mānuka heath, and
     // wharariki (mountain flax, art shared with harakeke; Esler records it on the Arawaru summit).
     subalpine: { key:'subalpine', name:"Subalpine",       minElevation:0.60, maxElevation:0.80,
@@ -340,8 +360,10 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     // nobody touches the buttons. The land is spawned OPEN (homeoBaseFrac of the full density) and a
     // CORRECT boost lifts the target of the habitats it serves by one step (the goal's answer by two),
     // up to homeoLiftMaxSteps, so density is something the visitor earns; a WRONG-for-the-climate
-    // boost drops every habitat back to its open floor and the surplus fades out. However open, every
-    // palette species keeps a representation floor (homeoSpecies*). The census runs on the REAL clock.
+    // boost or an overused storm takes one step back from every habitat and the surplus fades out. The
+    // health ledger (ECOSYSTEM HEALTH, below) moves every habitat too: see homeoEarnedShare, homeoPoorFrac.
+    // However open, every palette species keeps a representation floor (homeoSpecies*). The census runs
+    // on the REAL clock.
     plantHomeostasis:    true,
     homeoBaseFrac:       0.55,   // unattended floor as a share of the full plantDensity (spawn + targets)
     homeoSpeciesShare:   0.06,   // each palette species is kept at ≥ this share of its habitat's stock...
@@ -355,12 +377,27 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     homeoLiftStep:       0.25,   // one correct boost raises a habitat's target by this share of its base (4 steps: 0.55 → 1.1 of full density)...
     homeoLiftStepMin:    6,      // ...or by at least this many plants (thin habitats like the wetland), capped at half the base
     homeoLiftMaxSteps:   4,      // most steps a habitat can bank (4 × 25% = double the open floor; keep the total under maxLivePlants)
+    homeoEarnedShare:    0.5,    // the upper half of the health ledger holds EVERY habitat at this share of the max lift (full health: 2 of 4 steps), boosted or not
+    homeoPoorFrac:       0.7,    // in the poor health state each habitat's base thins to this share of itself (1 at healthStart)
     homeoAnswerSteps:    2,      // steps a goal's ANSWER earns
     homeoButtonShare:    0.34,   // FOREST/TUSSOCK lift only habitats where their set is ≥ this share of the palette
     homeoFavourChance:   0.4,    // chance a recruit is the habitat's last-boosted species rather than a palette draw
     homeoRecruitRadius:  40,     // half the recruit tries land within this of a standing plant of the same habitat
     homeoDensityRadius:  12,     // a recruit site is refused with ≥3 live plants inside this radius
     homeoGraceMs:        25000,  // plants younger than this (real ms) are never thinned (lets a boost or bloom play out)
+    // THE CLIMATE'S TURNOVER (Simulation._homeoTurnover, 2026-11-08). In a glacial a habitat's cover is
+    // its glacialPlantTypes (biomes above), not its forest: the census retires what has fallen out of the
+    // climate's palette, the highest plants first, and recruits the gap from it. Health raises the
+    // palette's stock either way, so a healthy glacial is dense tussock-shrubland with beech, not a
+    // forest that the ledger kept standing. The interglacial does the same in reverse.
+    paletteTurnover:     true,
+    turnoverRefuge:      { atTurn: 0.12, atFull: 0.04 },   // warm trees kept as refugia in a glacial, as a share of the habitat's base stock: at the glacial line → at the coldest
+    turnoverColdKeep:    0,      // cold cover left standing in a habitat whose interglacial palette lacks it (the forest takes the ground back)
+    turnoverRate:        0.2,    // share of the excess retired per census…
+    turnoverMaxPerTick:  8,      // …at most this many standing plants per habitat per census (~1 s): a forest turns over in ~15–25 s
+    turnoverJitter:      0.04,   // elevation jitter on "highest first", so the retreat downhill has no contour-line edge
+    turnoverGrowRate:    0.012,  // growth per plant-update of a colonist (a recruit into a habitat that just turned over; 0.002 otherwise)
+    turnoverColonistMs:  60000,  // a habitat's recruits count as colonists for this long after its last turnover
     disperseDensityRadius: 26,                   // a kererū seed only establishes where the canopy is
     disperseDensityMax: 3,                       // sparse: < this many live plants within the radius
     kereruMaxPopulation: 16,                     // flock cap (breeding stops at it); founders spawn 8
@@ -450,8 +487,79 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
       kereru:              { target: 10, floor: 3 },
       kokako:              { target: 6, floor: 2 },
       huia:                { target: 6, floor: 2 },
-      tui:                 { target: 8, floor: 2 }
+      tui:                 { target: 8, floor: 2 },
+      eyles_harrier:       { target: 6, floor: 2 }    // fauna homeostasis only (the harrier keeps its own breeding cap)
     },
+
+    // ECOSYSTEM HEALTH (Simulation.ecoHealth, the ledger, 2026-11-05) — one number, 0..1, moved by what
+    // the visitor does. The HUD's bar IS this number; the bird targets, the plant targets and the ground's
+    // colour all read it, so the indicator and the living world cannot disagree. A new visitor starts at
+    // healthStart. It does not drift back on its own: the attract landing resets it.
+    //   a goal's ANSWER     up one step; healthAnswersToFull in a row reach 1 from ANY level (the step is
+    //                       set when the run starts). The goal an eruption put up counts healthEruptionMult×.
+    //   right climate, not the answer     + healthMatchedGain of the gap to full, up to healthMatchedCap;
+    //                       above the cap, − healthMatchedDrop, back toward the cap and never past it. Only
+    //                       an answer takes the bar over the cap
+    //   TOTALLY WRONG       down one step; healthStepsToPoor in a row reach healthPoor from any level
+    //   right plant, wrong climate        healthHalfRight of a down step
+    //   STORM               the first in a run heals (+ healthStormGain of the gap to full, up to
+    //                       healthMatchedCap; above it, nothing); each one after it is a down step, so the
+    //                       fifth in succession lands on healthPoor. A boost, or healthStormCalmS real
+    //                       seconds without a storm, ends the run
+    //   ERUPTION            − healthEruptionDipByTier[its tier]: by how hard it hit the lower North Island
+    //                       (below), the same on every path (the button's rebuild carries the land's lifts,
+    //                       links and stock across, so it lands where an eruption in place would). Never
+    //                       below healthEruptionFloor on its own, so an eruption alone never brings on the
+    //                       25 % warning: what the visitor does next decides. It also takes
+    //                       healthEruptionLiftByTier steps off every habitat's and bird's banked lift, and
+    //                       starts a fresh run, so its goal's double answer brings the land back fast.
+    healthStart:         0.5,
+    healthPoor:          0.2,    // the poor state: the bar's ochre, the birds at faunaShockFloor, the plants at homeoPoorFrac
+    healthMin:           0.05,   // the bar never quite empties
+    healthAnswersToFull: 4,
+    healthStepsToPoor:   4,
+    healthDownMinStep:   0.04,   // the least a down step takes, so a land already near poor still falls
+    healthHalfRight:     0.5,
+    healthMatchedGain:   0.18,
+    healthMatchedCap:    0.75,   // the most anything but an answer can raise the bar to
+    healthMatchedDrop:   0.0625, // the notch above the cap: one answer's step from the cap, so an answer and a miss cancel
+    healthStormGain:     0.15,
+    healthStormCalmS:    40,     // > TM_TIME.stormSeconds: pressing again as the last storm clears is still "in succession"
+    healthEruptionDip:   0.08,   // fallback for an eruption with no tier
+    // Severity in the lower North Island is magnitude × the cover standing when it hit, the tiers of
+    // DeepTime.ERUPTIONS (md/archive/TEMANAWA_DEEPTIME_ECOLOGY_PLAN.md §2): Kaukatea (~0.9 Ma) a minor
+    // pulse, a light dusting; Kidnappers (Potaka, ~1 Ma) and Ōruanui (Kawakawa, 25.5 ka) major, one over
+    // a land still mostly sea, the other over sparse glacial cover; Whakamaru (Rangitawa, ~349 ka) the
+    // biggest, near-total clearing. The worst still costs less than one wrong goal from full
+    // ((1−healthPoor)/healthStepsToPoor), and its goal's double answer wins most of it back.
+    healthEruptionDipByTier:  { minor: 0.04, major: 0.10, catastrophic: 0.16 },
+    healthEruptionLiftByTier: { minor: 0, major: 1, catastrophic: 2 },
+    healthEruptionFloor: 0.32,   // an eruption alone never takes the bar under this (above the milestone warning, TM_MILESTONE.warnAt)
+    healthEruptionMult:  2,      // the post-eruption goal's answer: this × the health, lift, seedlings and birds of an answer
+
+    // FAUNA HOMEOSTASIS (Simulation._updateFaunaHomeostasis, 2026-11-05) — the birds, like the plants,
+    // are held at a level the visitor EARNS. With it on, `target` above is the earned-in-full level;
+    // the live target is:
+    //   (founding number → target, by the upper half of the ledger ecoEarned  +  faunaLinkStep·target per
+    //    banked link step)  ×  the climate prominence  ×  the lower half of the ledger (F.shock)
+    //                                                                  — never below `floor`.
+    // A new visitor's birds hold at their founding numbers (they do not multiply without boosts);
+    // above target + faunaBand the census retires the hungriest, below it a newcomer arrives now and
+    // then (faunaRecruitRate), so each kind follows its target both ways. tools/boostprobe.js measures it.
+    faunaHomeostasis:    true,
+    faunaIntervalFrames: 60,     // census cadence, real frames
+    faunaBand:           0,      // birds a species may sit over its live target before the census retires any. 0: with
+    faunaShockBand:      0,      // targets of 2–6, a bird's grace each swallowed both the climate swing and the crash
+    faunaRecruitRate:    0.1,    // below target: chance per census of a newcomer = this × the shortfall (none in a crash)
+    faunaLinkStep:       0.15,   // a matched boost of a plant linked to a bird (TM_BOOST.faunaLinks): + this share of its target…
+    faunaLinkMaxSteps:   3,      // …banked up to this many steps (the goal's answer banks two); each wrong boost or storm in a run takes one back
+    faunaClimateWarm:    { interglacial: 1.3, glacial: 0.6 },   // forest birds (kererū, kōkako, huia, tūī, the warm moa, kiwi)
+    faunaClimateCold:    { interglacial: 0.7, glacial: 1.4 },   // open-country grazers (goose, mōho, duck, the cold moa)
+    faunaShockFloor:     0.4,    // at the poor state every live target is this share of itself (1 at healthStart, a straight line between)
+    faunaCrashS:         12,     // after a wrong boost or an overused storm the census runs fast for this many real seconds…
+    faunaCullRate:       0.12,   // share of a species' surplus retired per census, settling (a climate turn, a lost lift)
+    faunaShockCullRate:  0.4,    // …at this rate: the crash the visitor sees
+    faunaCullMaxPerTick: 3,      // per species, per census
 
     autoRefound:          true,
     refoundCheckInterval: 300,   // check cadence (sim-clock dt)

@@ -7,6 +7,9 @@
        Confluence order down the Manawatū (Wikipedia): Mangatewainui, Tīraumea, Mangatainoka,
        Mangahao, Pohangina, Ōroua, Tokomaru; plus the Tamaki and Mangatoro (upper river), the
        Kiwitea (into the Ōroua) and the Mākākahi (into the Mangatainoka). Redrawn 2026-10-20.
+       The west-side four (Pohangina, Ōroua, Kiwitea, Tokomaru) moved inland 2026-11-06: the interglacial
+       sea reaches x 520–600 here (by seed), so the Ōroua and Tokomaru keep east of it and join the main
+       rather than running to the sea, and the Pohangina hugs the Ruahine foot to the gorge (Ashhurst).
        The ranges are drawn AS THEY STAND on the map (LOOK.flipRangeAxis false), traced from the real
        topography: two ridges on the NE–SW axial line whose points meet at the gorge, their edges stepped
        for a cartoon read. The outline is the range BODY; the crest grades out across broad foothills past
@@ -19,10 +22,10 @@
   <polyline class="river" data-width="0.05" data-depth="1.0" fill="none" points="150,470 300,525 430,562 560,540 660,470 765,432 845,470 945,545 1055,548 1140,472 1226,360 1306,250 1366,176"/>
 
   <!-- WEST of the ranges: the Manawatū plain -->
-  <polyline class="tributary" data-name="Pohangina" data-width="0.016" fill="none" stroke="#2a6" points="827,-150 800,-70 770,20 735,110 700,200 678,290 676,370 690,430 705,454"/>
-  <polyline class="tributary" data-name="Ōroua" data-width="0.018" fill="none" stroke="#2a6" points="595,-150 585,-70 575,10 552,90 522,175 500,255 488,335 470,410 446,480 425,530 408,556"/>
-  <polyline class="tributary" data-name="Kiwitea" data-width="0.013" fill="none" stroke="#2a6" points="706,-150 690,-70 672,20 640,105 600,180 560,240 498,272"/>
-  <polyline class="tributary" data-name="Tokomaru" data-width="0.013" fill="none" stroke="#2a6" points="560,800 520,720 470,650 410,590 365,550 350,539"/>
+  <polyline class="tributary" data-name="Pohangina" data-width="0.016" fill="none" stroke="#2a6" points="950,-150 920,-70 890,20 858,110 822,200 790,290 770,370 760,415 752,437"/>
+  <polyline class="tributary" data-name="Ōroua" data-width="0.018" fill="none" stroke="#2a6" points="735,-150 727,-70 719,10 709,90 697,175 686,255 676,335 669,405 667,445 668,467"/>
+  <polyline class="tributary" data-name="Kiwitea" data-width="0.013" fill="none" stroke="#2a6" points="850,-150 830,-70 812,10 792,90 768,170 740,232 710,258 684,270"/>
+  <polyline class="tributary" data-name="Tokomaru" data-width="0.013" fill="none" stroke="#2a6" points="700,820 702,770 688,722 664,684 648,640 646,590 632,540 625,494"/>
 
   <!-- EAST of the ranges: the upper Manawatū and the Tararua-side rivers -->
   <polyline class="tributary" data-name="upper Manawatū" data-width="0.018" fill="none" stroke="#26a" points="1128,-150 1150,-70 1175,20 1205,95 1195,175 1165,260 1135,350 1105,440 1088,500 1084,547"/>

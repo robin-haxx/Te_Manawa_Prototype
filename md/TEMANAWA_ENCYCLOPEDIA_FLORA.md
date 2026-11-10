@@ -818,3 +818,31 @@ dispersal distances; Ogden & Stewart's lozenge model. See `TEMANAWA_ECOLOGY_LOWL
 
 **Searched for and not found:** a dated *Chionochloa* radiation study, and any glacial pollen record
 for nīkau. Neither is relied on above.
+
+---
+
+## 7. The names on the cards (2026-11-05)
+
+Every card names its plant in te reo, English and Latin (`name`, `en`, `reo`, `sci` in
+`secondscreen/encyclopedia.js`). Tōtara, nīkau, tawa and kōwhai have no separate English line: English
+uses the te reo word, macrons aside.
+
+**These te reo names come from national references, not from local sources.** Names vary by region, and
+all of them are for Rangitāne o Manawatū to confirm with the rest of the copy (`TEMANAWA_PLAN_V3.md`
+§16.10).
+
+| Card | Added | Basis | Confidence |
+|---|---|---|---|
+| Tī kōuka | Cabbage tree | The standard English name | Firm |
+| Kahikatea | White pine | [Wikipedia](https://en.wikipedia.org/wiki/Dacrycarpus_dacrydioides), which calls the name misleading: it is not a pine | Firm, but a poor name |
+| Harakeke | New Zealand flax | [Te Ara](https://teara.govt.nz/en/photograph/10377/new-zealand-flax-species) | Firm |
+| Pūrei | Swamp sedge | [Nursery use](https://www.nelsonnatives.co.nz/carex-secta-pukio-purei). [NZPCN](https://www.nzpcn.org.nz/flora/species/carex-secta/) lists only pūrei and pukio. Avoid the plant's offensive 19th-century English name | Common use, not a formal name |
+| Mamaku & Ponga | Black tree fern & silver fern | The standard English names. Not re-sourced: a search this pass found no Te Ara page for them | Firm |
+| Mountain Beech | Tāwhairauriki | [Flora of New Zealand](https://nzflora.info/factsheet/Taxon/Fuscospora-cliffortioides.html) | Firm |
+| Wharariki | Mountain flax | [Wikipedia](https://en.wikipedia.org/wiki/Phormium_colensoi); also called coastal flax and hill flax | Firm |
+| Snow Tussock | Wī kura | [Wikipedia](https://en.wikipedia.org/wiki/Chionochloa_rigida) gives it for *C. rigida*, a South Island species. [Landcare](https://rauropiwhakaoranga.landcareresearch.co.nz/names/8a5d00ad-0242-4847-a2e5-2064d5c2e97c) records it for other grasses too | **Least certain: check first** |
+| Dracophyllum | Īnanga · Grass tree | [NZPCN](https://nzpcn.org.nz/flora/species/dracophyllum-filifolium) gives inanga for *D. filifolium*; [Te Ara](https://teara.govt.nz/en/photograph/13868/inanga) spells it īnanga and calls the group grass trees. Also the word for whitebait | Firm |
+| Subalpine Scrub | Tūpare | [*Olearia colensoi*](https://en.wikipedia.org/wiki/Olearia_colensoi), leatherwood. It names the leatherwood, not the whole scrub | Firm, but partial |
+| Mānuka | Tea tree | [Dunedin City plant list](https://www.dunedin.govt.nz/resources/documents/services/biodiversity/Biodiversity-Plant-Species-Listing..pdf) | Firm |
+| Grey Scrub | Mingimingi, pōhuehue | [NZPCN lists](https://www.nzpcn.org.nz/publications/plant-lists/plant-lists-by-region/slope-pt-c-d-mcdonald-totara-forest-and-north-east-area-798b/printer-friendly/) for *Muehlenbeckia*. Mingimingi is used loosely across small-leaved shrubs | Reasonable |
+| Tussock | Wī, pātītī | [*Poa cita*](https://en.wikipedia.org/wiki/Poa_cita); pātītī may be southern, and wī is also used of some rushes. The card covers three genera | Reasonable |

@@ -40,7 +40,7 @@ Ten things changed materially during the build, and this section records them:
 | 7 | **Kererū + a real seed-dispersal loop** | the one runtime mechanic that *grows* the forest; couples Storm to forest health (§5, §7) |
 | 8 | **Four eruptions as year-bound skip-targets** | four dated events; the button navigates between them (tap = revert, hold = skip) (§8) |
 | 9 | **A touchscreen console drives the wall** | a 1080p console over `BroadcastChannel`: habitat switch → per-species boost → a ramped time-lapse to the next glacial/interglacial; geology paused until then; plus a time dial (§6, `TEMANAWA_SECOND_SCREEN.md`) |
-| 10 | **The attract is the land before the window** | idle and end-of-window replay the land from 4 Ma to the 1 Ma opening, land only, then a fresh world (§13, `TEMANAWA_PALAEO_ATTRACT.md`) |
+| 10 | **The attract is the live 1 Ma land; a press plays an intro over today's map** | *(revised 2026-11-08; was the land before the window, now the dev `P` key only)* idle shows the fresh 1 Ma world with no UI and the clock held; a press fades to black, then the present-day map (the sim's own land at 0 BP) with an orientation, back into the live land, one line, then the UI; the end of the window plays an outro over the same map (habitats, species, the river today) and returns to the attract (`TeManawa_attract.js`) |
 
 Since this table began, the fauna cast, the disturbance clocks, the console, the plant goals and the
 attract sequence have all been built. What is left is **pre-handoff hardening, two visitor-facing
@@ -316,13 +316,52 @@ so there is no universal-win press.
 
 A single scalar **`H ∈ [0,1]`** is surfaced as the **saturation of the ground**: full colour when the
 land is tended, a slow desaturation toward a **tired floor (`SAT_FLOOR ≈ 0.35`, never full grey)** when
-it is mismanaged. `H` is **not a score the buttons move directly** — it is *derived from the sim*, so the
-colour on the wall is an honest diagnostic of the world's state. The buttons act on the ecology; `H`
-follows, on a long ease so cause and effect read as a visible drift.
+it is mismanaged. The buttons act on the ecology; `H` follows, on a long ease so cause and effect read as
+a visible drift.
 
 ```
-H_target = F × R          // either one sick drains the scene
+H_target = (1 − ash) × F × R × L          // any one sick drains the scene
 ```
+
+- **`L` — the ledger, and the bar on the wall.** *(Built 2026-11-05: `Simulation.ecoHealth`, knobs under
+  ECOSYSTEM HEALTH in the scaffold.)* One number, moved by what the visitor does, and it is the top band's
+  health bar. `L` reads 1 at a new visitor's level and above, so the default look is untouched, and drains
+  below it. The birds and the plants read the same number (below), so the bar, the land and the colour
+  cannot disagree. A new visitor stands at 0.5; it holds until the visitor changes it, and the attract
+  landing starts it again.
+
+  | What the visitor does | The bar |
+  |---|---|
+  | The live goal's **answer** | Up. **Four in a row fill it, from any level**. **Only an answer takes it past 75 %.** At 100 % the year, the tallies and the gauge go the climate's bright green or blue |
+  | The right climate, not the answer | Below 75 %, a smaller gain that stops at 75 %. Above it, **down a notch (0.0625) toward 75 %**, never past it |
+  | **Totally wrong** (wrong plant, wrong climate) | Down. **Four in a row leave it poor (≤ 0.2), from any level** |
+  | The right plant in the wrong climate | Half of that |
+  | A **first** storm | Up a little, to 75 % at most: the land is better for one. Above 75 % it changes nothing |
+  | Each storm after it in succession | Down. **The fifth in a row leaves it poor.** A boost, or 40 s without a storm, ends the run |
+  | An **eruption** | Down **by its tier** (2026-11-08: minor 0.04, major 0.10, catastrophic 0.16, and 0/1/2 steps of every banked lift), never under 0.32 on its own, so an eruption alone never brings on the 25 % warning. The same on every path: the button's rebuild carries the land's lifts, birds and flags across (§8). The goal line moves to a post-eruption goal (`requires.eruption`), and answering it counts **double**: health, habitat lift, seedlings and birds |
+
+  A step's size is set when a run begins, from where the land stands then. That is what makes "four
+  wrong goals" true from a full bar and from a half one. The rest of the living world follows: **above**
+  the start every bird target rises toward its authored level and every habitat holds at least half the
+  maximum lift; **below** it the bird targets fall to `faunaShockFloor` and the habitats' base to
+  `homeoPoorFrac` in the poor state, and each wrong boost or overused storm takes a step of banked lift
+  back, with the census running fast for a while so the crash is plain to see. The numbers are events,
+  never a census of the land, which jittered and stepped with every morph (`MISTAKES.md`).
+
+  **The two milestones** *(built 2026-11-08, `TeManawa_milestone.js`)*. When the bar reaches **full**, the
+  wall fades to white (1.2 s) and back onto the land with **every piece of UI gone**: the clock held, the
+  land grown in to what the ledger holds under the white, playing in real time for **15 s**, with a
+  congratulations and the count of each bird kind fading in and out; then the UI fades back. At **25 %**
+  the same through black onto a **desaturated** land, with a warning and the counts. Each waits for the
+  land to be at rest (a boost's time-lapse landed, no eruption or storm running), plays once per climb
+  (full again only after falling back to 75 %, the warning again only after climbing back to 50 %), and
+  takes the visitor's input as presence only while it plays.
+
+  **In the cold the healthy land is open country** *(built 2026-11-08)*. The forest habitats turn over to
+  their `glacialPlantTypes` in a glacial (tussock, scrub, beech; `Simulation._homeoTurnover`): the warm
+  trees fall back to a low refugial remnant and the cold cover replaces them, and the reverse in the
+  interglacial. Health raises whatever the climate's palette is, so a full bar in a glacial is dense
+  tussock-shrubland, not a forest the ledger kept standing (md/ecology/TEMANAWA_ECOLOGY_OPEN.md §4).
 
 - **`F` — regime fit.** Is the standing cover the right type for the current climate? A climate-matched
   growth press raises `F`; a mismatched press drains it (mostly emergent from the existing dormancy/
@@ -335,6 +374,7 @@ H_target = F × R          // either one sick drains the scene
 **Storm's hidden cost** is a decaying **storm-pressure accumulator**: each press adds pressure (τ ≈ 17 s
 decay); above an overuse line the kererū stay grounded *between* storms too, so **spamming Storm →
 dispersal stalls → the forest thins → the scene drains of colour.** A single press stays below the line.
+This is the quick, behavioural half of overuse; the ledger above is the half that lasts.
 
 Saturation is applied as a `saturate()` filter around the **ground blit only** (cheaper on a 4K panel and
 on-brand with the "quiet ground" look), gated off entirely when healthy (zero cost in the steady state).
@@ -508,7 +548,8 @@ The prototype does **not** map onto the v2.1 §8 phase ledger — it ran ahead o
 | **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | ✅ **Built** — the console page, the `BroadcastChannel` bus, geology paused by default, the 500→5000 yr/s ramp to the next regime boundary, `Simulation.seedSpecies`, the regime-fit gate, eruption-aware endings, live telemetry (`TEMANAWA_SECOND_SCREEN.md`). Open: the boost-feel tuning pass |
 | **+ Plant goals** | a question a plant answers | ✅ **Built** — the line above the timeline, drawn from the live goals along the moa → harrier → lowland → forest-bird sequence, judged on each boost, with a fresh goal when the dial or a deep burst carries the clock across a glacial turn (`TeManawa_goals.js`, `TEMANAWA_GOALS.md`) |
 | **+ Time dial** | a standing fast-forward on the macro pad | ✅ **Built** — 0 → 5,000 yr/s over 30 detents, eased, kept across resets, relayed over the bus (`DeepTime.dialStep`) |
-| **+ The land before the window** | the attract as a palaeogeography sequence | ✅ **Built** (2026-11-01) — idle and end-of-window play a land-only 4 Ma → 1 Ma sequence through the terrain's dated geology extended before the window (`GEO_EPOCHS.palaeo*`: the Whanganui Basin's shelf, the basement finger, the Manawatū Strait narrow at 3 Ma / widest at 2.4 Ma / closed from 1.63 Ma, the Ruataniwha shelf closing with Mount Bruce — Trewick & Bland 2012 Fig. 4A–D), its own clock, the names of the time, every swap crossfaded, then the fresh 1 Ma world (`TEMANAWA_PALAEO_ATTRACT.md`). Open: the co-design pass on pacing, holds and notes |
+| **+ The attract, intro and outro** | the idle wall, a visitor's way in and the window's end | ✅ **Built** (2026-11-08, `TeManawa_attract.js`) — the live 1 Ma land with no UI while idle; a press: black, the present-day map (`TerrainGenerator.snapshotYear(0)`, lined up with the sim's rivers, named) and an orientation, the live land, one line, the UI; the end of the window: the outro over the same map, then the attract. Harness "attract". Open: the copy (§16), the map's look |
+| **+ The land before the window** | the attract as a palaeogeography sequence | ✅ **Built** (2026-11-01), **off the wall since 2026-11-08** (dev `P` key only) — idle and end-of-window played a land-only 4 Ma → 1 Ma sequence through the terrain's dated geology extended before the window (`GEO_EPOCHS.palaeo*`: the Whanganui Basin's shelf, the basement finger, the Manawatū Strait narrow at 3 Ma / widest at 2.4 Ma / closed from 1.63 Ma, the Ruataniwha shelf closing with Mount Bruce — Trewick & Bland 2012 Fig. 4A–D), its own clock, the names of the time, every swap crossfaded, then the fresh 1 Ma world (`TEMANAWA_PALAEO_ATTRACT.md`). Open: the co-design pass on pacing and holds |
 | **8 — Kiosk** | hardening, audio, lockdown | ✅ **Built** — watchdog, error ring buffer, nightly reload, idle attract, the key lockdown (`?dev` unlocks), `draw()` error recovery, the console page's own layer, the software-WebGL guard, audio not loaded (§14.1). Open: commissioning on the install hardware (`TEMANAWA_OPERATIONS.md` §8) |
 
 **Harness, 2026-11-02:** the plant-goals failure (the Dracophyllum goal at 30 ka, failing on every run
@@ -581,8 +622,9 @@ Found in the 2026-11-02 audit; items 1–6 **fixed the same day** (harness secti
    forest reads as *cycling*, not declining.
 2. **Boost feel:** the ramp, seeding strength, and how many birds a matched boost recruits
    (`TM_BOOST.faunaRecruit`, `TEMANAWA_SECOND_SCREEN.md` §9.3).
-3. **The attract sequence:** the notes, the holds and the rate, and whether to show the Mangakino
-   eruptions before the window (`TEMANAWA_PALAEO_ATTRACT.md` §8).
+3. **The attract's words:** the intro's orientation, the line over the 1 Ma land and the outro
+   (`TM_ATTRACT.copy`), and which places the present-day map names (`TM_ATTRACT.labels`). The older
+   sequence's open notes (`TEMANAWA_PALAEO_ATTRACT.md` §8) apply only if it comes back to the wall.
 4. **Interpretation and mana whenua co-design** (§16.10): naming, narration, which stories are told.
    The encyclopedia cards on screen are draft copy; `TEMANAWA_ENCYCLOPEDIA_CARDS.md` holds a longer
    three-part draft that needs a layout decision.
@@ -595,12 +637,12 @@ Found in the 2026-11-02 audit; items 1–6 **fixed the same day** (harness secti
   frame are all still wired; the storm now distracts the harrier straight from the HUD. Only
   `placeableSprites` (clouds, lightning, wind) is live. With it, the rest of the economy residue in
   `CONFIG`, `GAME_STATE` and the level format (`archive/TEMANAWA_REORG.md` §5).
-- **Unused assets:** `sprites/Environmental/AshCloud/` (86 frames, 222 MB — the cover plays
-  `VolcanicAsh/`), `sprites/Environmental/VolcanicAshCloud_Sprite_00001.png`, about 30 superseded
-  sprites at the top of `sprites/` (`eagle_*`, `moa_*`, `moa_juvenile_*`, `LB_moa_*`, `Rimu_*`,
-  `mantis_talk`, `Kereru_*`; to `_retired/`), the unused fonts (FreckleFace, GroceryRounded, the
-  OpenDyslexic `.otf` set), the August `geo/manawatu_0…5.svg` drafts, and the duplicate
-  `exports/terrain_geology_timeline - Copy*` folders.
+- ✅ **Unused assets (cleared 2026-11-06).** Retired to `sprites/_retired/`: `Environmental/AshCloud/` (86 frames,
+  222 MB — the cover plays `VolcanicAsh/`), `VolcanicAshCloud_Sprite_00001.png` and the 45 superseded sprites
+  at the top of `sprites/` (`eagle_*`, `moa_*`, `LB_moa_*`, the old plant state sets, `mantis_talk`,
+  `Kereru_Perched`). Deleted: the unloaded fonts (FreckleFace-Regular, GroceryRounded, the OpenDyslexic `.otf`
+  set; the HUD's `FreckleFace` is NF Nadira), the August `geo/manawatu_0…5.svg` drafts and the duplicate
+  `exports/terrain_geology_timeline - Copy*` folders. The history still carries them.
 - **Ship a deploy copy, not a clone** (`TEMANAWA_OPERATIONS.md` §5): the wall needs about 95 MB; the git
   history alone is about 500 MB.
 

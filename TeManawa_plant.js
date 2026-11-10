@@ -420,7 +420,7 @@ class Plant {
       if (this._toppling) { this._toppling = false; this._toppleStart = 0; }
     }
 
-    const newModifier = seasonManager.getPlantModifier(this.biomeKey);
+    const newModifier = seasonManager.getPlantModifier(this._modifierKey(seasonManager));
     if (Math.abs(newModifier - this.seasonalModifier) > 0.01) {
       this.seasonalModifier = newModifier;
     }
@@ -473,6 +473,25 @@ class Plant {
     }
 
     this.handleGrowth(warp, accel);
+  }
+
+  // The habitat whose climate modifier this plant answers to. A forest habitat's glacial modifier is the
+  // FOREST's (podocarp 0.6 → 0.3 into the cold), which is right for its warm trees and wrong for the
+  // tussock and scrub that replace them (Simulation._homeoTurnover): in a glacial a plant that is not
+  // warm, in a habitat that declares glacialModifierAs (the scaffold), reads that open-country modifier
+  // instead, so the cold cover on the old forest ground thrives rather than wilts. Resolved once.
+  _modifierKey(seasonManager) {
+    if (this._coldAs === undefined) {
+      this._coldAs = null;
+      const B = this.terrain && this.terrain.biomeArray;
+      const warmMax = (typeof TM_GROW !== 'undefined' && TM_GROW.warmMax != null) ? TM_GROW.warmMax : 0.65;
+      if (B && this.coldTolerance > warmMax) {
+        for (let i = 0; i < B.length; i++) {
+          if (B[i] && B[i].key === this.biomeKey) { this._coldAs = B[i].glacialModifierAs || null; break; }
+        }
+      }
+    }
+    return (this._coldAs && seasonManager.getWinterness && seasonManager.getWinterness() >= 0.5) ? this._coldAs : this.biomeKey;
   }
 
   checkDormancy(seasonManager) {
@@ -587,7 +606,10 @@ class Plant {
       // Gated on forestDieback so turning the die-back off restores the old behaviour.
       const fastForest = this._forestTree && typeof LEVEL_MECHANICS !== 'undefined'
                          && LEVEL_MECHANICS.forestDieback;
-      const baseRate = fastForest ? (LEVEL_MECHANICS.forestRecoverRate ?? 0.02) : 0.002;
+      let baseRate = fastForest ? (LEVEL_MECHANICS.forestRecoverRate ?? 0.02) : 0.002;
+      // A colonist (Simulation._homeoRecruit, into a habitat the climate has just turned over) grows in
+      // within a boost's beat, so the forest reads as REPLACED, not just gone. Knob: turnoverGrowRate.
+      if (this._colonist && typeof LEVEL_MECHANICS !== 'undefined') baseRate = Math.max(baseRate, LEVEL_MECHANICS.turnoverGrowRate ?? 0.012);
       const growthRate = baseRate * this.seasonalModifier;
       this.growth += growthRate * warpBoost * accel;
       if (this.growth >= 1.0) { this.growth = 1.0; if (this._tree) this._matured = true; }   // grown up: latch the mature look (WOODY_TREES)

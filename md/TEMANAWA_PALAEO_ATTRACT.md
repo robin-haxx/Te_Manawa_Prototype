@@ -1,5 +1,10 @@
 # Te Manawa — The land before the window: the palaeogeography attract sequence
 
+> **Off the wall since 2026-11-08.** The idle attract is now the live 1 Ma land with no UI, a press plays
+> an intro over the present-day map, and the end of the window an outro (`TeManawa_attract.js`,
+> `CLAUDE.md`). This sequence is kept, working and tested, behind the dev `P` key only. What follows
+> records it as built.
+
 *The sim's window (1 Ma → 25.5 ka) barely moves the land: the ranges rise, the river sharpens, the coast
 breathes with the glacial cycle, the habitats turn over. The emergence that made the Manawatū — a deep
 sea basin, a low finger of basement across it, a strait that opened and closed over that finger, then
@@ -123,6 +128,13 @@ strait drowned below 0.10 reads as sea, not as a wide river. No classify change.
   them and a pause never ends one; in reverse the clock returns to the keyframe it left and holds
   there, and the oldest date holds. The caption shows the reading (`>> × 2`, `paused`, `<< × 0.5`).
   Default pacing: 15 kyr/s with 10 / 8 / 10 / 8 / 8 s holds ≈ 4 min at ×1.
+- **The warp (authoring, 2026-11-06)**: in a run started by `P` (`reason === 'manual'`, so `?dev=1`), the
+  first turn of the dial sets `Palaeo._warp` and hands it the clock (`_warpClock`): no holds and no landing
+  of its own. Warped forward it parks at 1 Ma, on the landing bake, with the caption reading
+  `any key lands`, and goes back as far as 4 Ma. Before this, a warp ran off the end into the eruption, where
+  the wheel did nothing, and then onto `DeepTime`'s dial, which started the sim's fast-forward. Any
+  other key is still the skip, which lands it. A `P` run left alone plays and lands like a wall run, and a
+  wall run never warps: nobody is there to land it.
 - **The sea's breath before the window**: slowed to ≤ `seaBreathBelow` (5 kyr/s — a 41-kyr cycle
   every ≥ 8 s) the pre-window sea breathes a synthetic pre-MPT cycle (`Climate.PRE_WINDOW_SEA`:
   41 kyr, −70 … 0 m, phased to join the window's first anchor; gone by `seaBreathOff` 10 kyr/s, where
@@ -135,19 +147,18 @@ strait drowned below 0.10 reads as sea, not as a wide river. No classify change.
 - **The landing is an eruption** (2026-11-02): the window opens on Kidnappers (~1.0 Ma, Mangakino;
   `DeepTime`'s first event), with the same charge, flash, shake and 42-frame ash cloud the eruption
   button and the timeline eruptions use (`g._tmPalaeoErAt` drives the HUD's `renderAshFlash` /
-  `eruptionShakeOffset` like `_tmAttractErAt`). The note under the date reads
-  `TM_PALAEO.eruptionNote` while it builds. Only the spectacle: the eruption's ash is not applied to the
+  `eruptionShakeOffset` like `_tmAttractErAt`). Only the spectacle: the eruption's ash is not applied to the
   fresh world, which opens calm as before. A key or console intent during it is presence only.
 - **Transitions are the kiosk's own idiom** (the dark crossfade, `Kiosk.renderCrossfade`), the dips
-  ≥ 500 ms; every terrain swap is the existing ≥ 500 ms crossfade and the next one waits for it; the
-  caption crossfades on change. Inside the photosensitivity budget (`TEMANAWA_BUILD_V3.md` §3).
+  ≥ 500 ms; every terrain swap is the existing ≥ 500 ms crossfade and the next one waits for it. Inside
+  the photosensitivity budget (`TEMANAWA_BUILD_V3.md` §3).
 - **Cost**: nothing lives during the sequence, so the morph gets a larger per-frame slice
   (`TM_PALAEO.budgetMs`); a re-bake is ~0.3–0.6 s at 60 fps, paced to the fade → ~1 bake/s → ~60 kyr a
   step at the default rate. Phase 0 of a morph (the sim heightMap) is one slice as it is in the dial
   fast-forward — a short hitch per step under a crossfade.
 - The HUD's timeline, year, goal and climate line are replaced by one caption: the date (`~ 2,400,000
-  years ago`, quantised to 50 kyr while travelling so the text cache sees few strings) and an optional
-  one-line note (`TM_PALAEO.EPOCHS[].note`, co-design placeholder copy, off with `notes:false`).
+  years ago`, quantised to 50 kyr while travelling so the text cache sees few strings). The date stands
+  alone: the one-line notes that sat under it were cut on 2026-11-05 (§8).
 
 ---
 
@@ -251,7 +262,7 @@ same holds inside the window until the fans close: `RiverNames._name` letters a 
 ## 8. Open decisions (co-design)
 
 - ~~*Whanganui* or *Wanganui*~~ — **Whanganui** (decided 2026-11-02).
-- The one-line notes under the date: keep, cut, or hand to interpretation.
+- ~~The one-line notes under the date~~ — **cut** (2026-11-05): the epoch notes and the Kidnappers note are gone, code and copy.
 - The hold lengths and the rate (`TM_PALAEO.keyframes`, `kyrPerSec`): slowed to ~4 min on 2026-11-02;
   the dial now lets a reviewer pace it live.
 - ~~The climate's swings before 1 Ma~~ — built as the sea's breath (§3), synthetic, shown only when the
@@ -302,7 +313,7 @@ Basin's Nukumaruan–Castlecliffian tephras record them). The Alexandra volcanic
 2.74–1.6 Ma) were andesitic cones, not supereruptions. Nothing older than ~1.7 Ma reached the region as
 an ignimbrite. Not shown yet (§8).
 
-**Left for co-design** (§8): the notes, whether to add the Mangakino ash beats. **Known compromise:** the finger's interior is the base noise under the footprints cut
+**Left for co-design** (§8): whether to add the Mangakino ash beats. **Known compromise:** the finger's interior is the base noise under the footprints cut
 toward lowland (`LOOK.palaeoAxisLow`), so it reads as one low island per range rather than a chain of
 islets; `LOOK.palaeoAxisCore` narrows or widens it live (`B` to re-bake).
 

@@ -27,6 +27,7 @@
   const cardPlant = $('cardPlant');
   const cardSceneBox = $('cardSceneBox');
   const cardName = $('cardName');
+  const cardAlt = $('cardAlt');
   const cardSci = $('cardSci');
   const cardBody = $('cardBody');
   const clockLabel = $('clockLabel');
@@ -35,6 +36,17 @@
   const tlWrap = $('timelapse');
   const tlFill = $('timelapseFill');
   const tlMsg = $('timelapseMsg');
+  const goalStrip = $('goalStrip');
+  const goalNow = $('goalNow');
+  const goalNowText = $('goalNowText');
+  const goalPips = $('goalPips');
+  const goalPrev = $('goalPrev');
+  const goalPrevLabel = $('goalPrevLabel');
+  const goalPrevImg = $('goalPrevImg');
+  const goalPrevName = $('goalPrevName');
+  const landingBirds = $('landingBirds');
+  const climateRail = $('climateRail');
+  const railTrack = $('railTrack');
 
   // ---- state -----------------------------------------------
   const state = {
@@ -67,8 +79,138 @@
     const bgSrc = (habitat && habitat.bg) || (typeof TM_BG_DEFAULT !== 'undefined' ? TM_BG_DEFAULT : '');
     bg.style.backgroundImage = bgSrc ? `url("${bgSrc}")` : '';
     if (habitat) habitatTitle.textContent = habitat.title;
+    applyClimateTint();
+    renderRail();
     renderCard();
     renderReadout();
+  }
+
+  // ---- the climate gradient: the background colour-shifted by switch position -------------
+  // TM_SCREEN_CLIMATE (encyclopedia.js) says how glacial each position looks, 0 → 1. At 0 the
+  // texture is as drawn (the interglacial forest); toward 1 its green turns icy blue and a little
+  // paler. #bg eases the filter over SCROLL_MS (secondscreen.css), so a move along the switch reads as
+  // walking down a gradient from the warm habitats to the cold ones.
+  const CLIMATE_TINT = { hue: 70, desat: 0.32, lift: 0.10 };   // at full glacial: hue-rotate°, saturation lost, brightness gained
+  const COL_WARM = [84, 210, 96], COL_COLD = [150, 205, 236];  // the wall's interglacial / glacial colours (TM_BOOST.outline*)
+  function climateOf(key) {
+    if (typeof TM_SCREEN_CLIMATE !== 'undefined' && TM_SCREEN_CLIMATE[key] != null) return TM_SCREEN_CLIMATE[key];
+    const h = TM_HABITATS[key];
+    return h ? (h.era === 'glacial' ? 1 : 0) : 0.5;
+  }
+  function applyClimateTint() {
+    const g = Math.max(0, Math.min(1, climateOf(screenKey())));
+    bg.style.filter = 'hue-rotate(' + (CLIMATE_TINT.hue * g).toFixed(1) + 'deg) saturate(' +
+      (1 - CLIMATE_TINT.desat * g).toFixed(3) + ') brightness(' + (1 + CLIMATE_TINT.lift * g).toFixed(3) + ')';
+  }
+  function climateCol(g) {
+    const c = (i) => Math.round(COL_WARM[i] + (COL_COLD[i] - COL_WARM[i]) * g);
+    return 'rgb(' + c(0) + ',' + c(1) + ',' + c(2) + ')';
+  }
+
+  // ---- the climate rail: up = interglacial, down = glacial -------------------------------
+  // One stop per switch position, coloured by its climate, the current one large. A HINT (the H key,
+  // in either window) makes it point: the end toward the screen holding the goal's answer bobs and
+  // that screen's stop swells, until the visitor gets there or the hint runs out (showHint).
+  const railHint = { target: -1, timer: 0 };
+  function buildRail() {
+    railTrack.textContent = '';
+    TM_SCREEN_ORDER.forEach((k) => {
+      const s = document.createElement('span');
+      s.className = 'railStop' + (k === 'select' ? ' centre' : '');
+      s.style.background = climateCol(Math.max(0, Math.min(1, climateOf(k))));
+      railTrack.appendChild(s);
+    });
+  }
+  function renderRail() {
+    const stops = railTrack.children, t = railHint.target;
+    for (let i = 0; i < stops.length; i++) {
+      stops[i].classList.toggle('here', i === state.pos);
+      stops[i].classList.toggle('target', i === t);
+    }
+    climateRail.classList.toggle('hint-up', t >= 0 && t < state.pos);
+    climateRail.classList.toggle('hint-down', t >= 0 && t > state.pos);
+  }
+  // Where the hint points: a screen with one of the answer plants, in the climate the wall is in
+  // (a both-worlds plant sits on screens of both), the nearest one. No answers (no plant goal up):
+  // the nearest screen of the wall's climate.
+  function hintTarget(keys, glacial) {
+    const era = glacial ? 'glacial' : 'interglacial';
+    let cands = [];
+    TM_SCREEN_ORDER.forEach((k, pos) => {
+      const h = TM_HABITATS[k];
+      if (h && (!keys.length || h.plants.some((p) => keys.indexOf(p.key) !== -1))) cands.push({ pos, era: h.era });
+    });
+    const inEra = cands.filter((c) => c.era === era);
+    if (inEra.length) cands = inEra;
+    if (!cands.length) return -1;
+    cands.sort((a, b) => Math.abs(a.pos - state.pos) - Math.abs(b.pos - state.pos));
+    return cands[0].pos;
+  }
+  function showHint(m) {
+    clearTimeout(railHint.timer);
+    railHint.target = hintTarget((m && m.keys) || [], !!(m && m.glacial));
+    renderRail();
+    railHint.timer = setTimeout(() => { railHint.target = -1; renderRail(); }, (m && m.ms) || 6000);
+  }
+
+  // ---- the landing page's birds ------------------------------------------------------------
+  // TM_LANDING_BIRDS round the card; a tap scrolls the switch, one position at a time like a visitor
+  // moving it, to a screen with a plant that helps the bird, then highlights that plant (goToBird).
+  function renderLandingBirds() {
+    landingBirds.textContent = '';
+    (typeof TM_LANDING_BIRDS !== 'undefined' ? TM_LANDING_BIRDS : []).forEach((b) => {
+      const f = TM_FAUNA[b.fauna];
+      const src = f && f.sprites && f.sprites[0];
+      if (!src) { console.warn('[secondscreen] landing bird ' + b.fauna + ' has no sprite'); return; }
+      const btn = document.createElement('button');
+      btn.className = 'landBird' + (b.flip ? ' flip' : '');
+      btn.style.left = b.cx + 'px';
+      btn.style.top = b.cy + 'px';
+      btn.style.height = b.h + 'px';
+      btn.setAttribute('aria-label', f.name);
+      const img = document.createElement('img');
+      img.src = src; img.alt = f.name; img.draggable = false;
+      img.onerror = () => { console.warn('[secondscreen] could not load ' + src); btn.remove(); };
+      btn.appendChild(img);
+      btn.addEventListener('click', () => onAction('bird', { fauna: b.fauna, el: btn }));
+      landingBirds.appendChild(btn);
+    });
+  }
+  // Every (screen position, plant index) whose card carries this bird.
+  function birdPlants(fauna) {
+    const out = [];
+    TM_SCREEN_ORDER.forEach((k, pos) => {
+      const h = TM_HABITATS[k];
+      if (h) h.plants.forEach((p, index) => { if ((p.fauna || []).indexOf(fauna) !== -1) out.push({ pos, index, era: h.era }); });
+    });
+    return out;
+  }
+  const NAV_STEP_MS = 650;         // between switch positions on the way (each one's scroll is SCROLL_MS)
+  const NAV_POP_MS = 240;          // the tapped bird's pop, before the first step
+  let navToken = 0;                // a new tap or any visitor input cancels a navigation on its way
+  function goToBird(fauna, el) {
+    const all = birdPlants(fauna);
+    if (!all.length) return;
+    const c = state.clock;
+    const glacialNow = (c && c.glacialIndex != null) ? c.glacialIndex >= 0.5 : null;
+    let pool = all;
+    if (glacialNow !== null) {
+      const fit = all.filter((t) => (t.era === 'glacial') === glacialNow);
+      if (fit.length) pool = fit;
+    }
+    pool.sort((a, b) => Math.abs(a.pos - state.pos) - Math.abs(b.pos - state.pos));
+    const dest = pool[0], token = ++navToken;
+    if (el) { el.classList.add('tapped'); setTimeout(() => el.classList.remove('tapped'), NAV_POP_MS + 120); }
+    const step = () => {
+      if (token !== navToken) return;
+      if (state.pos === dest.pos) {
+        setTimeout(() => { if (token === navToken) selectPlant(dest.index); }, SCROLL_MS);   // once the last scroll lands
+        return;
+      }
+      setPos(state.pos + (dest.pos > state.pos ? 1 : -1));
+      setTimeout(step, NAV_STEP_MS);
+    };
+    setTimeout(step, NAV_POP_MS);
   }
 
   // Build the plant cluster for a habitat (called on habitat change).
@@ -125,6 +267,9 @@
     cardPrompt.classList.add('hidden');
     cardSpecies.classList.remove('hidden');
     cardName.textContent = p.name;
+    // Te reo, English and Latin: the headline is one of them, so this adds what it doesn't already say.
+    cardAlt.textContent = [p.reo, p.en].filter(Boolean).join(' · ');
+    cardAlt.classList.toggle('hidden', !cardAlt.textContent);
     cardSci.textContent = p.sci;
     renderBody(p);
     // The scene: the plant, sized from its cluster height so a tree still stands a little taller than
@@ -282,7 +427,20 @@
 
   // The write-up: the plant's paragraphs, then (if the card has a bird) "Boosting <plant> helps:
   // <bird>" and the bird's paragraphs. Built as text nodes, never HTML. Scrolled back to the top.
+  // Words a plant goal rests on are bold: each goal names its own (`terms`, ../TeManawa_goals.js).
   function paras(v) { return v == null ? [] : (Array.isArray(v) ? v : [v]); }
+  function addPara(text, key) {
+    const el = document.createElement('p');
+    // A goal book that failed to load costs the bold, never the card.
+    const runs = (typeof TMGoals !== 'undefined') ? TMGoals.termRuns(text, key) : [{ text, bold: false }];
+    runs.forEach((r) => {
+      if (!r.bold) { el.appendChild(document.createTextNode(r.text)); return; }
+      const b = document.createElement('strong');
+      b.textContent = r.text;
+      el.appendChild(b);
+    });
+    cardBody.appendChild(el);
+  }
   function birdNames(p) {
     const names = [];
     (p.fauna || []).forEach((fkey) => {
@@ -295,17 +453,14 @@
   }
   function renderBody(p) {
     cardBody.textContent = '';
-    const add = (tag, text, cls) => {
-      const el = document.createElement(tag);
-      el.textContent = text;
-      if (cls) el.className = cls;
-      cardBody.appendChild(el);
-    };
-    paras(p.desc).forEach((t) => add('p', t));
+    paras(p.desc).forEach((t) => addPara(t, p.key));
     const birds = paras(p.birdDesc);
     if (birds.length) {
-      add('h3', 'Boosting ' + p.name.toLowerCase() + ' helps: ' + birdNames(p), 'card-boost');
-      birds.forEach((t) => add('p', t));
+      const h = document.createElement('h3');
+      h.textContent = 'Boosting ' + p.name.toLowerCase() + ' helps: ' + birdNames(p);
+      h.className = 'card-boost';
+      cardBody.appendChild(h);
+      birds.forEach((t) => addPara(t, p.key));
     }
     cardBody.scrollTop = 0;
     updateMore();
@@ -383,6 +538,72 @@
     }
   }
 
+  // ---- the goal strip, under the plants ---------------------
+  // The wall's question with its chances (left, under the plants) and how the last goal ended (right, under the card). Fed by the goal
+  // telemetry (m.plant, TMGoals.telemetry in ../TeManawa_goals.js) about four times a second. Visitors
+  // who miss come back here to hunt for the answer, so this is where a change of goal has to show:
+  //   reveal    the old question (its pips empty) under "The answer was <plant>", in white like the
+  //             ring round those plants on the wall
+  //   new goal  the question slides up; the old answer stays beside it for a while
+  //   answered  a solve, or a late answer to the goal that just left: "Answered! <plant>" in green
+  const PREV_HOLD_MS = 20000;              // how long the last goal's ending stays up under a new goal
+  const goalUI = { serial: 0, prevSig: '', prevSince: 0, pipsN: -1 };
+  function cardFor(key) {
+    for (const h of Object.values(TM_HABITATS)) for (const p of h.plants) if (p.key === key) return p;
+    return null;
+  }
+  function setPips(n, left) {
+    if (goalUI.pipsN !== n) {
+      goalUI.pipsN = n;
+      goalPips.textContent = '';
+      for (let i = 0; i < n; i++) { const s = document.createElement('span'); s.className = 'pip'; goalPips.appendChild(s); }
+    }
+    Array.prototype.forEach.call(goalPips.children, (s, i) => s.classList.toggle('used', i >= left));
+    goalPips.classList.toggle('hidden', !(n > 0 && left >= 0));
+  }
+  function renderGoalStrip() {
+    const c = state.clock, P = state.goal && state.goal.plant;
+    if (!c || (c.palaeo && c.palaeo.active) || !P || !P.prompt) {
+      goalStrip.classList.add('hidden');
+      goalUI.serial = 0;
+      return;
+    }
+    goalStrip.classList.remove('hidden');
+    if (P.serial !== goalUI.serial) {
+      const fresh = goalUI.serial !== 0 && !P.revealing;    // a new goal (not the old one coming back for its reveal)
+      goalUI.serial = P.serial;
+      goalNowText.textContent = P.prompt;
+      if (fresh && goalNow.animate) {
+        goalNow.animate([{ transform: 'translateY(28px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }],
+                        { duration: 650, easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)' });
+      }
+    } else if (goalNowText.textContent !== P.prompt) {
+      goalNowText.textContent = P.prompt;
+    }
+    setPips(P.missLimit || 0, P.chances);
+
+    // the right-hand chip: the reveal, else the last goal's ending for PREV_HOLD_MS
+    let kind = null, key = null;
+    if (P.revealing) { kind = 'reveal'; key = P.revealKey; }
+    else if (P.last && P.last.outcome && P.last.serial !== P.serial) {
+      kind = (P.last.outcome === 'missed') ? 'reveal' : 'answered';
+      key = P.last.key;
+    }
+    const sig = kind ? (kind + '|' + key + '|' + (P.last ? P.last.serial : P.serial)) : '';
+    if (sig !== goalUI.prevSig) { goalUI.prevSig = sig; goalUI.prevSince = Date.now(); }
+    const show = !!(kind && key && (P.revealing || Date.now() - goalUI.prevSince < PREV_HOLD_MS));
+    goalPrev.classList.toggle('hidden', !show);
+    if (!show) return;
+    const p = cardFor(key);
+    goalPrev.classList.toggle('reveal', kind === 'reveal');
+    goalPrev.classList.toggle('answered', kind === 'answered');
+    goalPrevLabel.textContent = kind === 'reveal' ? 'The answer was' : 'Answered!';
+    const src = (typeof TM_PLANT_SPRITE !== 'undefined' && TM_PLANT_SPRITE[key]) || '';
+    if (goalPrevImg.getAttribute('src') !== src) { goalPrevImg.style.visibility = ''; goalPrevImg.setAttribute('src', src); }
+    goalPrevImg.classList.toggle('hidden', !src);
+    goalPrevName.textContent = p ? p.name : key;
+  }
+
   // ==========================================================
   // TRANSITIONS
   // ==========================================================
@@ -420,7 +641,7 @@
   // A screen's moving parts, [element, 'slide' | 'fade' | 'card'], found by id inside the live screen or its clone.
   function screenParts(root) {
     const q = (s) => root.querySelector(s);
-    return root.id === 'selectScreen' ? [[q('#selectCard'), 'fade']]
+    return root.id === 'selectScreen' ? [[q('#selectCard'), 'fade'], [q('#landingBirds'), 'slide']]
       : [[q('#habitatTitle'), 'fade'], [q('#plantCluster'), 'slide'], [q('#card'), 'card']];
   }
   function scrollScreens(outgoing, from, incoming, dir, cardMode) {
@@ -516,9 +737,14 @@
   // ==========================================================
   // INPUT
   // ==========================================================
+  // A visitor's own move (the switch, a plant, a boost, another bird) cancels a bird's navigation on its way.
+  const NAV_KEEPS = { dialTurn: 1, dialReset: 1, hint: 1, storm: 1, eruptionDown: 1, eruptionUp: 1 };
   function onAction(action, payload) {
+    if (!NAV_KEEPS[action]) navToken++;
     if (action.indexOf('habitat:') === 0) { setPos(TM_SCREEN_ORDER.indexOf(action.slice(8))); return; }
     switch (action) {
+      case 'bird':         if (payload) goToBird(payload.fauna, payload.el); break;
+      case 'hint':         TMBus.hint(); break;
       case 'habitatUp':    setPos(state.pos - 1); break;
       case 'habitatDown':  setPos(state.pos + 1); break;
       case 'plantPrev':    stepPlant(-1); break;
@@ -539,15 +765,17 @@
   function onBus(m) {
     switch (m.type) {
       case 'clock':
-        state.clock = m; renderReadout(); break;
+        state.clock = m; renderReadout(); renderGoalStrip(); break;
       case 'goal':
-        state.goal = m; renderReadout(); break;
+        state.goal = m; renderReadout(); renderGoalStrip(); break;
       case 'timelapse':
         state.timelapse = { active: !!m.active, progress: m.progress || 0,
                             yrPerSec: m.yrPerSec, achieved: m.achieved };
         renderReadout(); break;
       case 'boostResult':
-        card.classList.toggle('matched', m.matched === true);
+        if (m.topUp) break;                                      // a press during the time-lapse: the boost's own verdict stands
+        // a late answer to the goal that just left (TMGoals.judgeLate): green, like its line on the wall
+        card.classList.toggle('matched', m.matched === true || m.late === true);
         card.classList.toggle('mismatched', m.matched === false);
         card.classList.toggle('answer', m.goal === 'answer');   // the live plant goal's answer: a white glow
         if (m.text) flashHint(m.text, 7000);                     // the sim's goal verdict (debug readout)
@@ -555,6 +783,8 @@
       case 'eruptionSoon':
         flashHint('Eruption ahead: ' + (m.name || '') + '. Watch the boost, then the ash');
         break;
+      case 'hint':                                               // the H key, here or on the wall (TMGoals.hint)
+        showHint(m); break;
     }
   }
 
@@ -600,6 +830,8 @@
     TMInput.start();
     TMBus.on(onBus);
     preloadImages();
+    buildRail();
+    renderLandingBirds();
     renderCluster();
     render();
     TMBus.hello();   // ask the diorama for its current clock/goal

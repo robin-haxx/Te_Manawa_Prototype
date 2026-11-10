@@ -13,7 +13,10 @@
 //   storm                             : station 2 storm button
 //   boost                             : station 3 boost button
 //   eruptionDown, eruptionUp          : station 3 eruption (press/release → tap vs hold)
-//   dialTurn (payload ±detents), dialReset : the macro pad's TIME DIAL (relayed to the sim's DeepTime)
+//   hint                              : the HINT (H): the wall rings the goal's answers, the climate rail points
+//   bird (payload TM_FAUNA key)       : a landing-page bird was tapped (app.js raises it from the tap itself)
+//   dialTurn (payload ±detents), dialReset : the macro pad's TIME DIAL (relayed to the sim's DeepTime);
+//                                     dialReset also comes from the wheel PRESS (middle button)
 // ============================================================
 
 const TMInput = (function () {
@@ -32,6 +35,7 @@ const TMInput = (function () {
     storm:        ['s', 'S'],
     boost:        ['b', 'B'],
     eruption:     ['e', 'E'],       // keydown → eruptionDown, keyup → eruptionUp
+    hint:         ['h', 'H'],       // the HINT: the wall rings the goal's answers, the climate rail points (the sim takes H too)
     // The TIME DIAL — program the macro pad's encoder to send these (CW / CCW / push). Keep in step
     // with DeepTime.DIAL_KEYS (TeManawa_time.js), which takes the same keys when the sim has focus.
     dialFaster:   [']'],
@@ -93,7 +97,7 @@ const TMInput = (function () {
     }
     if (KEYS.boost.indexOf(k) !== -1) { bDown(); e.preventDefault(); return; }
     const hit = matches({ plantPrev: KEYS.plantPrev, plantNext: KEYS.plantNext,
-                          plantSelect: KEYS.plantSelect, storm: KEYS.storm }, k);
+                          plantSelect: KEYS.plantSelect, storm: KEYS.storm, hint: KEYS.hint }, k);
     if (hit) { emit(hit); e.preventDefault(); return; }
     if (KEYS.eruption.indexOf(k) !== -1) { emit('eruptionDown'); e.preventDefault(); return; }
   }
@@ -111,6 +115,14 @@ const TMInput = (function () {
     if (n !== 0) { wheelAcc -= n * DIAL_WHEEL_STEP; emit('dialTurn', -n); }
     e.preventDefault();
   }
+  // The wheel PRESS (middle button) is the dial's push: back to paused, like the reset key. Taken on
+  // mousedown so the browser's middle-click autoscroll never starts.
+  function onMouseDown(e) {
+    if (e.button !== 1) return;
+    wheelAcc = 0;
+    emit('dialReset');
+    e.preventDefault();
+  }
 
   return {
     // app.js registers one handler: (action, payload) => { … }
@@ -121,6 +133,7 @@ const TMInput = (function () {
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
       window.addEventListener('wheel', onWheel, { passive: false });
+      window.addEventListener('mousedown', onMouseDown);
     },
     switchMode() { return SWITCH_MODE; }
   };

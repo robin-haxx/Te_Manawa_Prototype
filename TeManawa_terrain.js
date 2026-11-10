@@ -416,7 +416,8 @@ const LOOK = {
   gorgeTaper:      0.035,  // along the river, the saddle eases out over this much u beyond the gap's half-width
   gorgeValley:     0.4,   // the carved valley's width in the gorge, as a fraction of the plain's (steep walls)
   gorgeChannel:    0.45,  // the water channel's width in the gorge, as a fraction of the plain's
-  gorgeIncise:     3.5,   // extra incision in the gorge (× riverIncise, on top of the plain's): the bed cuts down toward plain level while the saddle rises around it, and deepens with the incision clock — antecedence you can see
+  gorgeIncise:     3.5,   // extra incision in the gorge (× riverIncise, on top of the plain's): the bed cuts down toward plain level while the saddle rises around it, and deepens with the incision clock — antecedence you can see. This is the MATURE value
+  gorgeInciseStart: 0.15, // the share of gorgeIncise already cut at the 1 Ma onset (a shallow notch through low hills); ramps to 1 with the incision clock (_gorgeDepth)
   // WOODVILLE LAKE (east of the gap). Its own body and clock, not the strait: uplift on the
   // Wellington Fault ponds it from ~1 Ma, and it drains west as the gorge cuts down
   // (GEO_EPOCHS.lake*). It is a widening of the main stem over a short reach east of the gap only,
@@ -2194,9 +2195,18 @@ class TerrainGenerator {
     const k = (typeof LOOK !== 'undefined' && LOOK.gorgeValley != null) ? LOOK.gorgeValley : 1;
     return 1 - (1 - k) * TerrainGenerator._gorgeAlong(u);
   }
-  static _gorgeDepth(u) {
-    const k = (typeof LOOK !== 'undefined' && LOOK.gorgeIncise > 0) ? LOOK.gorgeIncise : 0;
-    return 1 + k * TerrainGenerator._gorgeAlong(u);
+  // The gorge's extra cut GROWS with the incision clock: at 1 Ma Te Āpiti is a shallow notch through
+  // low hills (only LOOK.gorgeInciseStart of the extra), deepening to the full LOOK.gorgeIncise by the
+  // present (~300 m of cut is ~200 kyr at today's 1.5 mm/yr). `inc` is _geoT.incision (0.2 at the
+  // 1 Ma onset → 1 mature, see _geoTimeline); omitted = mature.
+  static _gorgeDepth(u, inc) {
+    const L = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const k = (L.gorgeIncise > 0) ? L.gorgeIncise : 0;
+    if (k === 0) return 1;
+    const s = (L.gorgeInciseStart != null) ? L.gorgeInciseStart : 0.15;
+    let g = 1;
+    if (inc != null) { const n = (inc - 0.2) / 0.8; g = s + (1 - s) * (n <= 0 ? 0 : n >= 1 ? 1 : n); }
+    return 1 + k * g * TerrainGenerator._gorgeAlong(u);
   }
   static _gorgeChannel(u) {
     const k = (typeof LOOK !== 'undefined' && LOOK.gorgeChannel != null) ? LOOK.gorgeChannel : 1;
@@ -3655,7 +3665,7 @@ class TerrainGenerator {
         if (dM < 1) {
           const valleyWM = wMBaseWArr[i] * TerrainGenerator._gorgeValley(u) * TerrainGenerator._mainTaper(wMPosArr[i]) * TerrainGenerator._mainWidthMult(u, straitF, straitRetreat, srFeather, lake) * valleyWiden;
           if (dM < valleyWM) {
-            const tt = 1 - dM / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = wMDepthArr[i] * TerrainGenerator._gorgeDepth(u);
+            const tt = 1 - dM / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = wMDepthArr[i] * TerrainGenerator._gorgeDepth(u, inc);
             if (mainArm > 0) wMaskM *= TerrainGenerator._mainArmPresence(wMPosArr[i], mainArm, mArmKeep, mArmFeather);   // un-jittered position: a clean end at the eastern confluence
           }
         }
@@ -3966,7 +3976,7 @@ class TerrainGenerator {
       mf.d = dm;   // this date's meandered line (matches _applyMeanders)
       const valleyWM = mf.w * TerrainGenerator._gorgeValley(u) * TerrainGenerator._mainTaper(mf.p) * TerrainGenerator._mainWidthMult(u, (t.straitFactor != null ? t.straitFactor : 0), t.straitRetreat, srFeather, t.lake) * valleyWiden;
       if (mf.d < valleyWM) {
-        const tt = 1 - mf.d / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = mf.depth * TerrainGenerator._gorgeDepth(u);
+        const tt = 1 - mf.d / valleyWM; wMaskM = tt * tt * (3 - 2 * tt); wDepthM = mf.depth * TerrainGenerator._gorgeDepth(u, t.incision);
         if (mainArm > 0) wMaskM *= TerrainGenerator._mainArmPresence(mf.p, mainArm, mArmKeep, mArmFeather);
       }
     }
@@ -4383,6 +4393,48 @@ class TerrainGenerator {
 
   get morphInProgress() { return !!this._morphJob; }
 
+  // A morph's phase 0: reshape the sim-facing land to yearsBP. Cheap per-cell combines over the geo
+  // cache, biome classify off the cached wobble. Pure per year (the estuary state is refilled, the
+  // meanders re-derived), which is what lets snapshotYear() visit another date and come back.
+  _reshapeTo(yearsBP) {
+    this._geoT = TerrainGenerator.geoTimeFactors(yearsBP);
+    this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(yearsBP);   // relative sea level (m) → coastal shift at the morph year
+    this._geoT.coastShiftU = TerrainGenerator.coastShiftU(yearsBP);      // the coast's move, for the dune belt
+    this._geoT.estuary = TerrainGenerator.estuaryStrength(yearsBP);      // drowned-valley highstand at the morph year
+    this._geoT.estFillAge = TerrainGenerator.stillstandAge(yearsBP);     // the Opiki cycle's clock
+    this._geoT.estMax = TerrainGenerator.estuaryMax(yearsBP);            // … and its memory
+    if (this._geoUpliftOverride != null) this._geoT.uplift = this._geoUpliftOverride;   // GEO.uplift() authoring preview
+    if (!this._geoCache) { this._prepGeo(); this._buildGeoCache(); }
+    this._applyGeoToHeightMap();
+    this._rebuildBiomeMap();
+    this._initSnowColors();
+    this._initColdCover();
+  }
+
+  // THE LAND AT ANOTHER DATE, without moving the live one (TeManawa_attract.js: the present-day map).
+  // Reshapes to yearsBP (phase 0), paints it (passes 1–2) and bakes ONE glacial-phase buffer, calls
+  // visit(this) while that land is live (paintLiftAt / waterTypeAt read it), then reshapes and repaints
+  // back to restoreYearsBP, the date the live buffers were baked at. The live season buffers are never
+  // touched, and every step is pure per year, so the land comes back identical. Returns a pooled bake
+  // buffer (the caller hands it back with _releaseBakeBuffer), or null while a morph job is running.
+  // Synchronous: about one morph's paint and bake, so call it under a cover.
+  snapshotYear(yearsBP, restoreYearsBP, seasonKey = 'interglacial', visit = null) {
+    if (this._morphJob || !this._baseNoise || restoreYearsBP == null) return null;
+    const paintAt = (y) => {
+      this._reshapeTo(y);
+      this._paintGridBegin();
+      this._paintGridPass1(0, this._paintH);
+      this._paintGridPass2(0, this._paintH);
+    };
+    paintAt(yearsBP);
+    const st = this._bakeSeasonBegin(seasonKey);
+    this._bakeSeasonColumns(st, 0, this._paintW);
+    const buf = this._bakeSeasonEnd(st);
+    if (visit) visit(this);
+    paintAt(restoreYearsBP);
+    return buf;
+  }
+
   // Rows (or columns) per morph chunk: the whole lines that fit in `cells`, never fewer than one.
   // `span` is the line length (paint width for row bands, height for column bands). Pure, so
   // tools/bootcheck.js asserts it.
@@ -4428,20 +4480,7 @@ class TerrainGenerator {
 
     do {
       if (job.phase === 0) {
-        // Reshape the sim-facing land: cheap per-cell combines over the geo
-        // cache, biome classify off the cached wobble. Same calls as morphTo().
-        this._geoT = TerrainGenerator.geoTimeFactors(job.yearsBP);
-        this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(job.yearsBP);   // relative sea level (m) → coastal shift at the morph year
-        this._geoT.coastShiftU = TerrainGenerator.coastShiftU(job.yearsBP);      // the coast's move, for the dune belt
-        this._geoT.estuary = TerrainGenerator.estuaryStrength(job.yearsBP);      // drowned-valley highstand at the morph year
-        this._geoT.estFillAge = TerrainGenerator.stillstandAge(job.yearsBP);     // the Opiki cycle's clock
-        this._geoT.estMax = TerrainGenerator.estuaryMax(job.yearsBP);            // … and its memory
-        if (this._geoUpliftOverride != null) this._geoT.uplift = this._geoUpliftOverride;   // GEO.uplift() authoring preview
-        if (!this._geoCache) { this._prepGeo(); this._buildGeoCache(); }
-        this._applyGeoToHeightMap();
-        this._rebuildBiomeMap();
-        this._initSnowColors();
-        this._initColdCover();
+        this._reshapeTo(job.yearsBP);
         job.phase = 1;
       } else if (job.phase === 1) {
         this._bakeScaleOverride = job.bakeScale;

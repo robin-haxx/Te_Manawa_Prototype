@@ -23,8 +23,11 @@
       <h1>Habitat Explorer</h1>
       <div class="prompt-sub"><b>Move the switch on the left,</b></div>
       <div class="prompt-sub">And uncover the ancient secrets of the Manawatū...</div>
-      
+      <div class="prompt-birds">Or tap a bird to find a plant that helps it</div>
     </div>
+    <!-- the birds round the card (TM_LANDING_BIRDS; app.js renderLandingBirds): the warm habitats'
+         birds above it, the cold ones below, like the switch. A tap scrolls to a plant that helps it. -->
+    <div id="landingBirds"></div>
   </div>
 
   <!-- ============ HABITAT screen (forest/wetland/lowland/alpine) ============ -->
@@ -47,6 +50,7 @@
         <div id="cardHead">
           <div id="cardTitle">
             <h2 id="cardName"></h2>
+            <div id="cardAlt"></div>
             <div id="cardSci"></div>
           </div>
           <div id="cardScene">
@@ -62,6 +66,33 @@
         <div id="cardMore"><span class="chev" aria-hidden="true"></span>Scroll for more</div>
       </div>
     </div>
+  </div>
+
+  <!-- ============ the goal strip, along the bottom (app.js renderGoalStrip) ============
+       The wall's goal, from the sim's telemetry: the question and its chances under the plants, and under the card how the
+       last goal ended (its answer, or "Answered!"). Visitors miss, come back here to hunt for the
+       answer, and must see that the goal changed. Outside the screens so a habitat switch leaves it still. -->
+  <div id="goalStrip" class="hidden" aria-live="polite">
+    <div id="goalPrev" class="hidden">
+      <span id="goalPrevTick" class="tick" aria-hidden="true"></span>
+      <span id="goalPrevLabel"></span>
+      <img id="goalPrevImg" alt="" onerror="this.style.visibility='hidden'">
+      <span id="goalPrevName"></span>
+    </div>
+    <div id="goalNow">
+      <span id="goalNowText"></span>
+      <span id="goalPips" aria-hidden="true"></span>
+    </div>
+  </div>
+
+  <!-- ============ the climate rail, left edge (app.js renderRail / showHint) ============
+       Says which way is which on the switch: UP to the interglacial habitats, DOWN to the glacial ones,
+       with a stop per position and the current one marked. The HINT (H) makes it point to the screen
+       the goal's answer is on. Outside the screens, so it holds still while they scroll. -->
+  <div id="climateRail" aria-hidden="true">
+    <div class="railEnd up"><span class="railChev"></span><span class="railLabel">Interglacial</span></div>
+    <div id="railTrack"></div>
+    <div class="railEnd down"><span class="railLabel">Glacial</span><span class="railChev"></span></div>
   </div>
 
   <!-- ============ readout: KYA · stage · goal · timelapse ============ -->
@@ -89,9 +120,11 @@
 </div>
 
 <!-- load order: the kiosk layer first (its error handlers armed before anything else runs),
-     then data + bus + input before the app -->
+     then data + bus + input before the app. The goal book is the sim's own: pure, and only read
+     here for the words each card shows in bold. -->
 <script src="kiosk.js"></script>
 <script src="encyclopedia.js"></script>
+<script src="../TeManawa_goals.js"></script>
 <script src="bus.js"></script>
 <script src="input.js"></script>
 <script src="app.js"></script>

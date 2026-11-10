@@ -10,6 +10,22 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A health bar that could not do what it was for
+
+- **What happened.** The top band's health bar was asked to fall when a visitor overused storm or got goals
+  wrong, and to fill when they got them right. It could do neither. It could not read under half (a fixed
+  floor). One wrong boost wiped everything earned at once, so "successive" meant nothing. Four right answers
+  could not fill it, and storms and eruptions did not touch its length at all. A button eruption reset it,
+  because it rebuilds the Simulation the number lived on.
+- **Root cause.** The bar was a by-product: the share of the habitats' homeostasis lift that was banked. A
+  good measure of the plants, but it inherited their rules (a lift is per-habitat, a wrong boost cleared it)
+  and could only ever say what they said. Every behaviour wanted of the bar was a behaviour nobody had
+  written down as a test.
+- **Rule.** Give an indicator its own number, moved by the events it is meant to report, and have the world
+  read it. Write its stated behaviours as harness tests through the real seams, from more than one starting
+  level: a rule that only works from the start is not the rule. State that must outlive a button eruption has
+  to be carried across `Game.applyEruptionAt`, which builds a new Simulation.
+
 ## A fixed cut on a river that moves: the upper Manawatū lost the main
 
 - **What happened.** At about a third of the dates, the main stem stopped a few px short of the upper
@@ -628,8 +644,8 @@ comment) and, where general, in `CLAUDE.md`.
   churn, not ill health — so the ratio never sits at 1 on a healthy map.
 - **Consequence.** A healthy, undisturbed map read as unwell and stayed visibly
   desaturated.
-- **Rule.** Health is `ash disturbance × regime fit × recruitment`, all of which
-  read exactly 1 on an undisturbed map. Don't reintroduce a raw living-cover term.
+- **Rule.** Health is `ash disturbance × regime fit × recruitment × the ledger`, all of
+  which read exactly 1 on an undisturbed map. Don't reintroduce a raw living-cover term.
   `Game._updateHabitatHealth` in `TeManawa_sketch.js`.
 
 ## Climate as a sine wave

@@ -12,6 +12,10 @@
 //   · Plant `key` matches PLANT_TYPES in ../TeManawa_plant_defs.js, so a boost
 //     names a species the sim already knows (that key is sent over the bus).
 //     A plant can sit on two screens with different copy and fauna per card.
+//   · Names: every card shows te reo, English and Latin. `name` is the headline, and the name the wall's
+//     verdict lines use. `en` adds English under a te reo name, `reo` adds te reo under an English one (a
+//     Latin headline takes both). Tōtara, nīkau, tawa and kōwhai take neither: English uses the te reo word,
+//     macrons aside. tools/bootcheck.js holds every card to this. Sources: md/TEMANAWA_ENCYCLOPEDIA_FLORA.md §7.
 //   · Positions (cx, cy, h) are on the 1920×1080 stage, sprite CENTRED at
 //     (cx, cy), rendered `h` px tall. Tune freely.
 //   · sprite/highlight paths are relative to secondscreen/ (so '../sprites/…').
@@ -80,6 +84,41 @@ const TM_SCREEN_ORDER = ['wetland', 'forest', 'select', 'alpine', 'lowland'];
 // it when set: drop e.g. assets/bg_alpine.png in and point that habitat's bg at it.
 const TM_BG_DEFAULT = 'assets/Background_Base.png';
 
+// How GLACIAL each switch position looks, 0 (interglacial) → 1 (full glacial). The background
+// texture is colour-shifted by it (app.js applyClimateTint: green → icy blue, a little paler), easing
+// as the switch moves, so the screens read as one gradient from the warm habitats above to the cold
+// ones below. 0 is the texture as drawn: the interglacial forest. The climate rail on the left edge
+// takes its stop colours from the same numbers.
+const TM_SCREEN_CLIMATE = { wetland: 0, forest: 0, select: 0.45, alpine: 0.85, lowland: 1 };
+
+// ---- THE LANDING PAGE'S BIRDS (the 'select' screen) ------------------------
+// Every bird in TM_FAUNA, standing round the "Habitat Explorer" card. Tapping one scrolls the switch
+// position by position to a screen with a plant that helps it, then highlights that plant (app.js
+// goToBird). Laid out like the switch: the birds of the warm (interglacial) plants ABOVE the card, the
+// cold (glacial) ones BELOW, and the two found in both at the sides. A bird on two plants goes to the
+// one in the climate the wall is in now, else the nearer. `fauna` is a TM_FAUNA key; (cx, cy, h) as for
+// plants: the sprite CENTRED, h px tall; `flip` mirrors it. tools/bootcheck.js ("encyclopedia
+// roster") checks that every bird is here once and has a plant to go to.
+const TM_LANDING_BIRDS = [
+  // interglacial: above the card
+  { fauna: 'eyles_harrier',          cx: 330,  cy: 130, h: 150 },
+  { fauna: 'kokako',                 cx: 540,  cy: 130, h: 140 },
+  { fauna: 'kereru',                 cx: 750,  cy: 130, h: 140 },
+  { fauna: 'little_bush_moa',        cx: 960,  cy: 130, h: 150 },
+  { fauna: 'mantells_moa',           cx: 1170, cy: 130, h: 150 },
+  { fauna: 'takahe',                 cx: 1380, cy: 135, h: 130, flip: true },
+  { fauna: 'kiwi',                   cx: 1590, cy: 140, h: 120, flip: true },
+  // both climates: at the sides
+  { fauna: 'tui',                    cx: 225,  cy: 520, h: 140 },
+  { fauna: 'finschs_duck',           cx: 1700, cy: 525, h: 130, flip: true },
+  // glacial: below the card
+  { fauna: 'huia_male',              cx: 560,  cy: 915, h: 140 },
+  { fauna: 'huia_female',            cx: 760,  cy: 915, h: 140, flip: true },
+  { fauna: 'giant_goose',            cx: 960,  cy: 915, h: 140 },
+  { fauna: 'north_island_giant_moa', cx: 1160, cy: 912, h: 180, flip: true },
+  { fauna: 'stout_legged_moa',       cx: 1360, cy: 915, h: 150, flip: true }
+];
+
 // `era` is the climate the habitat belongs to ('interglacial' | 'glacial'): data for the
 // harness gate check (and any future era label), not rendered today.
 const TM_HABITATS = {
@@ -92,7 +131,7 @@ const TM_HABITATS = {
     era: 'interglacial',
     bg: null,
     plants: [
-      { key: 'cabbagetree', name: 'Tī kōuka', sci: 'Cordyline australis',   // ✓ mockup card (its kererū link moved to tawa)
+      { key: 'cabbagetree', name: 'Tī kōuka', en: 'Cabbage tree', sci: 'Cordyline australis',   // ✓ mockup card (its kererū link moved to tawa)
         desc: [
           "The cabbage tree can regrow from its base if it's damaged!",
           "Tī kōuka loves wet ground, but it's hardy enough to survive glacial climates."
@@ -103,28 +142,30 @@ const TM_HABITATS = {
         ],
         sceneScale: 1.16, birdScale: 1.45, fauna: ['finschs_duck'],
         cx: 495, cy: 380, h: 317 },
-      { key: 'kahikatea', name: 'Kahikatea', sci: 'Dacrycarpus dacrydioides',
+      { key: 'kahikatea', name: 'Kahikatea', en: 'White pine', sci: 'Dacrycarpus dacrydioides',
         desc: [
           "Kahikatea is New Zealand's tallest tree, growing up to 60 metres! Long stands of kahikatea lined the ancient wetlands along the Manawatū River.",
-          "You might see kahikatea die and grow back as the river shifts: its seedlings need fresh, wet silt at the water's edge. At Round Bush near Foxton, people crossed the flooded forest by stepping along its raised roots. Birds eat its red berries and spread the seeds.",
+          "You might see kahikatea die and grow back as the river shifts: its seedlings need fresh, wet silt at the water's edge. In the swamp forests near Foxton, people crossed the floodwater by stepping along its raised roots. Birds eat its red berries and spread the seeds.",
           "Kahikatea wood was used to make butter boxes, and since the wetlands were drained, almost all of it is gone."
         ],
         birdDesc: [
           "Bush moa lived in thick forest. Over many generations they evolved a strong beak for snipping twigs and leaves. They ate lots of fern fronds, and may have helped spread fern spores through the forest!",
-          "Bush moa browsed the young plants of the swamp forest floor. Their nibbling trimmed seedlings back but rarely killed them: the forest and the moa lived together for millions of years."
+          "Bush moa browsed the young plants of the swamp forest floor. Their nibbling trimmed seedlings back but rarely killed them: the forest and the moa lived together for millions of years.",
+          "Moa had no trace of wing bones."
         ],
         crop: 'bottom', sceneShift: -60, fauna: ['little_bush_moa'],
         // a bush moa browsing the seedlings at its foot
         birdStage: [
           { fauna: 'little_bush_moa', sprite: '../sprites/Moa/BushMoa/Eating/BushMoa_Eating_00005.png', h: 110, left: '-34%', bottom: '-6%' }
         ], cx: 250, cy: 600, h: 493 },
-      { key: 'flax', name: 'Harakeke', sci: 'Phormium tenax',
+      { key: 'flax', name: 'Harakeke', en: 'New Zealand flax', sci: 'Phormium tenax',
         desc: [
-          "Harakeke grows to about 3 metres tall, and its flower stalks can reach 5 metres – taller than a ceiling! Tūī carry pollen between its flowers as they drink the nectar.",
-          "Harakeke was actually less common in ancient times. It spread through the Manawatū after the swamps were drained and the rivers stopbanked, and it fed a huge flax-milling industry. The Moutoa swamp plant survey was carried out to help manage the flax crop."
+          "Harakeke grows to about 3 metres tall, and its flower stalks can reach 5 metres, taller than a ceiling! Tūī carry pollen between its flowers as they drink the nectar.",
+          "Harakeke was actually less common in ancient times. It spread through the Manawatū after the swamps were drained and the rivers stopbanked, and it fed a huge flax-milling industry. Flax was so valuable that people mapped the Moutoa swamp just to manage the crop."
         ],
         birdDesc: [
-          "Mantell's moa was a stocky moa of lowland swamps and dunes, with a strong bill suited to tough, fibrous plants like harakeke."
+          "Mantell's moa was a stocky moa of lowland swamps and dunes, with a strong bill suited to tough, fibrous plants like harakeke.",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['mantells_moa'],
         // Mantell's moa tugging at the tough leaves
@@ -148,7 +189,7 @@ const TM_HABITATS = {
         birdStage: [
           { fauna: 'eyles_harrier', sprite: '../sprites/EylesHarrier/Flying/EylesHarrier_Flying_00001.png', h: 200, left: '24%', top: '-17%' }
         ], cx: 795, cy: 560, h: 546 },
-      { key: 'sedge', name: 'Pūrei', sci: 'Carex secta',
+      { key: 'sedge', name: 'Pūrei', en: 'Swamp sedge', sci: 'Carex secta',
         desc: "Pūrei stands in open water on a trunk-like pedestal of its own old roots, the first "
             + "plant at the swamp's deep edge. After a big eruption, ash-silted swamp margins "
             + "widen and sedges spread.",
@@ -195,7 +236,7 @@ const TM_HABITATS = {
           "It grows in the Manawatū's lowland forest, and in ancient times at the edges of wetlands. Its red berries feed forest birds."
         ],
         birdDesc: [
-          "Kōkako filled the forest with song in the warm interglacials, eating many kinds of forest fruit and leaves.",
+          "Kōkako are wattlebirds, with bright blue wattles at the base of the beak. They filled the forest with song in the warm interglacials, eating many kinds of forest fruit and leaves.",
           "As kōkako feed on nīkau's red berries, they carry some of the seeds away and help plant new forest.",
         ],
         crop: 'top', birdScale: 1.45, fauna: ['kokako'],
@@ -210,7 +251,7 @@ const TM_HABITATS = {
         ],
         birdDesc: [
           "Tawa has the biggest seeds of any plant here, and it needs kererū: today they're the only bird big enough to swallow and spread them!",
-          "Moa didn't spread tawa, because the stones they swallowed (gastroliths) ground up seeds in their gizzards. So kererū don't just sit around eating – they're working hard to plant the forest!"
+          "Moa didn't spread tawa, because the stones they swallowed (gastroliths) ground up seeds in their gizzards. So kererū don't just sit around eating: they're working hard to plant the forest!"
         ],
         crop: 'top', cropKeep: 0.72, fauna: ['kereru'],
         // two kererū in the canopy: one swallowing fruit, one flying in
@@ -218,13 +259,13 @@ const TM_HABITATS = {
           { fauna: 'kereru', sprite: '../sprites/Flighted/Kereru/Eating/Kereru_Eating_00003.png', h: 170, right: '-16%', top: '6%', flip: true },
           { fauna: 'kereru', sprite: '../sprites/Flighted/Kereru/Flying/Kereru_Flying_00007.png', h: 170, left: '-46%', top: '-14%', rotate: 6 }
         ], cx: 830, cy: 470, h: 334 },
-      { key: 'fern', name: 'Mamaku & Ponga', sci: 'Cyathea medullaris, C. dealbata',
+      { key: 'fern', name: 'Mamaku & Ponga', en: 'Black tree fern & silver fern', sci: 'Cyathea medullaris, C. dealbata',
         desc: [
           "Mamaku is Aotearoa's tallest tree fern, growing up to 20 metres tall! Ponga's fronds are green on top and brilliant silver underneath.",
-          "Tree ferns need a warm climate: in the ice ages, the amount of tree-fern pollen fell by about 90%. Good thing they grow back fast – the botanist Alan Esler saw thick stands of mamaku grow up in about 50 years."
+          "Tree ferns need a warm climate: when an ice age came around, they almost disappeared. Thankfully, they grow back faster than trees, and dense stands of mamaku can grow in about 50 years."
         ],
         birdDesc: [
-          "Kiwi love ferns, because a ferny forest floor is damp and sheltered, full of bugs and rich soil – perfect for probing with their long beaks at night! All that probing turns over the soil and mixes in fallen leaves, keeping the forest floor rich."
+          "Kiwi love ferns, because a ferny forest floor is damp and sheltered, full of bugs and rich soil, perfect for probing with their long beaks at night! All that probing turns over the soil and mixes in fallen leaves, keeping the forest floor rich."
         ],
         birdScale: 1.45, fauna: ['kiwi'], cx: 830, cy: 830, h: 229 },
       { key: 'kowhai', name: 'Kōwhai', sci: 'Sophora microphylla, S. godleyi',
@@ -256,7 +297,7 @@ const TM_HABITATS = {
       // Mountain beech, not black beech (2026-10-15): black beech is the lowland Aokautere patch; the
       // beech of the ranges is mountain beech (Ruahine treeline; Tararua has silver beech instead).
       // LGM "Fuscospora-type" pollen can't separate the two, so the ice-age claim holds for either.
-      { key: 'beech', name: 'Mountain Beech', sci: 'Fuscospora cliffortioides',
+      { key: 'beech', name: 'Mountain Beech', reo: 'Tāwhairauriki', sci: 'Fuscospora cliffortioides',
         desc: [
           "There are five Beech species in Aotearoa, and Mountain beech claims the high country. In the Ruahine Range it climbs right up to the \"treeline,\" where forest ends and tussock-land begins.",
           "In glacial times, beech filled forests. Cold pushed whole forests downhill, but Beech held in harsh soil while other trees died away.",
@@ -274,10 +315,10 @@ const TM_HABITATS = {
           { fauna: 'huia_female', sprite: '../sprites/Flighted/Huia_Female/Eating/HuiaFemale_Eating_00004.png', h: 160, right: '-6%', top: '16%', flip: true }
         ],
         cx: 275, cy: 725, h: 405 },
-      { key: 'wharariki', name: 'Wharariki', sci: 'Phormium cookianum',
+      { key: 'wharariki', name: 'Wharariki', en: 'Mountain flax', sci: 'Phormium cookianum',
         desc: [
           "Mountain flax is the smaller, drooping cousin of harakeke, at home on the cold, windswept tops of the Tararua and Ruahine ranges.",
-          "On Aruwaru, a summit of the northern Tararua, it moves in where old leatherwood dies, and it crosses with harakeke where the two meet.",
+          "High in the northern Tararua, it moves in where old leatherwood dies, and it crosses with harakeke where the two meet.",
           "Its yellow-green flowers are full of nectar, and birds carry their pollen from plant to plant. Its seeds blow away on the wind."
         ],
         birdDesc: [
@@ -290,7 +331,7 @@ const TM_HABITATS = {
           { fauna: 'tui', sprite: '../sprites/Flighted/Tui/Eating/Tui_Eating_00003.png', h: 180, left: '26%', top: '13%', flip: true, rotate: -10 },
           { fauna: 'tui', sprite: '../sprites/Flighted/Tui/Flying/Tui_Flying_00011.png', h: 165, left: '-78%', top: '-20%', rotate: 8 }
         ], cx: 250, cy: 375, h: 229 },
-      { key: 'tussock', name: 'Snow Tussock', sci: 'Chionochloa',
+      { key: 'tussock', name: 'Snow Tussock', reo: 'Wī kura', sci: 'Chionochloa',
         desc: [
           "The grass of the high tops. In the ice ages, tussock grassland ran from the coast to the summits.",
             "Alpine country itself is young: permanent for only a million years. Can you see the ranges forming when time is boosted forward?",
@@ -308,16 +349,17 @@ const TM_HABITATS = {
         ], cx: 515, cy: 470, h: 150 },
       // Shares the giant moa with Subalpine Scrub (the one shared bird; tools/bootcheck.js allows this
       // pair). No moa diet record names Dracophyllum, so the copy says so rather than claiming it.
-      { key: 'dracophyllum', name: 'Dracophyllum', sci: 'Dracophyllum filifolium',
+      { key: 'dracophyllum', name: 'Dracophyllum', reo: 'Īnanga', en: 'Grass tree', sci: 'Dracophyllum filifolium',
         desc: [
           "Aotearoa has more kinds of Dracophyllum than anywhere else in the world! Most of them appeared in the last few million years, as the mountains rose and the ice ages began.",
           "Stiff, needle-leaved and wind-proof, it rides out storms that can blow down tall trees. It could only make a home here once the Ruahine and Tararua ranges rose high enough to have cold, windswept tops.",
-          "In glacial times, the Manawatū may have looked like Campbell Island today, where Dracophyllum is the main woody plant. As the cold pushed the treeline down, scrub like this spread down the slopes.",
-          "This species was named from plants that William Colenso collected in the Ruahine Range. Today it grows in the leatherwood scrub of the Tararua tops, even on Aruwaru."
+          "In glacial times, the Manawatū may have looked like the windswept islands far south of New Zealand, where Dracophyllum is the main woody plant. As the cold pushed the treeline down, scrub like this spread down the slopes.",
+          "Today it grows in the leatherwood scrub of the Tararua tops."
         ],
         birdDesc: [
           "The North Island giant moa roamed all the way from the coast up to the mountaintops, into the herbfields and grasslands above the trees.",
-          "Did giant moa eat Dracophyllum's stiff, needle-like leaves? Nobody knows for sure! Scientists find out what moa ate by studying their fossil droppings and the food left in their gizzards."
+          "Did giant moa eat Dracophyllum's stiff, needle-like leaves? Nobody knows for sure! Scientists find out what moa ate by studying their fossil droppings and the food left in their gizzards.",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['north_island_giant_moa'],
         sceneShift: -100,   // slide the plant left to make room for the moa
@@ -325,7 +367,7 @@ const TM_HABITATS = {
         birdStage: [
           { fauna: 'north_island_giant_moa', sprite: '../sprites/Moa/GiantMoa/Eating/NorthMoa_Eating_00009.png', h: 300, left: '30%', bottom: '-8%', flip: true }
         ], cx: 760, cy: 420, h: 299 },
-      { key: 'coprosma', name: 'Subalpine Scrub', sci: 'Olearia colensoi, Coprosma',
+      { key: 'coprosma', name: 'Subalpine Scrub', reo: 'Tūpare', sci: 'Olearia colensoi, Coprosma',
         desc: [
           "At the \"bushline,\" tough shrubs take over from trees: leatherwood, coprosma and many others grow together in a dense thicket.",
           "The southern Ruahine has the biggest unbroken stretch of leatherwood scrub in New Zealand. It's so thick that trampers once had to crawl underneath it, or walk across the top!",
@@ -335,6 +377,7 @@ const TM_HABITATS = {
           "The giant moa browsed on coprosma, even up in the rising ranges!",
           "The North Island giant moa was one of the tallest birds that ever lived. The females were far bigger than the males: about one and a half times as tall, and nearly three times as heavy!",
           "Giant moa browsed leaves, twigs and fruit, and could reach branches three metres up. They lived everywhere from the coast to the mountaintops, and there were more of them in patchy, shrubby country than in thick forest.",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['north_island_giant_moa'], cx: 650, cy: 760, h: 317 }
     ]
@@ -348,13 +391,15 @@ const TM_HABITATS = {
     era: 'glacial',
     bg: null,
     plants: [
-      { key: 'manuka', name: 'Mānuka', sci: 'Leptospermum scoparium',   // ✓ mockup card (its kōkako link moved to nīkau)
+      { key: 'manuka', name: 'Mānuka', en: 'Tea tree', sci: 'Leptospermum scoparium',   // ✓ mockup card (its kōkako link moved to nīkau)
         desc: "The tough pioneer of poor ground, holding the dry sand plains and leached terraces. "
+            + "After an eruption, it spreads onto the bare volcanic ash. "
             + "The stout-legged moa browsed this open, dry scrub. New Zealand mānuka has evolved "
             + "apart from Australia's for about ten million years.",
         birdDesc: [
           "The stout-legged moa was short and heavy, with thick, powerful legs. It lived in the drier, more open lowlands and along the coast, eating leaves and fruit.",
-          "Stout-legged moa came in very different sizes, and the biggest lived in the south of the North Island, around places like the Manawatū!"
+          "Stout-legged moa came in very different sizes: the smallest lived in the far north, and they grew bigger the further south they lived. Around the Manawatū, they were some of the biggest in the North Island!",
+          "Moa had no trace of wing bones."
         ],
         crop: 'bottom', fauna: ['stout_legged_moa'],
         // a stout-legged moa browsing under the scrub
@@ -362,7 +407,7 @@ const TM_HABITATS = {
           { fauna: 'stout_legged_moa', sprite: '../sprites/Moa/CoastalMoa/Eating/CoastalMoa_Eating_00005.png', h: 190, left: '-30%', bottom: '-10%' }
         ],
         cx: 795, cy: 725, h: 334 },
-      { key: 'coprosma', name: 'Grey Scrub', sci: 'Coprosma, Muehlenbeckia',
+      { key: 'coprosma', name: 'Grey Scrub', reo: 'Mingimingi, pōhuehue', sci: 'Coprosma, Muehlenbeckia',
         desc: [
           "Many native shrub plants have tiny leaves, on branches that grow out wide to form a criss-crossed net. Did they grow that way to fend off the moa, or to survive ice-age frost and wind? Scientists still argue.",
           "Scrub plants \"pioneer\" the forest's regrowth after a super-volcanic eruption: that tangled pōhuehue scrambles over the bare, broken ground, and coprosma follows, creating better ground for the forest to regenerate.."
@@ -370,10 +415,11 @@ const TM_HABITATS = {
         birdDesc: [
           "The North Island giant moa was one of the tallest birds that ever lived. The females were far bigger than the males: about one and a half times as tall, and nearly three times as heavy!",
           "Giant moa browsed leaves, twigs and fruit, and could reach branches three metres up. They lived everywhere from the coast to the mountaintops, and there were more of them in patchy, shrubby country than in thick forest.",
-          "Look at those tangled branches: could a moa get its beak in there?"
+          "Look at those tangled branches: could a moa get its beak in there?",
+          "Moa had no trace of wing bones."
         ],
         fauna: ['north_island_giant_moa'], cx: 495, cy: 350, h: 264 },
-      { key: 'tussock', name: 'Tussock', sci: 'Poa, Festuca, Rytidosperma',
+      { key: 'tussock', name: 'Tussock', reo: 'Wī, pātītī', sci: 'Poa, Festuca, Rytidosperma',
         desc: "In the glacial ice ages, grass covered the open plains. "
                    +"Much of the Manawatū lowland was cold, windswept flats, which grew as it became colder. "
                    +"The North Island Giant Goose ventured far inland, thriving among tussock country!",
@@ -397,7 +443,7 @@ const TM_HABITATS = {
         birdStage: [
           { fauna: 'tui', sprite: '../sprites/Flighted/Tui/Eating/Tui_Eating_00003.png', h: 180, right: '-14%', top: '-2%', flip: true }
         ], cx: 230, cy: 685, h: 334 },
-      { key: 'cabbagetree', name: 'Tī kōuka', sci: 'Cordyline australis',
+      { key: 'cabbagetree', name: 'Tī kōuka', en: 'Cabbage tree', sci: 'Cordyline australis',
         desc: [
           "The cabbage tree can regrow from its base if it's damaged!",
           "Tī kōuka loves wet ground, but it's hardy enough to survive glacial climates."

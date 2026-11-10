@@ -883,6 +883,11 @@ const HEALTH = {
   regimeMatchRate:    0.010,  // per-frame ease of fit toward 1 while pressing the right one
   regimeRelaxRate:    0.004,  // per-frame ease of fit back toward 1 when no growth button is held
 
+  // The ledger (Simulation.ecoHealth, the HUD's bar): a land run down below where a visitor found it stays
+  // drained, not just for the moment of the press. 1 at healthStart and above, so the default look is
+  // untouched; this in the poor state.
+  ledgerFloor:        0.30,
+
   // Step 3 — recruitment: in the interglacial the forest should be regenerating via kererū
   // seed dispersal. If there are no kererū to do it, recruitment stalls and the forest thins,
   // so R falls; in the glacial the forest isn't recruiting anyway, so R relaxes back (no
@@ -1338,7 +1343,7 @@ class Game {
   // clock, so re-seek AFTER), morph the terrain to that year under the ash flash,
   // then apply the ash clearing. The clock plays on and the land greens back as ash decays.
   // Used by the Eruption button for BOTH revert (previous event) and skip (next event).
-  applyEruptionAt(targetYear, eruption) {
+  applyEruptionAt(targetYear, eruption, opts = null) {
     // ORDER MATTERS. Reshape the terrain to the target year BEFORE spawning the living
     // world, so plants (and moa) seed against the RIGHT biome map. Spawning first and
     // morphing after seeded them on the old land and stranded them in the NEW sea when a
@@ -1351,8 +1356,14 @@ class Game {
       this._lastMorphMs = (typeof millis === 'function') ? millis() : Date.now();
     }
     if (this.water) this.water.build(this.terrain, targetYear);  // re-stamp water to the morphed sea/river (eels gated by targetYear)
+    // The rebuild is a new Simulation, but the visitor has not changed: the land's health, its habitats'
+    // banked lifts and its birds' link steps carry across it, and the new land is filled to the targets
+    // they imply (Simulation.restoreCarry, THE LAND THROUGH A REBUILD), so applyAsh below hits the land
+    // an eruption in place would have. opts.fresh (Kiosk.resetToAttract, a new visitor) carries nothing.
+    const carry = (this.simulation && !(opts && opts.fresh)) ? this.simulation.carryState() : null;
     this.resetEcosystem();                                       // spawns against the morphed (target-year) biome map (also DeepTime.reset())
-    if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);   // ...so re-seek after the rebuild (§3.4)
+    if (typeof DeepTime !== 'undefined') DeepTime.seekTo(targetYear);   // ...so re-seek after the rebuild (§3.4), before the settle reads the year's palette
+    if (carry && this.simulation) this.simulation.restoreCarry(carry);
     this.applyAsh(eruption);
     this._autoPrevYear = targetYear;                             // the auto-check must not re-fire the event we just placed
   }
@@ -1360,6 +1371,9 @@ class Game {
   applyAsh(eruption) {
     const T = (typeof DeepTime !== 'undefined' && DeepTime.TIERS) || null;
     const tier = (T && eruption && T[eruption.tier]) || (T && T.major) || { clearFraction: 0.6, decayYears: 18000 };
+    // Every eruption path lands here (button, timeline crossing, a boost stopped short): halt any
+    // timelapse / deep burst / dial speed-up so the aftermath plays at the eruption's date.
+    if (typeof DeepTime !== 'undefined' && DeepTime.haltForEruption) DeepTime.haltForEruption();
     this._ashCover = 1;
     this._ashFromYear = (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : 0;
     this._ashDecayYears = tier.decayYears || 18000;
@@ -1370,6 +1384,10 @@ class Game {
     this._ashArmedMs = (typeof millis === 'function') ? millis() : 0;
     this._ashCycleMs = (typeof DeepTime !== 'undefined' && DeepTime.aftermathMs) ? DeepTime.aftermathMs(this._ashFromYear) : 0;
     this._ashTlSeen = false; this._ashTlFrom = 0; this._ashTlCover0 = 0;
+    // The ledger takes the eruption's knock, by its tier (Simulation.onEruption), and the line moves to
+    // the goal that answers it (answering that one counts double: TeManawa_bus.js onBoost).
+    if (this.simulation) this.simulation.onEruption(this._ashTier);
+    if (typeof TMGoals !== 'undefined') TMGoals.onEruption();
     const plants = this.simulation && this.simulation.plants;
     if (plants) {
       const PT = (typeof PLANT_TYPES !== 'undefined') ? PLANT_TYPES : null;
@@ -1456,6 +1474,7 @@ class Game {
         // guard can't re-trigger it mid-ramp. If a charge is already running (a manual hold, or
         // two events cross close together under fast-forward), fire this one instantly instead.
         this._firedEruptions.add(e);
+        DeepTime.haltForEruption();            // stop the fast-forward AT the eruption, not 5 s of dial later
         if (!this._tmAutoErAt && !this._tmErDownAt) {
           this._tmAutoErAt = millis(); this._tmAutoErupt = ER[i];
         } else {
@@ -1667,10 +1686,10 @@ class Game {
   // per-frame cap so a whole-scene colour change can never land as a cut (photosensitivity).
   // md/archive/TEMANAWA_INTERACTION_HEALTH_PLAN.md §1, §5. Allocation-free (hot path).
   //
-  // Health = ash disturbance × regime fit × recruitment. The ash term is grazing-
-  // independent and reads exactly 0 on an undisturbed map, so the DEFAULT look is
-  // untouched (health=1 → saturate(1) → the filter is never even set). An eruption
-  // greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
+  // Health = ash disturbance × regime fit × recruitment × the ledger. The ash term is grazing-
+  // independent and reads exactly 0 on an undisturbed map, and the ledger reads 1 from healthStart
+  // up, so the DEFAULT look is untouched (health=1 → saturate(1) → the filter is never even set).
+  // An eruption greys the land (ashCover→1 → health→0 → the ground desaturates) and it recovers
   // as the ash decays. Health is NOT a living-cover ratio — that was tried and
   // desaturated healthy maps as moa grazed; see MISTAKES.md.
   _updateHabitatHealth(dt) {
@@ -1719,8 +1738,9 @@ class Game {
     this._recruitment += (recTarget - this._recruitment) * (recStep > 1 ? 1 : recStep);
     if (this._recruitment < 0) this._recruitment = 0; else if (this._recruitment > 1) this._recruitment = 1;
 
-    // Health target: ash disturbance × regime fit × recruitment (all must be healthy for full colour).
+    // Health target: ash disturbance × regime fit × recruitment × the ledger (all must be healthy for full colour).
     let target = (1 - (this._ashCover || 0)) * this._regimeFit * this._recruitment;
+    if (sim) target *= sim._healthLevel(H.ledgerFloor);
     // Dune BURIAL (COAST §10A/§10C): an ACTIVE, mismanaged dunefield buries coastal vegetation,
     // draining the readout — the "sand flux buries vegetation" half of the feedback. Keyed to the
     // disturbance-driven flux only (see _updateSandFlux), so a well-managed map is never penalised.
@@ -1730,7 +1750,9 @@ class Game {
     // Ease the health scalar (slow, calm), then map to a saturation factor.
     const ease = H.healthEase * (dt || 1);
     this._habitatHealth += (target - this._habitatHealth) * (ease > 1 ? 1 : ease);
-    const wantSat = H.satFloor + (1 - H.satFloor) * this._habitatHealth;
+    let wantSat = H.satFloor + (1 - H.satFloor) * this._habitatHealth;
+    // The milestone warning drains the land further, through the same slew cap (TeManawa_milestone.js).
+    if (typeof Milestone !== 'undefined') { const cap = Milestone.satCap(); if (cap < wantSat) wantSat = cap; }
 
     // Slew _sceneSat toward wantSat, capped per frame — the hard photosensitivity backstop.
     const cap = H.satSlewPerFrame * (dt || 1);
@@ -1739,7 +1761,13 @@ class Game {
   }
 
   update(dt = 1) {
-    // THE LAND BEFORE THE WINDOW (TeManawa_palaeo.js): while the attract sequence runs it owns the
+    // THE HEALTH MILESTONES (TeManawa_milestone.js): watch the ledger, play a full-health or warning beat
+    // when the land is at rest. First, so it stands down the moment the attract sequence takes the wall.
+    if (typeof Milestone !== 'undefined') Milestone.update(this);
+    // THE ATTRACT, THE INTRO, THE OUTRO (TeManawa_attract.js): the dips to black, the resets under them,
+    // the present-day map; it holds the clock while it runs. After the milestone, which stands down for it.
+    if (typeof Attract !== 'undefined') Attract.update(this);
+    // THE LAND BEFORE THE WINDOW (TeManawa_palaeo.js, now only the dev P key): while it runs it owns the
     // world — the land morphs through the pre-window dates and nothing lives, ages or fires, so the
     // sim (and the HUD's clock) sit out the frame. tick() is cheap when idle; it also lifts the veil
     // over the fresh world after the landing, when the sim is already running again.
@@ -1776,12 +1804,12 @@ class Game {
     // attract loop's cue. Without this the kiosk sits frozen at Oruanui
     // until somebody touches it, which unattended means most of the day.
     if (typeof DeepTime !== 'undefined' && DeepTime.hasEnded() &&
-        typeof Kiosk !== 'undefined') {
-      // The land before the window plays first (4 Ma → 1 Ma) and lands on the fresh 1 Ma world; the
-      // bare reset only when the sequence is off or refuses (md/TEMANAWA_PALAEO_ATTRACT.md §3).
-      if (!(Kiosk._palaeoOn && Kiosk._palaeoOn() && Palaeo.begin(this, 'end-of-window'))) {
-        Kiosk.resetToAttract(this, 'end-of-window');
-      }
+        typeof Kiosk !== 'undefined' && !(typeof Attract !== 'undefined' && Attract.active)) {
+      // The OUTRO plays (TeManawa_attract.js): the present-day map and what changed since the last ice
+      // age, then the attract on a fresh 1 Ma world. It may wait a few seconds for the terminal eruption
+      // to play out (outro() refuses until then; asked again next frame). The bare reset only when it is off.
+      if (typeof Attract !== 'undefined' && typeof TM_ATTRACT !== 'undefined' && TM_ATTRACT.enabled) Attract.outro(this);
+      else Kiosk.resetToAttract(this, 'end-of-window');
     }
   }
 
@@ -2091,6 +2119,8 @@ class Game {
     // THE LAND BEFORE THE WINDOW: a touch during the attract sequence is presence — it skips to the
     // landing — never an action on the parked old world.
     if (typeof Palaeo !== 'undefined' && Palaeo.active) { Palaeo.skip(); return; }
+    if (typeof Attract !== 'undefined' && Attract.active) { Attract.onInput(this); return; }   // breaks the attract / skips the map
+    if (typeof Milestone !== 'undefined' && Milestone.active) return;   // a health milestone plays out: presence only
     if (this.ui && this.ui.handleFullscreenClick(mx, my)) return;
   }
 
@@ -2116,6 +2146,7 @@ class Game {
     // focus, and its plant-next 'd' used to open the debug overlay on the wall. See MISTAKES.md.
     if (typeof Kiosk !== 'undefined' && Kiosk.keyAllowed && !Kiosk.keyAllowed(k)) {
       if (typeof Palaeo !== 'undefined' && Palaeo.active) Palaeo.skip();
+      if (typeof Attract !== 'undefined' && Attract.active) Attract.onInput(this);   // presence breaks the attract too
       return;
     }
     // Swallow D so tap-vs-hold resolves on release/tick (see TeManawa_plant_debug.js).
@@ -2128,8 +2159,23 @@ class Game {
       if (Palaeo.dialKey(k)) return;
       Palaeo.skip(); return;
     }
+    // A HEALTH MILESTONE playing (TeManawa_milestone.js): its 15 s plays out. Every key is presence only
+    // (noteInput above); the debug overlay still cycles (authoring).
+    // THE ATTRACT / INTRO / OUTRO (TeManawa_attract.js): every key is presence — it breaks the attract
+    // or skips the map — never a button on the world. The debug overlay still cycles (authoring).
+    if (typeof Attract !== 'undefined' && Attract.active) {
+      if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
+      Attract.onInput(this);
+      return;
+    }
+    if (typeof Milestone !== 'undefined' && Milestone.active) {
+      if (typeof Debug !== 'undefined') Debug.handleKey(k);
+      return;
+    }
     // The macro pad's TIME DIAL ([ / ] / \ by default — DeepTime.DIAL_KEYS): a standing 0–5,000 yr/s fast-forward.
     if (typeof DeepTime !== 'undefined' && DeepTime.dialKey && DeepTime.dialKey(k)) return;
+    // H: the HINT (TeManawa_bus.js onHint) — the goal's answers ringed white here, the console's rail pointing.
+    if ((k === 'h' || k === 'H') && typeof TMBus !== 'undefined' && TMBus.hint) { TMBus.hint(); return; }
     if (typeof InstallHUD !== 'undefined' && InstallHUD.handleKey(this, k)) return;
     if (typeof Debug !== 'undefined' && Debug.handleKey(k)) return;
 
@@ -2154,7 +2200,8 @@ class Game {
     if ((k === 'r' || k === 'R') && typeof GEO !== 'undefined') { GEO.toggle(); return; }
 
     // P plays the attract sequence now (the land before the window, 4 Ma → 1 Ma); a press while it runs
-    // skips to the landing (the block at the top of this handler). Not gated behind the debug overlay:
+    // skips to the landing (the block at the top of this handler). Turning the dial during a P run warps
+    // through it instead: no holds, and it parks at 1 Ma until a key lands it. Not gated behind the debug overlay:
     // it costs no synchronous bake (the sequence is sliced) and the wall's lockdown keeps keys to 1–5,
     // so on the wall it only ever comes from the idle timer and the end of the window.
     // See md/TEMANAWA_PALAEO_ATTRACT.md.
@@ -2255,6 +2302,8 @@ function setup() {
   game.loadLevel('temanawa_scaffold');
 
   if (typeof Kiosk !== 'undefined') { Kiosk.attach(game); Kiosk.install(); }
+  // The wall boots into the attract (the live 1 Ma land, no UI) up out of black; a ?dev page into play.
+  if (typeof Attract !== 'undefined') Attract.boot(game);
   if (typeof Debug !== 'undefined') Debug.applyVisibility();
 
   // Dev tools: mirror the live landform params into GEN so the console shows the
@@ -2498,6 +2547,8 @@ function _drawFrame() {
   game.render();
   if (typeof Kiosk !== 'undefined') Kiosk.renderCrossfade(CONFIG.canvasWidth, CONFIG.canvasHeight);
   if (typeof Palaeo !== 'undefined') Palaeo.renderVeil(CONFIG.canvasWidth, CONFIG.canvasHeight);   // the attract sequence's dark dips
+  if (typeof Milestone !== 'undefined') Milestone.render(CONFIG.canvasWidth, CONFIG.canvasHeight);   // a health milestone's veil + card, over everything
+  if (typeof Attract !== 'undefined') Attract.render(CONFIG.canvasWidth, CONFIG.canvasHeight);       // the attract's black, the present-day map, its cards
   pop();
 
   const _t2 = performance.now();
@@ -2517,8 +2568,20 @@ function updateFPS() {
 // mouseX/mouseY are in the MAIN canvas's backing pixels (logical × mainCanvasSS); all
 // hit-testing is in 1080-space, so divide back before handing coordinates to the game.
 // In GL mode mainCanvasSS is 1 (main canvas is already 1080), so this is a no-op there.
-function mousePressed() { const s = mainCanvasSS(); game.handleClick(mouseX / s, mouseY / s); }
-function mouseReleased() { const s = mainCanvasSS(); game.handleClickUp(mouseX / s, mouseY / s); }
+// The wheel PRESS (middle button) is the time dial's push: back to paused. It goes through handleKey as
+// the dial's reset key, so the wall lockdown and the attract sequence (push = ×1 forward) treat it
+// exactly like that key. Returning false stops the browser's middle-click autoscroll.
+function mousePressed() {
+  if (typeof mouseButton !== 'undefined' && mouseButton === CENTER && typeof DeepTime !== 'undefined' && DeepTime.DIAL_KEYS) {
+    game.handleKey(DeepTime.DIAL_KEYS.reset[0]);
+    return false;
+  }
+  const s = mainCanvasSS(); game.handleClick(mouseX / s, mouseY / s);
+}
+function mouseReleased() {
+  if (typeof mouseButton !== 'undefined' && mouseButton === CENTER) return false;
+  const s = mainCanvasSS(); game.handleClickUp(mouseX / s, mouseY / s);
+}
 function keyPressed() { game.handleKey(key); }
 function keyReleased() { game.handleKeyUp(key); }
 
@@ -2537,7 +2600,8 @@ function mouseWheel(e) {
   }
   if (typeof DeepTime !== 'undefined' && DeepTime.dialWheel) {
     if (typeof Kiosk !== 'undefined') Kiosk.noteInput();
-    DeepTime.dialWheel(e.deltaY);
+    if (typeof Attract !== 'undefined' && Attract.active) { Attract.onInput(game); return false; }   // breaks the attract / skips the map
+    if (!(typeof Milestone !== 'undefined' && Milestone.active)) DeepTime.dialWheel(e.deltaY);   // a milestone playing: presence only
     return false;
   }
 }
