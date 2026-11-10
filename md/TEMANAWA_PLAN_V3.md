@@ -551,7 +551,7 @@ Found in the 2026-11-02 audit; items 1–6 **fixed the same day** (harness secti
    same boot guard. It still does not return to its landing card between visitors (§16.13).
 5. ✅ **`tools/serve.js` crashed on a malformed URL.** It now answers 400; the path check also requires
    the separator (a sibling folder no longer passes), and a taken port exits with a clear message.
-6. ✅ **Audio is not loaded** (decided 2026-11-02): `AudioManager.enabled` (false) now gates loading as
+6. ✅ **Audio is not loaded** (decided 2026-11-02; **superseded 2026-11-10**: audio is on again, rebuilt on Web Audio with room limits, see `TEMANAWA_BUILD_V3.md` §3 and `audio/CREDITS.md`): `AudioManager.enabled` (false) now gates loading as
    well as playback, so `preload()` decodes none of the 6.5 MB. Five of the clips were never played
    (`win`, `loss`, `tutorial_tip`, `moa_milestone`, `bolt_strike`).
 7. ✅ **The plant-goals harness failure** was the harness's terrain, not the gate (§13): the test now

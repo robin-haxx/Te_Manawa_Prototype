@@ -1431,13 +1431,79 @@ try{
   chk(K.lastHeartbeat>0, 'a long recovery stamps the heartbeat (it is not a stall)');
   for(let i=0;i<10;i++) FRAME(ctx.draw);
 
-  // (e) AUDIO OFF: nothing loads.
-  const AM=vm.runInContext('AudioManager',ctx); let loads=0; const ls0=ctx.loadSound;
-  ctx.loadSound=(...a)=>{ loads++; return ls0(...a); };
-  const am=new AM(); am.loadAll();
-  chk(am.enabled===false && loads===0, `audio off: loadAll() decodes nothing (${loads} loads)`);
-  am.enabled=true; am.loadAll(); chk(loads>0, 'audio on: loadAll() loads the set');
-  ctx.loadSound=ls0;
+  // (e) AUDIO. Off: nothing is fetched. On: the room is protected — a cue inside its cooldown plays
+  //     its soft fallback instead of stacking, the buses and the whole mix hold their voice caps under
+  //     mashing, a repeated cue tires, and the birds call one at a time. Web Audio is stood in for.
+  {
+    const AM=vm.runInContext('AudioManager',ctx), TA=vm.runInContext('TM_AUDIO',ctx), BV=vm.runInContext('AUDIO_BIRD_VOICES',ctx);
+    const CUES=vm.runInContext('AUDIO_CUES',ctx);
+    let fetches=0; const f0=ctx.fetch; ctx.fetch=()=>{ fetches++; return new Promise(()=>{}); };
+    const param=()=>({value:0,setTargetAtTime(){},cancelScheduledValues(){}});
+    const node=()=>({connect(){},gain:param(),pan:param(),playbackRate:param(),threshold:param(),knee:param(),ratio:param(),attack:param(),release:param(),start(){},stop(){}});
+    const fake={currentTime:0,state:'running',destination:{},createGain:node,createBufferSource:node,createDynamicsCompressor:node,createStereoPanner:node,decodeAudioData(){}};
+    let t=1000;
+    const mk=()=>{ const m=new AM({ctx:fake,now:()=>t}); m.enabled=true; for(const f of m._allFiles()) m._buffers[f]={duration:2}; return m; };
+
+    const off=new AM({ctx:fake,now:()=>t}); off.enabled=false; off.loadAll();
+    chk(fetches===0 && off.cue('thunder')===false && !off._graph, 'audio off: nothing is fetched, built or played ('+fetches+' fetches)');
+    const on=new AM({ctx:fake,now:()=>t}); on.enabled=true; on.loadAll();
+    chk(fetches===1, 'audio on: loadAll() starts fetching, one clip at a time ('+fetches+')');
+    ctx.fetch=f0;
+
+    // every clip the tables name is on disk and credited
+    const credits=fs.existsSync(path.join(dir,'audio','CREDITS.md')) ? fs.readFileSync(path.join(dir,'audio','CREDITS.md'),'utf8') : '';
+    const missing=[], uncredited=[];
+    for(const f of on._allFiles()){ if(!fs.existsSync(path.join(dir,'audio',f+'.wav'))) missing.push(f); if(credits.indexOf(f.split('/').pop())<0) uncredited.push(f); }
+    chk(missing.length===0, 'every clip in the cue tables exists under audio/ ('+(missing.join(', ')||'all present')+')');
+    chk(uncredited.length===0, 'every clip is credited in audio/CREDITS.md ('+(uncredited.join(', ')||'all credited')+')');
+    for(const k in CUES){ const c=CUES[k]; if(c.fallback && !CUES[c.fallback]) chk(false, 'cue '+k+' names a fallback that does not exist'); }
+
+    // cooldown + fallback: the second press is acknowledged by the tick, not a second roll
+    let m=mk();
+    chk(m.cue('storm_press')===true, 'a storm press sounds its roll');
+    t+=200; const v0=m._voices.length;
+    chk(m.cue('storm_press')===false && m.stats.fallback===1 && m._voices.length===v0+1, 'a second press inside the cooldown plays the soft tick instead (acknowledged, not stacked)');
+
+    // mashing: every cue, every 15 ms, for 20 s — the caps hold throughout
+    m=mk(); let worst=0, worstBus=0; const names=Object.keys(CUES);
+    for(let i=0;i<1333;i++){ t+=15; m.cue(names[i%names.length]); m.birdCall(['tui','kokako','kereru'][i%3],0.5);
+      m._prune(t); worst=Math.max(worst,m._voices.length);
+      for(const b in TA.bus){ let n=0; for(const v of m._voices) if(v.bus===b) n++; if(n>TA.bus[b].voices) worstBus++; } }
+    chk(worst<=TA.maxVoices && worstBus===0, 'mashing every cue for 20 s never exceeds the voice caps (peak '+worst+' of '+TA.maxVoices+')');
+    chk(m.stats.birds<=Math.ceil(20000/TA.birdGapMs)+1, 'mashed bird calls stay one at a time ('+m.stats.birds+' in 20 s)');
+    chk(m.stats.played>20 && m.stats.cooled>0, 'and the mix is still alive under it ('+m.stats.played+' played, '+m.stats.cooled+' cooled)');
+
+    // priority: a full event bus keeps the eruption and drops nothing more important for a tick
+    m=mk(); m.cue('thunder'); t+=CUES.thunder.cooldownMs+1; m.cue('thunder'); m.cue('storm_press');
+    chk(m.cue('eruption')===true && m._voices.filter(v=>v.bus==='event').length<=TA.bus.event.voices, 'the eruption takes a voice from a full event bus');
+
+    // fatigue: the same cue again, just past its cooldown, is quieter; left alone it recovers
+    m=mk(); m.cue('deep'); const g1=m._voices[m._voices.length-1].gain.gain.value;
+    t+=CUES.deep.cooldownMs+5; m.cue('deep'); const g2=m._voices[m._voices.length-1].gain.gain.value;
+    t+=120000; m.cue('deep'); const g3=m._voices[m._voices.length-1].gain.gain.value;
+    chk(g2<g1*0.95 && g3>g1*0.9, 'a repeated cue tires and recovers ('+g1.toFixed(2)+' -> '+g2.toFixed(2)+' -> '+g3.toFixed(2)+')');
+
+    // the birds
+    m=mk();
+    chk(m.birdCall('tui',0.2)===true, 'a tūī calls');
+    chk(m.birdCall('kokako',0.5)===false, 'no second bird inside the gap');
+    t+=TA.birdGapMs+1;
+    chk(m.birdCall('tui',0.2)===false && m.birdCall('kokako',0.5)===true, 'past the gap another species may call, the same one may not');
+    t+=TA.birdGapMs+1;
+    chk(m.birdCall('north_island_giant_moa',0.5)===false && m.birdCall('huia',0.5)===false, 'the moa and the huia have no voice (nothing recorded, nothing invented)');
+    TA.birdStandIns=false; const st=m.birdCall('north_island_takahe',0.5); TA.birdStandIns=true;
+    chk(st===false && BV.north_island_takahe.standIn===true && m.birdCall('north_island_takahe',0.5)===true, 'stand-in voices are marked and can be switched off');
+
+    // the per-frame follower, on the live game: an armed ash cover sounds the blast once; the storm window holds the rain
+    m=mk(); const gg=vm.runInContext('game',ctx), ms0=ctx.millis();
+    const keep={ash:gg._ashCloudUntil, storm:gg._tmStormUntil};
+    gg._ashCloudUntil=0; gg._tmStormUntil=0; m.update(gg); const p0=m.stats.played;
+    gg._ashCloudUntil=ms0+5000; gg._tmStormUntil=ms0+5000; m.update(gg); m.update(gg);
+    chk(m.stats.played===p0+1 && m._loops.rain && m._loops.rain.level>0 && m._loops.rumble && m._loops.rumble.level>0, 'an eruption cover sounds one blast and the rumble; an open storm holds the rain');
+    gg._ashCloudUntil=0; gg._tmStormUntil=0; m.update(gg);
+    chk(m._loops.rain.level===0 && m._loops.rumble.level===0, 'both loops fall silent when the state clears (no reset can strand one)');
+    gg._ashCloudUntil=keep.ash; gg._tmStormUntil=keep.storm;
+  }
 
   // (f) THE CONSOLE'S LAYER (secondscreen/kiosk.js), in its own context.
   {

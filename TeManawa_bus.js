@@ -75,6 +75,7 @@ const TMBus = (function () {
 
   const G = () => (typeof game !== 'undefined' && game) ? game : null;
   function reply(msg) { try { if (ch) ch.postMessage(msg); } catch (_) {} }
+  function sfx(name) { try { if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue(name); } catch (_) {} }
 
   // Per-boost state carried from onBoost() to the timelapse-end handler.
   let _boostMatched = null;      // the regime-fit verdict at boost time → the goal 'achieved' flag
@@ -114,7 +115,7 @@ const TMBus = (function () {
     if (typeof Palaeo !== 'undefined' && Palaeo.active && m.type !== 'hello') {
       if (m.type === 'dial') {                               // the macro pad's dial drives the sequence (slower / faster / pause / reverse)
         if (m.reset) Palaeo.dialReset(); else if (typeof m.delta === 'number') Palaeo.dialTurn(m.delta);
-      } else Palaeo.skip();
+      } else { Palaeo.skip(); sfx('ui_tick'); }
       return;
     }
 
@@ -147,10 +148,10 @@ const TMBus = (function () {
         }
         break;
 
-      case 'habitat':
-      case 'plant':
-        // Accepted; no sim-side effect yet (optional highlight/focus, §3.1).
-        break;
+      // The console's own navigation is heard through the wall's speakers (one audio engine, one
+      // limiter); nothing else happens sim-side yet (optional highlight/focus, §3.1).
+      case 'habitat': sfx('ui_habitat'); break;
+      case 'plant':   sfx('ui_select');  break;
     }
   }
 
@@ -181,6 +182,7 @@ const TMBus = (function () {
     const GL = (typeof TM_GOALS !== 'undefined') ? TM_GOALS : null;
     const verdict = (typeof TMGoals !== 'undefined') ? TMGoals.judge(key, m.plantName, matched, glacial, nowMs) : null;
     const isAnswer = !!(GL && verdict && verdict.kind === 'answer');
+    sfx(isAnswer ? 'boost_answer' : matched ? 'boost_ok' : 'boost_wrong');   // the verdict, heard at once
 
     reply({ type: 'boostResult', plantKey: key, matched: matched,
             goal: verdict ? verdict.kind : null, text: verdict ? verdict.text : null });

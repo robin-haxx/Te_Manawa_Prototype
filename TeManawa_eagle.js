@@ -675,7 +675,7 @@ class EylesHarrier extends Boid {
       if (hadNoTarget && !this._huntEventFired) {
         simulation.onEagleStartHunt(this, this.target);
         this._huntEventFired = true;
-        if (audioManager) audioManager.playEagleHunt();
+        if (audioManager) audioManager.birdCallFrom(this);   // the harrier calls as it commits to a hunt
       }
 
       // Give up a chase that has dragged on without closing — break off and rest a

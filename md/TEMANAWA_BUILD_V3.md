@@ -219,12 +219,17 @@ browser. More robust than `--allow-file-access-from-files`, and it costs nothing
 --autoplay-policy=no-user-gesture-required --check-for-update-interval=31536000
 ```
 
-**Audio — off for opening, and not loaded** (decided 2026-11-02). `AudioManager.enabled` is
-`false`, and it gates loading as well as playback, so `preload()` decodes none of the 17 files. The
-guidance below stands if audio returns.
+**Audio — on since 2026-11-10** (it was off for opening, decided 2026-11-02). `TeManawa_audio.js`
+drives Web Audio directly, not p5.sound: interaction cues, storm and eruption sound, and the calls of
+the birds that have a recording, through four buses into one limiter. Voice caps, per-cue cooldowns
+with a soft-tick fallback, fatigue on repeats and ducking keep it fit for a room (the file header
+lists them; `TM_AUDIO` and `AUDIO_CUES` are the knobs). The clips (`audio/birds|sfx|ui/`, about 9 MB
+of WAV) are fetched and decoded in the background after boot, never in `preload()` and never from a
+reset. `TM_AUDIO.enabled = false` or `?audio=0` loads and plays nothing. Sources and licences:
+`audio/CREDITS.md`. The console page plays nothing itself; its taps are heard through the sim page.
 
-Do **not** rely on the autoplay flag alone — p5.sound runs on Web Audio and
-the `AudioContext` can still start suspended. Carry a `resume()` on the first input of
+Do **not** rely on the autoplay flag alone — the `AudioContext` can still start suspended, and on
+the wall the sim page never receives a touch (input arrives over the bus, which is not a gesture). Carry a `resume()` on the first input of
 any kind, start silent and fade in, and make sure **nothing essential is conveyed by
 audio alone** (an accessibility rule from the v1 plan, still standing), so a
 permanently-suspended context is a degradation rather than a failure.
@@ -521,10 +526,10 @@ The load that actually costs, and the one the watchdog pays.
 | Item | Now | After |
 |---|---|---|
 | `p5.js` | 5.4 MB unminified | ✅ **shipped:** `p5.min.js`, ~1.4 MB — saved ~4.0 MB and ~200–400 ms of parse |
-| `p5.sound.min.js` | 200 kB | unchanged |
+| `p5.sound.min.js` | 200 kB | ✅ no longer loaded (2026-11-10) |
 | Engine JS | **45 project scripts** (was ~715 kB across 31 in August) — *grew* with the terrain/ecology/cast/console work | bundle to 1 file |
 | Sprites | hundreds of PNGs across per-species folders (the cast's multi-state art), plus the 42-frame 1080p ash cover, which loads lazily one frame at a time | packed into GPU pages at `setup()` by the runtime atlas; the load is still one request per file |
-| Audio | was 6.5 MB across 17 mp3s, all in `preload()` | ✅ **not loaded** while audio is off (2026-11-02) |
+| Audio | was 6.5 MB across 17 mp3s, all in `preload()` | ✅ about 9 MB of WAV, fetched in the background after boot (2026-11-10) |
 | Fonts | 360 kB, 2 files | unchanged |
 
 **Estimated cold boot, local server, kiosk-class hardware:**

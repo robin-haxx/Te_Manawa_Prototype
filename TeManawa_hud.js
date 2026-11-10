@@ -149,7 +149,7 @@ const InstallHUD = {
   // ---- buttons ---------------------------------------------
   BUTTONS: [
     { id: 'deep',   key: '1', label: '50,000 YEARS',
-      action: () => DeepTime.pressDeep(),
+      action: () => { DeepTime.pressDeep(); if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('deep'); },
       isActive: () => DeepTime.isDeep() },
     // GROWTH is split in two: the RIGHT one depends on the climate. FOREST grows
     // warm/forest cover (suits the interglacial); TUSSOCK grows cold-hardy open country (suits
@@ -164,7 +164,9 @@ const InstallHUD = {
                          if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(true);   // the forest habitats hold a busier stock (homeostasis)
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(true, TM_GROW.seedCount);   // seed a few forest seedlings, not just mature
                          InstallHUD.edgePulse(g, TM_EDGE.pulseForest);                    // green rim pulse
+                         if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('rustle');        // growth heard (the gust itself sounds in beginWind)
                        } else {
+                         if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('boost_wrong');   // the low note: wrong for this climate
                          if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // wrong boost for the climate → grey pulse, and no growth (gated in update)
                        } },
@@ -177,7 +179,9 @@ const InstallHUD = {
                          if (g.simulation && g.simulation.liftGrowSet) g.simulation.liftGrowSet(false);  // the open-country habitats hold a busier stock
                          if (g.simulation && g.simulation.seedGrowth) g.simulation.seedGrowth(false, TM_GROW.seedCount);   // seed a few open-country seedlings
                          InstallHUD.edgePulse(g, TM_EDGE.pulseTussock);                   // glacial-blue rim pulse
+                         if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('rustle');
                        } else {
+                         if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('boost_wrong');
                          if (g.simulation && g.simulation.resetHabitatLift) g.simulation.resetHabitatLift();   // wrong guess → every habitat back to its floor
                          InstallHUD.edgePulse(g, TM_EDGE.pulseWrong);                     // grey pulse, no growth
                        } },
@@ -187,6 +191,7 @@ const InstallHUD = {
                        g._stormPressure = Math.min(1, (g._stormPressure || 0) + TM_TIME.stormPressureAdd);
                        if (g.beginStorm) g.beginStorm();   // §10B–C habitat effects, but spread OVER the storm (staggered windthrow + gradual knockback), not one instant snap
                        InstallHUD.initStormCells(g);
+                       if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('storm_press');   // a far roll on the press (a soft tick if one is still rolling); the claps come with the bolts
                        InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs); },   // one short white blink on press, then one per lightning strike
       isActive: (g) => g._tmStormUntil  && millis() < g._tmStormUntil },
     // Eruption is a press-and-hold TIME-NAVIGATION control between the volcanic events.
@@ -259,7 +264,8 @@ const InstallHUD = {
     const fired = g._tmErFired;
     g._tmErDownAt = 0;
     g._tmErFired  = false;
-    if (!fired) this.fireEruption(g);
+    // A tap swallowed by the cooldown (or with nothing older to revert to) still gets a tick.
+    if (!fired && !this.fireEruption(g) && (typeof audioManager !== 'undefined' && audioManager)) audioManager.cue('ui_tick');
   },
 
   // A tap: REVERT to the previous (older) eruption and replay it — soft regen from the
@@ -529,6 +535,7 @@ const InstallHUD = {
       if (!b.pulsed && b.age >= TM_TIME.stormBoltFadeIn) {
         b.pulsed = true;
         InstallHUD.edgePulse(g, TM_EDGE.pulseStorm, TM_EDGE.pulseStormMs);   // one short white blink per strike, at its brightest
+        if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue('thunder');   // the clap with the bolt; its cooldown thins a busy storm
       }
       if (b.age >=TM_TIME.stormBoltFadeIn + TM_TIME.stormBoltHold + TM_TIME.stormBoltFadeOut) {
         b.active = false; b.timer = 80 + Math.random() * 100;   // long gap to the next bolt → occasional flashes
@@ -663,6 +670,7 @@ const InstallHUD = {
       });
     }
     g._tmWind = { kind, t0: now, parts };
+    if (typeof audioManager !== 'undefined' && audioManager) audioManager.cue(kind === 'warm' ? 'wind_warm' : 'wind_cold');   // the gust, heard: a boost press or a climate turn
   },
 
   // Advance the live burst on the real frame clock; drop a gust once it clears the right edge,

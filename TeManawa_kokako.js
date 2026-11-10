@@ -109,6 +109,7 @@ class Kokako extends Kereru {
     this._respondSing = false;
     this._territory.set(this.pos.x, this.pos.y);   // claim this perch as the territory centre
     this._provokeNeighbours(sim);
+    if (typeof audioManager !== 'undefined' && audioManager) audioManager.birdCallFrom(this);   // the song, heard (kōkako and tūī)
   }
 
   _singing(sim, dt) {

@@ -86,7 +86,7 @@ class PlaceableObject {
     this.spawnedPlants = [];
     if (this.def.plantSpawnCount) {
       this.spawnPlantsInRadius();
-      if (audioManager) audioManager.playPlantRustle();
+      if (audioManager) audioManager.cue('rustle');
     }
     
     // Storm-specific

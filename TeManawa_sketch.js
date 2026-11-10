@@ -1057,8 +1057,6 @@ class Game {
     this._updateViewTransform();
 
     this._buildSimulation();
-
-    if (audioManager) audioManager.playBackground();
   }
 
   // ============================================
@@ -1814,7 +1812,6 @@ class Game {
     const phaseKey = this.seasonManager.currentKey;
 
     this.addNotification(`Entering the ${phase.name}`, 'info');   // drawn glyphs only — no emoji icon
-    if (audioManager) audioManager.playSeasonChange(phaseKey);
 
     // Deep cold drives an extra hungry eagle to hunt (opt-in via LEVEL_MECHANICS).
     if (typeof LEVEL_MECHANICS !== 'undefined' && LEVEL_MECHANICS.winterPredation && phaseKey === 'fullGlacial') {
@@ -2484,6 +2481,7 @@ function _drawFrame() {
 
   const _t0 = performance.now();
   game.update(deltaMultiplier);
+  if (audioManager) audioManager.update(game);   // loops + state-driven cues follow the game; inert when audio is off
   const _t1 = performance.now();
 
   // Split-resolution pipeline: the main canvas is mainCanvasSS× the logical 1080 size, so a

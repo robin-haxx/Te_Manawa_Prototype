@@ -76,7 +76,7 @@ repeat. Newest first; add to it when a mistake is worth not repeating.
 ```
 index.html                 script load order — it is hand-ordered and it matters
 TeManawa_kiosk.js          watchdog, idle/attract, soft reset, error ring buffer
-TeManawa_audio.js          ambient bed + event sounds — off for opening: enabled=false gates loading and playback
+TeManawa_audio.js          interaction, weather and bird sound on Web Audio (not p5.sound): buses, limiter, voice caps, cooldowns — TM_AUDIO; clips + licences in audio/ (CREDITS.md)
 TeManawa_registry.js       species/plant/biome/placeable registry + validation
 TeManawa_spatial.js        spatial hash grids
 TeManawa_simulation.js     the world: entity lists, update/render loops, spawning, disturb()/warpAt
@@ -302,6 +302,13 @@ bird is on one or two plants (`md/TEMANAWA_ENCYCLOPEDIA_FLORA.md` §2.6).
 re-fires from its own boot; keys are locked to the wall set unless `?dev`; a `draw()` error is caught
 and recovered, so the p5 loop survives; a recovery aborts a running attract; the console page has its
 own layer (`secondscreen/kiosk.js`); `serve.js` survives a malformed URL; audio is not loaded.
+
+**Audio back on 2026-11-10** (harness "kiosk hardening" (e)): `TeManawa_audio.js` is rebuilt for a
+room — one limiter, four capped buses, a cooldown per cue with a soft-tick fallback so a press is
+never silent and never stacked, fatigue on repeats, one bird call at a time. Loops and the eruption
+blast follow game state from `audioManager.update(game)`, so no reset path strands a sound. The clips
+were chosen by measurement, not by ear: **listen on the install speakers**. The moa, the huia and
+Finsch's duck have no voice; three extinct birds use a living relative (`standIn`, `audio/CREDITS.md`).
 
 **Built 2026-11-02** (PLAN §14.2): the eruption aftermath covers **one boost/goal cycle**
 (`DeepTime.AFTERMATH` — the ash no longer waits on sim-years that never pass while geology is paused);

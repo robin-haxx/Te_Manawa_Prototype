@@ -848,7 +848,7 @@ class Moa extends Boid {
     this._setMatingState(partner, this);
     this.vel.mult(0.2);
     partner.vel.mult(0.2);
-    if (audioManager) audioManager.playMateCheep();
+    if (audioManager) audioManager.birdCallFrom(this, 0.8);   // a pairing bird calls, if its species has a voice
   }
 
   _setMatingState(moa, partner) {

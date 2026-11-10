@@ -1438,7 +1438,7 @@ class Simulation {
     }
     prey.alive = false;
     if (typeof eagle.onCatch === 'function') eagle.onCatch(prey);   // onto the kill, talons held on it
-    if (audioManager) audioManager.playEagleCatch();
+    if (audioManager) audioManager.cue('wingflap', { pan: (eagle.pos && this.terrain && this.terrain.mapWidth) ? (eagle.pos.x / this.terrain.mapWidth * 2 - 1) * 0.7 : 0 });
 
     eagle.kills++;
     eagle.hunger = Math.max(0, eagle.hunger - 90);

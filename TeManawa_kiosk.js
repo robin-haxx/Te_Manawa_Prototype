@@ -118,6 +118,7 @@ const Kiosk = {
           const ctx = getAudioContext();
           if (ctx && ctx.state !== 'running') ctx.resume();
         }
+        if (typeof audioManager !== 'undefined' && audioManager && audioManager.resume) audioManager.resume();
       } catch (err) { /* audio is optional, never let this throw */ }
     };
     ['pointerdown', 'keydown', 'touchstart'].forEach(
