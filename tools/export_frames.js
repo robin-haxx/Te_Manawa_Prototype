@@ -114,11 +114,12 @@
     // strait's turns (md/TEMANAWA_PALAEO_ATTRACT.md §1), oldest first. Export with { palaeo: true }.
     palaeo() {
       return [
-        [4000000, 'deep marine Wanganui Basin; the basement finger; no seaway at the gorge (T&B 4A)'],
+        [4000000, 'low coastal plain round the axis; the Tararua the lasting land; deep water off the south-east (T&B 4A)'],
+        [3450000, 'the sea onlaps the plain toward the axis (Young-1: west of the gorge ~3.6 Ma)'],
         [3300000, 'the first marine breach across the gorge area (late Waipipian)'],
-        [3000000, 'a narrow seaway: the Manawatū Strait; the Ruahine a finger of low land and shoals (T&B 4B)'],
+        [3000000, 'a narrow seaway across the southern Ruahine: the Manawatū Strait; a shelf sea (T&B 4B)'],
         [2750000, 'the strait closed: the gorge area land, planed (Mangapanian)'],
-        [2400000, 'the Manawatū Strait at its most extensive; the Ruahine under the ocean (T&B 4C)'],
+        [2400000, 'the Manawatū Strait at its most extensive; the Ruahine shoals; the Tararua low hills (T&B 4C)'],
         [2000000, 'the strait still open; the northern Tararua under the sea'],
         [1630000, 'the strait closes for good (Castlecliffian)'],
         [1500000, 'Mount Bruce uplift closes the Ruataniwha Strait; the basin shelf to marginal marine'],

@@ -197,6 +197,15 @@ const LOOK = {
   plainOffsetMax:  70,    // m: the land offset SATURATES here (landOffsetM = max·tanh(R·age/max)). The offset is how far the sea of a date stood above TODAY's land: uplift since, NET of the sediment that kept filling the basin. Pure uplift-since (hundreds of metres by 1 Ma) assumes today's plain existed then; it didn't — the basin kept building its surface up to sea level, so the early coastal plain always sat near the sea and each glacial cycle swept the shore across it. Calibrated to the dated landmarks: early highstands reach the range foot (the c. 0.88 Ma transgression over Feilding–Halcombe, Rees et al. 2019; Onepuhi beds ~570 ka), early LOWSTANDS bare the plain (T&B Fig. 4D's pale band is land at lowstand; Rees et al.'s lowstand braid plains at the eastern margin), MIS 5e reaches the Tokomaru bench, the LGM coast is far west. Replaced plainUpliftOnset (a ramp to 120 m that kept even early glacials +30 m over the whole plain) on 2026-10-19
   seaHighstandHold: 0.40, // HIGHSTAND: the whole low plain is LOWERED by the rise up to this elevation (see _seaShift), so the new shore sits just above the water and climbs inland as the plain always did. Lowering only the drowned ground left a step the height of the whole rise at every highstand shore, which the relief bake drew as a cliff (2026-10-19)
   seaHighstandFade: 0.15, // … and the lowering fades out over this much elevation above the hold, on the range flanks, so the ranges themselves never sink. Wider = gentler flanks
+  // THE YOUNG PLAIN south of the river (GEO_EPOCHS.youngPlain*): the plain between today's coast and the
+  // Tararua foot is younger than the last interglacial, whose shore (the Tokomaru Marine Terrace) lies at
+  // the range foot. One relative sea level over today's land left 1–10 km of it dry at 122 ka (by seed). South of
+  // the river the shift reads the relative sea PLUS this many metres while the deficit stands, so the
+  // 5e highstand laps the hills there; the ranges are untouched (the shift fades on their flanks), and
+  // the land outside the last interglacial (the 1 Ma opening, today) is unchanged.
+  youngPlainM:      65,     // m of plain built since: the cartoon's, not a measured thickness. Set so the 122 ka shore lies within ~4 km of the Tararua's foothills (the 0.22 contour) south of the river on every seed tried (2026-11-13: 1–7 km dry without it). The 5e sea there stands +108 m, still under MIS 11's +130 m
+  youngPlainV0:     0.63,   // the deficit fades in south of this map-v (clear of the river's lower reach, v ≈ 0.58–0.62) …
+  youngPlainV1:     0.71,   // … and is full south of this
   glacialSeaCeil:  0.30,  // LOWSTAND only: only ground BELOW this elevation is lifted (the coastal shelf/plain), so the ranges never shift. Highstands flood by contour instead (seaHighstandBand).
   glacialSeaFullU: 0.36,  // WEST gate: the shift is FULL west of this screen-X fraction (every present-sea cell, so the baked shelf lands the coast exactly) …
   glacialSeaEastU: 0.48,  // … and fades to 0 by this one, so it never touches the eastern trans-range land.
@@ -292,7 +301,7 @@ const LOOK = {
   palaeoEastFrontTilt: 0.25,  // the coast runs NNE–SSW like the ranges: the front stands this much further WEST at the bottom of the map than at the top
   palaeoEastFrontFeather: 0.07, // the shore's width (screen-X): the shelf rises through the waterline over this
   palaeoEastFrontWobble: 0.06,  // meander the front with the cached wobble (screen-X), so the coast is not a ruled line
-  palaeoStraitHalfW:   0.085, // the Manawatū Strait's HALF-width across the gap (screen-X fraction) at full strength: "< 20 km wide" (T&B p. 170) ≈ 0.17 of LOOK.frameKm. The width scales with the dated curve, so the 3 Ma seaway is a thread and the 2.4 Ma one the full strip
+  palaeoStraitHalfW:   0.08,  // the Manawatū Strait's reach from the gap's centre (map-width fraction, measured isotropically in km: v is scaled by the skeleton's aspect) at full strength; its shore (palaeoStraitFeather) puts the land ~0.095 out (~11 km), where the registered maps end the Ruahine and the Tararua (palaeoStraitMinW below). Was a north–south column 0.085 either side of the gorge, a thread at 3 Ma (until 2026-11-13)
   palaeoStraitFeather: 0.06,  // the strait's shore: the ceiling over the ground (below) climbs from the floor to palaeoShoreE over this (screen-X fraction) — a slope the relief bake paints as a beach, not a dark wall
   // THE CEILINGS' SHAPE (the strait and the east front): from the sea floor up through the waterline to
   // palaeoShoreE over the shore's feather (wobbled, so the coast meanders), then on off the land over
@@ -309,6 +318,52 @@ const LOOK = {
   palaeoShoalFeather:  0.10,  // width (in screen-Y) of that north/south blend
   palaeoShoalE:        0.075, // the shoal level (elevation) the Ruahine is pulled toward: a little under the 0.10 waterline …
   palaeoShoalAmp:      0.05,  // … ± this much with the cached wobble, so its high parts stand as islets and sandbanks and the rest is sea, instead of one flat shoal
+  // Trewick & Bland's maps read on the sim's own frame (research/palaeogeography/, 2026-11-12: the four
+  // Fig. 4 maps registered to today's coast and sampled onto the map's u/v with the gorge as the anchor,
+  // 115 km across). The anchors below are [v, u] pairs, north to south, read off those rasters.
+  // THE 4 Ma APRON (GEO_EPOCHS.palaeoApron; Fig. 4A): before the first marine onlap about half the frame
+  // was LOW COASTAL PLAIN around the axis, widest at the gorge's latitude, from about Feilding to just
+  // east of the gorge (the Young-1 drillhole: no sea west of the gorge until ~3.6 Ma, p. 170). It drowns
+  // 3.6 → 3.3 Ma, just ahead of the first breach, and leaves the finger. Inside it the ground is a low
+  // plain: floored to a beach at the shore that climbs to lowland grass inland, and planed under a cap.
+  palaeoApronWest:  [[0.00, 0.39], [0.11, 0.44], [0.21, 0.36], [0.31, 0.28], [0.41, 0.24], [0.51, 0.22], [0.59, 0.21], [0.69, 0.185], [0.89, 0.185], [1.00, 0.165]],
+  palaeoApronEast:  [[0.00, 0.86], [0.11, 0.90], [0.21, 0.86], [0.31, 0.76], [0.41, 0.66], [0.51, 0.565], [0.59, 0.52], [0.69, 0.48], [0.79, 0.45], [0.89, 0.435], [1.00, 0.39]],
+  palaeoApronAxis:  [[0.00, 0.655], [0.21, 0.61], [0.41, 0.545], [0.51, 0.505], [0.64, 0.47], [0.74, 0.43], [0.84, 0.405], [1.00, 0.37]],   // the axis (the range outlines' centre line): as the apron drowns both coasts sweep in onto it, so the sea onlaps toward the finger and the plain is gone at 3.3 Ma
+  palaeoApronFeather: 0.05,   // the plain's shore (u): it rises out of the sea over this
+  palaeoApronWobble:  0.04,   // meander both coasts with the cached wobble (u), so neither is a ruled line
+  palaeoApronE:       0.115,  // the plain's level at the top of its shore (just above the 0.10 waterline: beach) …
+  palaeoApronRise:    0.10,   // … climbing this much further over palaeoApronRiseU inland, to pale lowland grass (posterized green from ~0.19)
+  palaeoApronRiseU:   0.12,   // the distance (u) of that climb
+  palaeoApronCap:     0.23,   // and planed under this, so the Ruahine and the plain read as one low plain (the Tararua's hills are exempt)
+  // THE TARARUA IS THE LASTING LAND (GEO_EPOCHS.palaeoHills; Fig. 4A–C): before the uplift the solid
+  // ground of the lower North Island was on the Tararua–Wellington side, tied to Marlborough; the
+  // Ruahine was low plain (4 Ma), a low finger (3 Ma) and shoals (2.4 Ma). On the Tararua's CORE (the
+  // range-only mass past palaeoHillsMass; its spread margin is ~45 km wide, the maps' land ~15 km) south
+  // of the gap the ground stands as LOW GREEN HILLS: floored at palaeoHillsE, rising toward the crest
+  // line, and cut toward palaeoHillsLowE instead of the axis's lowland line. Fades out as the uplift
+  // takes over, so the 1 Ma ranges are the window's own.
+  palaeoHillsE:       0.22,   // the hills' floor at the core's edge (lowland grass) …
+  palaeoHillsCrest:   0.10,   // … plus this much on the crest line (spine closeness), into the podocarp band (0.30) only there
+  palaeoHillsLowE:    0.30,   // the axis-low cut takes the Tararua toward this, not palaeoAxisLowE
+  palaeoHillsMass:    [0.70, 0.95],   // the range-only mass over which the hills come in (smoothstepped): the core, not the spread margin
+  palaeoHillsV:       [0.54, 0.68],   // … and the latitude (map v) over which they come in, south of the gap: the maps' Tararua land starts ~v 0.63–0.69, so the neck and the strait's shore stay low
+  // THE DEEP WATER (GEO_EPOCHS.palaeoDeep; Fig. 4A): at 4 Ma deep marine water lay only in the south-east,
+  // beyond the shelf off the Tararua and the Ruahine; the rest of the frame's sea was shelf. East of this
+  // line the sea floor stays the window's dark floor while the deep term holds; elsewhere it is shelf.
+  palaeoDeepLine:   [[0.28, 1.05], [0.34, 0.91], [0.44, 0.84], [0.54, 0.75], [0.64, 0.66], [0.79, 0.58], [0.89, 0.53], [1.00, 0.49]],
+  palaeoDeepFeather:  0.06,   // the shelf break's width (u)
+  // THE SHELF TONE (GEO_EPOCHS.palaeoShelf): the sea before the window was shelf, < 200 m (Fig. 4B–C; at
+  // 1.5 Ma "shelf to marginal-marine", p. 166). Its floor sits at the pale end of the sea ramp, so the
+  // Manawatū Strait reads as narrow and shallow, not an ocean. Any level under the waterline is safe from
+  // the classify wobble (it fades to 0 at the waterline and the wobble field stays under 0.8).
+  palaeoShelfE:       0.084,  // the shelf floor. The posterized sea snaps to three tones breaking at 0.025 and 0.075, and the paint's border wobble (±0.05, fading to 0 at the waterline) moves a cell across them: at 0.084 ~95% of the shelf paints in the light tone, while the deep floor (0.02 ± 0.015) paints ~70% dark (2026-11-13, measured on the paint grid) …
+  palaeoShelfMottle:  0.005,  // … ± this much with the cached wobble
+  // THE STRAIT'S PLACE: the seaway crossed "the location of the modern southern Ruahine and northern
+  // Tararua ranges" (p. 165). In the registered maps it runs from the Tararua's tip near Palmerston North
+  // to the Ruahine's ~10 km north of the gorge, at 3 Ma and at 2.4 Ma alike, so it is measured from the
+  // gorge in KM (isotropic, v scaled by the skeleton's aspect; not a north–south column) and its width barely changes with the dated
+  // strength: palaeoStraitMinW of it at the first breach, all of it at 2.4 Ma. It closes by shoaling.
+  palaeoStraitMinW:   0.85,
 
   // ---- NORTH UP-RAMP (the far/top edge) ---------------------------------------
   // Raise the top of the SCREEN so the far edge is genuinely-higher generated terrain instead of
@@ -1363,6 +1418,8 @@ class TerrainGenerator {
       (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
     this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(   // relative sea level (m) → coastal shift, onto the tectonic factors
       (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
+    this._geoT.glacialSeaYoung = TerrainGenerator.youngPlainShift(   // … and south of the river, where the plain is younger (LOOK.youngPlain*)
+      (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
     this._geoT.coastShiftU = TerrainGenerator.coastShiftU(      // the coast's move, for the dune belt to follow
       (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : null);
     this._geoT.estuary = TerrainGenerator.estuaryStrength(      // drowned-valley highstand (interglacial)
@@ -1433,6 +1490,14 @@ class TerrainGenerator {
       // pulse is identical: full at 1 Ma, drained 1 Ma → ~0.5 Ma with the marine emergence (emergeTo).
       // Was a pulse peaking at 0.5 Ma (dry at 1 Ma), which no source supports.
       southSinkFrom: 4600000, southSinkFull: 4000000, southSinkHold: 1000000, southSinkTo: 500000,
+      // THE YOUNG PLAIN south of the river (LOOK.youngPlain*): the Horowhenua coastal plain west of the
+      // Tokomaru Marine Terrace was built after the last interglacial, whose shore lies at the range foot
+      // (Sloss 2006; GSNZ Misc. Publ. 122B). Before it, a highstand's sea reached the hills there, which
+      // today's land shifted by one relative sea level cannot draw (the shift floods by today's contours).
+      // [yearsBP, deficit] anchors: in with the MIS 5e transgression, full through its highstand, gone by
+      // 60 ka as the MIS 4–2 fans and dunes build the plain; 0 today. Kept to the last interglacial: the
+      // older highstands (and the 1 Ma opening) are calibrated on their own landmarks (TEMANAWA_COAST_PLAN.md §5b).
+      youngPlain: [[135000, 0], [127000, 1], [110000, 1], [60000, 0]],
 
       // BEFORE THE WINDOW (md/TEMANAWA_PALAEO_ATTRACT.md §1–2; Trewick & Bland 2012 Fig. 4A–D and text;
       // Rees, Palmer & Palmer 2017 for the 1.63 Ma closure). Read by geoTimeFactors().palaeo and the
@@ -1460,9 +1525,33 @@ class TerrainGenerator {
       //   how NARROW the finger is: 1 = a strip along the crest lines (T&B Fig. 4A's thin fingers of
       //   exposed basement), 0 = the whole footprint (the ranges' own shape, as the uplift starts)
       palaeoFingerNarrow: [[4000000, 1], [3000000, 1], [1650000, 0]],
+      //   the APRON of low coastal plain around the axis (Fig. 4A): held from the oldest date, drowned
+      //     3.6 → 3.3 Ma (Young-1: the sea reached the basement west of the gorge ~3.6 Ma, p. 170), just
+      //     ahead of the first breach at the gap. LOOK.palaeoApron*
+      palaeoApron: [[3600000, 1], [3300000, 0]],
+      //   DEEP water in the south-east at 4 Ma (Fig. 4A), shelf across the whole frame by 3 Ma (Fig. 4B).
+      //     LOOK.palaeoDeep*
+      palaeoDeep: [[3600000, 1], [3000000, 0]],
+      //   the SHELF tone of the pre-window sea; it hands back to the window's own sea (the depocentre off
+      //     Levin–Foxton subsiding, the baked western shelf) by the opening. LOOK.palaeoShelf*
+      palaeoShelf: [[1400000, 1], [1000000, 0]],
+      //   the TARARUA as the lasting land, low green hills, until the uplift takes the ranges over
+      //     (the finger broadens to the footprint by 1.65 Ma; the ranges start their rise). LOOK.palaeoHills*
+      palaeoHills: [[1650000, 1], [1150000, 0]],
       //   the oldest date the attract sequence shows (its terms hold their state at older dates)
       palaeoFrom: 4000000
     };
+  }
+
+  // An authored line across the map as [v, u] anchors, north to south: its u at latitude v, linear
+  // between anchors and held past the ends. The pre-window coasts (LOOK.palaeoApron*, palaeoDeepLine). Pure.
+  static _lineU(anchors, v) {
+    if (v <= anchors[0][0]) return anchors[0][1];
+    for (let k = 1; k < anchors.length; k++) {
+      const b = anchors[k];
+      if (v <= b[0]) { const a = anchors[k - 1]; return a[1] + (b[1] - a[1]) * (v - a[0]) / ((b[0] - a[0]) || 1); }
+    }
+    return anchors[anchors.length - 1][1];
   }
 
   // A dated curve: [yearsBP, value] anchors, oldest first, smoothstepped between and HELD outside
@@ -1506,7 +1595,11 @@ class TerrainGenerator {
       basinE: 1 - TerrainGenerator._anchorCurve([[E.palaeoBasinEFrom, 0], [E.palaeoBasinETo, 1]], yearsBP),
       axis:   TerrainGenerator._anchorCurve(E.palaeoAxisStrait, yearsBP),
       narrow: TerrainGenerator._anchorCurve(E.palaeoFingerNarrow, yearsBP),
-      river:  TerrainGenerator._anchorCurve(E.palaeoRiver, yearsBP)
+      river:  TerrainGenerator._anchorCurve(E.palaeoRiver, yearsBP),
+      apron:  TerrainGenerator._anchorCurve(E.palaeoApron, yearsBP),
+      deep:   TerrainGenerator._anchorCurve(E.palaeoDeep, yearsBP),
+      shelf:  TerrainGenerator._anchorCurve(E.palaeoShelf, yearsBP),
+      hills:  TerrainGenerator._anchorCurve(E.palaeoHills, yearsBP)
     } : TerrainGenerator.PALAEO_NONE;
     // The axis before the rapid uplift: the dated pre-window anchors, joining upliftStart at upliftFrom.
     const upliftPre = preWindow
@@ -1570,7 +1663,7 @@ class TerrainGenerator {
   // The pre-window terms inside the window: one frozen zero object, shared (geoTimeFactors runs per
   // morph; nothing should allocate for a state that never changes).
   static get PALAEO_NONE() {
-    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0, narrow: 0, river: 1 });
+    if (!TerrainGenerator._palaeoNone) TerrainGenerator._palaeoNone = Object.freeze({ basinW: 0, basinE: 0, axis: 0, narrow: 0, river: 1, apron: 0, deep: 0, shelf: 0, hills: 0 });
     return TerrainGenerator._palaeoNone;
   }
 
@@ -1610,10 +1703,33 @@ class TerrainGenerator {
     if (yearsBP == null || typeof Climate === 'undefined') return 0;
     const L = (typeof LOOK !== 'undefined') ? LOOK : {};
     if (L.seaCoast === false) return 0;
-    const rsl = TerrainGenerator.relativeSeaLevel(yearsBP);
+    return TerrainGenerator._shiftOfM(TerrainGenerator.relativeSeaLevel(yearsBP), L);
+  }
+
+  // Metres of relative sea → the signed coastal shift (elevation units). Pure.
+  static _shiftOfM(rsl, L) {
     const kS = (L.seaShelfK != null) ? L.seaShelfK : 0.00075;
     const kL = (L.seaLandK != null) ? L.seaLandK : 0.0016;
     return rsl < 0 ? -rsl * kS : -rsl * kL;
+  }
+
+  // How much of the YOUNG PLAIN's deficit stands at yearsBP (GEO_EPOCHS.youngPlain): 1 through the MIS 5e
+  // highstand (the plain south of the river not yet built), 0 before the transgression, from 60 ka and today. Pure.
+  static youngPlainAt(yearsBP) {
+    if (yearsBP == null) return 0;
+    return TerrainGenerator._anchorCurve(TerrainGenerator.GEO_EPOCHS.youngPlain, yearsBP);
+  }
+
+  // The coastal shift SOUTH of the river (LOOK.youngPlain*): the same relative sea plus the metres of
+  // plain built there since the last interglacial, so the 5e highstand reaches the Tararua foot (the
+  // Tokomaru terrace). Equal to glacialSeaShift outside the last interglacial (GEO_EPOCHS.youngPlain),
+  // and today. Read per cell in _applyGeoToHeightMap, blended in by latitude. Pure.
+  static youngPlainShift(yearsBP) {
+    if (yearsBP == null || typeof Climate === 'undefined') return 0;
+    const L = (typeof LOOK !== 'undefined') ? LOOK : {};
+    if (L.seaCoast === false) return 0;
+    const m = (L.youngPlainM > 0) ? L.youngPlainM : 0;
+    return TerrainGenerator._shiftOfM(TerrainGenerator.relativeSeaLevel(yearsBP) + m * TerrainGenerator.youngPlainAt(yearsBP), L);
   }
 
   // The SHELF profile: depth (m) at a distance offshore (km) from today's coast, at latitude v
@@ -1742,7 +1858,7 @@ class TerrainGenerator {
   // Combine the geo field for one cell with the deep-time factors. Pure/static so
   // the cached morph path and the direct _applyGeo share it (no divergence), and
   // tools/bootcheck.js can assert it.
-  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat, crest, basinSub, axisCap, shoalSub, shoalE, axisLow, axisLowE, fingerLift, fingerE) {
+  static _combineGeo(e, rMask, rH, ridge, detail, wMask, wDepth, uplift, incision, relief, incise, sea, wPos, emergence, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, glacialSea, glacialSeaCeil, floodFlat, crest, basinSub, axisCap, shoalSub, shoalE, axisLow, axisLowE, fingerLift, fingerE, apronLift, apronE, hillsLift, hillsE) {
     let e0 = e;                                    // pre-range LOCAL ground — the level the river follows (the relative-sea shift moves it too)
     if (rMask > 0 && uplift > 0 && rH > 0) {
       // RANGES scale the EXISTING ground instead of replacing it with a crest template.
@@ -1922,6 +2038,11 @@ class TerrainGenerator {
       const fe = (fingerE > 0) ? fingerE : 0.15;
       if (e < fe) e += (fe - e) * fingerLift;
     }
+    //   apronLift  the 4 Ma low coastal plain (LOOK.palaeoApron*): a floor at apronE over the drowned
+    //              ground, the caller's smoothstep across the shore making the coast its smooth contour
+    //   hillsLift  the Tararua's low green hills (LOOK.palaeoHills*): a floor at hillsE over its footprint
+    if (apronLift > 0 && e < apronE) e += (apronE - e) * apronLift;
+    if (hillsLift > 0 && e < hillsE) e += (hillsE - e) * hillsLift;
     // The strait's ceiling comes LAST, over the floored finger: the finger stays one coherent low
     // platform right up to the strait's shore, which the ceiling cuts as one smooth slope. (Releasing
     // the floor near the strait instead bared the range's raw noise there as a field of peaks.)
@@ -3488,7 +3609,6 @@ class TerrainGenerator {
     const pAxisCore = (LKp.palaeoAxisCore != null) ? LKp.palaeoAxisCore : 0.4;
     const pEastU = (LKp.palaeoBasinEastU != null) ? LKp.palaeoBasinEastU : 0.62;
     const pEastF = (LKp.palaeoBasinEastFeather > 0) ? LKp.palaeoBasinEastFeather : 0.12;
-    const pStraitHW = ((LKp.palaeoStraitHalfW != null) ? LKp.palaeoStraitHalfW : 0.085) * PL.axis;   // the strait's width carries the dated curve
     const pStraitF = (LKp.palaeoStraitFeather > 0) ? LKp.palaeoStraitFeather : 0.06;
     const pStraitWob = (LKp.palaeoStraitWobble != null) ? LKp.palaeoStraitWobble : 0.05;
     const pStraitFloor = (LKp.palaeoStraitFloor != null) ? LKp.palaeoStraitFloor : 0.06;
@@ -3530,6 +3650,40 @@ class TerrainGenerator {
     const pShoalF = (LKp.palaeoShoalFeather > 0) ? LKp.palaeoShoalFeather : 0.10;
     const pShoalE = (LKp.palaeoShoalE != null) ? LKp.palaeoShoalE : 0.085;
     const pShoalAmp = (LKp.palaeoShoalAmp != null) ? LKp.palaeoShoalAmp : 0.045;
+    // The strait is measured from the gap's centre (the neck's midpoint, crest tip to crest tip) in km:
+    // v is scaled by the skeleton's aspect so a distance is the same on the ground either way. Its width
+    // barely follows the dated strength (palaeoStraitMinW of it from the first breach); it closes by shoaling.
+    const pGapU = pNeck ? (pNeck[0] + pNeck[2]) / 2 : pGorgeU, pGapV = pNeck ? (pNeck[1] + pNeck[3]) / 2 : 0.51;
+    // km per v over km per u: the skeleton's own aspect (it spans the map in both footprint modes), not
+    // the grid's, which is square in the 'square' footprint
+    const pAspect = (this.geo && this.geo.viewBox && this.geo.viewBox.w > 0) ? this.geo.viewBox.h / this.geo.viewBox.w : 0.5625;
+    const pStraitMinW = (LKp.palaeoStraitMinW != null) ? LKp.palaeoStraitMinW : 0.85;
+    const pStraitR = (PL.axis > 0) ? ((LKp.palaeoStraitHalfW != null) ? LKp.palaeoStraitHalfW : 0.08) * (pStraitMinW + (1 - pStraitMinW) * PL.axis) : 0;
+    // THE 4 Ma APRON of low coastal plain (LOOK.palaeoApron*), its coasts sweeping in onto the axis as it
+    // drowns (GEO_EPOCHS.palaeoApron); the last quarter of the clock fades what is left on the axis.
+    const pApron = PL.apron || 0;
+    const pApW = LKp.palaeoApronWest, pApEa = LKp.palaeoApronEast, pApAx = LKp.palaeoApronAxis;
+    const pApOn = pApron > 0 && Array.isArray(pApW) && Array.isArray(pApEa) && Array.isArray(pApAx);
+    const pApF = (LKp.palaeoApronFeather > 0) ? LKp.palaeoApronFeather : 0.05;
+    const pApWob = (LKp.palaeoApronWobble != null) ? LKp.palaeoApronWobble : 0.04;
+    const pApE0 = (LKp.palaeoApronE != null) ? LKp.palaeoApronE : 0.115;
+    const pApRise = (LKp.palaeoApronRise != null) ? LKp.palaeoApronRise : 0.10;
+    const pApRiseU = (LKp.palaeoApronRiseU > 0) ? LKp.palaeoApronRiseU : 0.12;
+    const pApCap = (LKp.palaeoApronCap != null) ? LKp.palaeoApronCap : 0.23;
+    const pApK = pApron >= 0.25 ? 1 : pApron * 4;
+    // THE TARARUA HILLS, the lasting land (LOOK.palaeoHills*, GEO_EPOCHS.palaeoHills).
+    const pHills = (PL.hills || 0);
+    const pHE = (LKp.palaeoHillsE != null) ? LKp.palaeoHillsE : 0.22;
+    const pHCrest = (LKp.palaeoHillsCrest != null) ? LKp.palaeoHillsCrest : 0.10;
+    const pHLowE = (LKp.palaeoHillsLowE != null) ? LKp.palaeoHillsLowE : 0.30;
+    const pHM = Array.isArray(LKp.palaeoHillsMass) ? LKp.palaeoHillsMass : [0.70, 0.95];
+    const pHV = Array.isArray(LKp.palaeoHillsV) ? LKp.palaeoHillsV : [0.56, 0.66];
+    // THE SEA FLOOR: shelf (pale) before the window, but deep east of the shelf break at 4 Ma.
+    const pShelf = PL.shelf || 0, pDeep = PL.deep || 0;
+    const pShelfE = (LKp.palaeoShelfE != null) ? LKp.palaeoShelfE : 0.084;
+    const pShelfMot = (LKp.palaeoShelfMottle != null) ? LKp.palaeoShelfMottle : 0.005;
+    const pDeepLine = Array.isArray(LKp.palaeoDeepLine) ? LKp.palaeoDeepLine : null;
+    const pDeepF = (LKp.palaeoDeepFeather > 0) ? LKp.palaeoDeepFeather : 0.06;
     // Mottle the drowned SEA FLOOR and MEANDER the strait's north shore with the cached wobble field,
     // so the submergence reads as varied open water with a natural (not latitude-straight) coast —
     // not a flat square slab. Cached (deterministic) → the sliced morph stays identical to the sync one.
@@ -3566,6 +3720,11 @@ class TerrainGenerator {
     const blowOn = duneOn && blowExcess > 0;
     // GLACIAL EUSTATIC sea (signed, this morph year) + its WEST gate east extent + elevation ceiling.
     const glacialSea = (t.glacialSea != null) ? t.glacialSea : 0;
+    // … and south of the river, where the plain is younger than the last interglacial (LOOK.youngPlain*):
+    // blended in by latitude. A caller without it (the harness's short paths) gets the one shift.
+    const glacialSeaY = (t.glacialSeaYoung != null) ? t.glacialSeaYoung : glacialSea;
+    const LKy = (typeof LOOK !== 'undefined') ? LOOK : {};
+    const yV0 = (LKy.youngPlainV0 != null) ? LKy.youngPlainV0 : 0.63, yV1 = (LKy.youngPlainV1 > yV0) ? LKy.youngPlainV1 : yV0 + 0.08;
     // Dune shoreline tracks the moving coast: a lowstand pulls the belt's shore seaward (coastX down)
     // so the dunes march onto the bared shelf (Koputaroa mode). coastShiftU is that move in map
     // units, read off the same shelf profile the coast was baked with.
@@ -3574,7 +3733,7 @@ class TerrainGenerator {
     const gSeaCeil = (typeof LOOK !== 'undefined' && LOOK.glacialSeaCeil != null) ? LOOK.glacialSeaCeil : 0.30;
     const gSeaEastU = (typeof LOOK !== 'undefined' && LOOK.glacialSeaEastU != null) ? LOOK.glacialSeaEastU : 0.48;
     const gSeaFullU = (typeof LOOK !== 'undefined' && LOOK.glacialSeaFullU != null) ? LOOK.glacialSeaFullU : 0.36;
-    const gSeaOn = glacialSea !== 0 && gSeaEastU > 0;
+    const gSeaOn = (glacialSea !== 0 || glacialSeaY !== 0) && gSeaEastU > 0;
     // DROWNED-VALLEY ESTUARY (highstand, positional up the main stem). Follows wMDist/wMPos.
     const highstand = ((t.estuary != null) ? t.estuary : 0) * rivP;
     const estReach = (typeof LOOK !== 'undefined' && LOOK.estuaryReach != null) ? LOOK.estuaryReach : 0;
@@ -3680,7 +3839,7 @@ class TerrainGenerator {
         }
         if (rivP < 1) { wMaskM *= rivP; wMask *= rivP; }   // the drainage fades in before the window
         const wv = seaWob ? seaWob[i] : 0;
-        const seaFloor = 0.02 + wv * 0.015;                   // mottled deep floor (~0.005–0.035, all sea)
+        let seaFloor = 0.02 + wv * 0.015;                     // mottled deep floor (~0.005–0.035, all sea); shelf before the window (below)
         const swSub = TerrainGenerator._rangeProtect(TerrainGenerator._swStrength(u, v, sub, swReach, swFeather), rMask[i], seaProtect);   // the axis stays a low emergent finger
         let southSub = TerrainGenerator._southStrength(v + wv * southWob, southSink, southLat, southFeather);   // meander the shore off the straight latitude line
         if (southSub > 0) { const pr = 1 - southProtect * rMask[i]; southSub *= pr > 0 ? pr : 0; }   // Tararua stays a dry peninsula
@@ -3694,13 +3853,71 @@ class TerrainGenerator {
           // exactly), easing to 0 by glacialSeaEastU.
           let wg = (u <= gSeaFullU) ? 1 : 1 - (u - gSeaFullU) / (gSeaEastU - gSeaFullU);
           if (wg < 0) wg = 0;
-          gSea = glacialSea * wg * wg * (3 - 2 * wg);
+          let gs = glacialSea;
+          if (glacialSeaY !== glacialSea && v > yV0) {                                         // the young plain, south of the river
+            let ky = (v - yV0) / (yV1 - yV0); ky = ky >= 1 ? 1 : ky * ky * (3 - 2 * ky);
+            gs += (glacialSeaY - glacialSea) * ky;
+          }
+          gSea = gs * wg * wg * (3 - 2 * wg);
         }
         // BEFORE THE WINDOW: the basin over everything but the axis core (west and east on their own
         // clocks, blended across pEastU), the strait strip across the gap (unprotected), the Ruahine
         // shoals north of it. All 0 inside the window (PL is the frozen zero object there).
         let basinSub = 0, axisCap = 1, shoalSub = 0, shoalE = 0, fingerLift = 0, bridgeK = 0;
+        let apronLift = 0, apronE = 0, hillsLift = 0, hillsE = 0, axisLowE = pAxisLowE, shelfK = 0, shelfE = 0;
         if (palaeoOn) {
+          // THE SEA FLOOR: the pre-window sea was shelf (< 200 m), painted at the pale end of the sea ramp,
+          // except east of the shelf break while the 4 Ma deep water holds (LOOK.palaeoShelf*, palaeoDeep*).
+          // Every drowning term below (the basin, the south strait, the east front) shares it, and after
+          // the combine the sea the base already held deeper (the baked western shelf, the sea shift's
+          // squashed floor) is raised to it: the drowning terms only ever lower.
+          if (pShelf > 0) {
+            let deep = 0;
+            if (pDeep > 0 && pDeepLine) {
+              let dd = (u - TerrainGenerator._lineU(pDeepLine, v)) / pDeepF;                     // > 0 past the shelf break
+              dd = dd <= 0 ? 0 : dd >= 1 ? 1 : dd * dd * (3 - 2 * dd);
+              deep = dd * pDeep;
+            }
+            shelfK = pShelf * (1 - deep);
+            shelfE = pShelfE + wv * pShelfMot;
+            seaFloor += (shelfE - seaFloor) * shelfK;
+          }
+          // THE 4 Ma APRON (LOOK.palaeoApron*): s is how far inside both coasts the cell lies, each coast
+          // swept in onto the axis by how far the apron has drowned. Its land is a FLOOR (the plain, from a
+          // beach at the shore to lowland inland) applied after the drowning, and a CEILING over what the
+          // drowning left standing (the finger), so the coast is the floor's smooth contour, not a partial
+          // lerp of the ground (which keeps high cells proud of the water: towers).
+          let apK = 0;
+          if (pApOn) {
+            const ax = TerrainGenerator._lineU(pApAx, v), gone = 1 - pApron;
+            const uW = TerrainGenerator._lineU(pApW, v), uE = TerrainGenerator._lineU(pApEa, v);
+            const s = Math.min(u - (uW + (ax - uW) * gone), (uE + (ax - uE) * gone) - u);
+            let ri = (s - wv * pApWob) / pApF;
+            ri = ri <= 0 ? 0 : ri >= 1 ? 1 : ri * ri * (3 - 2 * ri);
+            if (ri > 0) {
+              let ro = (s - pApF) / pApRiseU;
+              ro = ro <= 0 ? 0 : ro >= 1 ? 1 : ro;
+              apK = ri * pApK;
+              apronLift = apK;
+              apronE = pApE0 + pApRise * ro + wv * 0.015;
+            }
+          }
+          // THE TARARUA HILLS (LOOK.palaeoHills*): the range-only core south of the gap (the neck and the
+          // strait's shore stay low), floored at hills height rising to the crest line, and cut toward
+          // the hills' line instead of the axis's lowland.
+          let hK = 0;
+          if (pHills > 0 && rMaskRArr && rMaskRArr[i] > pHM[0] && v > pHV[0]) {
+            let hm = (rMaskRArr[i] - pHM[0]) / (pHM[1] - pHM[0]);
+            hm = hm >= 1 ? 1 : hm * hm * (3 - 2 * hm);
+            let hv = (v - pHV[0]) / (pHV[1] - pHV[0]);
+            hv = hv >= 1 ? 1 : hv * hv * (3 - 2 * hv);
+            hK = pHills * hm * hv;
+            if (hK > 0) {
+              hillsLift = hK;
+              hillsE = pHE + pHCrest * (rSpArr ? rSpArr[i] : 0) + wv * 0.015;
+              axisLowE = pAxisLowE + (pHLowE - pAxisLowE) * hK;
+            }
+          }
           const east = TerrainGenerator._southStrength(u, 1, pEastU - pEastF, pEastF);          // 0 west → 1 east of pEastU
           // The east's clock is a FRONT sweeping east as basinE runs out: a CEILING over the shelf, at the
           // sea floor east of the front and climbing off the land west of it (the shape of
@@ -3765,23 +3982,33 @@ class TerrainGenerator {
             core = core < 0 ? 0 : core > 1 ? 1 : core * core * (3 - 2 * core);
             basinSub = basinL * (1 - core);
             fingerLift = basin * core;
-            if (eastCap < 1.1) { const ec = eastCap + (1.1 - eastCap) * core; if (ec < axisCap) axisCap = ec; }   // the finger stands clear of the east shelf too
+            if (eastCap < 1.1) {                                                                   // the finger (and the apron's plain, and the hills) stand clear of the east shelf too
+              const keep = Math.max(core, apK, hK);
+              const ec = eastCap + (1.1 - eastCap) * keep; if (ec < axisCap) axisCap = ec;
+            }
             if (bridge > 0 && pBridgeFlat > 0) {                                                   // how far the neck's ceiling holds this cell: all of its dry width (mass ≥ the core edge), off the fingers' core (its ends lie inside them)
               let bc = bridge / pAxisCore;
               bc = bc > 1 ? 1 : bc * bc * (3 - 2 * bc);
               bridgeK = basin * bc * (1 - fingerCore) * pBridgeFlat;
             }
           }
-          if (pStraitHW > 0) {
+          if (apK > 0) {                                                                           // the apron planes what stands on it to a low plain (not the hills)
+            const capA = 1.1 + (pApCap - 1.1) * apK * (1 - hK);
+            if (capA < axisCap) axisCap = capA;
+          }
+          if (pStraitR > 0) {
             // The ceiling: the shelf floor inside the strait, climbing its meandered shore to pShoreE over
             // the feather (smoothstepped, so it meets the land without a kink), then off the land over
-            // pShoreRise, un-wobbled; all of it lifted as the strait shoals.
-            const d = Math.abs(u - pGorgeU) - pStraitHW;                                           // ≤ 0 inside the strait
-            let r = (d + (Math.abs(u + wv * pStraitWob - pGorgeU) - Math.abs(u - pGorgeU))) / pStraitF;   // the shore meanders
+            // pShoreRise, un-wobbled; all of it lifted as the strait shoals. Measured from the gap's centre
+            // in km, so it takes the southern Ruahine and the northern Tararua alike (p. 165).
+            const du = u - pGapU, dv = (v - pGapV) * pAspect;
+            const d = Math.sqrt(du * du + dv * dv) - pStraitR;                                     // ≤ 0 inside the strait
+            let r = (d + wv * pStraitWob) / pStraitF;                                              // the shore meanders
             r = r <= 0 ? 0 : r >= 1 ? 1 : r * r * (3 - 2 * r);
             let ro = (d - pStraitF) / pShoreRise;
             ro = ro <= 0 ? 0 : ro >= 1 ? 1 : ro;
-            const floor = pStraitFloor + wv * 0.02;
+            let floor = pStraitFloor + wv * 0.02;
+            if (pShelf > 0) floor += (seaFloor - floor) * pShelf;                                 // the shelf tone: the strait is shelf like the sea round it, never darker
             const cap = floor + (pShoreE - floor) * r + (1.1 - pShoreE) * ro + pStraitLift * 1.1;
             if (cap < axisCap) axisCap = cap;
           }
@@ -3796,11 +4023,11 @@ class TerrainGenerator {
           // edge: the relief bake paints a step as a tower of cliff). The strait needs no fade: its
           // ceiling is applied over the floored land, last.
           if (fingerLift > 0) fingerLift *= 1 - shoaled;
-          if (bridgeK > 0) bridgeK *= 1 - shoaled;
+          if (bridgeK > 0) bridgeK *= (1 - shoaled) * (1 - apK);                                  // the neck holds a low isthmus between drowned flanks; inside the apron's plain it would cut a trough (painted as cliffs)
         }
         let e = TerrainGenerator._combineGeo(base[i], rMask[i], rH[i], ridge[i], detail[i], wMask, 1, up, inc, relief, incise, sea, 1, 1, seaLift, floodCeil, rangeGain, rangeCeil, swSub, southSub, seaFloor, wMaskM, wDepthM, patchSub, gSea, gSeaCeil, floodFlat, crestArr ? crestArr[i] : 0,
-                                             basinSub, axisCap, shoalSub, shoalE, pAxisLow, pAxisLowE,
-                                             fingerLift, pAxisFloorE + wv * 0.02);
+                                             basinSub, axisCap, shoalSub, shoalE, pAxisLow, axisLowE,
+                                             fingerLift, pAxisFloorE + wv * 0.02, apronLift, apronE, hillsLift, hillsE);
         // THE NECK (before the window): a CEILING just above the waterline, so the gap is crossed by a low
         // neck of land, not a causeway at the saddle's height. It holds across the neck's whole dry width
         // (the core floors it from below, so the crest line sits at the ceiling and the shore is the
@@ -3811,6 +4038,7 @@ class TerrainGenerator {
           if (e > ne) e += (ne - e) * bridgeK;
           if (e > axisCap) e = axisCap;
         }
+        if (shelfK > 0 && e < shelfE) e += (shelfE - e) * shelfK;   // the shelf tone raises the deeper sea too (sea only: shelfE is under the waterline)
         // DROWNED-VALLEY ESTUARY: at a warm highstand the sea backs up the main-stem valley. Drown
         // the low valley floor near the main channel (wMDist/wMPos) toward the sea floor, elevation-
         // gated so terraces stay dry, reaching further inland as the highstand strengthens.
@@ -4399,6 +4627,7 @@ class TerrainGenerator {
   _reshapeTo(yearsBP) {
     this._geoT = TerrainGenerator.geoTimeFactors(yearsBP);
     this._geoT.glacialSea = TerrainGenerator.glacialSeaShift(yearsBP);   // relative sea level (m) → coastal shift at the morph year
+    this._geoT.glacialSeaYoung = TerrainGenerator.youngPlainShift(yearsBP);   // … south of the river, where the plain is younger (LOOK.youngPlain*)
     this._geoT.coastShiftU = TerrainGenerator.coastShiftU(yearsBP);      // the coast's move, for the dune belt
     this._geoT.estuary = TerrainGenerator.estuaryStrength(yearsBP);      // drowned-valley highstand at the morph year
     this._geoT.estFillAge = TerrainGenerator.stillstandAge(yearsBP);     // the Opiki cycle's clock

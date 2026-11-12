@@ -85,7 +85,7 @@ const TM_PALAEO = {
   // Trewick & Bland use (Fig. 4A–D, pp. 160–171); the axis is unnamed until 1.6 Ma, then their 'proto-'.
   // (The wall's cover fit runs the map wider than the screen, so u ≈ 0.16 … 0.9 is what shows.)
   LABELS: [
-    { text: '{basin} Basin',   from: 4000000, to: 1050000, u: 0.27, v: 0.42, deg: -18, on: 'sea'  },
+    { text: '{basin} Basin',   from: 4000000, to: 1050000, u: 0.23, v: 0.27, deg: -18, on: 'sea'  },   // north-west, off the 4 Ma plain (the basin's deep water lay off Whanganui; research/palaeogeography)
     { text: 'Ruataniwha Strait', from: 4000000, to: 1550000, u: 0.80, v: 0.64, deg: -40, on: 'sea'  },
     { text: 'Manawatū Strait',   from: 3330000, to: 2950000, u: 0.505, v: 0.56, deg: 30, on: 'sea' },
     { text: 'Manawatū Strait',   from: 2480000, to: 1680000, u: 0.505, v: 0.56, deg: 30, on: 'sea' },

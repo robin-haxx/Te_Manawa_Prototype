@@ -1524,9 +1524,11 @@ try{
 
 // ---- the land before the window: the palaeogeography attract sequence (TeManawa_palaeo.js) ----
 // md/TEMANAWA_PALAEO_ATTRACT.md. (a) The dated pre-window factors are exactly their window values at
-// ≤ 1 Ma and read Trewick & Bland's maps older: (b) the land at the four dated maps — 4 Ma all sea but
-// the axis finger, 2.4 Ma a sea across the gap with the Ruahine shoaled and the Tararua standing,
-// 2.75 Ma and 1.6 Ma the gap closed; (c) the names of the time on their surfaces; (d) a whole sequence
+// ≤ 1 Ma and read Trewick & Bland's maps older: (b) the land at the four dated maps, as registered on the
+// frame (research/palaeogeography/, 2026-11-13) — 4 Ma a low coastal plain round the axis with the
+// Tararua as hills and deep water only in the south-east, 3 and 2.4 Ma a shelf sea across the gap that
+// takes the southern Ruahine and the Tararua's tip (the Ruahine shoaled at 2.4 Ma), 2.75 Ma and 1.6 Ma
+// the gap closed; (c) the names of the time on their surfaces; (d) a whole sequence
 // (harness pacing) from mid-run: never a crossfade cut, swaps spaced by the fade, every keyframe
 // baked, the landing a fresh 1 Ma world with all four buffers; (e) a skip lands; (f) the paths: idle
 // starts it (and stages the eruption when it is off), error recovery never does, a console intent
@@ -1555,6 +1557,14 @@ try{
   chk(f(4000000).palaeo.axis===0 && f(3000000).palaeo.axis>0.4 && f(3000000).palaeo.axis<0.5, 'no strait at 4 Ma; a narrow seaway at 3 Ma');
   chk(f(2750000).palaeo.axis===0 && f(2400000).palaeo.axis===1 && f(1630000).palaeo.axis===0, 'closed in the Mangapanian, widest at 2.4 Ma, closed for good from 1.63 Ma');
   for (let y=1650000; y>=1000000; y-=25000) { if (f(y).palaeo.basinW > f(y+25000).palaeo.basinW + 1e-9) { chk(false, 'the west basin fade is monotone'); break; } }
+  // 2026-11-13, T&B's maps read on the sim's frame (research/palaeogeography/): the apron of low plain at
+  // 4 Ma, drowned 3.6 → 3.3 Ma; deep water only at 4 Ma; the shelf tone, handed back by the opening; the
+  // Tararua's hills until the uplift takes the ranges over. All 0 inside the window.
+  chk(f(4000000).palaeo.apron===1 && f(3600000).palaeo.apron===1 && f(3300000).palaeo.apron===0, 'the apron of low plain stands at 4 Ma and is drowned by 3.3 Ma');
+  chk(f(4000000).palaeo.deep===1 && f(3000000).palaeo.deep===0, 'deep water at 4 Ma, shelf across the frame by 3 Ma');
+  chk(f(2400000).palaeo.shelf===1 && f(1400000).palaeo.shelf===1 && f(1000500).palaeo.shelf<0.01, 'the shelf tone holds to 1.4 Ma and hands back to the window\'s sea by the opening');
+  chk(f(2400000).palaeo.hills===1 && f(1100000).palaeo.hills===0, 'the Tararua\'s hills hold until the uplift takes over');
+  { const N=TG.PALAEO_NONE; chk(N.apron===0 && N.deep===0 && N.shelf===0 && N.hills===0, 'the apron, deep, shelf and hills terms are 0 inside the window'); }
 
   // (b) the land at the dated maps (synchronous morphs at the harness's 1× bake)
   const gc=T.gridCols, gr=T.gridRows, hm=()=>T.heightMap;
@@ -1568,13 +1578,27 @@ try{
   // sim's own 1 Ma opening); the finger is asserted RELATIVE to 1 Ma and against the plain beside it.
   const tararuaLand=()=>frac(0.36,0.44,0.82,0.92,false), ruahineSea=()=>frac(0.56,0.64,0.22,0.34,true);
   const plainLand=()=>frac(0.15,0.25,0.45,0.55,false), all=()=>frac(0,1,0,1,true);
+  const westLand=()=>frac(0.31,0.42,0.40,0.55,false);   // west of the axis, inside the 4 Ma apron's coast (u 0.22–0.24 here)
+  const med=(u0,u1,v0,v1)=>{ const H=hm(), a=[]; for (let r=Math.floor(v0*gr); r<Math.ceil(v1*gr); r++) for (let c=Math.floor(u0*gc); c<Math.ceil(u1*gc); c++) a.push(H[r*gc+c]); a.sort((x,y)=>x-y); return a[a.length>>1]; };
+  const meanSea=(u0,u1,v0,v1)=>{ const H=hm(); let n=0,s=0; for (let r=Math.floor(v0*gr); r<Math.ceil(v1*gr); r++) for (let c=Math.floor(u0*gc); c<Math.ceil(u1*gc); c++) { const e=H[r*gc+c]; if (e<seaE) { n++; s+=e; } } return n? s/n : NaN; };
   const state={};
-  for (const y of [4000000, 3000000, 2750000, 2400000, 1600000, 1000000]) { T.morphTo(y,1); state[y]={ sea:all(), gap:gapSea(), tar:tararuaLand(), rua:ruahineSea(), plain:plainLand() }; }
+  for (const y of [4000000, 3000000, 2750000, 2400000, 1600000, 1000000]) { T.morphTo(y,1); state[y]={ sea:all(), gap:gapSea(), tar:tararuaLand(), rua:ruahineSea(), plain:plainLand(), west:westLand(),
+    tarMed:med(0.36,0.44,0.82,0.92), ruaMed:med(0.56,0.64,0.22,0.34), seDeep:meanSea(0.74,0.84,0.64,0.78), wShelf:meanSea(0.05,0.15,0.40,0.60),
+    // inside the strait's reach (≤ 0.06 from the gap's centre in km-scaled units, where the harness's white-noise
+    // shore wobble still leaves them mostly sea) and on each range's footprint
+    ruaSouth:frac(0.51,0.535,0.44,0.47,true), tarTip:frac(0.46,0.48,0.57,0.60,true) }; }
   const pc=(x)=>(x*100).toFixed(0)+'%';
-  chk(state[4000000].sea>0.6, `4 Ma: most of the frame is sea (${pc(state[4000000].sea)})`);
-  chk(state[4000000].plain<0.05 && state[4000000].tar>=0.8*state[1000000].tar && state[4000000].tar>state[4000000].plain+0.3,
-      `4 Ma: the plain is sea and the Tararua core stands as the basement finger (plain ${pc(state[4000000].plain)}, Tararua ${pc(state[4000000].tar)} vs ${pc(state[1000000].tar)} at 1 Ma)`);
+  // 4 Ma (Fig. 4A, read on the frame): about half of it LOW COASTAL PLAIN around the axis, widest at the
+  // gorge's latitude (the Young-1 drillhole: no sea west of the gorge until ~3.6 Ma); the TARARUA the
+  // lasting land, as hills; the Ruahine low plain; deep water only in the south-east, shelf elsewhere.
+  chk(state[4000000].west>0.9 && state[3000000].west<0.1, `4 Ma: the plain west of the axis is land (the apron), sea by 3 Ma (${pc(state[4000000].west)} → ${pc(state[3000000].west)} land)`);
+  chk(state[4000000].sea<state[3000000].sea-0.15, `the apron drowns from 4 Ma to 3 Ma (${pc(state[4000000].sea)} → ${pc(state[3000000].sea)} sea)`);
+  chk(state[4000000].tarMed>=LK.palaeoHillsE-0.005 && state[4000000].ruaMed<=LK.palaeoApronCap+0.005 && state[4000000].tarMed>state[4000000].ruaMed,
+      `4 Ma: the Tararua is the lasting land, hills over a low Ruahine (median ${state[4000000].tarMed.toFixed(3)} vs ${state[4000000].ruaMed.toFixed(3)})`);
+  chk(state[4000000].tar>=0.8*state[1000000].tar, `4 Ma: the Tararua core stands (${pc(state[4000000].tar)} land vs ${pc(state[1000000].tar)} at 1 Ma)`);
   chk(state[4000000].rua>=0 && frac(0.56,0.64,0.22,0.34,false)>=0.8*(1-state[1000000].rua), `4 Ma: the Ruahine core stands too (${pc(1-state[4000000].rua)} land)`);
+  chk(state[4000000].seDeep<0.04 && state[4000000].wShelf>0.07 && state[2400000].seDeep>0.07 && state[3000000].wShelf>0.07,
+      `the sea is shelf but for the south-east at 4 Ma (south-east floor ${state[4000000].seDeep.toFixed(3)} at 4 Ma, ${state[2400000].seDeep.toFixed(3)} at 2.4 Ma; west ${state[4000000].wShelf.toFixed(3)})`);
   // (the gap probe box is wider than the early finger's neck across the gap, so some of it is sea
   //  beside the neck; "no seaway" is the neck standing and the box being far less sea than once the strait opens)
   chk(state[4000000].gap<0.7 && state[3000000].gap>state[4000000].gap+0.3, `4 Ma: no seaway across the gorge area — a land bridge stands (${pc(state[4000000].gap)} sea, vs ${pc(state[3000000].gap)} at 3 Ma)`);
@@ -1609,15 +1633,17 @@ try{
     const [r13]=drain(1300000); chk(r13>0, `1.3 Ma: the river system has developed (${r13} river px)`);
     chk(TG.geoTimeFactors(1000000).palaeo.river===1 && TG.geoTimeFactors(25500).palaeo.river===1, 'the drainage term is 1 inside the window');
   }
-  // the finger is THINNER early (a strip along the crest lines) than when the uplift starts
+  // the finger is THINNER early (a strip along the crest lines) than when the uplift starts (from 3 Ma:
+  // at 4 Ma the apron's plain covers the flanks)
   const ruaFlank=(y)=>{ T.morphTo(y,1); return frac(0.66,0.72,0.10,0.30,false); };   // the Ruahine footprint's eastern flank
-  { const a=ruaFlank(4000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 4 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
+  { const a=ruaFlank(3000000), b=ruaFlank(1600000); chk(a<=b, `the finger broadens from 3 Ma to 1.6 Ma (flank land ${pc(a)} → ${pc(b)})`); }
   // THE NECK across the gap: a LOW, level neck of land (2026-11-02: not a causeway at the saddle's base
   // height, ~0.28), on the straight line from one range's crest tip to the other's (2026-11-03: not the
   // river's line, which gave the gap's land the channel's dog-leg and a lobe where it bends south). Its
-  // centre line is land and low; the river's line off the neck, in the gap and off the fingers, is sea
+  // centre line is land and low; the river's line off the neck, in the gap and off the fingers, is sea.
+  // Read at 2.75 Ma (the Mangapanian closure): at 4 Ma the apron's plain surrounds the neck (2026-11-13).
   {
-    T.morphTo(4000000,1); const C3=T._geoCache, H=T.heightMap, N=C3.palaeoNeck; let cs=0,cn=0,cw=0,ch=0,rs=0,rn=0,kn=0,kh=0,jump=0;
+    T.morphTo(2750000,1); const C3=T._geoCache, H=T.heightMap, N=C3.palaeoNeck; let cs=0,cn=0,cw=0,ch=0,rs=0,rn=0,kn=0,kh=0,jump=0;
     chk(!!N, 'the early neck has a centre line (a range either side of the gorge)');
     const thinAt=(i)=>C3.rMaskR[i]*(1-LK.palaeoFingerNarrow*(1-C3.rSp[i]));
     const neckTop=LK.palaeoNeckE+LK.palaeoNeckAmp+0.01;
@@ -1632,13 +1658,13 @@ try{
       if (dn<0.005 && Math.abs(u-gu)<=0.03) { if (H[i]<seaE) { cn++; cw++; } else if (!fing) { cn++; if (H[i]>=0.22) ch++; else cs++; } }
       else if (dn>LK.palaeoBridgeW && C3.wMDist[i]<0.02 && thin<0.3) { rn++; if (H[i]<seaE) rs++; }
       if (dn<0.5*LK.palaeoBridgeW && fc<0.02 && H[i]>=seaE) { kn++; if (H[i]>neckTop) kh++; }
-    }    chk(cn>0 && cw===0 && cs>=0.9*cn, `4 Ma: a low neck of land crosses the gap on the crest-to-crest line (${cs}/${cn} centre cells between the fingers land and low; ${cw} sea, ${ch} high)`);
-    chk(rn>0 && rs>=0.9*rn, `4 Ma: the gap's land does not follow the river's line (${rs}/${rn} river-line cells off the neck are sea)`);
+    }    chk(cn>0 && cw===0 && cs>=0.9*cn, `2.75 Ma: a low neck of land crosses the gap on the crest-to-crest line (${cs}/${cn} centre cells between the fingers land and low; ${cw} sea, ${ch} high)`);
+    chk(rn>0 && rs>=0.9*rn, `2.75 Ma: the gap's land does not follow the river's line (${rs}/${rn} river-line cells off the neck are sea)`);
     // 2026-11-03: the crest closeness flipped from one range to the other where their margins met (a one-cell
     // step in the thin finger, painted as a striped wall), and the neck's level faded out before its shore
     // drowned (a rim of raw relief along the south shore, painted as a pale sheer face)
-    chk(jump<0.12, `4 Ma: the thin finger's mass has no one-cell step in the gap (largest neighbour step ${jump.toFixed(3)})`);
-    chk(kn>0 && kh<=0.02*kn, `4 Ma: the neck stands under its ceiling across its dry width, shore included (${kh}/${kn} dry cells above ${neckTop.toFixed(3)})`);
+    chk(jump<0.12, `2.75 Ma: the thin finger's mass has no one-cell step in the gap (largest neighbour step ${jump.toFixed(3)})`);
+    chk(kn>0 && kh<=0.02*kn, `2.75 Ma: the neck stands under its ceiling across its dry width, shore included (${kh}/${kn} dry cells above ${neckTop.toFixed(3)})`);
   }
   // THE EAST fills out as a front sweeping east from the axis (1.75 → 1.3 Ma), not all at once
   {
@@ -1655,7 +1681,15 @@ try{
   // (the probe box's north-east lies in the strait's feathered shore — "the northern Tararua under the sea" — so only part of it stands)
   chk(state[2400000].tar>=0.3*state[1000000].tar && state[2400000].tar>state[2400000].plain+0.1, `2.4 Ma: the Tararua stands as the southern landmass (${pc(state[2400000].tar)} land, plain ${pc(state[2400000].plain)})`);
   chk(state[1600000].gap<0.5 && state[1600000].rua<0.3, `1.6 Ma: the strait is closed and the Ruahine stands (${pc(state[1600000].gap)} / ${pc(state[1600000].rua)})`);
-  chk(state[1000000].sea<state[4000000].sea-0.15, `the land grows from 4 Ma to 1 Ma (${pc(state[4000000].sea)} → ${pc(state[1000000].sea)} sea)`);
+  chk(state[1000000].sea<state[3000000].sea-0.15, `the land grows from 3 Ma to 1 Ma (${pc(state[3000000].sea)} → ${pc(state[1000000].sea)} sea)`);
+  // THE STRAIT'S PLACE (p. 165: "across the location of the modern southern Ruahine and northern Tararua";
+  // the registered maps end the Ruahine ~10 km north of the gorge and the Tararua near Palmerston North,
+  // at 3 Ma and at 2.4 Ma alike): the southern Ruahine and the Tararua's northern tip are sea while the
+  // strait is open, land while it is closed (2.75 Ma)
+  chk(state[3000000].ruaSouth>0.6 && state[2400000].ruaSouth>0.6 && state[2750000].ruaSouth<0.5,
+      `the strait takes the southern Ruahine (${pc(state[3000000].ruaSouth)} / ${pc(state[2400000].ruaSouth)} sea at 3 / 2.4 Ma, ${pc(state[2750000].ruaSouth)} at 2.75 Ma)`);
+  chk(state[3000000].tarTip>0.6 && state[2400000].tarTip>0.6,
+      `… and the Tararua's northern tip (${pc(state[3000000].tarTip)} / ${pc(state[2400000].tarTip)} sea at 3 / 2.4 Ma)`);
 
   // (c) the names of the time, on their surfaces (the paint classification)
   const W=CFG.canvasWidth, H=CFG.canvasHeight;
@@ -1817,7 +1851,7 @@ try{
   chk(P.state==='idle', 'the bus-skipped sequence lands');
   TMP.kyrPerSec=pace.kyr; TMP.keyframes=pace.kf;
   console.log(fail? `palaeo attract: ${fail} FAILURES`
-    : `palaeo attract: 4 Ma sea + basement finger → the strait across the gap (3 / 2.4 Ma) → the ranges; names of the time on their surfaces; a sequence lands on a fresh 1 Ma world with no crossfade cut (${frames} frames, ${bakes1} re-bakes); skips land; idle/end-of-window start it, error recovery does not`);
+    : `palaeo attract: 4 Ma coastal plain + Tararua hills → the finger → the strait across the southern Ruahine (3 / 2.4 Ma), a shelf sea → the ranges; names of the time on their surfaces; a sequence lands on a fresh 1 Ma world with no crossfade cut (${frames} frames, ${bakes1} re-bakes); skips land; idle/end-of-window start it, error recovery does not`);
 }catch(e){ console.log('palaeo attract: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,3).join('\n  ')); }
 
 const g=vm.runInContext('game',ctx);
@@ -5317,6 +5351,24 @@ try{
     chk(cu[0] < cu[2] - 0.05, `the LGM bares far more shelf than MIS 3 (coast u ${cu[0].toFixed(3)} vs ${cu[2].toFixed(3)})`);
     const c450 = coastAt(450000);
     chk(cu[1] < c450, `a later glacial bares more than an earlier one as the plain rises (MIS 6 ${cu[1].toFixed(3)} vs MIS 12 ${c450.toFixed(3)})`);
+    // THE YOUNG PLAIN (LOOK.youngPlain*, GEO_EPOCHS.youngPlain; 2026-11-13): south of the river the plain
+    // is younger than the last interglacial, whose shore (the Tokomaru terrace) lies at the range foot,
+    // so the 5e sea floods deeper there than one relative sea over today's land. Outside the last
+    // interglacial the shift is the plain one: today, the LGM, MIS 3, MIS 6, MIS 11 and the 1 Ma opening.
+    {
+      const LKy = vm.runInContext('LOOK', ctx);
+      let same = true; for (const y of [0, 25500, 45000, 140000, 410000, 1000000]) if (TG.youngPlainShift(y) !== TG.glacialSeaShift(y)) same = false;
+      chk(same, 'the young plain changes no date outside the last interglacial (today, 25.5, 45, 140, 410 ka, 1 Ma)');
+      chk(TG.youngPlainAt(122000) === 1 && TG.youngPlainShift(122000) < TG.glacialSeaShift(122000) - 0.05,
+        `the 5e sea floods deeper south of the river (${TG.youngPlainShift(122000).toFixed(3)} vs ${TG.glacialSeaShift(122000).toFixed(3)})`);
+      const band = (v0, v1) => { T.morphTo(122000, 1); const a = T.heightMap, gc = T.gridCols, gr = T.gridRows; let n = 0, k = 0;
+        for (let r = Math.floor(v0 * gr); r < Math.ceil(v1 * gr); r++) for (let c = Math.floor(0.2 * gc); c < Math.ceil(0.45 * gc); c++) { n++; if (a[r * gc + c] < seaE) k++; }
+        return k / n; };
+      const m0 = LKy.youngPlainM, sOn = band(0.73, 0.80), nOn = band(0.35, 0.50);
+      LKy.youngPlainM = 0; const sOff = band(0.73, 0.80), nOff = band(0.35, 0.50); LKy.youngPlainM = m0;
+      chk(sOn > sOff + 0.05 && Math.abs(nOn - nOff) < 1e-9,
+        `at 122 ka the sea reaches further toward the Tararua south of the river and nowhere north of it (south ${(sOff * 100).toFixed(0)}% → ${(sOn * 100).toFixed(0)}% sea; north ${(nOn * 100).toFixed(0)}%, unchanged)`);
+    }
     // The main river reaches the lowstand sea: its mouth is carried offshore (riverOffshoreU), so
     // from the map edge up its lower course there is no dry gap between river and sea.
     {
