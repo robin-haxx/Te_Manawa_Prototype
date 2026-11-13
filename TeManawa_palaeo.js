@@ -45,8 +45,10 @@
 const TM_PALAEO = {
   enabled:     true,
   // The sequence's keyframes, oldest first: [yearsBP, holdSeconds]. The four dated maps of Trewick &
-  // Bland (4, 3, 2.4, 1 Ma) plus the strait's final closure (1.6 Ma). The last one is the landing and
-  // MUST be the window's start (DeepTime.yearsStart): the sim resumes on exactly that land.
+  // Bland (4, 3, 2.4, 1 Ma) plus the strait's final closure (1.6 Ma). The last one is the landing: the
+  // sim resumes on exactly that land, at that date (_land seeks the clock to it). It is where the glacial
+  // cycles begin (DeepTime.prologueEnd); the run itself now opens a million years earlier (the prologue),
+  // so this dev sequence overlaps the run's first three boosts and lands past them.
   keyframes:   [[4000000, 10], [3000000, 8], [2400000, 10], [1600000, 8], [1000000, 8]],
   kyrPerSec:   15,        // travel rate between keyframes at ×1 (3 Myr ≈ 200 s; with the holds ≈ 4 min)
   // THE DIAL while the sequence runs (the same keys / wheel / console message as DeepTime's time dial,
@@ -74,6 +76,7 @@ const TM_PALAEO = {
   dateQuant:   50000,     // the travelling date is rounded to this (a few strings for the text cache, ~1 change/s)
   spelling:    'Whanganui',   // the basin's spelling on the wall: the district's (and the blog's). Trewick & Bland write 'Wanganui'
   riverProtoUntil: 1250000,   // the main stem is 'proto-Manawatū' while its arm still flows east (GEO_EPOCHS.mainArmFrom)
+  eraNamesInPlay: true,   // the names of the time over the living sim while it plays the prologue (2 Ma → 1 Ma); false = the dev sequence only
   labelSize:   24,        // the region names' lettering (the river names' mainSize is 26)
   labelFadeMs: 700,       // a name's fade in / out (≥ 500)
   captionSize: 42,        // the date (InstallHUD.VIS_YEAR_SIZE)
@@ -85,11 +88,14 @@ const TM_PALAEO = {
   // Trewick & Bland use (Fig. 4A–D, pp. 160–171); the axis is unnamed until 1.6 Ma, then their 'proto-'.
   // (The wall's cover fit runs the map wider than the screen, so u ≈ 0.16 … 0.9 is what shows.)
   LABELS: [
-    { text: '{basin} Basin',   from: 4000000, to: 1050000, u: 0.23, v: 0.27, deg: -18, on: 'sea'  },   // north-west, off the 4 Ma plain (the basin's deep water lay off Whanganui; research/palaeogeography)
-    { text: 'Ruataniwha Strait', from: 4000000, to: 1550000, u: 0.80, v: 0.64, deg: -40, on: 'sea'  },
+    { text: '{basin} Basin',   from: 4000000, to: 1050000, u: 0.23, v: 0.27, deg: -18, on: 'sea', play: { u: 0.23, v: 0.315 } },   // north-west, off the 4 Ma plain (the basin's deep water lay off Whanganui; research/palaeogeography)
+    // `play`: where the name sits while the SIM plays the prologue (TeManawa_time.js, 2 Ma → 1 Ma), whose
+    // HUD stands over the lower third of the wall: the same sea, further north. A name the HUD would
+    // still cover is left off (the surface check's twin, _seatLabels).
+    { text: 'Ruataniwha Strait', from: 4000000, to: 1550000, u: 0.80, v: 0.64, deg: -40, on: 'sea', play: { u: 0.80, v: 0.44 } },
     { text: 'Manawatū Strait',   from: 3330000, to: 2950000, u: 0.505, v: 0.56, deg: 30, on: 'sea' },
-    { text: 'Manawatū Strait',   from: 2480000, to: 1680000, u: 0.505, v: 0.56, deg: 30, on: 'sea' },
-    { text: 'proto-Ruahine Range', from: 1600000, to: 1020000, u: 0.62, v: 0.26, deg: -80, on: 'land' },
+    { text: 'Manawatū Strait',   from: 2480000, to: 1680000, u: 0.505, v: 0.56, deg: 30, on: 'sea', play: { u: 0.47, v: 0.43, deg: 24 } },
+    { text: 'proto-Ruahine Range', from: 1600000, to: 1020000, u: 0.62, v: 0.26, deg: -80, on: 'land', play: { u: 0.635, v: 0.27 } },
     { text: 'proto-Tararua Range', from: 1600000, to: 1020000, u: 0.45, v: 0.66, deg: -50, on: 'land' }
   ]
 };
@@ -116,6 +122,7 @@ const Palaeo = {
   _bakedYear: NaN, _bakedAll: false,
   _reseed:  false,
   _labels:  null,      // built label instances (lazily, needs p5)
+  _eraShown: false,    // a name is (still) up over the sim's prologue (renderEraNames)
   _labelKey: '',
   _anchorSig: '',
   _coverAt: 0,         // millis() the landing eruption's cloud opened (0 = not yet)
@@ -440,6 +447,11 @@ const Palaeo = {
     if (g.water && g.water.build) g.water.build(T, y);          // a clean stamp for the new world (as an eruption does)
     if (typeof Kiosk !== 'undefined' && Kiosk.landAttract) Kiosk.landAttract(g, this.reason);
     else if (g.resetEcosystem) g.resetEcosystem();
+    // The sim resumes ON the landing's date. resetEcosystem() put the clock at the run's opening, which
+    // since the prologue is a million years before this land (DeepTime.yearsStart, 2 Ma); the fresh world
+    // was spawned on the land the sequence baked, so only the clock moves. The eruption on this year
+    // (Kidnappers, the landing's own spectacle) is not re-fired by the crossing check: it reads e < prev.
+    if (typeof DeepTime !== 'undefined' && DeepTime.yearsBP !== y) { DeepTime.seekTo(y); g._autoPrevYear = DeepTime.yearsBP; }
     g._bakedYearsBP = y; g._lastMorphMs = now;
     this.runs++;
     this.active = false;                                        // the sim runs (and renders) under the lifting veil
@@ -479,9 +491,11 @@ const Palaeo = {
   // ---- names ---------------------------------------------------
   // What RiverNames letters along a channel while the sequence runs: no tributary names (no source
   // names those streams for the time), the main stem by date.
-  riverName(rv) {
+  riverName(rv) { return this.riverNameAt(rv, this.yearsBP); },
+  // …and for a land of date `y` whoever owns the clock (RiverNames._name, in the prologue's play).
+  riverNameAt(rv, y) {
     if (!rv || rv.type === 'tributary') return null;
-    return this.yearsBP >= TM_PALAEO.riverProtoUntil ? 'proto-Manawatū' : 'Manawatū';
+    return y >= TM_PALAEO.riverProtoUntil ? 'proto-Manawatū' : 'Manawatū';
   },
 
   // The names showing at date `y` on their surfaces (text → the surface check runs on the live land).
@@ -531,12 +545,19 @@ const Palaeo = {
   _seatLabels(g, W, H) {
     const T = g.terrain, labels = this._labels;
     if (!T || !labels || typeof Projection === 'undefined' || typeof CONFIG === 'undefined') return;
-    const sig = this.bakes + '|' + W + 'x' + H + '|' + CONFIG.viewX + ',' + CONFIG.viewY + ',' + CONFIG.viewZoom;
+    // In play the land is the sim's: it changes when a morph's buffers swap in (the terrain's swap stamp),
+    // and the HUD's keep-out changes with its goal lines (InstallHUD.labelSig).
+    const play = !this.active;
+    const HUD = (play && typeof InstallHUD !== 'undefined' && InstallHUD.labelKeepOut) ? InstallHUD : null;
+    const sig = (play ? 'p' + (T._lastSwapMs || 0) + ':' + (g._bakedYearsBP || 0) + ':' + (T.morphInProgress ? 1 : 0) + ':' + (HUD && HUD.labelSig ? HUD.labelSig() : 0)
+                      : this.bakes) + '|' + W + 'x' + H + '|' + CONFIG.viewX + ',' + CONFIG.viewY + ',' + CONFIG.viewZoom;
     if (sig === this._anchorSig) return;
     this._anchorSig = sig;
+    const ko = HUD ? HUD.labelKeepOut(W, H) : null;
     const vx = CONFIG.viewX, vy = CONFIG.viewY, vz = CONFIG.viewZoom, mw = T.mapWidth, mh = T.mapHeight;
     for (const L of labels) {
-      const D = L.def, x = D.u * mw, y = D.v * mh;
+      const D0 = L.def, D = (play && D0.play) ? { u: D0.play.u, v: D0.play.v, deg: (D0.play.deg != null ? D0.play.deg : D0.deg), on: D0.on } : D0;
+      const x = D.u * mw, y = D.v * mh;
       const wt = T.waterTypeAt ? T.waterTypeAt(x, y) : 0;
       // 'land' is anything but open sea: a stream crossing the anchor is still land under the name (a hill
       // stream on the proto-Ruahine used to hide its name whenever the fan's geometry put one there).
@@ -550,6 +571,13 @@ const Palaeo = {
       const ex = L.len / 2 * Math.abs(ca) + hh * Math.abs(sa) + m, ey = L.len / 2 * Math.abs(sa) + hh * Math.abs(ca) + m;
       if (2 * ex < W) cx = Math.min(W - ex, Math.max(ex, cx));
       if (2 * ey < H) cy = Math.min(H - ey, Math.max(ey, cy));
+      // In play: never under the HUD (its keep-out rects, and its top strip). The name's box is the
+      // tilted line's extent; a hit leaves the name off until the land or the HUD changes.
+      if (ko && L.ok) {
+        const bx0 = cx - ex + m, bx1 = cx + ex - m, by0 = cy - ey + m, by1 = cy + ey - m;
+        if (by0 < ko.top || by1 > ko.bottom) L.ok = false;
+        else for (const r of ko.rects) if (bx0 < r[2] && bx1 > r[0] && by0 < r[3] && by1 > r[1]) { L.ok = false; break; }
+      }
       let cum = 0;
       for (let j = 0; j < L.n; j++) {
         const s = cum + L.gs[j].adv / 2 - L.len / 2;
@@ -559,21 +587,35 @@ const Palaeo = {
     }
   },
 
-  _renderLabels(g, W, H) {
+  // THE PROLOGUE IN PLAY (GameUI.renderFullscreenOverlay, after the river names): the same names of the
+  // time over the living sim while its clock is before prologueEnd, on DeepTime's date. Past it (and
+  // once the last name has faded) this is one comparison a frame.
+  renderEraNames(g, W, H) {
+    if (this.active || typeof DeepTime === 'undefined' || !TM_PALAEO.eraNamesInPlay) return;
+    const on = DeepTime.inPrologue && DeepTime.inPrologue();
+    if (!on && !this._eraShown) return;
+    this._eraShown = this._renderLabels(g, W, H, DeepTime.yearsBP, on);
+  },
+
+  // → true while any name is at all visible.
+  _renderLabels(g, W, H, yPlay, onPlay) {
     const labels = this._buildLabels();
-    if (!labels) return;
+    if (!labels) return false;
     this._seatLabels(g, W, H);
     const dc = (typeof drawingContext !== 'undefined') ? drawingContext : null, RN = RiverNames;
-    const now = this._now(), fade = Math.max(500, TM_PALAEO.labelFadeMs), y = this.yearsBP;
+    const now = this._now(), fade = Math.max(500, TM_PALAEO.labelFadeMs);
+    const y = this.active ? this.yearsBP : yPlay, live = this.active || !!onPlay;
+    let any = false;
     // Window + surface decide the target; the alpha eases toward it over fade ms (a flip mid-fade
     // starts from where it was, so a name never jumps).
     for (const L of labels) {
-      const want = this.active && L.ok && y <= L.def.from && y >= L.def.to;
+      const want = live && L.ok && y <= L.def.from && y >= L.def.to;
       if (want !== L.shown) { L.shown = want; L.aFrom = L.alpha; L.aT0 = now; }
       const t = Math.min(1, (now - L.aT0) / fade);
       L.alpha = L.aFrom + ((want ? 1 : 0) - L.aFrom) * t;
+      if (want || L.alpha > 0.004) any = true;
     }
-    if (!dc || !dc.drawImage || !RN._drawLabel) return;
+    if (!dc || !dc.drawImage || !RN._drawLabel) return any;
     const ga0 = dc.globalAlpha;
     for (let pass = 0; pass < 2; pass++) {
       for (const L of labels) {
@@ -583,6 +625,7 @@ const Palaeo = {
       }
     }
     dc.globalAlpha = ga0;
+    return any;
   },
 
   // The date where the HUD puts its year.

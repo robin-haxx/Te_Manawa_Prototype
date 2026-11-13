@@ -505,7 +505,8 @@
       stagePill.className = 'pill';
       goalLabel.textContent = 'Watch the land form. Touch anything to begin.';
     } else {
-      clockLabel.textContent = fmtYears(c.yearsBP) + (c.mis ? '  ·  ' + c.mis : '');
+      // In the prologue (before 1 Ma) there is no MIS stage: the land's chapter stands in its place.
+      clockLabel.textContent = fmtYears(c.yearsBP) + (c.mis ? '  ·  ' + c.mis : (c.land ? '  ·  ' + c.land : ''));
       stagePill.textContent = cap(c.stageName || '');
       stagePill.className = 'pill ' + stageClass(c.stageName);
       if (state.goal && state.goal.prompt) {

@@ -115,6 +115,17 @@ try{
   console.log('buttons 1-5 + debug modes ok');
 }catch(e){ console.log('INPUT FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
 
+// THE HARNESS'S TWO LANDS. HOME is what ships: the run's opening, the strait at 2 Ma (the prologue,
+// md/TEMANAWA_PROLOGUE.md), a frame that is mostly sea with two low lands. The sections on the cycles'
+// ecology were written on the 1 Ma land (a river, a plain, the range hills) and still need one: they
+// stage it with cyclesLand() and put the opening back with homeLand(). Both leave a fresh world, the
+// clock on the land's date and the eruption crossing-check seated on it.
+const homeLand=()=>{ const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  DT.reset(); G.terrain.morphTo(DT.yearsStart,1); G._bakedYearsBP=DT.yearsStart; G.resetEcosystem(); G._autoPrevYear=DT.yearsBP; };
+const cyclesLand=()=>{ const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx);
+  DT.reset(); G.terrain.morphTo(DT.prologueEnd,1); G._bakedYearsBP=DT.prologueEnd; G.resetEcosystem();
+  DT.seekTo(DT.prologueEnd); G._autoPrevYear=DT.yearsBP; };
+
 // ---- two-clock split: deep-time warps LIFE, not the walk cadence -------------
 // A moa's walk cadence (animTime) and ground speed ride the REAL frame dt so they
 // stay calm in 10x fast-forward; aging/breeding ride the warped sim clock (hunger rides the real
@@ -199,9 +210,12 @@ try{
 
   // --- no-op at/older than the first event ------------------------------
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
-  DT.seekTo(DT.yearsStart);                            // 1 Ma — nothing older
+  DT.seekTo(1000000);                                  // Kidnappers, the first event: nothing older (the run opens before it, on the prologue)
   G.handleKey('5'); ctx.__tick(6); G.handleKeyUp('5');
-  chk(DT.yearsBP===DT.yearsStart,'a tap at the first event is a no-op (nothing older)');
+  chk(DT.yearsBP===1000000,'a tap at the first event is a no-op (nothing older)');
+  DT.seekTo(DT.yearsStart);
+  G.handleKey('5'); ctx.__tick(6); G.handleKeyUp('5');
+  chk(DT.yearsBP===DT.yearsStart,'…and at the opening, before any eruption, too');
 
   // --- a hold: flash ramps up, then skip to the next (younger) eruption --
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
@@ -228,7 +242,7 @@ try{
   G._tmErDownAt=0; G._tmErFired=false; G._tmErCooldownUntil=0; G._tmAshUntil=0; G._tmAutoErAt=0; G._tmAutoErupt=null;
   DT.seekTo(200000);                                    // past Whakamaru, before Oruanui
   G.handleKey('5'); ctx.__tick(Math.ceil(TM.erLongPressMs/16)); G.update(1); G.handleKeyUp('5');
-  chk(DT.yearsBP===DT.yearsStart,'a hold past Whakamaru wraps to Kidnappers (1 Ma)');
+  chk(DT.yearsBP===1000000,'a hold past Whakamaru wraps to Kidnappers (1 Ma)');
   settle();
 
   // leave state clean + clock reset for the sections below
@@ -977,10 +991,10 @@ try{
     return `${label} ${adds} adds/${catches} catches`;
   };
 
-  const rBoot=sweep('1 Ma');
+  const rBoot=sweep('the opening (2 Ma)');   // the strait: two low lands in a shelf sea, the whole cast on them
   G.terrain.morphTo(300000, 1); G.resetEcosystem();          // a land-rich year (≈70% land)
   const rRich=sweep('300 ka');
-  DT.reset(); G.terrain.morphTo(DT.yearsStart, 1); G.resetEcosystem();   // back to the boot land
+  cyclesLand();   // the forage staging needs open ground mid-map: the 1 Ma land (the opening's middle is the strait)
 
   // Forage give-up, staged: a plain grazer 40 px from an edible plant, a herd-mate standing ON
   // the plant. Its separation out-pushes the forage seek, so the bird can never close in. It
@@ -1014,7 +1028,7 @@ try{
       for(let f=0; f<4000 && fed<0; f++){ step([]); if(m.hunger<60) fed=f; if(m.targetPlant!==p && fed<0) break; }
       chk(fed>=0, `forage give-up: an unobstructed grazer keeps its plant and feeds (fed at frame ${fed})`);
     }
-    DT.reset(); G.resetEcosystem();   // restore a fresh world for the sections that follow
+    homeLand();   // the opening land and a fresh world for the sections that follow
   }
 
   console.log(fail? `fauna stability: ${fail} FAILURES`
@@ -1300,15 +1314,22 @@ try{
   let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
   const fired=()=>G._firedEruptions;
 
-  // opening: the 1 Ma event does NOT auto-fire on a fresh cycle — the run opens on the calm
-  // ~1 Ma scene (the sim self-runs, so a forced opening takeover is unnecessary). Kidnappers is
-  // still reachable via a manual hold-wrap. See Game reset: _autoPrevYear seeded AT yearsBP.
+  // opening: nothing fires on a fresh cycle. The run opens on the calm strait (2 Ma, the prologue),
+  // a million years before the first eruption. See Game reset: _autoPrevYear seeded AT yearsBP.
   DT.reset(); G.resetEcosystem(); G.update(1);
-  chk(!fired().has(1000000),'the 1 Ma opening eruption does NOT auto-fire on cycle start (calm open)');
+  chk(fired().size===0,'no eruption fires on cycle start (calm open)');
+
+  // Kidnappers (1 Ma) used to sit ON the opening and never auto-fired. It is mid-run now, where the
+  // prologue hands over to the cycles: the clock crossing it fires it like any other.
+  DT.seekTo(1000040); G._autoPrevYear=DT.yearsBP; DT.pressDeep();
+  for(let i=0;i<60 && DT.yearsBP>999990;i++){ ctx.__tick(); G.update(1); }
+  chk(fired().has(1000000),'crossing 1 Ma auto-fires Kidnappers (it is no longer the opening)');
+  G._tmAutoErAt=0; G._tmAutoErupt=null; G._ashCloudUntil=0; G._tmAshUntil=0;
 
   // crossing 900 ka fires Kaukatea exactly once. The clock is PAUSED by default now, so play it
-  // forward across the checkpoint with a deep burst (millis advances via ctx.__tick).
-  DT.seekTo(900050); DT.pressDeep();
+  // forward across the checkpoint with a deep burst (millis advances via ctx.__tick). A bare seekTo
+  // is not a crossing: the check is seated on the new date, as Game.applyEruptionAt does for a jump.
+  DT.seekTo(900050); G._autoPrevYear=DT.yearsBP; DT.pressDeep();
   for(let i=0;i<40 && DT.yearsBP>899980;i++){ ctx.__tick(); G.update(1); }
   chk(fired().has(900000),'crossing 900 ka auto-fires Kaukatea');
 
@@ -1557,7 +1578,11 @@ try{
   // (a) the cycle length: the ramp integrates as designed, and every eruption gets a span in range
   chk(DT.timelapseSecondsFor(1000,2000)===0, 'no distance, no time-lapse');
   const s55=DT.timelapseSecondsFor(155000,100000), s105=DT.timelapseSecondsFor(205000,100000);
-  chk(near(s55,20,0.2) && near(s105,30,0.2), `the ramp: 55 kyr takes the 20 s ramp, 105 kyr ten more seconds at the top rate (${s55.toFixed(2)} s, ${s105.toFixed(2)} s)`);
+  // 55 kyr is the ramp itself. The longest glacial turn in the cycles (256 → 188 ka, 68 kyr) still runs
+  // on the unscaled ramp; a leg too long for tlMaxSeconds (105 kyr here, and the prologue's) is scaled to land on it.
+  const s68=DT.timelapseSecondsFor(256000,188000);
+  chk(near(s55,20,0.2) && near(s68,22.6,0.2) && DT.tlScaleFor(68000)===1 && near(s105,DT.tlMaxSeconds,0.2),
+      `the ramp: 55 kyr takes the 20 s ramp, the longest turn 22.6 s unscaled, a longer leg fits tlMaxSeconds (${s55.toFixed(2)} s, ${s68.toFixed(2)} s, ${s105.toFixed(2)} s)`);
   const spans=DT.ERUPTIONS.map(e=>DT.aftermathMs(e.yearsBP)/1000);
   chk(spans.every(s=>s>=A.minSeconds && s<=A.maxSeconds), `every eruption's aftermath is one cycle, clamped to ${A.minSeconds}–${A.maxSeconds} s (${spans.map(s=>s.toFixed(1)).join(', ')} s)`);
   const er=DT.eruptionByYear(349000);
@@ -1772,7 +1797,10 @@ try{
   chk(has(1300000,'proto-Ruahine Range') && has(1300000,'proto-Tararua Range') && !has(2400000,'proto-Ruahine Range'), 'the proto-ranges are named from 1.6 Ma');
   chk(P.labelsAt(1000000).length===0, 'no region name at the landing (the sim takes over)');
   TMP.spelling='Wanganui'; chk(has(4000000,'Wanganui Basin'), 'the basin spelling is tunable'); TMP.spelling='Whanganui';
-  const seat=(y)=>{ T.morphTo(y,1); P._anchorSig=''; P._buildLabels(); P._seatLabels(G,W,H); return Object.fromEntries(P._labels.map(L=>[L.text+'|'+L.def.from, L.ok])); };
+  // the SEQUENCE's seating (P.active): its own anchors on a bare frame. In play the sim's HUD moves and
+  // can hide a name (the `play` placements and InstallHUD.labelKeepOut: the "prologue" section).
+  const seat=(y)=>{ T.morphTo(y,1); const act=P.active; P.active=true; P._anchorSig=''; P._buildLabels(); P._seatLabels(G,W,H); P.active=act; P._anchorSig='';
+    return Object.fromEntries(P._labels.map(L=>[L.text+'|'+L.def.from, L.ok])); };
   const s24=seat(2400000), s13=seat(1300000);
   chk(s24['MANAWATŪ STRAIT|2480000']===true, 'the strait name sits on sea at 2.4 Ma');
   chk(s24['WHANGANUI BASIN|4000000']===true && s24['RUATANIWHA STRAIT|4000000']===true, 'the basin and Ruataniwha names sit on sea at 2.4 Ma');
@@ -1855,8 +1883,9 @@ try{
   P.dialReset(); chk(P.dialStep===TMP.dialStart, 'the dial push returns to ×1 forward');
   const k0=TMP.kyrPerSec; TMP.kyrPerSec=TMP.seaBreathBelow-1; chk(P._seaScale()===1, 'the sea breathes when the land crawls');
   TMP.kyrPerSec=TMP.seaBreathOff+1; chk(P._seaScale()===0, '… and not when it races'); TMP.kyrPerSec=k0;
-  CLm.PRE_WINDOW_SEA.scale=1; chk(CLm.seaLevelAt(1000000)===CLm.SEA_ANCHORS[0][1] && CLm.seaLevelAt(950000)===-70 && CLm.seaLevelAt(1020500)!==CLm.SEA_ANCHORS[0][1],
-      'the pre-window cycle joins the first anchor and never touches the window'); CLm.PRE_WINDOW_SEA.scale=0;
+  { const a0=CLm.SEA_ANCHORS[0];   // the table opens with the run (2 Ma, the prologue): the synthetic cycle lives before that
+    CLm.PRE_WINDOW_SEA.scale=1; chk(CLm.seaLevelAt(a0[0])===a0[1] && CLm.seaLevelAt(950000)===-70 && CLm.seaLevelAt(1500000)===-70 && CLm.seaLevelAt(a0[0]+20500)!==a0[1],
+      'the pre-table cycle joins the first anchor and never touches the run (the prologue reads its own anchors)'); CLm.PRE_WINDOW_SEA.scale=0; }
   P.skip(); let fe=0; while (P.state!=='idle' && fe<30000) { FRAME(ctx.draw); fe++; }
   chk(P.state==='idle' && CLm.PRE_WINDOW_SEA.scale===0, 'the dial-driven sequence lands and leaves the sea scale at 0');
 
@@ -1923,9 +1952,171 @@ try{
   let f3=0; while (P.state!=='idle' && f3<30000) { FRAME(ctx.draw); f3++; }
   chk(P.state==='idle', 'the bus-skipped sequence lands');
   TMP.kyrPerSec=pace.kyr; TMP.keyframes=pace.kf;
+  homeLand();   // the sequence lands the sim at 1 Ma, its own end; the sections below start from the run's opening
   console.log(fail? `palaeo attract: ${fail} FAILURES`
     : `palaeo attract: 4 Ma coastal plain + Tararua hills → the finger → the strait across the southern Ruahine (3 / 2.4 Ma), a shelf sea → the ranges; names of the time on their surfaces; a sequence lands on a fresh 1 Ma world with no crossfade cut (${frames} frames, ${bakes1} re-bakes); skips land; idle/end-of-window start it, error recovery does not`);
 }catch(e){ console.log('palaeo attract: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,3).join('\n  ')); }
+
+// ---- THE PROLOGUE: the run opens at 2 Ma, on the strait (md/TEMANAWA_PROLOGUE.md) -----------------
+// The run used to open at 1 Ma, where the land barely moves in the 6–10 boosts a visitor stays for. It
+// opens a million years earlier now, and its first three boosts carry the land's assembly: the strait
+// closes, a river crosses the low land, the ranges start to rise across it. Asserted here: the clock's
+// shape (the bar, the gear, the fitted time-lapse) and that it is inert without a prologue; the
+// climate's authored swing and where it lands a boost; the takeaway in the factors (river before
+// uplift); the land at the stops; three real boosts from the opening; the names and the captions.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), CL=vm.runInContext('Climate',ctx);
+  const TGn=vm.runInContext('TerrainGenerator',ctx), TB=vm.runInContext('TMBus',ctx), HUD=vm.runInContext('InstallHUD',ctx);
+  const P=vm.runInContext('Palaeo',ctx), TMP=vm.runInContext('TM_PALAEO',ctx), RN=vm.runInContext('RiverNames',ctx);
+  const LK=vm.runInContext('LOOK',ctx), TGo=vm.runInContext('TMGoals',ctx), CFG=vm.runInContext('CONFIG',ctx);
+  const BO=vm.runInContext('TM_BOOST',ctx), AT=vm.runInContext('Attract',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const near=(a,b,eps=1e-6)=>Math.abs(a-b)<=eps;
+  const E=TGn.GEO_EPOCHS, f=(y)=>TGn.geoTimeFactors(y), y0=DT.yearsStart, pe=DT.prologueEnd, y1=DT.yearsEnd;
+
+  // (a) the clock's shape
+  chk(y0===2000000 && pe===1000000 && DT.hasPrologue() && DT.inPrologue(y0) && !DT.inPrologue(pe), 'the run opens at 2 Ma; the cycles begin at 1 Ma');
+  chk(pe===E.upliftFrom, 'the prologue ends where the rapid uplift starts (GEO_EPOCHS.upliftFrom)');
+  chk(DT.timeFrac(y0)===0 && near(DT.timeFrac(pe),DT.prologueShare) && near(DT.timeFrac(y1),1), 'the bar: 0 at the opening, prologueShare at 1 Ma, 1 at the close');
+  chk(DT.prologueShare<(y0-pe)/(y0-y1), 'the prologue is drawn short: less of the bar than its share of the years');
+  { let mono=true, inv=true, prev=-1;
+    for(let i=0;i<=400;i++){ const y=y0-(y0-y1)*i/400, fr=DT.timeFrac(y); if(!(fr>prev)) mono=false; prev=fr; if(Math.abs(DT.yearAtFrac(fr)-y)>1) inv=false; }
+    chk(mono && inv, 'timeFrac is monotone and yearAtFrac is its inverse (the ribbon sits under the playhead)'); }
+  chk(DT.gearAt(y0)===DT.prologueGear && DT.gearAt(pe)===1 && DT.gearAt(500000)===1, `the gear: ×${DT.prologueGear} in the prologue, ×1 from 1 Ma`);
+  { let ok=true; for(let y=pe+DT.prologueGearEase*1.2; y>=pe; y-=5000) if(DT.gearAt(y)<DT.gearAt(y-5000)-1e-9) ok=false; chk(ok, 'the gear eases down monotonically into the cycles'); }
+  chk(DT.lifeScaleFor(100000)===DT.tlMaxRate/DT.yrPerSec && DT.lifeScaleFor(1000)===2, 'life keeps pace with the land up to the time-lapse\'s own top, never past it');
+  // …and with no prologue (a window from 1 Ma: a debug zoom) every one of these is inert
+  { DT.yearsStart=pe;
+    const lin=[900000,512750,100000].every(y=>near(DT.timeFrac(y),(pe-y)/(pe-y1),1e-12) && near(DT.yearAtFrac(DT.timeFrac(y)),y,1e-6));
+    chk(!DT.hasPrologue() && DT.gearAt(pe)===1 && lin, 'with no prologue the bar is linear and the gear is ×1 (the old clock, exactly)');
+    DT.yearsStart=y0; }
+
+  // (b) the climate: one authored cold swing, on dates that land a boost on the land's chapters
+  const A=CL.ANCHORS, S=CL.SEA_ANCHORS;
+  chk(A[0][0]===y0 && A[0][1]===CL.glacialIndexAt(pe) && S[0][0]===y0 && S[0][1]===CL.seaLevelAt(pe),
+      'the tables open with the run, on the 1 Ma values (every date before 2 Ma reads as it always did)');
+  chk(CL.glacialIndexAt(3000000)===CL.glacialIndexAt(pe) && CL.seaLevelAt(4000000)===CL.seaLevelAt(pe), 'older than the table: held');
+  { let same=true; for(let i=0;A[i][0]>pe;i++) if(S[i][0]!==A[i][0]) same=false; chk(same, 'the prologue\'s sea anchors sit on its climate dates'); }
+  const thr=CL.regimeThreshold;
+  chk(CL.glacialIndexAt(y0)<thr, 'the run opens warm (the first lesson is still a forest plant)');
+  const b1=CL.nextRegimeBoundary(y0,y1), b2=b1&&CL.nextRegimeBoundary(b1.yearsBP,y1), b3=b2&&CL.nextRegimeBoundary(b2.yearsBP,y1);
+  chk(b1 && b1.stageName==='glacial' && b1.yearsBP<1630000 && b1.yearsBP>1550000 && f(b1.yearsBP).palaeo.axis===0,
+      `the first boost lands cold, just after the strait has closed (${b1&&b1.yearsBP})`);
+  chk(b2 && b2.stageName==='interglacial' && b2.yearsBP<1320000 && b2.yearsBP>1250000 && f(b2.yearsBP).palaeo.river>0.9 && f(b2.yearsBP).palaeo.basinE===0,
+      `the second lands warm, with the river on the land and the east emerged (${b2&&b2.yearsBP})`);
+  chk(b3 && b3.yearsBP<pe && DT.ERUPTIONS[0].yearsBP===pe && b2.yearsBP>pe,
+      `the third runs into Kidnappers at 1 Ma before it reaches the cycles' first turn (${b3&&b3.yearsBP})`);
+  { let ok=true; for(let y=y0; y>pe; y-=2000){ const g=CL.glacialIndexAt(y); if(g<0.29 || g>0.63) ok=false; } chk(ok, 'the prologue\'s swing keeps the 41-kyr world\'s modest amplitude (0.30–0.62)'); }
+
+  // (c) the takeaway, in the factors: the river is on the land before the ranges start to rise
+  chk(f(y0).palaeo.axis>0.8 && f(y0).palaeo.river===0 && f(y0).uplift<0.08, 'at the opening: the strait is open, there is no river, the axis is a low finger');
+  chk(f(b1.yearsBP).palaeo.river<0.05, 'at the first stop: land across the gap, still no river');
+  chk(f(b2.yearsBP).palaeo.river>0.9 && f(b2.yearsBP).uplift<E.upliftStart, `at the second stop the river runs and the rapid uplift has not begun (uplift ${f(b2.yearsBP).uplift.toFixed(3)} < ${E.upliftStart})`);
+  chk(near(f(pe).uplift,E.upliftStart,1e-9) && f(900000).uplift>f(pe).uplift && f(500000).uplift>f(900000).uplift, 'from 1 Ma the ranges rise');
+
+  // (d) the time-lapse: a prologue leg is fitted to tlMaxSeconds; every glacial turn in the cycles is untouched
+  { let y=pe, n=0, worst=1, longest=0; for(;;){ const b=CL.nextRegimeBoundary(y,y1); const to=b?b.yearsBP:y1; const k=DT.tlScaleFor(y-to); if(k>worst) worst=k; if(y-to>longest) longest=y-to; n++; if(!b) break; y=b.yearsBP; }
+    chk(worst===1 && n>=20, `all ${n} legs of the cycles play on the unscaled ramp (longest ${Math.round(longest/1000)} kyr)`); }
+  const lead=BO.eruptionLeadYears||300;
+  const legs=[[y0,b1.yearsBP],[b1.yearsBP,b2.yearsBP],[b2.yearsBP,pe+lead]].map(l=>DT.timelapseSecondsFor(l[0],l[1]));
+  chk(legs.every(s=>Math.abs(s-DT.tlMaxSeconds)<0.3) && DT.tlScaleFor(y0-b1.yearsBP)>4,
+      `the prologue's three legs each play in tlMaxSeconds (${legs.map(s=>s.toFixed(1)).join(', ')} s)`);
+
+  // (e) the chapters
+  const C=DT.CHAPTERS;
+  chk(C.length===5 && C.every((c,i)=>c.title && c.line && (i===0 || c.from<C[i-1].from)), 'five chapters, oldest first');
+  chk([y0,b1.yearsBP,b2.yearsBP,pe+lead].map(y=>DT.chapterIndexAt(y)).join()==='0,1,2,2', 'the prologue\'s stops are chapters 0, 1, 2; the stop at Kidnappers stays in 2 (the eruption has the caption)');
+  { let y=pe, idx=[]; for(let i=0;i<3;i++){ y=CL.nextRegimeBoundary(y,y1).yearsBP; idx.push(DT.chapterIndexAt(y)); }
+    chk(idx.join()==='3,3,4', `the cycles' first turns: "the ranges start to rise", then "older than the mountains" by the third (${idx.join()})`); }
+  chk(C.every(c=>c.title.split(' ').length<=5 && c.line.length<=80), 'captions stay short (a title of a few words, a line under 80 characters)');
+
+  // (f) the land at the stops (synchronous morphs at the harness's 1× bake)
+  const T=G.terrain, gc=T.gridCols, gr=T.gridRows, seaE=0.10;
+  const frac=(u0,u1,v0,v1,sea)=>{ let n=0,k=0; const H=T.heightMap;
+    for(let r=Math.floor(v0*gr); r<Math.ceil(v1*gr); r++) for(let c=Math.floor(u0*gc); c<Math.ceil(u1*gc); c++){ n++; if((H[r*gc+c]<seaE)===sea) k++; }
+    return n? k/n : 0; };
+  const gu=LK.straitGorgeU, gapSea=()=>frac(gu-0.03,gu+0.03,0.45,0.62,true), all=()=>frac(0,1,0,1,true);
+  const st={};
+  for(const y of [y0,b1.yearsBP,b2.yearsBP,pe]){ T.morphTo(y,1); st[y]={ gap:gapSea(), sea:all() }; }
+  chk(st[y0].gap>0.6, `2 Ma: the gap is sea, the strait (${(st[y0].gap*100).toFixed(0)}% of the gap column)`);
+  chk(st[b1.yearsBP].gap<0.25, `the first stop: the gap is land (${(st[b1.yearsBP].gap*100).toFixed(0)}% sea)`);
+  // (the second stop is ON the turn, mid-swing, so its sea stands lower than the full interglacial's at
+  // 1 Ma: the west plain floods a little again by then. The land that counts is the stops' own.)
+  chk(st[y0].sea>st[b1.yearsBP].sea-0.02 && st[b1.yearsBP].sea>st[b2.yearsBP].sea+0.2 && st[pe].sea<st[b1.yearsBP].sea-0.2,
+      `the land grows through the prologue's stops (sea ${[y0,b1.yearsBP,b2.yearsBP,pe].map(y=>(st[y].sea*100).toFixed(0)+'%').join(' → ')})`);
+  // the far edge: no islet or inlet standing only in the far margin (it would paint as a bar or a streak hanging from the top of the wall)
+  { T.morphTo(y0,1); const H=T.heightMap, root=Math.min(gr-1,Math.ceil((T._geoTopMargin||0)*gr)+1); let bad=0;
+    for(let x=0;x<gc;x++){ const rs=H[root*gc+x]<seaE; for(let r=0;r<root;r++) if((H[r*gc+x]<seaE)!==rs) bad++; }
+    chk(T._geoTopMargin>0 && bad<=gc*root*0.002, `2 Ma: every far-margin column is rooted in the margin's inner row, land or sea (${bad} stray cells of ${gc*root})`); }
+
+  // (g) the play: three boosts from the opening, through the real bus, clock, morph driver and sim
+  homeLand(); TGo.reset();
+  const realST=ctx.setTimeout; let fire=null; ctx.setTimeout=(fn)=>{ fire=fn; return 0; };
+  const play=()=>{ let n=0, life=0, rate=0; while(DT.isTimelapsing() && n<60*45){ ctx.__tick(); G.update(1); n++; if(DT.timeScale>life) life=DT.timeScale; if(DT.geoRate>rate) rate=DT.geoRate; if(n%15===0) TB.heartbeat(); }
+    TB.heartbeat(); for(let i=0;i<150;i++){ ctx.__tick(); G.update(1); } return { n, life, rate }; };
+  const tlFrames=DT.tlMaxSeconds*60;
+  try{
+    chk(DT.yearsBP===y0 && !TGo.glacialNow(), 'a fresh run: the clock at 2 Ma, warm');
+    TB.boost({ plantKey:'tawa', plantName:'Tawa' });
+    chk(DT.isTimelapsing() && DT._tlTarget===b1.yearsBP && DT._tlScale>4, `boost 1 aims at the first stop on a scaled ramp (×${DT._tlScale.toFixed(1)})`);
+    const r1=play();
+    chk(DT.yearsBP===b1.yearsBP && TGo.glacialNow() && Math.abs(r1.n-tlFrames)<200, `…and lands there, cold, in about tlMaxSeconds (${(r1.n/60).toFixed(1)} s)`);
+    chk(r1.rate>DT.tlMaxRate*3 && r1.life<=DT.tlMaxRate/DT.yrPerSec+1e-9, `the land raced (${Math.round(r1.rate)} yr/s) and life never passed ×${DT.tlMaxRate/DT.yrPerSec} (×${r1.life.toFixed(1)})`);
+    chk(Math.abs(G._bakedYearsBP-DT.yearsBP)<CFG.morphIntervalYears && !G.terrain.morphInProgress && gapSea()<0.25,
+        `the land followed the clock: baked within a morph step of the stop, the gap closed (baked ${Math.round(G._bakedYearsBP)})`);
+    chk(G.simulation.plants.some(p=>p.alive) && G.simulation.moas.some(m=>m.alive), 'the living world came through the leg');
+    TB.boost({ plantKey:'tussock', plantName:'Tussock' });
+    chk(DT.isTimelapsing() && DT._tlTarget===b2.yearsBP, 'boost 2 aims at the second stop');
+    const r2=play();
+    chk(DT.yearsBP===b2.yearsBP && !TGo.glacialNow() && G.terrain._geoT.palaeo.river>0.9, `…and lands there, warm, with the river on the land (${(r2.n/60).toFixed(1)} s)`);
+    fire=null; TB.boost({ plantKey:'tawa', plantName:'Tawa' });
+    chk(DT.isTimelapsing() && DT._tlTarget===pe+lead, 'boost 3 stops just short of Kidnappers');
+    const r3=play();
+    chk(DT.yearsBP===pe+lead && TB.busy() && typeof fire==='function' && !G._firedEruptions.has(pe), `…lands on it (${(r3.n/60).toFixed(1)} s), the eruption held for its beat`);
+    if(typeof fire==='function') fire();
+    chk(G._firedEruptions.has(pe) && !TB.busy() && G._ashCloudUntil>ctx.millis(), 'then Kidnappers fires, in place: the prologue hands over to the cycles on an eruption');
+  } finally { ctx.setTimeout=realST; G._ashCloudUntil=0; G._tmAshUntil=0; G._ashCover=0; G._tmAutoErAt=0; G._tmAutoErupt=null; G._boostHi=null; TGo.reset(); homeLand(); }
+
+  // (h) the names of the time, in play
+  const mainRv=T.getRivers().find(r=>r.type!=='tributary'), tribRv=T.getRivers().find(r=>r.type==='tributary');
+  chk(P.riverNameAt(mainRv,1300000)==='proto-Manawatū' && P.riverNameAt(mainRv,1100000)==='Manawatū' && P.riverNameAt(tribRv,1300000)===null, 'the river by date: proto-Manawatū while its arm flows east, its streams unnamed');
+  chk(RN._name(mainRv,{_geoT:{age:1300000,tribSpread:1}})==='proto-Manawatū' && RN._name(tribRv,{_geoT:{age:1300000,tribSpread:0}})===null,
+      'RiverNames reads the land\'s own date in the prologue');
+  chk(RN._name(mainRv,{_geoT:{age:1000000,tribSpread:1}})==='Manawatū' && RN._name(tribRv,{_geoT:{age:0,tribSpread:0}})!==null, '…and today\'s names from 1 Ma on (the present-day map\'s land is dated 0)');
+  chk(P.labelsAt(y0).some(t=>/Strait/.test(t)&&/Manawat/.test(t)) && P.labelsAt(1300000).some(t=>/proto-Ruahine/.test(t)) && P.labelsAt(pe-1).length===0,
+      'the era names: the strait at the opening, the proto-ranges later, none inside the cycles');
+  chk(TMP.LABELS.every(L=>!L.play || (L.play.u>0 && L.play.u<1 && L.play.v>0 && L.play.v<1)) && TMP.LABELS.some(L=>L.play), 'play placements stay on the map');
+  { let threw=null; try{ for(let i=0;i<80;i++){ ctx.__tick(); P.renderEraNames(G,CFG.canvasWidth,CFG.canvasHeight); } }catch(e){ threw=e.message; }
+    chk(!threw && !P.active, `renderEraNames runs over the living sim (${threw||'ok'})`);
+    DT.seekTo(500000); for(let i=0;i<120;i++){ ctx.__tick(); P.renderEraNames(G,CFG.canvasWidth,CFG.canvasHeight); }
+    chk(P._eraShown===false && (P._labels||[]).every(L=>L.alpha<=0.004), 'inside the cycles every era name has faded and the pass goes quiet');
+    DT.reset(); }
+
+  // (i) the land caption: once per chapter, at rest; an eruption's caption wins; a new visitor starts again
+  { const L=HUD._land, capKeep=HUD._cap.e, spKeep=HUD._speedA, grKeep=DT.geoRate;
+    const cap=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(); HUD._updateLandCaption(G, ctx.millis()); } };
+    L.idx=-1; L.cur=null; L.a=0; L.until=0; L.last=0; L.restAt=0; HUD._cap.e=null; HUD._speedA=0; DT.geoRate=0;
+    G._ashCloudUntil=0; G._tmAutoErAt=0; G._tmErDownAt=0;
+    DT.reset(); cap(200);
+    chk(L.cur===C[0] && L.a===1, `at rest at the opening the first chapter is up ("${L.cur&&L.cur.title}")`);
+    DT.geoRate=5000; cap(80); chk(L.a===0 && L.cur===null, 'time moving on takes it off');
+    DT.geoRate=0; cap(200); chk(L.a===0, 'a chapter is said once: at rest again in the same one, nothing');
+    DT.seekTo(b1.yearsBP); cap(200); chk(L.cur===C[1] && L.a===1, 'the next chapter shows when the clock rests in it');
+    cap(Math.ceil((HUD.LAND_HOLD_MS+1500)/16)); chk(L.a===0, 'it leaves by itself after its hold');
+    DT.seekTo(b2.yearsBP); HUD._cap.e=DT.ERUPTIONS[0]; cap(200); chk(L.a===0 && L.idx===1, 'an eruption\'s caption has the slot: the chapter waits');
+    HUD._cap.e=null; cap(200); chk(L.cur===C[2] && L.a===1, '…and shows once it has gone');
+    const m0=AT.mode; AT.mode='idle'; cap(3); chk(L.idx===-1, 'the attract (a new visitor) starts the chapters again'); AT.mode=m0;
+    L.idx=-1; L.cur=null; L.a=0; L.until=0; L.restAt=0; HUD._cap.e=capKeep; HUD._speedA=spKeep; DT.geoRate=grKeep; DT.reset(); }
+
+  // (j) the HUD's uplift wedge and speed readout
+  { HUD._upliftProf=null; const p=HUD._upliftProfile(), n=p.length, k=Math.round(DT.prologueShare*(n-1));
+    let mono=true; for(let i=1;i<n;i++) if(p[i]<p[i-1]-1e-9) mono=false;
+    chk(mono && p[0]<0.08 && p[k]<=E.upliftStart+0.03 && p[n-1]>0.97, `the wedge is the land's own uplift: all but flat through the prologue (${p[0].toFixed(2)} → ${p[k].toFixed(2)}), then climbing to ${p[n-1].toFixed(2)}`);
+    chk(HUD._speedStep(27000)===25000 && HUD._speedStep(5000)===5000, 'the speed readout names the prologue\'s rates'); }
+
+  console.log(fail? `prologue: ${fail} FAILURES`
+    : `prologue: the run opens at 2 Ma on the strait; three boosts land on the closed strait (${Math.round(b1.yearsBP/1000)} ka, cold), the river on low land (${Math.round(b2.yearsBP/1000)} ka, warm, before the uplift) and Kidnappers at 1 Ma, each in ${DT.tlMaxSeconds} s with life capped; the cycles' legs, bar and dial are untouched; names of the time and one caption per chapter`);
+}catch(e){ console.log('prologue: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,4).join('\n  ')); try{ ctx.setTimeout=()=>0; homeLand(); }catch(_){} }
 
 const g=vm.runInContext('game',ctx);
 // ---- visitor-facing render must be clean -----------------------------
@@ -2036,11 +2227,17 @@ const g=vm.runInContext('game',ctx);
   ctx.__tick(120); chk(DT.update(1)===1,'scale must return to 1 after the window closes');
   chk(Number(samples[1])<DT.deepMult*0.6,'ramp must ease in, not step (early samples '+samples.slice(0,4).join('/')+')');
 
-  // ~50 ky per press
-  DT.reset(); const b=DT.yearsBP; DT.pressDeep();
+  // ~50 ky per press inside the cycles; in the prologue the same press is geared (DeepTime.prologueGear)
+  DT.reset(); DT.seekTo(DT.prologueEnd); const b=DT.yearsBP; DT.pressDeep();
   for(let i=0;i<DT.deepSeconds*60;i++){ ctx.__tick(); DT.update(1); }
   const covered=b-DT.yearsBP;
   chk(covered>38000&&covered<52000,`one press should cover ~50 ky, got ${Math.round(covered)}`);
+  DT.reset(); DT.pressDeep(); let lifePeak=0;
+  for(let i=0;i<DT.deepSeconds*60;i++){ ctx.__tick(); lifePeak=Math.max(lifePeak,DT.update(1)); }
+  const coveredP=DT.yearsStart-DT.yearsBP;
+  chk(coveredP>covered*(DT.prologueGear-0.5) && coveredP<covered*(DT.prologueGear+0.5) && lifePeak<=DT.tlMaxRate/DT.yrPerSec+1e-9,
+      `in the prologue a press covers ×${DT.prologueGear} the years, and life still tops out at ×${DT.tlMaxRate/DT.yrPerSec} (${Math.round(coveredP)} yr, life ×${lifePeak.toFixed(1)})`);
+  ctx.__tick(120); DT.update(1);
 
   // the second-screen TIMELAPSE (§6.2/§7.2): a boost plays the clock forward on an eased
   // 500→5000 yr/s ramp and stops on its target; the life scale rides the ramp, then returns to 1×.
@@ -2125,17 +2322,26 @@ try{
   } else chk(false,'TMBus.dispatch present for the dial relay test');
 
   // easing: no snap on a full spin, reaches the rate, and the top detent plays the window in ~3¼ min
-  DT.reset(); DT.dialSet(DT.dialSteps); run(1);
+  DT.reset(); DT.seekTo(DT.prologueEnd); DT.dialSet(DT.dialSteps); run(1);
   chk(DT.geoRate<DT.dialMaxRate*0.1,`a full spin eases in, never snaps (first frame ${Math.round(DT.geoRate)} yr/s)`);
   const life=run(Math.ceil(DT.dialEaseSeconds*60*8));
   chk(Math.abs(DT.geoRate-DT.dialMaxRate)<DT.dialMaxRate*0.01,`the dial settles on its rate (${Math.round(DT.geoRate)} yr/s)`);
   chk(Math.abs(life-DT.dialMaxRate/DT.yrPerSec)<0.05,`life keeps pace at the top detent (x${life.toFixed(2)})`);
   chk(DT.isMoving() && FT.active(),'the top detent counts as moving + fast-forward (river working, fauna trails)');
-  DT.reset(); let frames=0; while(!DT.hasEnded() && frames<60*600){ ctx.__tick(); DT.update(1); frames++; }
+  DT.reset(); DT.seekTo(DT.prologueEnd); let frames=0; while(!DT.hasEnded() && frames<60*600){ ctx.__tick(); DT.update(1); frames++; }
   const secs=frames/60;
   chk(DT.hasEnded() && secs>185 && secs<205,`the top detent plays 1 Ma → 25.5 ka in ~3¼ min (${secs.toFixed(0)} s)`);
+  // the prologue is geared: the same detent plays it ×prologueGear faster, easing to ×1 by 1 Ma, with
+  // life capped at the time-lapse's own top. The whole run (2 Ma → 25.5 ka) is then ~4 min.
+  DT.reset(); DT.dialSet(DT.dialSteps); const lifeP=run(Math.ceil(DT.dialEaseSeconds*60*8));
+  chk(Math.abs(DT.geoRate-DT.dialMaxRate*DT.prologueGear)<DT.dialMaxRate*DT.prologueGear*0.01 && Math.abs(lifeP-DT.tlMaxRate/DT.yrPerSec)<0.05,
+      `in the prologue the top detent plays ×${DT.prologueGear} (${Math.round(DT.geoRate)} yr/s) with life still at ×${lifeP.toFixed(1)}`);
+  let fr2=0, rateAtEnd=-1; while(!DT.hasEnded() && fr2<60*600){ ctx.__tick(); const y0=DT.yearsBP; DT.update(1); fr2++; if(y0>DT.prologueEnd && DT.yearsBP<=DT.prologueEnd) rateAtEnd=DT.geoRate; }
+  const secsAll=(fr2+Math.ceil(DT.dialEaseSeconds*60*8))/60;
+  chk(DT.hasEnded() && secsAll>secs+35 && secsAll<secs+60 && rateAtEnd<DT.dialMaxRate*1.05,
+      `the top detent plays the whole run in ~4 min, back at ×1 as it enters the cycles (${secsAll.toFixed(0)} s, ${Math.round(rateAtEnd)} yr/s at 1 Ma)`);
   // a slow detent moves the land but does not speed up life or draw trails
-  DT.reset(); DT.dialSet(3); run(600);
+  DT.reset(); DT.seekTo(DT.prologueEnd); DT.dialSet(3); run(600);
   chk(DT.geoRate>40 && DT.geoRate<60 && DT.timeScale===1,`detent 3 ≈ 50 yr/s with life at 1× (${Math.round(DT.geoRate)} yr/s, x${DT.timeScale})`);
   chk(DT.isMoving() && !FT.active(),'a slow detent moves the river but draws no fast-forward trails');
 
@@ -2766,6 +2972,7 @@ try{
     return { n, warmUp, cold, kahi, base:(sim._homeo.dens[k]||0)*(sim._homeo.cells[k]||0), target:sim.homeoTarget(k)||0 }; };
   const res={};
   try{
+    cyclesLand();   // the forest habitats and the hills: the 1 Ma land (the opening's strait has neither)
     for(const h of [M.healthStart, 1]){
       seat(interYr); G.resetEcosystem(); seat(interYr); let sim=G.simulation; sim._healthSet(h); step(60*10);
       const I=tally(sim,'podocarp');
@@ -2789,7 +2996,7 @@ try{
     // a world built in the cold opens on its cold cover
     seat(glacialYr); G.resetEcosystem(); seat(glacialYr);
     { const P=tally(G.simulation,'podocarp'); chk(P.warmUp===0 && P.n>0, `a land built in a glacial spawns no warm podocarp trees (${P.warmUp} of ${P.n})`); }
-  } finally { DT.reset(); G.resetEcosystem(); }
+  } finally { homeLand(); }
   console.log(fail? `glacial turnover: ${fail} FAILURES`
     : 'glacial turnover: the forest habitats turn over to tussock, scrub and beech in the cold (warm trees to their low refugia, kahikatea too) and back in the interglacial; a healthy glacial is denser open country, not more forest');
 }catch(e){ console.log('GLACIAL TURNOVER FAIL:', e.message,'\n',e.stack.split('\n').slice(1,4).join('\n')); process.exit(1); }
@@ -6154,11 +6361,14 @@ try{
       'a tributary is named only once its fan has closed (spread ≤ tribNameSpread); with no land, its name');
   chk(RN._name(mainRv,atSpread(1))==='Manawatū','the main stem is named while the tributaries are still fans');
   const counts=[];
-  for(const y of [DT.yearsStart,420000,125000,DT.yearsEnd]){
+  // the run's opening (2 Ma: the strait, no river to name), the prologue's river (proto-Manawatū), then the cycles
+  for(const y of [DT.yearsStart,1282000,1000000,420000,125000,DT.yearsEnd]){
     T.morphTo(y,1);
     const labs=RN.layout(T,W,H,ko,null); counts.push((y/1000)+' ka '+labs.length);
     const fanOpen=T._geoT.tribSpread>C.tribNameSpread;
-    if(y===DT.yearsStart) chk(fanOpen && labs.every(g=>g.text==='MANAWATŪ'),`1 Ma: only the main stem is named (${labs.map(g=>g.text).join(', ')||'none'})`);
+    if(y===DT.yearsStart) chk(labs.length===0,`2 Ma: no river yet, so no river name (${labs.map(g=>g.text).join(', ')||'none'})`);
+    if(y===1282000){ allowed.add('PROTO-MANAWATŪ'); chk(labs.every(g=>g.text==='PROTO-MANAWATŪ'),`1.28 Ma: the young river is the proto-Manawatū, its streams unnamed (${labs.map(g=>g.text).join(', ')||'none'})`); }
+    if(y===1000000) chk(fanOpen && labs.every(g=>g.text==='MANAWATŪ'),`1 Ma: only the main stem is named (${labs.map(g=>g.text).join(', ')||'none'})`);
     if(y<=300000) chk(!fanOpen,`${y/1000} ka: the fans have closed, so the tributaries are named`);
     let inside=true, clear=true, real=true, apart=true;
     for(const g of labs){

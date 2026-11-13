@@ -111,6 +111,11 @@ const TM_EDGE = {
 };
 window.TM_EDGE = TM_EDGE;
 
+// The land's story on the wall (md/TEMANAWA_PROLOGUE.md §5): the chapter captions (InstallHUD
+// renderLandCaption; the copy is DeepTime.CHAPTERS). Console-tunable like the rest.
+const TM_LAND = { captions: true };
+window.TM_LAND = TM_LAND;
+
 // WIND — scattered gust sprites that stream West→East across the screen as a climate cue.
 // It blows the WARM gust (interglacial, WindGust art) when the world turns interglacial or the
 // FOREST boost is pressed, and the COLD chill (glacial, GlacialChill art) when it turns glacial
@@ -867,13 +872,8 @@ const InstallHUD = {
     // ---- uplift: monotonic, no reading required ------------
     const upY = ay + 7, upH = 6;
     noStroke(); fill(74, 66, 52, 160); rect(x0, upY, w, upH, 3);
-    const upNow = DeepTime.yearToX(yr, x0, w);
     fill(168, 140, 96, 235);
-    beginShape();
-    vertex(x0, upY + upH);
-    vertex(upNow, upY + upH);
-    vertex(upNow, upY + upH - upH * DeepTime.progress());
-    endShape(CLOSE);
+    this._upliftWedge(x0, w, upY + upH, upH);
     // ---- the eruptions (marker pins, or drawn ticks) -------
     // The run opens and closes on the same kind of event. Glacial markers are
     // climate instrumentation and live in the debug overlay now — and LGM at
@@ -986,14 +986,8 @@ const InstallHUD = {
     }
     this._climateRibbon(x0, w, ay, bh);
     // ---- uplift: a faint white wedge on the line (no backing bar) ----
-    const upNow = DeepTime.yearToX(yr, x0, w);
-    const upH = 6;
     noStroke(); fill(255, 90);
-    beginShape();
-    vertex(x0, ay);
-    vertex(upNow, ay);
-    vertex(upNow, ay - upH * DeepTime.progress());
-    endShape(CLOSE);
+    this._upliftWedge(x0, w, ay, 6);
     // ---- the eruptions: every pin hangs under the bar, unnamed (the caption names one as it happens) ----
     const ER = DeepTime.ERUPTIONS, labs = this._erLabels(), C = this._cap;
     const tipY = ay + bh / 2 - this.PIN_TUCK;
@@ -1024,6 +1018,35 @@ const InstallHUD = {
     }
   },
 
+  // THE UPLIFT WEDGE: how high the ranges stand, from the opening to the playhead, drawn off the land's
+  // own uplift (TerrainGenerator.geoTimeFactors), not the bar's progress: flat and all but nothing through
+  // the prologue (a low finger of basement, 0.06–0.15), then climbing from 1 Ma. That is the takeaway in
+  // one line: the river is on the land before the wedge lifts. The profile is sampled once (the geology is
+  // fixed and pure) and kept; a frame only walks it. Assumes the fill is set.
+  UPLIFT_SAMPLES: 40,
+  _upliftProf: null,          // Float32Array of uplift at f = i / (n − 1) along the bar
+  _upliftProfile() {
+    if (this._upliftProf) return this._upliftProf;
+    const n = this.UPLIFT_SAMPLES, p = new Float32Array(n);
+    const TG = (typeof TerrainGenerator !== 'undefined' && TerrainGenerator.geoTimeFactors) ? TerrainGenerator : null;
+    for (let i = 0; i < n; i++) {
+      const f = i / (n - 1);
+      p[i] = TG ? TG.geoTimeFactors(DeepTime.yearAtFrac(f)).uplift : f;
+    }
+    return (this._upliftProf = p);
+  },
+  _upliftWedge(x0, w, baseY, upH) {
+    const p = this._upliftProfile(), n = p.length;
+    let f = DeepTime.progress(); f = f < 0 ? 0 : f > 1 ? 1 : f;
+    const at = f * (n - 1), k = Math.floor(at), t = at - k;
+    beginShape();
+    vertex(x0, baseY);
+    for (let i = 0; i <= k; i++) vertex(x0 + (i / (n - 1)) * w, baseY - upH * p[i]);
+    if (k < n - 1) vertex(x0 + f * w, baseY - upH * (p[k] + (p[k + 1] - p[k]) * t));
+    vertex(x0 + f * w, baseY);
+    endShape(CLOSE);
+  },
+
   // The climate ribbon: the glacial index across the window, green → blue through the regime cut, laid
   // in the bar sprite's INNER CHANNEL (RIBBON_IN_*: where Timeline_Bar.png's dark interior runs), so
   // the bar's outline and gold rim still frame it. Baked ONCE into a buffer at the size it is drawn
@@ -1034,6 +1057,8 @@ const InstallHUD = {
   RIBBON_IN_END: 20 / 3586,   // its inset from each end, as a fraction of the bar's width (3586 px art)
   RIBBON_ALPHA: 225,
   RIBBON_SOFT: 0.12,          // ± glacial index over which the colour blends at the regime cut
+  RIBBON_GRAIN: 0.3,          // the prologue's 41-kyr stripe: how far a band leans to the other colour at each crest (0 = plain bands)
+  RIBBON_GRAIN_YEARS: 41000,
   _ribbon: null,              // { buf, w, h }
   _climateRibbon(x0, w, ay, bh) {
     if (typeof Climate === 'undefined' || !Climate.glacialIndexAt || typeof createGraphics !== 'function') return false;
@@ -1046,12 +1071,21 @@ const InstallHUD = {
       const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null;
       const warm = TG ? TG.climateColor(false) : [84, 210, 96], cold = TG ? TG.climateColor(true) : [150, 205, 236];
       const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5, soft = this.RIBBON_SOFT;
-      const span = DeepTime.yearsStart - DeepTime.yearsEnd, A = this.RIBBON_ALPHA;
+      const A = this.RIBBON_ALPHA, pe = DeepTime.prologueEnd, grain = this.RIBBON_GRAIN, period = this.RIBBON_GRAIN_YEARS;
       buf.clear(); buf.noStroke();
       for (let x = 0; x < wi; x++) {
-        // the ribbon's columns map back onto the whole bar, so a date sits under its own x on the axis
-        const gi = Climate.glacialIndexAt(DeepTime.yearsStart - ((inset + x + 0.5) / w) * span);
+        // the ribbon's columns map back onto the whole bar (DeepTime.yearAtFrac: the prologue is drawn
+        // short), so a date sits under its own x on the axis
+        const yr = DeepTime.yearAtFrac((inset + x + 0.5) / w);
+        const gi = Climate.glacialIndexAt(yr);
         let t = (gi - (thr - soft)) / (2 * soft); t = t < 0 ? 0 : t > 1 ? 1 : t; t = t * t * (3 - 2 * t);
+        // THE PROLOGUE'S GRAIN: its long bands stand in for ~24 real 41-kyr cycles (Climate.ANCHORS), so
+        // each is shot through with a faint stripe of the other colour at that period. The band still
+        // reads as one climate (the boost's), and the bar does not claim a 300 kyr ice age.
+        if (grain > 0 && yr > pe) {
+          const rip = grain * (0.5 - 0.5 * Math.cos(2 * Math.PI * yr / period));
+          t += (t < 0.5 ? rip : -rip);
+        }
         buf.fill(warm[0] + (cold[0] - warm[0]) * t, warm[1] + (cold[1] - warm[1]) * t, warm[2] + (cold[2] - warm[2]) * t, A);
         buf.rect(x, 0, 1, rh);
       }
@@ -1160,7 +1194,8 @@ const InstallHUD = {
   SPEED_RATE_SIZE: 52,
   SPEED_LINE_GAP: 10,         // px between the two lines' boxes
   SPEED_HALF_W: 300,          // half the block's width at its widest, for the keep-out
-  SPEED_STEPS: [1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000],
+  SPEED_STEPS: [1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 2500, 3000, 4000, 5000,
+                7500, 10000, 15000, 20000, 25000, 30000],   // past 5,000: the prologue's legs and its dial gear (DeepTime.tlMaxSeconds / prologueGear)
   SPEED_HOLD_MS: 400,
   SPEED_FADE_MS: 500,         // ≥ 500 ms (photosensitivity)
   SPEED_COL: [255, 210, 120],
@@ -1191,8 +1226,9 @@ const InstallHUD = {
     S.last = now;
     S.a += step > 0 ? d : -d;
     if (S.a > 1) S.a = 1;
-    if (S.a <= 0) { S.a = 0; S.step = 0; return; }                  // gone: a restart shows its own number at once
+    if (S.a <= 0) { S.a = 0; S.step = 0; this._speedA = 0; return; }   // gone: a restart shows its own number at once
     const capA = (this._cap && this._cap.e) ? this._cap.a : 0;      // the eruption caption takes the slot
+    this._speedA = S.a * (1 - capA);                                // …and the land caption waits for this one to clear
     const a = S.a * S.a * (3 - 2 * S.a) * (1 - capA);
     if (a <= 0.004 || !S.label) return;
     const dc = drawingContext, a0 = dc.globalAlpha;
@@ -1385,7 +1421,7 @@ const InstallHUD = {
       let w = this.VIS_YEAR_SIZE * 11;                    // fallback: ~0.5 em a character
       if (typeof textWidth === 'function' && typeof FreckleFace !== 'undefined' && FreckleFace) {
         push(); textFont(FreckleFace); textSize(this.VIS_YEAR_SIZE);
-        const m = textWidth('~ ' + (1000000).toLocaleString() + ' years ago'); pop();
+        const m = textWidth('~ ' + (Math.max(1000000, DeepTime.yearsStart)).toLocaleString() + ' years ago'); pop();
         if (m > 0) w = m;
       }
       this._yearHalfWCache = w / 2;
@@ -1721,6 +1757,58 @@ const InstallHUD = {
     this._haloText(C.title, FreckleFace, 'freckle', TS, CENTER, CENTER, cx, y, this._CAP_TITLE_COL);
     y += TS * 0.6 + DS * 0.85;
     this._haloText(C.date, FreckleFace, 'freckle', DS, CENTER, CENTER, cx, y, this._GOAL_COL);
+    dc.globalAlpha = a0;
+    pop();
+  },
+
+  // ---- the LAND CAPTION ---------------------------------------------------------------------------
+  // The land's chapter (DeepTime.CHAPTERS), said once: when the clock comes to REST in a chapter it has
+  // not named yet this run, its title and line fade into the top-centre slot (the eruption caption's
+  // format), hold LAND_HOLD_MS and fade out; time moving on takes it off sooner. It is how the wall
+  // says what the first three boosts show (a strait, then land, then a river before the ranges). The
+  // slot is shared: an eruption's caption wins, and the speed readout must have cleared. A new visitor
+  // (the attract) starts the chapters again. TM_LAND.captions = false turns them off.
+  LAND_HOLD_MS: 11000,
+  LAND_REST_MS: 900,          // the clock must have stood still this long (a time-lapse's last frames are not rest)
+  LAND_LINE_SIZE: 30,
+  _land: { idx: -1, cur: null, a: 0, until: 0, last: 0, restAt: 0 },
+
+  _updateLandCaption(g, now) {
+    const L = this._land, DT = DeepTime;
+    const offWall = typeof Attract !== 'undefined' && Attract.active;
+    if (offWall) { L.idx = -1; L.until = 0; }                       // a new visitor: the chapters start again
+    const moving = DT.geoRate > 0 || DT.isTimelapsing();
+    if (moving || offWall) L.restAt = 0; else if (!L.restAt) L.restAt = now;
+    const busy = (this._cap && this._cap.e) || (this._speedA || 0) > 0.02 ||
+                 (g && (g._tmAutoErAt || g._tmErDownAt || (g._ashCloudUntil || 0) > now)) ||
+                 (typeof TMBus !== 'undefined' && TMBus.busy && TMBus.busy());
+    if (moving || offWall) L.until = 0;                             // time moved on: out
+    else if (!busy && L.a <= 0 && L.restAt && now - L.restAt >= this.LAND_REST_MS) {
+      const k = DT.chapterIndexAt(DT.yearsBP);
+      if (k !== L.idx) { L.idx = k; L.cur = DT.CHAPTERS[k]; L.until = now + this.LAND_HOLD_MS; }
+    }
+    let d = L.last ? (now - L.last) / this.CAPTION_FADE_MS : 0;
+    if (d > 0.1) d = 0.1;
+    L.last = now;
+    L.a += (L.cur && now < L.until && !(this._cap && this._cap.e)) ? d : -d;
+    if (L.a > 1) L.a = 1;
+    if (L.a <= 0) { L.a = 0; if (now >= L.until) L.cur = null; }
+  },
+
+  renderLandCaption(g, W, H) {
+    if (typeof DeepTime === 'undefined' || !DeepTime.CHAPTERS || typeof TM_LAND === 'undefined' || !TM_LAND.captions) return;
+    this._updateLandCaption(g, millis());
+    const L = this._land;
+    if (!L.cur || L.a <= 0.004) return;
+    const a = L.a * L.a * (3 - 2 * L.a);
+    const TS = this.CAPTION_TITLE_SIZE, DS = this.LAND_LINE_SIZE, cx = W / 2;
+    push();
+    const dc = drawingContext, a0 = dc.globalAlpha;
+    dc.globalAlpha = a0 * a;
+    let y = this.CAPTION_TOP + TS * 0.7;
+    this._haloText(L.cur.title, FreckleFace, 'freckle', TS, CENTER, CENTER, cx, y, this._CAP_TITLE_COL);
+    y += TS * 0.6 + DS * 0.85;
+    this._haloText(L.cur.line, FreckleFace, 'freckle', DS, CENTER, CENTER, cx, y, this._GOAL_COL);
     dc.globalAlpha = a0;
     pop();
   },

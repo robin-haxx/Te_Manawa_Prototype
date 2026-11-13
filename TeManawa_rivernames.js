@@ -180,6 +180,10 @@ const RiverNames = {
     // THE LAND BEFORE THE WINDOW: while the attract sequence runs the names are the time's (no
     // tributary names; the main 'proto-Manawatū' while its arm still flows east). TeManawa_palaeo.js.
     if (typeof Palaeo !== 'undefined' && Palaeo.active && Palaeo.riverName) return Palaeo.riverName(rv);
+    // THE PROLOGUE (2 Ma → 1 Ma, in play): the same names of the time, read off the date the land was
+    // baked for (T._geoT.age), so the present-day map's snapshot, a land at 0 BP, keeps today's names.
+    if (typeof Palaeo !== 'undefined' && Palaeo.riverNameAt && typeof DeepTime !== 'undefined' &&
+        T && T._geoT && T._geoT.age > DeepTime.prologueEnd) return Palaeo.riverNameAt(rv, T._geoT.age);
     const C = TM_RIVER_NAMES;
     if (rv && rv.type === 'tributary' && T && T._geoT && T._geoT.tribSpread > C.tribNameSpread) return null;
     const n = (rv && rv.src && rv.src.name) || (rv && rv.name);

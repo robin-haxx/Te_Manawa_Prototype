@@ -4093,6 +4093,23 @@ class TerrainGenerator {
         hm[i] = TerrainGenerator._nsEdgeFalloff(eD, v, edgeMargin, topMargin);
       }
     }
+    // THE FAR EDGE BEFORE THE WINDOW. The relief bake carries the far row's colour up to the buffer's
+    // edge, so an islet that stands only in the far margin (a Ruahine shoal that happens to break the
+    // surface in the top rows) paints as a sand-coloured bar hanging from the top of the wall. Inside
+    // the window the far rows are all land and nothing shows; the prologue opens on this frame and the
+    // attract holds it all day. So in the far margin each column is ROOTED in the margin's inner row: a
+    // land cell over a sea root takes that sea's floor (no islet bars), and a sea cell over a land root
+    // takes that land's level (no dark streak down the top of a land: a one-cell inlet in the far rows).
+    // The coast simply runs straight up through the margin. Only where a pre-window marine term is live
+    // (palaeoOn), so the window's land is untouched.
+    if (palaeoOn && topMargin > 0) {
+      const seaTop = (this._waterBiome && this._waterBiome.maxElevation != null) ? this._waterBiome.maxElevation : 0.10;
+      const rootRow = Math.min(gr - 1, Math.ceil(topMargin * gr) + 1);
+      for (let x = 0; x < gc; x++) {
+        const root = hm[rootRow * gc + x], rootSea = root < seaTop;
+        for (let y = 0; y < rootRow; y++) { const k = y * gc + x; if ((hm[k] < seaTop) !== rootSea) hm[k] = root; }
+      }
+    }
     // Ease the extremely harsh vertical steps the carve/uplift can leave (a bank against
     // the low strait, a channel edge that drifted off the new ground mid-morph) so the 3/4
     // relief bake doesn't paint them as a tall dark wall. Deterministic → morph stays sliced==sync.

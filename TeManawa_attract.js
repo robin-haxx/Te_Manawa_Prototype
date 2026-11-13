@@ -3,7 +3,8 @@
 // ------------------------------------------------------------
 // Replaces the deep-time attract sequence (TeManawa_palaeo.js, now only the dev P key) on every wall
 // path: the idle timer, the end of the window and the boot.
-//   · THE ATTRACT ('idle'): the live 1 Ma world with every piece of UI hidden and the clock held: the
+//   · THE ATTRACT ('idle'): the live world at the run's opening (DeepTime.yearsStart: 2 Ma since the
+//     prologue, the strait; "1 Ma" below is that opening) with every piece of UI hidden and the clock held: the
 //     birds and the plants live on in real time, nothing ages through deep time. Entered through a dip
 //     to black ('enter'), under which the world is reset to a fresh 1 Ma land for a new visitor (every
 //     Kiosk.reseedEvery-th a new land, as before). Left alone for refreshMinutes it re-enters.
@@ -54,9 +55,11 @@ const TM_ATTRACT = {
   copy: {
     intro: {
       title: 'The Manawatū, today',
-      body: 'You are about to see this land a million years ago. Over that time the climate swung through ice age after ice age: the sea rose and fell across the plains, and the forest came and went with it.'
+      // The run opens on the prologue (DeepTime.yearsStart, 2 Ma): the map's ranges, gorge and river are
+      // exactly what is NOT there when it crossfades to the land, and the card says so before it does.
+      body: 'You are about to see this land two million years ago. There is no river yet, and no ranges: the sea runs through where the gorge is. Watch the land take shape, then ice age after ice age sweep across it.'
     },
-    line: 'The Manawatū, a million years ago',
+    line: 'The Manawatū, two million years ago',
     outro: {
       title: 'From the last ice age to today',
       // habitats, species, the river: one sentence each. The cast's thirteen: the four moa, the goose, the

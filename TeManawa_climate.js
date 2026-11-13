@@ -22,6 +22,20 @@ const Climate = {
   // ---- anchors: [yearsBP, glacialIndex]  (0 = interglacial, 1 = full glacial)
   // Ordered oldest -> youngest, matching the direction the run plays.
   ANCHORS: [
+    // ---- THE PROLOGUE: 2 Ma to 1 Ma (md/TEMANAWA_PROLOGUE.md §3) -----------------
+    // AUTHORED, NOT LR04. The real record here is ~24 low-amplitude 41-kyr cycles. The wall cannot
+    // play them: a boost crosses ~300 kyr of the prologue in ~20 s, and seven coast-and-colour swings
+    // in that time is a flicker (md/TEMANAWA_PALAEO_ATTRACT.md §1). So the prologue carries ONE long
+    // cold swing, standing in for the cold halves of those cycles, placed so that each boost lands on
+    // a chapter of the land: warm at the strait (2 Ma), cold once the strait has closed (~1.6 Ma), warm
+    // again with the river on the low land (~1.28 Ma). Amplitude is the 41-kyr world's (as MIS 24,
+    // below). The first anchor keeps the old first value, so every date ≥ 2 Ma reads as it always did
+    // (the dev P sequence), and the join at 1 Ma is exact. The cartoon, not the survey.
+    [2000000, 0.30],  // the run opens: warm
+    [1700000, 0.30],
+    [1520000, 0.62],  // cold (crosses the regime cut ~1.595 Ma: the strait has just closed)
+    [1340000, 0.62],
+    [1200000, 0.30],  // warm (crosses ~1.282 Ma: the river is on the land, the east has emerged)
     // ---- deep window: 1 Ma to 350 ka -------------------------------------------
     // The Mid-Pleistocene Transition sits here: cycles before ~0.86 Ma (~MIS 22,
     // the "900-ka event") are ~41 kyr and lower-amplitude; after it they grow into
@@ -109,6 +123,12 @@ const Climate = {
   //   · before 798 ka (no stack) the weak 41-kyr cycles are given modest values in its style.
   // Ages rounded; shape and order are what's true. md/TEMANAWA_COAST_PLAN.md §2.1.
   SEA_ANCHORS: [
+    // the prologue (authored, on ANCHORS' dates above): the 41-kyr world's modest swing, as MIS 25/24
+    [2000000,  -20],
+    [1700000,  -20],
+    [1520000,  -70],
+    [1340000,  -70],
+    [1200000,  -20],
     [1000000,  -20],  // MIS 25: weak pre-MPT interglacial
     [ 950000,  -70],  // MIS 24
     [ 920000,  -25],  // MIS 23

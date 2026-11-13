@@ -16,8 +16,29 @@ const DeepTime = {
   // These bound the run (and the timeline UI), not the geology: the ranges/river state is
   // keyed to absolute dates in TerrainGenerator.GEO_EPOCHS, so you can shrink or shift this
   // window to zoom into any era for debugging and the terrain still reads true for the date.
-  yearsStart: 1000000,  // opens at ~1 Ma, the ranges' earliest stages; they rise across the run
+  yearsStart: 2000000,  // opens at ~2 Ma on the Manawatū Strait, before the river and the ranges (the prologue)
   yearsEnd:    25500,   // closes on Oruanui, heading into the LGM
+
+  // ---- THE PROLOGUE: yearsStart → prologueEnd (md/TEMANAWA_PROLOGUE.md) --------------------------
+  // The run used to open at 1 Ma, where the land barely moves in the 6–10 boosts a visitor stays for.
+  // It now opens a million years earlier, on the sea strait across the gap, and its first three boosts
+  // carry the land's assembly: the strait closes (~1.6 Ma), a river crosses the low land (~1.28 Ma),
+  // the ranges start to rise across its path (1 Ma, Kidnappers). The river is older than the mountains,
+  // and the visitor watches it happen. From prologueEnd the run is the old window, unchanged: the LR04
+  // glacial cycles and one boost per glacial turn.
+  //   The prologue is slow land-building, not a string of ice ages, so it is drawn short and played fast:
+  //   · prologueShare  its share of the timeline bar (timeFrac): half the run's years in under a third
+  //                    of the bar, so the cycles keep their room and their pins;
+  //   · prologueGear   the time dial and a deep burst run this many times faster in it, easing back to
+  //                    ×1 over prologueGearEase years as the clock comes up to prologueEnd;
+  //   · tlMaxSeconds   (below) a boost's time-lapse is scaled to fit its span, so a 400 kyr leg plays in
+  //                    the time a long glacial turn does.
+  // A window that opens at or after prologueEnd (the harness, a debug zoom) has no prologue: every one
+  // of these is then inert and the clock behaves exactly as it did.
+  prologueEnd:      1000000,
+  prologueShare:    0.3,
+  prologueGear:     5,
+  prologueGearEase: 150000,
 
   // ---- eruptions -------------------------------------------
   // The four TVZ events inside the window, oldest to youngest. This is the single
@@ -35,6 +56,30 @@ const DeepTime = {
     { yearsBP:  349000, name: 'Whakamaru',  tier: 'catastrophic', skip: true  },
     { yearsBP:   25500, name: 'Oruanui',    tier: 'major',        skip: false, terminal: true }
   ],
+
+  // ---- THE LAND'S CHAPTERS ---------------------------------
+  // What the land is doing at a date, said once as the clock comes to rest in each (InstallHUD's land
+  // caption, top-centre; the console's clock line carries the title). Oldest first; a chapter runs
+  // from its `from` down to the next one's. The first three are the prologue's stops (the dates the
+  // climate's authored swing lands a boost on, Climate.ANCHORS); the last two sit on the first glacial
+  // turns after Kidnappers, where a visitor's fourth and sixth boosts land. The dates follow the geology
+  // (TerrainGenerator.GEO_EPOCHS): the strait closed by 1.63 Ma, the drainage on the land by 1.25 Ma,
+  // rapid uplift from 1 Ma. Copy is co-design: keep a title to four words and a line to one sentence pair.
+  CHAPTERS: [
+    { from: Infinity, title: 'A sea strait',             line: 'The sea runs where the gorge is today. No river yet, and no ranges.' },
+    { from: 1640000,  title: 'The strait closes',        line: 'Low land joins north and south. Still no river, and no ranges.' },
+    { from: 1400000,  title: 'A river crosses the land', line: 'The young Manawatū is here before the ranges are.' },
+    { from: 1000000,  title: 'The ranges start to rise', line: 'They rise across the river\'s path. The river cuts down as fast.' },
+    { from:  910000,  title: 'Older than the mountains', line: 'The ranges keep rising, and the river keeps its course through them.' }
+  ],
+  // The chapter a date falls in (its index into CHAPTERS). Pure.
+  chapterIndexAt(yearsBP) {
+    const C = this.CHAPTERS;
+    let k = 0;
+    for (let i = 1; i < C.length; i++) if (yearsBP <= C[i].from) k = i;
+    return k;
+  },
+  chapterAt(yearsBP) { return this.CHAPTERS[this.chapterIndexAt(yearsBP === undefined ? this.yearsBP : yearsBP)]; },
 
   // ---- rates -----------------------------------------------
   yrPerSec:   500,      // baseline sim-years per real second at scale 1
@@ -59,6 +104,12 @@ const DeepTime = {
   tlStartRate:   500,     // yr/s at the start of a timelapse ramp
   tlMaxRate:     5000,    // yr/s the ramp eases up to and holds
   tlRampSeconds: 20,      // real seconds to ease start → max
+  // A boost never plays longer than this. A leg the ramp above covers in time is untouched (every glacial
+  // turn inside the cycles is: the longest, 256 → 188 ka, takes 22.6 s); a longer one (the prologue's
+  // legs, 280–405 kyr) has the whole ramp scaled up by one factor (_tlScale) so it lands on time. LIFE
+  // never runs past tlMaxRate's pace however fast the land goes (lifeScaleFor): the cast lives through a
+  // prologue leg at the same 10× a glacial turn's time-lapse reaches.
+  tlMaxSeconds:  24,
 
   // ---- the TIME DIAL (macro-pad encoder) --------------------
   // A standing fast-forward the dial scrolls: detent 0 = geology paused (real time — a year a year
@@ -80,7 +131,7 @@ const DeepTime = {
   dialWheelStep:   100,     // wheel deltaY per detent (one Windows wheel notch)
 
   // ---- state -----------------------------------------------
-  yearsBP:     1000000,
+  yearsBP:     2000000,
   timeScale:   1,
   _deepUntil:  0,
   _deepFrom:   0,
@@ -89,6 +140,7 @@ const DeepTime = {
   _tlTarget:   0,
   _tlFrom:     0,         // millis() at begin, for the rate ramp
   _tlStartYear: 0,        // yearsBP at begin, for the progress readout
+  _tlScale:    1,         // the ramp's scale for this time-lapse (> 1 only on a leg too long for tlMaxSeconds)
   dialStep:    0,         // the dial's detent, 0..dialSteps (kept across reset/seek)
   _dialRate:   0,         // the eased dial rate (yr/s) update() actually plays
   _dialAt:     0,         // millis() of the last dial turn, for the HUD readout's fade
@@ -142,6 +194,7 @@ const DeepTime = {
     this._tlTarget    = t;
     this._tlFrom      = (typeof millis === 'function') ? millis() : 0;
     this._tlStartYear = this.yearsBP;
+    this._tlScale     = this.tlScaleFor(this.yearsBP - t);
     this._deepUntil   = 0;                 // a boost supersedes any lingering deep burst
     this._ended       = false;
     return true;
@@ -150,7 +203,44 @@ const DeepTime = {
   endTimelapse() {
     this._timelapse = false;
     this._tlTarget  = 0;
+    this._tlScale   = 1;
     this.timeScale  = 1;
+  },
+
+  // Years the unscaled ramp (tlStartRate → tlMaxRate over tlRampSeconds, then held) covers in `secs`.
+  // Closed form: the smoothstep's integral over [0, u] is u³ − u⁴/2 of the ramp's length.
+  tlRampYears(secs) {
+    const R = this.tlRampSeconds, a = this.tlStartRate, b = this.tlMaxRate;
+    if (!(secs > 0)) return 0;
+    if (!(R > 0)) return b * secs;
+    const u = Math.min(1, secs / R);
+    return a * Math.min(secs, R) + (b - a) * R * (u * u * u - u * u * u * u / 2) + (secs > R ? b * (secs - R) : 0);
+  },
+  // The ramp's scale for a leg of `years`: 1 while the ramp covers it inside tlMaxSeconds, else the
+  // factor that lands it on tlMaxSeconds. Pure.
+  tlScaleFor(years) {
+    if (!(this.tlMaxSeconds > 0) || !(years > 0)) return 1;
+    const cover = this.tlRampYears(this.tlMaxSeconds);
+    return cover > 0 ? Math.max(1, years / cover) : 1;
+  },
+
+  // ---- the prologue ----------------------------------------
+  hasPrologue() { return this.yearsStart > this.prologueEnd; },
+  inPrologue(yearsBP) { return (yearsBP === undefined ? this.yearsBP : yearsBP) > this.prologueEnd; },
+  // The dial's and the deep burst's gear at a date: prologueGear in the prologue, eased (smoothstep) to
+  // ×1 over the last prologueGearEase years before prologueEnd, ×1 from there on. Pure.
+  gearAt(yearsBP) {
+    const y = (yearsBP === undefined) ? this.yearsBP : yearsBP;
+    if (!(this.prologueGear > 1) || y <= this.prologueEnd || !this.hasPrologue()) return 1;
+    const e = this.prologueGearEase;
+    let t = e > 0 ? (y - this.prologueEnd) / e : 1;
+    t = t > 1 ? 1 : t; t = t * t * (3 - 2 * t);
+    return 1 + (this.prologueGear - 1) * t;
+  },
+  // LIFE's pace for a geology rate: never past the time-lapse's own top (tlMaxRate / yrPerSec = 10×).
+  lifeScaleFor(rate) {
+    const cap = this.tlMaxRate > 0 ? this.tlMaxRate : rate;
+    return (rate < cap ? rate : cap) / this.yrPerSec;
   },
 
   isTimelapsing() { return !!this._timelapse; },
@@ -214,7 +304,7 @@ const DeepTime = {
   },
   // Fast-forward in the LIFE sense (the cast sped past 1×): the fauna afterimage trails.
   isFastForward() {
-    return !!(this._timelapse || this.isDeep() || this._dialRate > this.yrPerSec);
+    return !!(this._timelapse || this.isDeep() || this._dialRate * this.gearAt(this.yearsBP) > this.yrPerSec);
   },
 
   // The current timelapse rate (yr/s): smoothstepped from tlStartRate to tlMaxRate over tlRampSeconds.
@@ -223,7 +313,7 @@ const DeepTime = {
     const now  = (typeof millis === 'function') ? millis() : 0;
     const t = Math.max(0, Math.min(1, ramp > 0 ? (now - this._tlFrom) / ramp : 1));
     const eased = t * t * (3 - 2 * t);                   // smoothstep
-    return this.tlStartRate + (this.tlMaxRate - this.tlStartRate) * eased;
+    return (this.tlStartRate + (this.tlMaxRate - this.tlStartRate) * eased) * (this._tlScale > 1 ? this._tlScale : 1);
   },
 
   // 0..1 of the active timelapse (share of the year distance covered), for the console progress bar.
@@ -293,11 +383,11 @@ const DeepTime = {
   timelapseSecondsFor(fromYear, toYear) {
     const dist = fromYear - toYear;
     if (!(dist > 0)) return 0;
-    const ramp = this.tlRampSeconds, dt = 0.05;
+    const ramp = this.tlRampSeconds, dt = 0.05, k = this.tlScaleFor(dist);   // a long leg's ramp is scaled (tlMaxSeconds)
     let t = 0, covered = 0;
     while (covered < dist && t < 600) {
       const u = ramp > 0 ? Math.min(1, t / ramp) : 1;
-      covered += (this.tlStartRate + (this.tlMaxRate - this.tlStartRate) * u * u * (3 - 2 * u)) * dt;
+      covered += (this.tlStartRate + (this.tlMaxRate - this.tlStartRate) * u * u * (3 - 2 * u)) * k * dt;
       t += dt;
     }
     return t;
@@ -360,26 +450,27 @@ const DeepTime = {
     const k = this.dialEaseSeconds > 0 ? 1 - Math.exp(-sec / this.dialEaseSeconds) : 1;
     this._dialRate += (dialTarget - this._dialRate) * k;
     if (dialTarget === 0 && this._dialRate < 0.5) this._dialRate = 0;
-    const dial = this._dialRate;
+    const gear = this.gearAt(this.yearsBP);                // the prologue plays faster (×1 inside the cycles)
+    const dial = this._dialRate * gear;
     let geoRate = 0;
 
     if (this._timelapse) {
-      const rate = Math.max(this._tlRate(), dial);        // yr/s, eased 500 → 5000, never below the dial
-      lifeScale = rate / this.yrPerSec;                   // life keeps pace with the fast-forward
+      const rate = Math.max(this._tlRate(), dial);        // yr/s, eased 500 → 5000 (scaled on a long leg), never below the dial
+      lifeScale = this.lifeScaleFor(rate);                // life keeps pace with the fast-forward, up to its cap
       geoRate = rate;
       this.yearsBP -= sec * rate;
       if (this.yearsBP <= this._tlTarget) {               // reached the boost's destination
         this.yearsBP = this._tlTarget;
         this.endTimelapse();
-        lifeScale = Math.max(1, dial / this.yrPerSec);
+        lifeScale = Math.max(1, this.lifeScaleFor(dial));
       }
     } else if (this.isDeep()) {                           // legacy deep burst: 1 → deepMult, eased (or the dial, if faster)
-      const rate = Math.max(this.yrPerSec * this.currentScale(), dial);
-      lifeScale = rate / this.yrPerSec;
+      const rate = Math.max(this.yrPerSec * this.currentScale() * gear, dial);
+      lifeScale = this.lifeScaleFor(rate);
       geoRate = rate;
       this.yearsBP -= sec * rate;
     } else if (dial > 0) {                                // the dial alone: geology at its rate, life never below 1×
-      lifeScale = Math.max(1, dial / this.yrPerSec);
+      lifeScale = Math.max(1, this.lifeScaleFor(dial));
       geoRate = dial;
       this.yearsBP -= sec * dial;
     }
@@ -407,14 +498,33 @@ const DeepTime = {
   },
 
   // ---- readouts --------------------------------------------
+  // 0 at the opening → 1 at the close, along the TIMELINE BAR: linear in years within the prologue and
+  // within the cycles, with the prologue drawn short (prologueShare of the bar). With no prologue it is
+  // the plain linear share it always was.
+  timeFrac(yr) {
+    const pe = this.prologueEnd, y0 = this.yearsStart, y1 = this.yearsEnd;
+    if (!(y0 > pe)) return (y0 - yr) / ((y0 - y1) || 1);
+    const s = this.prologueShare;
+    if (yr >= pe) return s * (y0 - yr) / (y0 - pe);
+    return s + (1 - s) * (pe - yr) / ((pe - y1) || 1);
+  },
+  // …and back: the year under a fraction of the bar (the HUD's climate ribbon).
+  yearAtFrac(f) {
+    const pe = this.prologueEnd, y0 = this.yearsStart, y1 = this.yearsEnd;
+    if (!(y0 > pe)) return y0 - f * (y0 - y1);
+    const s = this.prologueShare;
+    if (f <= s) return y0 - (s > 0 ? f / s : 1) * (y0 - pe);
+    return pe - ((f - s) / (1 - s)) * (pe - y1);
+  },
   progress() {
-    return (this.yearsStart - this.yearsBP) / (this.yearsStart - this.yearsEnd);
+    return this.timeFrac(this.yearsBP);
   },
 
-  // Real seconds for the whole window at the baseline rate: the number that
-  // decides how long an unattended cycle takes. At 500 yr/s that is ~10.6 min.
+  // Real seconds for the whole window at the baseline rate (the prologue at its gear). A debug readout:
+  // nothing on the wall plays the window unattended any more (geology is paused until a boost).
   windowSeconds() {
-    return (this.yearsStart - this.yearsEnd) / this.yrPerSec;
+    const pe = Math.min(this.yearsStart, this.prologueEnd), g = this.prologueGear > 1 ? this.prologueGear : 1;
+    return ((this.yearsStart - pe) / g + (pe - this.yearsEnd)) / this.yrPerSec;
   },
 
   climate() {
@@ -423,7 +533,7 @@ const DeepTime = {
 
   // Map a year to an x position on a timeline of width w starting at x0.
   yearToX(yr, x0, w) {
-    return x0 + ((this.yearsStart - yr) / (this.yearsStart - this.yearsEnd)) * w;
+    return x0 + this.timeFrac(yr) * w;
   },
 
   label() {

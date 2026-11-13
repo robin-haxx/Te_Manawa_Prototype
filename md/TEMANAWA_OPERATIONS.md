@@ -84,9 +84,9 @@ frame loop (§4).
 
 | When | What happens | Cost |
 |---|---|---|
-| No input for **180 s** (`Kiosk.idleSeconds`) | **The attract sequence:** a dip to dark, the land from 4 Ma to 1 Ma (about 4 minutes, land only), then a fresh living world at 1 Ma. Any input skips to the landing | the landing is a cheap in-memory swap |
-| The timeline reaches Ōruanui (25.5 ka) | the same attract sequence | — |
-| Every 12th reset | the land is reseeded under the sequence's opening dark (a full rebuild, several seconds, hidden) | — |
+| No input for **180 s** (`Kiosk.idleSeconds`) | **The attract** (`TeManawa_attract.js`, since 2026-11-08): a dip to black, under which a fresh living world is put on the run's opening land (2 Ma, the Manawatū Strait: `TEMANAWA_PROLOGUE.md`), then that land with no UI and the clock held. Any input plays the intro (the present-day map, then the opening land, then the UI) | the swap is in memory; the land is morphed back to the opening first if a visitor left it elsewhere (about a second, under the black) |
+| The timeline reaches Ōruanui (25.5 ka) | the outro over the present-day map, then the attract | — |
+| Every 12th reset | the land is reseeded under the attract's black (a full rebuild, several seconds, hidden) | — |
 | A script error, in the frame loop or out of it | logged, then a **soft recovery** (`Kiosk.resetToAttract`) that replays an eruption checkpoint (every 12th time, a reseed instead); a running attract sequence is stopped first | ~1.2 s; a reseed takes several seconds |
 | More than 3 frame errors inside 30 s (`Kiosk.frameErrorMax`, `frameErrorWindowMs`) | a hard reload instead of another recovery | several seconds of loading |
 | **No frame for 10 s** (`Kiosk.watchdogSeconds`) | **hard reload** of the page | as above |

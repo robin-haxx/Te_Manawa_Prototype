@@ -1,7 +1,7 @@
 # Te Manawa — working notes
 
 **Avian Age: Te Manawa** — a standalone museum installation. An ambient top-down diorama
-of the Manawatū across ~1 Ma to 25.5 ka on a 4K wall, driven from a 1080p touchscreen
+of the Manawatū across ~2 Ma to 25.5 ka on a 4K wall, driven from a 1080p touchscreen
 console beside it; unattended, no operator, no network. Vanilla JavaScript on p5.js,
 classic scripts, no build step. Running the install: `md/TEMANAWA_OPERATIONS.md`.
 
@@ -100,11 +100,11 @@ TeManawa_outline.js        live fauna outline (PROTOTYPE: bush moa + kererū) �
 TeManawa_spriteatlas.js    runtime texture atlas: packs every loaded sprite at setup(), wraps image()
 TeManawa_glbatch.js        the default WebGL entity layer (DOM-stacked); falls back to 2D
 TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored; SEA_ANCHORS
-TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the time dial
+TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the time dial; the prologue (2 Ma → 1 Ma: the short-drawn bar, the gear, the fitted time-lapse) and the land's CHAPTERS — see TEMANAWA_PROLOGUE.md
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) + the cards' bold terms; chances (pips), the reveal and the late answer when a goal leaves unanswered — pure, p5-free; the console page loads it too
 TeManawa_hud.js            InstallHUD: timeline (climate ribbon, eruption pins + end labels), visitor year/goal/speed, the top band (tallies + ecosystem health), eruption captions, the five buttons (debug), storm/ash/wind FX
 TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
-TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only sequence, its own clock, the names of the time — OFF the wall since 2026-11-08, dev P key only — see TEMANAWA_PALAEO_ATTRACT.md
+TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only sequence, its own clock, the names of the time — OFF the wall since 2026-11-08, dev P key only — see TEMANAWA_PALAEO_ATTRACT.md. Its names ARE on the wall: renderEraNames letters them over the living sim through the prologue
 TeManawa_attract.js        the attract (live 1 Ma land, no UI), the intro (present-day map → the land → the UI) and the end-of-window outro; TM_ATTRACT knobs and copy
 TeManawa_milestone.js      the health milestones: full health fades to white onto the thriving land (no UI, 15 s, real time, the bird counts), 25 % to black onto a desaturated one; TM_MILESTONE knobs; Milestone.play() to preview
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
@@ -245,6 +245,28 @@ pixels, so `mousePressed`/`mouseReleased` divide by `SS`. See `Game._composeTerr
 
 ---
 
+## The run: a prologue, then the cycles
+
+**The run opens at 2 Ma, on the Manawatū Strait** (`DeepTime.yearsStart`; `md/TEMANAWA_PROLOGUE.md`). It
+opened at 1 Ma until 2026-11-13, where a 6–10 boost visit saw the land barely move. The first three boosts
+now carry the land's assembly: the strait closes (the boost lands ≈ 1.595 Ma, cold), a river crosses the
+low land (≈ 1.282 Ma, warm, before the uplift starts), then the boost runs into Kidnappers at 1 Ma. From
+`DeepTime.prologueEnd` (1 Ma) the run is **the cycles**: the LR04 table and one boost per glacial turn,
+unchanged. Where this file or an older document says "1 Ma" for the opening, the attract's land or a
+reset's destination, read `DeepTime.yearsStart`.
+
+- **The prologue's climate is authored, not LR04**: one long cold swing in `Climate.ANCHORS`, placed so
+  each boost lands on a chapter of the land. Moving one of those anchors moves a stop: check the harness's
+  "prologue" section, which asserts where the first three boosts land and what the land is there.
+- **The clock is drawn and played unevenly on purpose**: the prologue takes `prologueShare` of the
+  timeline bar (`timeFrac` / `yearAtFrac`, never a linear lerp of years), a boost's time-lapse is scaled to
+  fit `tlMaxSeconds` (the cycles' legs all scale ×1), the dial and a deep burst are geared ×5, and life
+  never runs past ×10 (`lifeScaleFor`). A window with no prologue is the old clock exactly.
+- **Kidnappers is a mid-run eruption** at 30 % of the bar, fired by the clock crossing it.
+- **The harness has two lands**: `homeLand()` is the opening (what ships), `cyclesLand()` the 1 Ma land a
+  section on the cycles' ecology needs (a river, a plain, hills). A section that stages one puts the
+  opening back.
+
 ## Two kinds of reset — do not conflate them
 
 | | Soft reset | Hard reload |
@@ -261,7 +283,7 @@ terrain bake is heavy) because it regenerates terrain noise over every cell and 
 `resetEcosystem()` keeps the terrain and replaces only the living world. Every 12th reset reseeds the land via `init()` so it varies across a
 day. **Nothing on the visitor path may call `init()`.**
 
-**The attract is the live 1 Ma land, and a press plays an intro** (`TeManawa_attract.js`, 2026-11-08). The
+**The attract is the live opening land (2 Ma, the strait; "1 Ma" below is the opening), and a press plays an intro** (`TeManawa_attract.js`, 2026-11-08). The
 wall boots into it, and the idle timer enters it: a ≥ 500 ms dip to black, under which `Kiosk.landAttract()` →
 `resetEcosystem()` puts a fresh world on the land morphed back to 1 Ma (the every-12th `init()` reseed
 happens here, heartbeat stamped), then up onto that world with **no UI and the clock held**, living in real
@@ -291,7 +313,7 @@ skips a running attract). Anything that polls a key itself must ask `Kiosk.keyAl
 |---|---|
 | `1`–`5` | The five baseline buttons (deep time, FOREST growth, TUSSOCK growth, storm, eruption) — FOREST helps in the interglacial, TUSSOCK in the glacial; the wrong one for the climate desaturates the scene. On the wall the console does this |
 | `H` | The **hint** (wall and console, no `?dev` needed): the goal's answers that fit the climate ring white on the wall for `TM_GOALS.hintMs`, and the console's climate rail points up or down to their screen (`TMGoals.hint`, `TeManawa_bus.js` `onHint`) |
-| `]` / `[` / `\` | **Time dial** (macro-pad encoder: CW / CCW / push) — a standing fast-forward over 30 detents, 0 (geology paused) → 5,000 yr/s (the whole window in ~3¼ min), power-curve so the low end is fine. The rate eases (0.6 s), a boost timelapse never runs slower than it, and the detent survives soft resets. The mouse wheel turns it too. Works in the sim window and the console (relayed over the bus as `{type:'dial'}`). Keys in `DeepTime.DIAL_KEYS` + `secondscreen/input.js` |
+| `]` / `[` / `\` | **Time dial** (macro-pad encoder: CW / CCW / push) — a standing fast-forward over 30 detents, 0 (geology paused) → 5,000 yr/s (the cycles in ~3¼ min; ×5 in the prologue, so the whole run in ~4), power-curve so the low end is fine. The rate eases (0.6 s), a boost timelapse never runs slower than it, and the detent survives soft resets. The mouse wheel turns it too. Works in the sim window and the console (relayed over the bus as `{type:'dial'}`). Keys in `DeepTime.DIAL_KEYS` + `secondscreen/input.js` |
 | `D` / `SHIFT+D` | Cycle the debug overlay / dump state as JSON. Hold `D` 3 s for the plant sprite gallery |
 | `R` / `C` | The range-authoring overlay (footprints + spine axes) / the climate-affinity tint on the cast |
 | `SHIFT+F` | Toggle the terrain footprint between `square` and `fit` — **debug overlay on only** (a full synchronous rebuild) |
@@ -308,7 +330,8 @@ skips a running attract). Anything that polls a key itself must ask `Kiosk.keyAl
 
 **Final testing and handoff.** The honest status is `md/TEMANAWA_PLAN_V3.md` §13; what is left is §14.
 Built: the terrain (SVG skeleton, uplift/incision morph, the sea-level coast, 3/4 cel look, water layer,
-river names), the glacial-cycle climate to 1 Ma with cold cover, the four eruptions, habitat health, the
+river names), **the prologue** (the run opens at 2 Ma on the strait, 2026-11-13: `md/TEMANAWA_PROLOGUE.md`),
+the glacial-cycle climate to 1 Ma with cold cover, the four eruptions, habitat health, the
 disturbance clocks (`disturb()` + `warpAt`, the wetland bloom, kahikatea river recruitment), the
 **second-screen console** (`md/TEMANAWA_SECOND_SCREEN.md`), the plant goals, the time dial, the health
 milestones, and the attract (the live 1 Ma land) with its present-day-map intro and end-of-window outro
@@ -349,5 +372,5 @@ now stages the habitat.
 peak near 0.65 at every date while the real build reaches ~0.88. Test logic that needs a landform
 (a habitat, a band) by staging it, not by trusting the noise (`MISTAKES.md`).
 
-Open co-design items: `TM_PALAEO` pacing, the look of the pre-window land (`LOOK.palaeo*`),
+Open co-design items: the prologue's copy, opening date and the uplift curve's ease-in (`md/TEMANAWA_PROLOGUE.md` §10), `TM_PALAEO` pacing, the look of the pre-window land (`LOOK.palaeo*`),
 the live outline prototype, `CONFIG.mapGrid` (still 512), and the interpretation layer (PLAN §16).

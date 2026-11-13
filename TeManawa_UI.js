@@ -75,6 +75,9 @@ class GameUI {
     // River names: over the whole world (ground, water, cast, weather, the edge band) and under the
     // HUD, clear of the HUD's pieces (TeManawa_rivernames.js).
     if (typeof RiverNames !== 'undefined') RiverNames.render(g, W, H);
+    // …and, while the clock is in the prologue (2 Ma → 1 Ma), the names of the time: the strait, the
+    // basin, the proto-ranges (TeManawa_palaeo.js renderEraNames). Nothing past it.
+    if (typeof Palaeo !== 'undefined' && Palaeo.renderEraNames) Palaeo.renderEraNames(g, W, H);
 
     // The on-screen buttons are a DEBUG twin of the wall's physical buttons, so they only
     // show with the overlay. Visitors get the clean layout: the deep-time axis on a thin
@@ -96,6 +99,8 @@ class GameUI {
     InstallHUD.renderAshCloud(g, W, H);     // rolling ash cover rides on top of it
     // The eruption caption rides OVER the ash cloud, so an eruption is named while it covers the wall.
     if (!debug) InstallHUD.renderEruptionCaption(g, W, H);
+    // The land's chapter, in the same slot, once the clock rests in a new one (after the eruption's, which wins).
+    if (!debug && InstallHUD.renderLandCaption) InstallHUD.renderLandCaption(g, W, H);
     _dc.globalAlpha = _a0;
 
     if (debug) Debug.render(g, W, H);

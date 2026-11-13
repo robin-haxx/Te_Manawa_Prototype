@@ -399,6 +399,9 @@ const TMBus = (function () {
     const g = Climate.glacialIndexAt(y);
     reply({ type: 'clock', yearsBP: y, glacialIndex: g,
             stage: Climate.stageOf(g), stageName: Climate.stageNameOf(g), mis: Climate.misAt(y),
+            // the land's chapter (DeepTime.CHAPTERS): its title, for the console's clock line in the
+            // prologue, where there is no MIS stage to name
+            land: (DeepTime.chapterAt ? DeepTime.chapterAt(y).title : null),
             // the attract sequence's own clock while it runs ({ active, yearsBP, state, label }); DeepTime
             // is parked meanwhile, so the console shows the sequence's date instead
             palaeo: (typeof Palaeo !== 'undefined' && Palaeo.telemetry) ? Palaeo.telemetry() : { active: false } });

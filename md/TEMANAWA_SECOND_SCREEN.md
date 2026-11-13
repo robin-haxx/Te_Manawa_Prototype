@@ -187,7 +187,7 @@ sim sends *telemetry* so the readout tracks the clock.
 
 | `type` | fields | drives |
 |---|---|---|
-| `clock` | `yearsBP`, `glacialIndex`, `stage`, `stageName`, `mis` | the KYA date + glacial/interglacial label (sent ~4/s) |
+| `clock` | `yearsBP`, `glacialIndex`, `stage`, `stageName`, `mis`, `land` | the KYA date + glacial/interglacial label (sent ~4/s). `land` is the land's chapter title (`DeepTime.CHAPTERS`); the console shows it in place of the MIS stage in the prologue (before 1 Ma), where there is none |
 | `goal` | `targetYearsBP`, `targetStage`, `targetStageName`, `prompt`, `plant` | the goal readout: the live plant goal's line (`prompt`, §6.5), else the next glacial/interglacial. `plant` (`TMGoals.telemetry()`) feeds the goal strip: `serial` (a new number = a new goal), `prompt`, `chances`, `missLimit`, `revealing` + `revealKey`, `late` (the late window is open), `last` (`{serial, prompt, outcome: solved/missed/late, key}` or null) |
 | `timelapse` | `active`, `progress` (0..1), `yrPerSec`, `achieved` (bool/null) | the timelapse progress bar + goal-met indicator |
 | `boostResult` | `plantKey`, `matched` (bool), `goal` (`answer`/`matched`/`wrong`/`answerWrongClimate`/null), `text`; a top-up (§6.5) adds `topUp: true`, `seeded`; a late answer (§6.5) is `late: true`, `goal: 'lateAnswer'`, `matched: null` | the immediate regime-fit verdict (right species for the climate?) and the plant-goal verdict line the diorama shows (§6.5) |
