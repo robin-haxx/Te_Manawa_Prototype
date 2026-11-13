@@ -1704,11 +1704,14 @@ try{
   chk(s24['MANAWATŪ STRAIT|2480000']===true, 'the strait name sits on sea at 2.4 Ma');
   chk(s24['WHANGANUI BASIN|4000000']===true && s24['RUATANIWHA STRAIT|4000000']===true, 'the basin and Ruataniwha names sit on sea at 2.4 Ma');
   chk(s13['PROTO-RUAHINE RANGE|1600000']===true, 'the proto-Ruahine name sits on land at 1.3 Ma');
-  // The surface check itself: a name's `ok` is exactly the painted class under its anchor (the Tararua's
-  // anchor is marginal land under the harness's white-noise base, so it is checked as a mechanism).
+  // The surface check itself: a name's `ok` is the painted class under its anchor, by a vote of the anchor
+  // and four cells round it (2026-11-13: one stray cell must not hide a name; the harness's white-noise
+  // border wobble paints shelf-depth sea as beach about one cell in ten). The Tararua's anchor is marginal
+  // land under the white-noise base, so it is checked as a mechanism.
   for (const L of P._labels) {
-    const D=L.def, wt=T.waterTypeAt(D.u*T.mapWidth, D.v*T.mapHeight);
-    chk(L.ok===((D.on==='sea')?wt===1:wt!==1), `${L.text}: ok reads the painted surface (${D.on}, class ${wt})`);
+    const D=L.def, x=D.u*T.mapWidth, y=D.v*T.mapHeight, wt=T.waterTypeAt(x, y);
+    let sea=0; for (const [dx,dy] of [[0,0],[-3,0],[3,0],[0,-3],[0,3]]) if (T.waterTypeAt(x+dx, y+dy)===1) sea++;
+    chk(L.ok===((D.on==='sea')? sea>=3 : (5-sea)>=3), `${L.text}: ok reads the painted surface (${D.on}, class ${wt}, ${sea}/5 sea)`);
   }
   P.active=true; P.yearsBP=1400000;
   const main=T.getRivers().find(r=>r.type!=='tributary'), trib=T.getRivers().find(r=>r.type==='tributary');
@@ -2984,6 +2987,56 @@ try{
     const C=T.copy, all=[C.intro.title, C.intro.body, C.line, C.outro.title, C.outro.body].join(' ');
     chk(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(all), 'no emoji in the copy');
     chk(/Manawatū/.test(all) && /Āpiti/.test(T.labels.map(l=>l.text).join(' ')), 'the names carry their macrons');
+    // 8. THE ISLAND INSET (TeManawa_island.js, 2026-11-13): what the frame cannot show. Every date it is
+    //    asked for has its outlines and its caption; the maps build once per view and are reused; the frame
+    //    box sits over the Manawatū; the intro shows today with the map, turns to 1 Ma with the map's cross
+    //    into the land and is gone before the UI; the outro shows the LGM, then today, before its card
+    //    leaves (a skip too); the dev sequence holds each dated map and crossfades between them.
+    {
+      const II=vm.runInContext('IslandInset',ctx), TI=vm.runInContext('TM_ISLAND',ctx), D=vm.runInContext('TE_MANAWA_ISLAND',ctx);
+      const pIds=TI.palaeoDates.map(d=>d[0]), ids=T.inset.intro.concat(T.inset.outro, pIds);
+      chk(ids.every(id=>D.slices[id] && D.slices[id].length===4 && D.slices[id][2].length>0), 'every inset date has its four layers and land on it');
+      chk(T.inset.intro.every(id=>TI.copy.intro[id] && TI.copy.intro[id].body) && T.inset.outro.every(id=>TI.copy.outro[id] && TI.copy.outro[id].body) && pIds.every(id=>TI.copy.palaeo[id]),
+        'every inset date has its caption');
+      const capAll=[].concat(...['intro','outro','palaeo'].map(k=>Object.values(TI.copy[k]).map(c=>(c.title||'')+' '+c.body))).join(' ');
+      chk(!/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(capAll) && /Cook Strait/.test(capAll) && /Nelson/.test(capAll) && /Manawatū/.test(capAll), 'the inset copy: no emoji, Cook Strait and Nelson named, macrons kept');
+      II.free(); chk(II.prepare(ids) && ids.every(id=>!!II._maps[id]), 'the inset maps build');
+      const m0=II._maps.m0000; chk(II.map('m0000')===m0, '…once per view (a second ask reuses the buffer)');
+      const fb=II.frameBox(), S=D.sim;
+      chk(!!fb && fb.x>0 && fb.y>0 && fb.x+fb.w<1 && fb.y+fb.h<1 && S.gx>fb.x && S.gx<fb.x+fb.w && S.gy>fb.y && S.gy<fb.y+fb.h && fb.w>0.03 && fb.w<=S.ku+1e-9,
+        `the frame box sits over the gorge, inside the inset (${fb && [fb.x,fb.y,fb.w,fb.h].map(v=>v.toFixed(3)).join(', ')})`);
+      // the intro
+      quiet(); AT.mode='idle'; AT._idleSince=vm.runInContext('millis()',ctx); AT.onInput(G);
+      let today=false, oneMa=false, atUi=0, step=0, la=0, lm=0;
+      until(()=>{ const s=AT.insetState(), a=s?s.alpha:0, m=s?s.mix:lm;
+        if (s && a>0.99 && m===0 && s.a==='m0000' && AT.mapAlpha()>0.99) today=true;
+        if (s && a>0.99 && m>0.99 && s.b==='m1000' && AT.lineAlpha()>0.5) oneMa=true;
+        if (AT.uiAlpha()>0) atUi=Math.max(atUi,a);
+        step=Math.max(step,Math.abs(a-la),Math.abs(m-lm)); la=a; lm=m; return AT.mode==='off'; }, 3000);
+      chk(today && oneMa, `the intro's inset: today with the map, 1 Ma with the line over the land (${today} ${oneMa})`);
+      chk(atUi===0, 'the inset is gone before the UI comes in');
+      chk(step<=0.05, `…and comes, turns and goes on fades (${step.toFixed(3)} a frame at most)`);
+      // the outro, played through and skipped
+      const outro=(skip)=>{ quiet(); AT.mode='off'; if(!AT.outro(G)) return [false,false];
+        let lgm=false, now=false, skipped=false;
+        until(()=>{ const s=AT.insetState();
+          if (skip && !skipped && AT.mapAlpha()>0.99 && AT._t()>AT._outroMarks().mapUp+T.outroSkipAfterMs+50) { AT.onInput(G); AT._pendingBreak=false; skipped=true; }
+          if (s && s.alpha>0.99 && s.mix===0 && s.a==='m0020') lgm=true;
+          if (s && s.alpha>0.5 && s.mix>0.99 && s.b==='m0000') now=true;
+          return AT.mode!=='outro'; }, 3000);
+        until(()=>AT.mode==='idle', 600); AT._stop(); AT.mode='off'; return [lgm, now]; };
+      const [l1,n1]=outro(false), [l2,n2]=outro(true);
+      chk(l1 && n1, `the outro's inset: the last glacial maximum, then today (${l1} ${n1})`);
+      chk(l2 && n2, `…and a skipped outro still turns to today before its card leaves (${l2} ${n2})`);
+      // the dev sequence: each dated map held on its date, crossfading across the middle of each leg
+      const P=TI.palaeoDates; let held=true, mono=true, prev=-1, prevLeg=-1;
+      for (const [id,y] of P) { const p=II.palaeoPair(y); if (!(p.a===id && p.mix===0) && !(p.b===id && p.mix===1)) held=false; }
+      for (let y=P[0][1]; y>=P[P.length-1][1]; y-=10000) { const p=II.palaeoPair(y), leg=TI.palaeoDates.findIndex(d=>d[0]===p.a);
+        if (leg===prevLeg && p.mix<prev-1e-9) mono=false; prevLeg=leg; prev=p.mix; }
+      const mid=II.palaeoPair((P[0][1]+P[1][1])/2);
+      chk(held && mono && mid.mix>0.3 && mid.mix<0.7, `the dev sequence holds each dated map and crossfades across each leg (${held} ${mono}, mid ${mid.mix.toFixed(2)})`);
+      II.free(); chk(Object.keys(II._maps).length===0 && Object.keys(II._caps).length===0, 'the inset frees its buffers');
+    }
   } finally { AT._stop(); AT.mode='off'; quiet(); DT.reset(); G.resetEcosystem(); }
   console.log(fail? `attract: ${fail} FAILURES`
     : 'attract: idle shows the live 1 Ma land with no UI and the clock held; a press plays the present-day map (the sim\'s own 0 BP land, the live land untouched) and an orientation, then the line and the UI; the end of the window plays the outro and lands on the attract; the deep-time sequence is off the wall');

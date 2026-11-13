@@ -145,6 +145,7 @@ const Palaeo = {
     g._tmAshUntil = 0; g._ashCover = 0; g._sceneSat = 1; g._habitatHealth = 1;
     g._tmStormUntil = 0; g._tmGrowWarmUntil = 0; g._tmGrowColdUntil = 0; g._tmBolt = null;
     if (typeof Kiosk !== 'undefined') Kiosk.lastInputAt = Date.now();   // the idle timer restarts; landAttract restarts it again
+    if (typeof IslandInset !== 'undefined' && typeof TM_ISLAND !== 'undefined') IslandInset.prepare(TM_ISLAND.palaeoDates.map(d => d[0]));   // the dated island maps, before the dip ends
     if (typeof console !== 'undefined') console.log('[Palaeo] begin (' + this.reason + ')' + (this._reseed ? ' + reseed' : ''));
     return true;
   },
@@ -465,6 +466,10 @@ const Palaeo = {
     if (typeof RiverNames !== 'undefined' && RiverNames.render) RiverNames.render(g, W, H);
     this._renderLabels(g, W, H);
     this._renderCaption(W, H);
+    if (typeof IslandInset !== 'undefined') {                         // the island at the date (TeManawa_island.js)
+      const p = IslandInset.palaeoPair(this.yearsBP);
+      IslandInset.draw(null, p.a, p.b, p.mix, 1, W, H, 'palaeo');
+    }
     if (typeof InstallHUD !== 'undefined' && InstallHUD.renderAshFlash) InstallHUD.renderAshFlash(g, W, H);
     if (typeof InstallHUD !== 'undefined' && InstallHUD.renderAshCloud) InstallHUD.renderAshCloud(g, W, H);
     if (typeof Debug !== 'undefined' && Debug.enabled && Debug.render) Debug.render(g, W, H);
@@ -537,10 +542,7 @@ const Palaeo = {
     const vx = CONFIG.viewX, vy = CONFIG.viewY, vz = CONFIG.viewZoom, mw = T.mapWidth, mh = T.mapHeight;
     for (const L of labels) {
       const D = L.def, x = D.u * mw, y = D.v * mh;
-      const wt = T.waterTypeAt ? T.waterTypeAt(x, y) : 0;
-      // 'land' is anything but open sea: a stream crossing the anchor is still land under the name (a hill
-      // stream on the proto-Ruahine used to hide its name whenever the fan's geometry put one there).
-      L.ok = (D.on === 'sea') ? wt === 1 : (D.on === 'land') ? wt !== 1 : true;
+      L.ok = this._onSurface(T, D, x, y);
       const lift = T.paintLiftAt ? T.paintLiftAt(x, y) : T.getElevationAt(x, y);
       let cx = vx + vz * Projection.projX(x), cy = vy + vz * Projection.groundY(y, lift);
       const ang = (D.deg || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
@@ -601,6 +603,23 @@ const Palaeo = {
     }
   },
 
+  // Whether a name's anchor (world x, y) is on its surface, read off the painted classification: 'land' is
+  // anything but open sea (a stream crossing the anchor is still land under the name: a hill stream on the
+  // proto-Ruahine used to hide its name whenever the fan's geometry put one there). The anchor and four
+  // cells round it vote, so one stray cell (a shelf cell the border wobble paints as beach) cannot hide a
+  // name over open water (2026-11-13: the pre-window sea is shelf, near the waterline).
+  _onSurface(T, D, x, y) {
+    if (D.on !== 'sea' && D.on !== 'land') return true;
+    if (!T.waterTypeAt) return false;
+    let hits = 0;
+    for (let k = 0; k < 5; k++) {
+      const dx = k === 1 ? -3 : k === 2 ? 3 : 0, dy = k === 3 ? -3 : k === 4 ? 3 : 0;
+      const sea = T.waterTypeAt(x + dx, y + dy) === 1;
+      if (sea === (D.on === 'sea')) hits++;
+    }
+    return hits >= 3;
+  },
+
   // A still frame (tools/export_frames.js): the names of date `y` on terrain `T` as it stands (seated
   // and surface-checked afresh, drawn at full strength) and the caption, into graphics `buf`. The
   // sequence's live state is untouched. Returns the region names drawn.
@@ -630,6 +649,10 @@ const Palaeo = {
         buf.textSize(TM_PALAEO.captionSize); buf.fill(8, 14, 12, 170); buf.text(this.dateLabel(), cx + 2, cy + 3);
         buf.fill(236, 244, 240); buf.text(this.dateLabel(), cx, cy);
         buf.pop();
+      }
+      if (buf && typeof IslandInset !== 'undefined') {                  // the island at the date, as the sequence draws it
+        const p = IslandInset.palaeoPair(y);
+        IslandInset.draw(buf, p.a, p.b, p.mix, 1, W, H, 'palaeo');
       }
     } finally {
       this.active = keep.active; this.yearsBP = keep.yearsBP; this.state = keep.state; this._anchorSig = keep.sig; this.game = keep.game;

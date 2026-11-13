@@ -1,7 +1,8 @@
 # The land before the window — the attract sequence's dated maps
 
-12 frames of the ground layer from the browser build: terrain, water and the names of the time, no
-sprites, no HUD. One per keyframe of the attract sequence (`TM_PALAEO.keyframes`) and per turn of the
+12 frames of the ground layer from the browser build: terrain, water, the names of the time and the
+island inset (top right: the lower North Island at the date, the frame boxed on it; `TeManawa_island.js`),
+no sprites, no HUD. One per keyframe of the attract sequence (`TM_PALAEO.keyframes`) and per turn of the
 Manawatū Strait (`md/TEMANAWA_PALAEO_ATTRACT.md` §1), oldest first, each stamped with its date and the
 deep-time factors. All from one page load (one seed) in the wall's cover-fit view, so the frame shows
 map u ≈ 0.16 … 0.84, v ≈ 0.11 … 0.78.

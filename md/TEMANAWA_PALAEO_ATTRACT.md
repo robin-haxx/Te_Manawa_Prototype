@@ -190,6 +190,12 @@ until 1.6 Ma, then takes their "proto-" convention (Fig. 4D: *proto-Ruahine Rang
 | **PROTO-MANAWATŪ** (along the channel) | while the arm still flows east (≥ 1.25 Ma) and the channel is river water | the main stem | river | p. 171 "proto-Manawatu River" |
 | **MANAWATŪ** (along the channel) | < 1.25 Ma | the main stem | river | Fig. 4D "Manawatu River" |
 
+**The island inset (2026-11-13).** In the top-right corner the sequence draws the lower North Island at the
+date (`TeManawa_island.js`, `TM_ISLAND.palaeoDates`: 4, 3, 2.4, 1.5 and 1 Ma from `research/palaeogeography/`),
+the frame boxed on it and one line under it (Wellington part of a southern land; the strait cutting the land in
+two; one island with no Cook Strait). Each map holds on its date and crossfades across the middle fifth of
+each leg. The export stills carry it too.
+
 The modern tributary names (Pohangina, Ōroua…) are **not** lettered during the sequence: those streams
 exist in the model before 1 Ma (as the spread fans), but no source names them for the time. The
 same holds inside the window until the fans close: `RiverNames._name` letters a tributary only once

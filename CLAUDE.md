@@ -84,6 +84,7 @@ TeManawa_plant_defs.js     the flora table (coldTolerance 0 = tree-fern-sensitiv
 TeManawa_species_data.js   MOA_SPECIES, EAGLE_SPECIES
 TeManawa_entity_sprites.js SpriteAngle, ArtMode, ART_SETS, EntitySprites
 geo/manawatu.geo.js        SVG-authored geography skeleton (ranges + river) — see TEMANAWA_GEOGRAPHY.md
+geo/island_maps.js         the lower North Island at nine dates, 4 Ma → today (emitted by tools/island2geo.js from research/palaeogeography/slices.json)
 TeManawa_terrain.js        TerrainGenerator — geo skeleton, noise, biome classify, 3/4 relief bake, LOOK look-dev
 TeManawa_projection.js     plan-oblique 3/4 projection — pure, p5-free (like climate.js)
 TeManawa_seasons.js        SeasonManager — the glacial clock (four buffers = four glacial stages)
@@ -104,8 +105,9 @@ TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the 
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) + the cards' bold terms; chances (pips), the reveal and the late answer when a goal leaves unanswered — pure, p5-free; the console page loads it too
 TeManawa_hud.js            InstallHUD: timeline (climate ribbon, eruption pins + end labels), visitor year/goal/speed, the top band (tallies + ecosystem health), eruption captions, the five buttons (debug), storm/ash/wind FX
 TeManawa_rivernames.js     river names in white capitals along the channels, over the world, clear of the HUD (labelKeepOut)
+TeManawa_island.js         the island inset: the lower North Island at a date (geo/island_maps.js), the sim's frame boxed on it, one caption; drawn by the intro/outro and the P sequence; TM_ISLAND knobs and copy
 TeManawa_palaeo.js         the land before the window: the 4 Ma → 1 Ma land-only sequence, its own clock, the names of the time — OFF the wall since 2026-11-08, dev P key only — see TEMANAWA_PALAEO_ATTRACT.md
-TeManawa_attract.js        the attract (live 1 Ma land, no UI), the intro (present-day map → the land → the UI) and the end-of-window outro; TM_ATTRACT knobs and copy
+TeManawa_attract.js        the attract (live 1 Ma land, no UI), the intro (present-day map + island inset → the land → the UI) and the end-of-window outro; TM_ATTRACT knobs and copy
 TeManawa_milestone.js      the health milestones: full health fades to white onto the thriving land (no UI, 15 s, real time, the bird counts), 25 % to black onto a desaturated one; TM_MILESTONE knobs; Milestone.play() to preview
 TeManawa_debug.js          six-panel overlay. D cycles, SHIFT+D dumps JSON
 TeManawa_plant_debug.js    plant sprite gallery (hold D 3 s)
@@ -116,9 +118,9 @@ TeManawa_devtools.js       LOOK / GEN console dev tools (B/G/N) — see TEMANAWA
 TeManawa_sketch.js         CONFIG, Game, and the p5 entry points
 TeManawa_bus.js            the console bus (BroadcastChannel 'temanawa'): intents in, telemetry out — loads after sketch.js
 secondscreen/              the touchscreen console page (static DOM) — see secondscreen/README.md
-tools/                     serve.js, bootcheck.js, svg2geo.js, export_frames.js, outline_plants.js, shot.js,
+tools/                     serve.js, bootcheck.js, svg2geo.js, island2geo.js, export_frames.js, outline_plants.js, shot.js,
                            boostprobe.js (headless visitor sessions: how boosts move flora + fauna)
-geo/                       manawatu.svg (authored) + manawatu.geo.js (emitted)
+geo/                       manawatu.svg (authored) + manawatu.geo.js, island_maps.js (emitted)
 md/                        live docs — start at md/README.md; md/ecology/ research, md/archive/ built plans
 exports/                   terrain snapshot sets (dev reference, not needed on the wall)
 sprites/  audio/  typefaces/  research/
@@ -133,6 +135,7 @@ sprites/  audio/  typefaces/  research/
 - `goals.js` **before** `hud.js` and `bus.js` — the HUD draws its line, the bus judges each boost
 - `hud.js` **before** `UI.js` — `UI.js` reads `InstallHUD.TOP_H`
 - `outline.js` **before** `spriteatlas.js` — `setup()` builds the border masks before the atlas packs them beside their sprites
+- `island.js` **before** `palaeo.js` and `attract.js`, after `geo/island_maps.js` (it draws their inset)
 - `attract.js` and `milestone.js` **after** `hud.js`/`goals.js`/`palaeo.js`, **before** `UI.js` and `sketch.js` — they read `uiAlpha()` and call their update/render (`bus.js` routes console input to the attract)
 - `sketch.js` **last** of the engine — it owns `setup()` and `draw()`; only `bus.js` follows it,
   because it reaches for `game`, `InstallHUD` and `DeepTime`
@@ -267,7 +270,9 @@ wall boots into it, and the idle timer enters it: a ≥ 500 ms dip to black, und
 happens here, heartbeat stamped), then up onto that world with **no UI and the clock held**, living in real
 time. Any input, local or over the bus, is presence: it breaks the attract into the **intro** (black, the
 **present-day map**, an orientation card, a crossfade into the live 1 Ma land it lines up with, one line,
-then the UI) or skips the map once it has been up `skipAfterMs`. The **end of the window** plays the
+then the UI) or skips the map once it has been up `skipAfterMs`. Beside the map an **island inset** (`TeManawa_island.js`,
+2026-11-13) shows what the frame cannot: the lower North Island today, turning to 1 Ma (no Cook Strait) as the map
+crosses into the land, gone with the line; in the outro the last glacial maximum (dry land to Nelson), then today. The **end of the window** plays the
 **outro** over the same map (habitats, species, the river today), then lands on the attract; it waits for
 the terminal Ōruanui eruption to play out first. The map is `TerrainGenerator.snapshotYear(0)`: the sim's
 own land at 0 BP (the climate tables carry a Holocene past the window for it), baked in the world's

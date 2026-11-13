@@ -47,6 +47,9 @@
     <!-- Geography skeleton (SVG-authored via tools/svg2geo.js). Optional; the
          terrain reshapes its base noise around it. See md/TEMANAWA_GEOGRAPHY.md. -->
     <script src="geo/manawatu.geo.js"></script>
+    <!-- The lower North Island at nine dates, 4 Ma → today (tools/island2geo.js from
+         research/palaeogeography/slices.json), for the island inset (TeManawa_island.js). -->
+    <script src="geo/island_maps.js"></script>
 
     <!-- Terrain and seasons/climate -->
     <script src="TeManawa_terrain.js"></script>
@@ -129,6 +132,11 @@
     <!-- River names lettered along the channels, over the world and under the HUD. Reads
          InstallHUD.labelKeepOut (so after hud.js); drawn from TeManawa_UI.js. -->
     <script src="TeManawa_rivernames.js"></script>
+
+    <!-- The island inset: the lower North Island at a date, the sim's frame boxed on it, with one caption
+         (what the frame cannot show: no Cook Strait at 1 Ma, the land bridge to Nelson at the LGM).
+         Drawn by the intro/outro and the dev attract sequence, so before palaeo.js and attract.js. -->
+    <script src="TeManawa_island.js"></script>
 
     <!-- The land before the window: the palaeogeography attract sequence (4 Ma → 1 Ma, land only,
          the names of the time). Drives the terrain's own morph at pre-window dates; its own clock.

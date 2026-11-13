@@ -14,6 +14,9 @@
 //   · THE OUTRO, when the clock reaches the end of the window: the UI and the land go to black, the
 //     same map fades in with what changed from the last ice age to today, then black again, and the
 //     attract comes back on a fresh 1 Ma world.
+// Beside the map, the ISLAND INSET (TeManawa_island.js, TM_ATTRACT.inset): the lower North Island with
+// the sim's frame boxed on it, for what the frame cannot show. Today with the intro's map, 1 Ma as the
+// map crosses into the land (no Cook Strait); the outro's last glacial maximum (dry land to Nelson), then today.
 // The present-day map is TerrainGenerator.snapshotYear(0): the same land, projection and view as the
 // sim, so its rivers sit where the sim's do; built under a black cover and kept until the land or the
 // view changes. While any of this runs a visitor's input is presence (Kiosk.noteInput) and drives the
@@ -36,15 +39,20 @@ const TM_ATTRACT = {
   crossMs: 1700,           // the map into the live land it lines up with
   lineInAt: 600,           // into the land, the one line starts…
   lineFadeMs: 1000,        // …fades over this…
-  lineHoldMs: 3600,        // …holds this long
+  lineHoldMs: 4800,        // …holds this long (the island inset's 1 Ma caption is read with it; was 3600 before the inset)
   uiInMs: 1200,            // the UI's fade in at the end of the intro
   skipAfterMs: 3000,       // the map can be skipped by input once it has been up this long
   outroMapMs: 15000,
   outroSkipAfterMs: 4000,
+  // THE ISLAND INSET (TeManawa_island.js, 2026-11-13): the lower North Island beside the map, the sim's
+  // frame boxed on it: what the frame cannot show. The intro shows today with the map and turns to 1 Ma
+  // as the map crosses into the live land (no Cook Strait), and leaves with the line; the outro shows the
+  // last glacial maximum (dry land to Nelson), then today. Captions in TM_ISLAND.copy.
+  inset: { intro: ['m0000', 'm1000'], outro: ['m0020', 'm0000'], outroSwitchMs: 7000, crossMs: 1700 },
   mapYearsBP: 0,           // the map's date: today
   mapFilter: 'saturate(0.6) brightness(1.06)',   // toned to read as today's map, not the sim
   mapWash: [246, 240, 226, 30],                  // a light paper wash over it
-  cardY: { intro: 0.82, outro: 0.78, line: 0.36 },
+  cardY: { intro: 0.82, outro: 0.78, line: 0.58 },   // the line sits below the island inset's caption (top right; it was 0.36, where they ran together)
   colInk: [30, 42, 36],
   colWaterInk: [26, 70, 104],
   colInkHalo: [252, 250, 242, 215],
@@ -339,6 +347,33 @@ const Attract = {
     return a < b ? a : b;
   },
 
+  // The island inset (TM_ATTRACT.inset): which two dates, how far from the first to the second, and how
+  // strongly. Intro: up with the card, today → 1 Ma in step with the map's cross into the land, out with
+  // the line (before the UI). Outro: with the card, the LGM → today at outroSwitchMs (earlier if the map
+  // was skipped, so the change is seen before the card leaves). Returns a reused object, or null.
+  insetState() {
+    if (this.mode !== 'intro' && this.mode !== 'outro') return null;
+    const T = TM_ATTRACT, I = T.inset, t = this._t(), s = this._inset || (this._inset = { a: null, b: null, mix: 0, alpha: 0, ctx: '' });
+    if (!I) return null;
+    if (this.mode === 'intro') {
+      const M = this._introMarks();
+      const inA = this._ease((t - T.dipMs - T.cardInAt) / T.cardFadeMs);
+      const outA = this._ease((M.lineOut + T.lineFadeMs - t) / T.lineFadeMs);
+      s.a = I.intro[0]; s.b = I.intro[1]; s.ctx = 'intro';
+      s.alpha = inA < outA ? inA : outA;
+      s.mix = t < this._mapEnd ? 0 : this._ease((t - this._mapEnd) / T.crossMs);
+    } else {
+      const M = this._outroMarks();
+      let sw = M.mapUp + I.outroSwitchMs;
+      const late = this._mapEnd - T.cardFadeMs - I.crossMs;            // a skip: still change before the card leaves
+      if (sw > late) sw = late;
+      s.a = I.outro[0]; s.b = I.outro[1]; s.ctx = 'outro';
+      s.alpha = this.cardAlpha();
+      s.mix = this._ease((t - sw) / I.crossMs);
+    }
+    return s.alpha > 0.004 ? s : null;
+  },
+
   // The one line over the live land, after the intro's map.
   lineAlpha() {
     if (this.mode !== 'intro') return 0;
@@ -363,6 +398,8 @@ const Attract = {
     if (ca > 0.004) this._blitCard(this.mode, ca, W, H);
     const la = this.lineAlpha();
     if (la > 0.004) this._blitCard('line', la, W, H);
+    const ins = (typeof IslandInset !== 'undefined') ? this.insetState() : null;
+    if (ins) IslandInset.draw(null, ins.a, ins.b, ins.mix, ins.alpha, W, H, ins.ctx);
   },
 
   _blitCard(key, alpha, W, H) {
@@ -448,6 +485,9 @@ const Attract = {
   _ensureMap(g) {
     const key = this._mapKeyFor(g);
     if (!key) return false;
+    // The island inset's maps for the intro and the outro, built here because this runs under black (a
+    // no-op once built for this view)
+    if (typeof IslandInset !== 'undefined' && TM_ATTRACT.inset) IslandInset.prepare(TM_ATTRACT.inset.intro.concat(TM_ATTRACT.inset.outro));
     if (this._map && this._mapKey === key) return true;
     return this._buildMap(g, key);
   },
