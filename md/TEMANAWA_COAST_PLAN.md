@@ -408,10 +408,27 @@ glacial cycle to flood and bare it. The early sea had come from positional stand
   - the MIS 22 lowstand bares it;
   - MIS 15 reaches the range foot (the Onepuhi Fossil Beds, ~570 ka, mark the sea's return to the
     eastern margin, Rees et al. 2019);
-  - MIS 5e sits on the low plain.
+  - MIS 5e sits on the low plain, and **south of the river laps the Tararua foot** (the young plain,
+    below; 2026-11-13).
 - Still licence:
   - one uniform rate instead of Pillans's map, which rises toward the ranges and the north;
-  - the south sink's dates.
+  - the south sink's dates;
+  - the young plain's thickness (`LOOK.youngPlainM`, set against the landmark, not measured).
+
+**The young plain (2026-11-13).** §2.2's last-interglacial shoreline, the Tokomaru Marine Terrace, lies
+at the foot of the Tararua from Palmerston North south to Levin. One relative sea level over today's land
+left 1–7 km of plain dry there at 122 ka, depending on the seed (6–10 km on the seed the palaeogeography
+comparison used, `research/palaeogeography/`). The relative-sea model cannot draw it: the plain between
+today's coast and the terrace was built after the last interglacial, so shifting today's surface down by
+one sea level leaves it standing. South of the river (`LOOK.youngPlainV0`→`V1`, map v 0.63 → 0.71) the
+shift therefore reads the relative sea plus `LOOK.youngPlainM` (65 m) while the deficit stands
+(`GEO_EPOCHS.youngPlain`: in with the MIS 5e transgression, 135 → 127 ka; held to 110 ka; gone by 60 ka as
+the MIS 4–2 fans and dunes build the plain). The 5e sea there then lies within ~4 km of the foothills on
+every seed tried. It changes no other date: today, the LGM, MIS 3, MIS 6, MIS 11 and the 1 Ma opening
+are untouched (`TerrainGenerator.youngPlainShift` equals `glacialSeaShift` there). Kept to the last
+interglacial because the older highstands are calibrated on their own landmarks above. Harness
+"geography": the shifts agree outside it, and at 122 ka the south band floods further while the north is
+unchanged.
 - **Not sourced:** the present elevation of the Waitapu Shell Conglomerate. The paper puts it in the
   early transgression of cycle 36 (MIS 22) but doesn't give the elevation, so the rate is not yet tied
   to that deposit's height.

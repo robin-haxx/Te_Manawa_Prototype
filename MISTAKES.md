@@ -10,6 +10,22 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A source comparison read against stale exports
+
+- **What happened.** The palaeogeography comparison (2026-11-12, `research/palaeogeography/`) set Trewick &
+  Bland's maps beside the PNGs in `exports/palaeo_attract/`, re-exported on 2026-11-02. The pre-window land
+  had changed since (the neck on 11-03, the axis-low cut on 11-05). Two findings were partly wrong for the
+  code as it stood: the 2.4 Ma Ruahine shoals no longer ran "down to the gap", and the 4 Ma opening caption it
+  asked to soften was no longer drawn. The fix (2026-11-13) only came right once fresh frames were exported
+  and the paper's maps were scored cell by cell on the sim's own map.
+- **Root cause.** An export is a snapshot of one page load: one seed, one day's code. Nothing marks it stale
+  when the terrain changes. The seed is also random per load, so two frames of "the same date" from
+  different loads differ by more than some of the effects being judged.
+- **Rule.** Before comparing the sim against a source, export fresh frames from the current code. Score
+  shapes numerically on one page load (one seed), toggling the change on and off there, rather than
+  across reloads. The browser measure used for the fix (the slices rasterised onto the map's u/v with the
+  gorge as anchor) is described in `md/TEMANAWA_PALAEO_ATTRACT.md` §2.
+
 ## A health bar that could not do what it was for
 
 - **What happened.** The top band's health bar was asked to fall when a visitor overused storm or got goals
