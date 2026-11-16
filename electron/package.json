@@ -1,0 +1,18 @@
+{
+  "name": "temanawa",
+  "productName": "TeManawa",
+  "version": "1.0.0-rc.1",
+  "description": "Avian Age: Te Manawa \u2014 the museum kiosk shell (one executable: server + wall + console)",
+  "author": "Robbie",
+  "private": true,
+  "main": "main.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron . --dev",
+    "kiosk": "electron ."
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "45.2.3"
+  }
+}
