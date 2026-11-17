@@ -36,6 +36,25 @@ const DeepTime = {
   // A window that opens at or after prologueEnd (the harness, a debug zoom) has no prologue: every one
   // of these is then inert and the clock behaves exactly as it did.
   prologueEnd:      1000000,
+  // THE PROLOGUE'S STOPS. Its climate is the record (Climate.ANCHORS, LR04): a 41-kyr cycle every
+  // 40-odd thousand years, about 25 of them before 1 Ma. A boost there does not play to the next turn
+  // (that would be ~48 boosts of sea before the river); it plays to the first real turn past the next
+  // of these dates, into the climate opposite the one it was pressed in, so the boost's lesson holds
+  // (forest plant in the warm, tussock in the cold) and each landing is a chapter of the land:
+  //   1.62 Ma  the strait has closed for good (GEO_EPOCHS.palaeoAxisStrait: 0 from 1.63 Ma) → lands ≈ 1.583 Ma, MIS 54
+  //   1.30 Ma  the east has emerged (palaeoBasinETo) and the river runs (palaeoRiver)  → lands ≈ 1.286 Ma, MIS 39
+  //   then prologueEnd: the first turn after 1 Ma (969 ka), which Kidnappers at 1 Ma stops short.
+  // nextStop() is the one function the boost, the console's goal and the HUD's objective read.
+  PROLOGUE_STOPS: [1620000, 1300000],
+  // THE CYCLES, BLURRED WHILE THE LAND RACES (Climate.CYCLE_BLUR): the clock sets Climate.TRAVEL.blend.
+  // 1 through a boost's time-lapse in the prologue; under the dial or a deep burst, by the rate,
+  // smoothstepped from cycleBlurFrom (a 41-kyr cycle every ~16 s: drawn as it is) to cycleBlurTo (one
+  // every ~5 s: its mean). Eased both ways over cycleBlurEase s (a time constant), so the ground and the
+  // coast change at the photosensitivity pace, and the land settles on the record ~2 s after a landing.
+  cycleBlurFrom:   2500,    // yr/s
+  cycleBlurTo:     7500,    // yr/s
+  cycleBlurEase:   0.8,     // s
+  cycleBlur:       0,       // the eased blend (state)
   prologueShare:    0.3,
   prologueGear:     5,
   prologueGearEase: 150000,
@@ -60,9 +79,9 @@ const DeepTime = {
   // ---- THE LAND'S CHAPTERS ---------------------------------
   // What the land is doing at a date, said once as the clock comes to rest in each (InstallHUD's land
   // caption, top-centre; the console's clock line carries the title). Oldest first; a chapter runs
-  // from its `from` down to the next one's. The first three are the prologue's stops (the dates the
-  // climate's authored swing lands a boost on, Climate.ANCHORS); the last two sit on the first glacial
-  // turns after Kidnappers, where a visitor's fourth and sixth boosts land. The dates follow the geology
+  // from its `from` down to the next one's. The first three hold the prologue's stops (the opening and
+  // the real turns PROLOGUE_STOPS land a boost on, ≈ 1.583 and 1.286 Ma); the last two sit on the first
+  // glacial turns after Kidnappers, where a visitor's fourth and sixth boosts land. The dates follow the geology
   // (TerrainGenerator.GEO_EPOCHS): the strait closed by 1.63 Ma, the drainage on the land by 1.25 Ma,
   // rapid uplift from 1 Ma. Copy is co-design: keep a title to four words and a line to one sentence pair.
   CHAPTERS: [
@@ -141,6 +160,7 @@ const DeepTime = {
   _tlFrom:     0,         // millis() at begin, for the rate ramp
   _tlStartYear: 0,        // yearsBP at begin, for the progress readout
   _tlScale:    1,         // the ramp's scale for this time-lapse (> 1 only on a leg too long for tlMaxSeconds)
+  _tlBlur:     false,     // this time-lapse crosses the prologue's cycles: the land shows their mean while it plays
   dialStep:    0,         // the dial's detent, 0..dialSteps (kept across reset/seek)
   _dialRate:   0,         // the eased dial rate (yr/s) update() actually plays
   _dialAt:     0,         // millis() of the last dial turn, for the HUD readout's fade
@@ -163,6 +183,48 @@ const DeepTime = {
     this._timelapse = false;
     this._tlTarget  = 0;
     this.held       = false;   // a rebuilt world is never mid-milestone (Milestone stands down on the next frame)
+    this._setBlur(0);
+  },
+
+  _setBlur(b) {
+    this.cycleBlur = b;
+    if (typeof Climate !== 'undefined' && Climate.TRAVEL) Climate.TRAVEL.blend = b;
+  },
+  // The blend's target this frame and its ease (update, every frame, held included).
+  _stepBlur(sec, rate) {
+    let want = 0;
+    if (this.hasPrologue() && this.inPrologue()) {
+      if (this._timelapse && this._tlBlur) want = 1;
+      else if (rate > 0) {
+        const lo = this.cycleBlurFrom, hi = this.cycleBlurTo;
+        let t = hi > lo ? (rate - lo) / (hi - lo) : (rate >= lo ? 1 : 0);
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        want = t * t * (3 - 2 * t);
+      }
+    }
+    const k = this.cycleBlurEase > 0 ? 1 - Math.exp(-sec / this.cycleBlurEase) : 1;
+    let b = this.cycleBlur + (want - this.cycleBlur) * k;
+    if (want === 0 && b < 0.003) b = 0;
+    else if (want === 1 && b > 0.997) b = 1;
+    if (b !== this.cycleBlur) this._setBlur(b);
+  },
+
+  // THE BOOST'S DESTINATION from yearsBP: { yearsBP, glacialIndex, stage, stageName } or null. Inside the
+  // cycles, the next glacial/interglacial turn (Climate.nextRegimeBoundary). In the prologue, the first
+  // turn past the next PROLOGUE_STOP (or prologueEnd) into the climate opposite this one. Reads the record,
+  // never the blur. Allocates a little; called on a boost and on a regime change, never per frame.
+  nextStop(yearsBP) {
+    const y = (yearsBP === undefined) ? this.yearsBP : yearsBP;
+    if (typeof Climate === 'undefined' || !Climate.nextRegimeBoundary) return null;
+    if (!(this.hasPrologue() && y > this.prologueEnd)) return Climate.nextRegimeBoundary(y, this.yearsEnd);
+    const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
+    const raw = Climate.rawIndexAt ? (yr) => Climate.rawIndexAt(yr) : (yr) => Climate.glacialIndexAt(yr);
+    const cold0 = raw(y) >= thr;
+    let s = this.prologueEnd;
+    for (const st of this.PROLOGUE_STOPS) if (st < y - 1 && st > s) s = st;
+    let b = Climate.nextRegimeBoundary(s, this.yearsEnd);
+    for (let n = 0; b && n < 8 && ((b.stageName === 'glacial') === cold0); n++) b = Climate.nextRegimeBoundary(b.yearsBP, this.yearsEnd);
+    return b;
   },
 
   // ---- seek: jump the clock to a date ----------------------
@@ -179,6 +241,7 @@ const DeepTime = {
     this._ended     = false;
     this._timelapse = false;   // a hard seek (eruption navigation) cancels any running timelapse
     this._tlTarget  = 0;
+    this._setBlur(0);          // the land a seek lands on is drawn on the record
     return this.yearsBP;
   },
 
@@ -195,6 +258,8 @@ const DeepTime = {
     this._tlFrom      = (typeof millis === 'function') ? millis() : 0;
     this._tlStartYear = this.yearsBP;
     this._tlScale     = this.tlScaleFor(this.yearsBP - t);
+    // A leg in the prologue crosses several of its 41-kyr cycles: the land shows their mean while it plays.
+    this._tlBlur      = this.hasPrologue() && this.yearsBP > this.prologueEnd && (this.yearsBP - t) > 41000;
     this._deepUntil   = 0;                 // a boost supersedes any lingering deep burst
     this._ended       = false;
     return true;
@@ -435,7 +500,7 @@ const DeepTime = {
   update(dt) {
     // HELD (TeManawa_milestone.js): while a health milestone plays, the land plays in real time. Geology
     // stands still whatever the dial says (its detent is kept, and resumes after) and life runs at 1×.
-    if (this.held) { this.timeScale = 1; this.geoRate = 0; return 1; }
+    if (this.held) { this.timeScale = 1; this.geoRate = 0; this._stepBlur(dt / this.fps, 0); return 1; }
     // The GEOLOGY clock (yearsBP) and the LIFE clock are decoupled now (md/TEMANAWA_SECOND_SCREEN.md
     // §0). yearsBP moves only under a timelapse (a boost), a legacy deep burst (button 1) or the time dial;
     // otherwise it is PAUSED — the land holds at one date. But the ambient world keeps living, so
@@ -486,6 +551,7 @@ const DeepTime = {
 
     this.timeScale = lifeScale;
     this.geoRate   = geoRate;
+    this._stepBlur(sec, geoRate);
     return lifeScale;
   },
 

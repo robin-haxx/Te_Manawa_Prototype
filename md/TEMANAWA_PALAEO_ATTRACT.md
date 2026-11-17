@@ -8,8 +8,9 @@
 > **2026-11-13: the sim plays the last million years of this itself.** The run opens at 2 Ma (the
 > prologue, `TEMANAWA_PROLOGUE.md`), on the land model below, with the living world on it and these
 > names over it. Three things here changed with that: the sequence lands the sim at 1 Ma by seeking the
-> clock (the run's opening is no longer its landing); the climate between 2 Ma and 1 Ma is the prologue's
-> authored swing, so the synthetic 41-kyr sea (§3) breathes only before 2 Ma; and land in the far margin
+> clock (the run's opening is no longer its landing); the climate from 2.15 Ma to 1 Ma is the record
+> (LR04's 41-kyr cycles, since 2026-11-17), blurred to its mean while the sequence races, so the synthetic
+> 41-kyr sea (§3) breathes only before 2.15 Ma; and land in the far margin
 > is rooted in the margin's inner row (§5, #30).
 
 *The sim's window (1 Ma → 25.5 ka) barely moves the land: the ranges rise, the river sharpens, the coast

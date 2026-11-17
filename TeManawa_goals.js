@@ -617,10 +617,25 @@ const TMGoals = {
     const f = this.fitOf(key);
     return f === 'neutral' || (f === 'warm' ? !glacial : glacial);
   },
+  // The record's regime at the clock (Climate.rawIndexAt: never the prologue's travel blur, which only
+  // changes what the land shows).
   glacialNow() {
     if (typeof Climate === 'undefined' || typeof DeepTime === 'undefined') return false;
     const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
-    return Climate.glacialIndexAt(DeepTime.yearsBP) >= thr;
+    const g = Climate.rawIndexAt ? Climate.rawIndexAt(DeepTime.yearsBP) : Climate.glacialIndexAt(DeepTime.yearsBP);
+    return g >= thr;
+  },
+  // THE CLIMATE A BOOST IS JUDGED IN: glacialNow, except while the clock races through the prologue's
+  // 41-kyr cycles, when it is the regime the goals last settled on (update): the one the clock left in,
+  // so a time-lapse that crosses ten turns flips it once, on landing, as a glacial
+  // turn's time-lapse inside the cycles does (TeManawa_bus.js onBoost, the HUD's climate line).
+  climateNow() {
+    return (this._glacial !== null && this._glacial !== undefined && this._racingPrologue()) ? this._glacial : this.glacialNow();
+  },
+  // The clock racing through the prologue: its regime turns every few seconds, so the goals hold theirs.
+  _racingPrologue() {
+    return typeof DeepTime !== 'undefined' && DeepTime.inPrologue && DeepTime.hasPrologue &&
+           DeepTime.hasPrologue() && DeepTime.inPrologue() && (this._timeMoving() || this._fastForwarding());
   },
 
   // ---- which goals are live ----------------------------------------------------------------------
@@ -732,7 +747,9 @@ const TMGoals = {
     }
     if (typeof DeepTime === 'undefined') return;
     this._stepLeft(g, now);
-    const glacial = this.glacialNow();
+    // In the prologue's cycles the regime is held while the clock races (climateNow), and read afresh
+    // once it stops: one flip per boost, on landing, however many turns the time-lapse crossed.
+    const glacial = (this._glacial !== null && this._glacial !== undefined && this._racingPrologue()) ? this._glacial : this.glacialNow();
     // A FRESH GOAL PAST A GLACIAL TURN (decided 2026-11-02): when the time dial or a deep burst carries
     // the clock across a glacial/interglacial turn, draw a new goal instead of holding the old one
     // across the swing (the keep rule below would hold any goal still live in the new climate). A

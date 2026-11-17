@@ -1886,8 +1886,9 @@ try{
   P.dialReset(); chk(P.dialStep===TMP.dialStart, 'the dial push returns to ×1 forward');
   const k0=TMP.kyrPerSec; TMP.kyrPerSec=TMP.seaBreathBelow-1; chk(P._seaScale()===1, 'the sea breathes when the land crawls');
   TMP.kyrPerSec=TMP.seaBreathOff+1; chk(P._seaScale()===0, '… and not when it races'); TMP.kyrPerSec=k0;
-  { const a0=CLm.SEA_ANCHORS[0];   // the table opens with the run (2 Ma, the prologue): the synthetic cycle lives before that
-    CLm.PRE_WINDOW_SEA.scale=1; chk(CLm.seaLevelAt(a0[0])===a0[1] && CLm.seaLevelAt(950000)===-70 && CLm.seaLevelAt(1500000)===-70 && CLm.seaLevelAt(a0[0]+20500)!==a0[1],
+  { const a0=CLm.SEA_ANCHORS[0];   // the table opens before the run (2.15 Ma, then LR04's stages): the synthetic cycle lives before that
+    const s15=CLm.seaLevelAt(1500000);
+    CLm.PRE_WINDOW_SEA.scale=1; chk(CLm.seaLevelAt(a0[0])===a0[1] && CLm.seaLevelAt(950000)===-70 && CLm.seaLevelAt(1500000)===s15 && CLm.seaLevelAt(a0[0]+20500)!==a0[1],
       'the pre-table cycle joins the first anchor and never touches the run (the prologue reads its own anchors)'); CLm.PRE_WINDOW_SEA.scale=0; }
   P.skip(); let fe=0; while (P.state!=='idle' && fe<30000) { FRAME(ctx.draw); fe++; }
   chk(P.state==='idle' && CLm.PRE_WINDOW_SEA.scale===0, 'the dial-driven sequence lands and leaves the sea scale at 0');
@@ -1965,7 +1966,8 @@ try{
 // opens a million years earlier now, and its first three boosts carry the land's assembly: the strait
 // closes, a river crosses the low land, the ranges start to rise across it. Asserted here: the clock's
 // shape (the bar, the gear, the fitted time-lapse) and that it is inert without a prologue; the
-// climate's authored swing and where it lands a boost; the takeaway in the factors (river before
+// climate, which is the record (LR04, 41-kyr cycles), and where a boost lands in it; the blur the land
+// shows while it races through them, and the settle after; the takeaway in the factors (river before
 // uplift); the land at the stops; three real boosts from the opening; the names and the captions.
 try{
   const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), CL=vm.runInContext('Climate',ctx);
@@ -1994,22 +1996,58 @@ try{
     chk(!DT.hasPrologue() && DT.gearAt(pe)===1 && lin, 'with no prologue the bar is linear and the gear is ×1 (the old clock, exactly)');
     DT.yearsStart=y0; }
 
-  // (b) the climate: one authored cold swing, on dates that land a boost on the land's chapters
-  const A=CL.ANCHORS, S=CL.SEA_ANCHORS;
-  chk(A[0][0]===y0 && A[0][1]===CL.glacialIndexAt(pe) && S[0][0]===y0 && S[0][1]===CL.seaLevelAt(pe),
-      'the tables open with the run, on the 1 Ma values (every date before 2 Ma reads as it always did)');
-  chk(CL.glacialIndexAt(3000000)===CL.glacialIndexAt(pe) && CL.seaLevelAt(4000000)===CL.seaLevelAt(pe), 'older than the table: held');
-  { let same=true; for(let i=0;A[i][0]>pe;i++) if(S[i][0]!==A[i][0]) same=false; chk(same, 'the prologue\'s sea anchors sit on its climate dates'); }
-  const thr=CL.regimeThreshold;
-  chk(CL.glacialIndexAt(y0)<thr, 'the run opens warm (the first lesson is still a forest plant)');
-  const b1=CL.nextRegimeBoundary(y0,y1), b2=b1&&CL.nextRegimeBoundary(b1.yearsBP,y1), b3=b2&&CL.nextRegimeBoundary(b2.yearsBP,y1);
-  chk(b1 && b1.stageName==='glacial' && b1.yearsBP<1630000 && b1.yearsBP>1550000 && f(b1.yearsBP).palaeo.axis===0,
-      `the first boost lands cold, just after the strait has closed (${b1&&b1.yearsBP})`);
-  chk(b2 && b2.stageName==='interglacial' && b2.yearsBP<1320000 && b2.yearsBP>1250000 && f(b2.yearsBP).palaeo.river>0.9 && f(b2.yearsBP).palaeo.basinE===0,
-      `the second lands warm, with the river on the land and the east emerged (${b2&&b2.yearsBP})`);
+  // (b) the climate is the record: LR04's stages, one anchor each, emitted from research/lr04/ by
+  // tools/lr04_prologue.js. Every stage in the table as emitted; the 41-kyr rhythm; held before it, the
+  // window's own table after it, untouched.
+  const A=CL.ANCHORS, S=CL.SEA_ANCHORS, thr=CL.regimeThreshold, raw=(y)=>CL.rawIndexAt(y);
+  { const LR=require(path.join(dir,'tools','lr04_prologue.js')).build();
+    const has=(T,y,v)=>T.some(a=>a[0]===y && a[1]===v), misOk=(n)=>CL.MIS.some(m=>m[2]==='MIS '+n);
+    const miss=LR.filter(a=>!has(A,a.yearsBP,a.gi) || !has(S,a.yearsBP,a.sea) || !misOk(a.mis)).map(a=>'MIS '+a.mis);
+    chk(LR.length>=50 && miss.length===0, `the prologue's climate is LR04's, stage by stage, as tools/lr04_prologue.js emits it (${LR.length} stages${miss.length?'; out of date: '+miss.join(', '):''})`);
+    chk(LR.every(a=>a.glacial ? a.d>3.75 : a.d<3.70) && LR.filter(a=>a.glacial).length===LR.filter(a=>!a.glacial).length,
+        'glacial stages at their δ18O maxima, interglacials at their minima, alternating');
+    chk(CL.misAt(1600000)==='MIS 55' && CL.misAt(1000300)==='MIS 28' && CL.misAt(999000)==='MIS 25', 'the stages are named by LR04\'s own boundaries, then the window\'s table from 1 Ma'); }
+  { const turns=[], onsets=[]; let y=y0;
+    for(let i=0;i<80;i++){ const b=CL.nextRegimeBoundary(y,pe); if(!b) break; turns.push(b); if(b.stageName==='glacial') onsets.push(b.yearsBP); y=b.yearsBP; }
+    const gaps=[]; for(let i=1;i<onsets.length;i++) gaps.push(onsets[i-1]-onsets[i]);
+    const mean=gaps.reduce((s,g)=>s+g,0)/(gaps.length||1);
+    chk(turns.length>=36 && onsets.length>=18 && mean>38000 && mean<56000 && Math.min(...gaps)>=20000,
+        `the 41-kyr world: ${turns.length} regime turns and ${onsets.length} glacials between 2 and 1 Ma, one every ${Math.round(mean/1000)} kyr (weak glacials stay under the cut)`); }
+  chk(raw(2200000)===0.3 && CL.rawSeaLevelAt(4000000)===-20 && raw(3000000)===raw(2150000), 'older than the table: held at the dev sequence\'s reference state');
+  chk(raw(pe)===0.3 && CL.rawSeaLevelAt(pe)===-20 && raw(950000)===0.6 && raw(880000)===0.72 && CL.rawSeaLevelAt(880000)===-90, 'the window\'s own table from 1 Ma is untouched');
+  chk(raw(y0)<thr, `the run opens in the interglacial regime (${raw(y0).toFixed(2)}: MIS 76, a weak glacial under the cut)`);
+  // where a boost lands (DeepTime.nextStop): the turn past each stop, into the other climate
+  const b1=DT.nextStop(y0), b2=b1&&DT.nextStop(b1.yearsBP), b3=b2&&DT.nextStop(b2.yearsBP);
+  chk(b1 && b1.stageName==='glacial' && b1.yearsBP<DT.PROLOGUE_STOPS[0] && b1.yearsBP>1550000 && f(b1.yearsBP).palaeo.axis===0 && raw(b1.yearsBP)>=thr,
+      `the first boost lands on a real glacial turn just after the strait has closed (${b1&&b1.yearsBP}, ${b1&&CL.misAt(b1.yearsBP)})`);
+  chk(b2 && b2.stageName==='interglacial' && b2.yearsBP<DT.PROLOGUE_STOPS[1] && b2.yearsBP>1250000 && f(b2.yearsBP).palaeo.river>0.9 && f(b2.yearsBP).palaeo.basinE===0 && raw(b2.yearsBP)<thr,
+      `the second lands on a real interglacial turn, with the river on the land and the east emerged (${b2&&b2.yearsBP}, ${b2&&CL.misAt(b2.yearsBP)})`);
   chk(b3 && b3.yearsBP<pe && DT.ERUPTIONS[0].yearsBP===pe && b2.yearsBP>pe,
       `the third runs into Kidnappers at 1 Ma before it reaches the cycles' first turn (${b3&&b3.yearsBP})`);
-  { let ok=true; for(let y=y0; y>pe; y-=2000){ const g=CL.glacialIndexAt(y); if(g<0.29 || g>0.63) ok=false; } chk(ok, 'the prologue\'s swing keeps the 41-kyr world\'s modest amplitude (0.30–0.62)'); }
+  { const ys=[pe,969347,700000,300000,125000,26000]; chk(ys.every(y=>{ const a=DT.nextStop(y), b=CL.nextRegimeBoundary(y,y1); return (a&&a.yearsBP)===(b&&b.yearsBP); }), 'inside the cycles a boost still plays to the next turn'); }
+
+  // (b2) the blur: what the land SHOWS while it races through the cycles is their running mean; the
+  // record is untouched, and every decision reads the record
+  { const TR=CL.TRAVEL, b0=TR.blend; let same=true, n0=0, n1=0, prev0=null, prev1=null;
+    TR.blend=0; for(let y=2100000;y>1000000;y-=1500){ if(CL.glacialIndexAt(y)!==raw(y) || CL.seaLevelAt(y)!==CL.rawSeaLevelAt(y)) same=false; }
+    chk(same, 'with no blur the land shows the record exactly');
+    for(let y=y0;y>1040000;y-=1000){ const c0=raw(y)>=thr, c1=CL.blurredIndexAt(y)>=thr; if(prev0!==null&&c0!==prev0) n0++; if(prev1!==null&&c1!==prev1) n1++; prev0=c0; prev1=c1; }
+    chk(n1<=4 && n0>=36, `fully blurred, the mean crosses the cut ${n1} times where the record turns ${n0} (no cycle shows)`);
+    TR.blend=1; const bA=CL.nextRegimeBoundary(y0,y1), wOut=[1000000,990000,500000,2160000,3000000].every(y=>CL.glacialIndexAt(y)===raw(y) && CL.seaLevelAt(y)===CL.rawSeaLevelAt(y));
+    const nsA=DT.nextStop(y0); TR.blend=0;
+    chk(wOut && bA.yearsBP===CL.nextRegimeBoundary(y0,y1).yearsBP && nsA.yearsBP===b1.yearsBP, 'the blur never reaches the cycles (≤ 1 Ma) or the held dates, nor any decision (the boundaries, the stops)');
+    TR.blend=b0; }
+  // the clock drives it: a prologue boost's time-lapse raises it to 1; at rest it eases back to 0; the dial
+  // by its rate; inside the cycles never
+  { const step=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(); DT.update(1); } };
+    DT.reset(); DT.dialReset(); DT._dialRate=0; DT.beginTimelapse(b1.yearsBP); step(360); const up=DT.cycleBlur;
+    DT.endTimelapse(); step(60); const mid=DT.cycleBlur; step(360); const down=DT.cycleBlur;
+    chk(up===1 && mid>0.05 && mid<0.6 && down===0 && CL.TRAVEL.blend===0, `a prologue boost blurs the cycles (${up}), and at rest they come back over a few seconds (${mid.toFixed(2)} after 1 s, ${down} after 7 s)`);
+    DT.reset(); DT.dialSet(DT.dialSteps); step(300); const dialTop=DT.cycleBlur; DT.dialSet(3); step(600); const dialLow=DT.cycleBlur;
+    DT.reset(); DT.seekTo(900000); DT.dialSet(DT.dialSteps); step(300); const inCycles=DT.cycleBlur;
+    DT.reset(); DT.seekTo(900000); DT.beginTimelapse(860000); step(120); const tlCycles=DT.cycleBlur;
+    DT.endTimelapse(); DT.dialReset(); DT._dialRate=0; DT._wheelAcc=0; DT.reset();   // the detent survives a reset by design: put it back
+    chk(dialTop===1 && dialLow===0 && inCycles===0 && tlCycles===0, `the dial blurs by its rate (top ${dialTop}, slow ${dialLow}); inside the cycles nothing is blurred (${inCycles}, ${tlCycles})`); }
 
   // (c) the takeaway, in the factors: the river is on the land before the ranges start to rise
   chk(f(y0).palaeo.axis>0.8 && f(y0).palaeo.river===0 && f(y0).uplift<0.08, 'at the opening: the strait is open, there is no river, the axis is a low finger');
@@ -2055,8 +2093,17 @@ try{
   // (g) the play: three boosts from the opening, through the real bus, clock, morph driver and sim
   homeLand(); TGo.reset();
   const realST=ctx.setTimeout; let fire=null; ctx.setTimeout=(fn)=>{ fire=fn; return 0; };
-  const play=()=>{ let n=0, life=0, rate=0; while(DT.isTimelapsing() && n<60*45){ ctx.__tick(); G.update(1); n++; if(DT.timeScale>life) life=DT.timeScale; if(DT.geoRate>rate) rate=DT.geoRate; if(n%15===0) TB.heartbeat(); }
-    TB.heartbeat(); for(let i=0;i<150;i++){ ctx.__tick(); G.update(1); } return { n, life, rate }; };
+  // A leg: its frames, life's and the land's top rates, how often the goals' climate flipped while it played
+  // (held: 0), and the HUD's climate line mid-leg (the 41-kyr line while the land races).
+  const play=()=>{ let n=0, life=0, rate=0, flips=0, c0=TGo.climateNow(), line=null;
+    while(DT.isTimelapsing() && n<60*45){ ctx.__tick(); G.update(1); n++; if(DT.timeScale>life) life=DT.timeScale; if(DT.geoRate>rate) rate=DT.geoRate; if(n%15===0) TB.heartbeat();
+      const c=TGo.climateNow(); if(c!==c0){ if(DT.isTimelapsing()) flips++; c0=c; }   // the landing frame's own flip is the one allowed
+      if(n===600){ try{ HUD._climateLine=null; HUD._renderClimateLine(960,900); line=HUD._climateLine&&HUD._climateLine.prefix; }catch(e){ line='threw: '+e.message; } } }
+    TB.heartbeat(); for(let i=0;i<150;i++){ ctx.__tick(); G.update(1); } return { n, life, rate, flips, line }; };
+  // …then the settle: the blur eases out, and the land baked in the blur is re-baked once on the record
+  // (counting the re-bakes it took after the landing: the settle alone, one)
+  let bakesAfter=0; { const T0=G.terrain, mb=T0.morphBegin; T0.morphBegin=function(){ bakesAfter++; return mb.apply(this,arguments); }; }
+  const settle=()=>{ let k=0; while(k<1200 && (DT.cycleBlur>0 || G._blurBakedAt!=null || G.terrain.morphInProgress)){ ctx.__tick(); G.update(1); k++; } return k; };
   const tlFrames=DT.tlMaxSeconds*60;
   try{
     chk(DT.yearsBP===y0 && !TGo.glacialNow(), 'a fresh run: the clock at 2 Ma, warm');
@@ -2068,17 +2115,28 @@ try{
     chk(Math.abs(G._bakedYearsBP-DT.yearsBP)<CFG.morphIntervalYears && !G.terrain.morphInProgress && gapSea()<0.25,
         `the land followed the clock: baked within a morph step of the stop, the gap closed (baked ${Math.round(G._bakedYearsBP)})`);
     chk(G.simulation.plants.some(p=>p.alive) && G.simulation.moas.some(m=>m.alive), 'the living world came through the leg');
+    chk(r1.flips===0 && TGo.climateNow()===true, `the leg crossed ~10 real turns and the goals' climate flipped ${r1.flips} times, then once, on landing`);
+    chk(r1.line===HUD.CLIMATE_TRAVEL, `mid-leg the climate line says the 41-kyr world (${r1.line})`);
+    const finishing=G.terrain.morphInProgress ? 1 : 0; bakesAfter=0;
+    const k1=settle();
+    chk(bakesAfter===1, `the landing costs one re-bake, the settle (${bakesAfter}${finishing?', once the leg\'s last bake finished':''})`);
+    chk(k1<1200 && DT.cycleBlur===0 && G._bakedYearsBP===DT.yearsBP && G._blurBakedAt==null && !G.terrain.morphInProgress,
+        `then the land settles on the record: re-baked at the exact date with the blur gone (${(k1/60).toFixed(1)} s)`);
+    { const sea=TGn.relativeSeaLevel(DT.yearsBP); chk(Math.abs(CL.seaLevelAt(DT.yearsBP)-CL.rawSeaLevelAt(DT.yearsBP))<1e-9 && Math.abs(G.terrain._geoT.glacialSea-TGn.glacialSeaShift(DT.yearsBP))<1e-9,
+        `…its sea is the date's own (${sea.toFixed(0)} m relative)`); }
     TB.boost({ plantKey:'tussock', plantName:'Tussock' });
     chk(DT.isTimelapsing() && DT._tlTarget===b2.yearsBP, 'boost 2 aims at the second stop');
     const r2=play();
     chk(DT.yearsBP===b2.yearsBP && !TGo.glacialNow() && G.terrain._geoT.palaeo.river>0.9, `…and lands there, warm, with the river on the land (${(r2.n/60).toFixed(1)} s)`);
+    chk(r2.flips===0 && TGo.climateNow()===false, `…its climate held through the leg (${r2.flips} flips)`);
+    settle();
     fire=null; TB.boost({ plantKey:'tawa', plantName:'Tawa' });
     chk(DT.isTimelapsing() && DT._tlTarget===pe+lead, 'boost 3 stops just short of Kidnappers');
     const r3=play();
     chk(DT.yearsBP===pe+lead && TB.busy() && typeof fire==='function' && !G._firedEruptions.has(pe), `…lands on it (${(r3.n/60).toFixed(1)} s), the eruption held for its beat`);
     if(typeof fire==='function') fire();
     chk(G._firedEruptions.has(pe) && !TB.busy() && G._ashCloudUntil>ctx.millis(), 'then Kidnappers fires, in place: the prologue hands over to the cycles on an eruption');
-  } finally { ctx.setTimeout=realST; G._ashCloudUntil=0; G._tmAshUntil=0; G._ashCover=0; G._tmAutoErAt=0; G._tmAutoErupt=null; G._boostHi=null; TGo.reset(); homeLand(); }
+  } finally { ctx.setTimeout=realST; delete G.terrain.morphBegin; G._ashCloudUntil=0; G._tmAshUntil=0; G._ashCover=0; G._tmAutoErAt=0; G._tmAutoErupt=null; G._boostHi=null; TGo.reset(); homeLand(); }
 
   // (h) the names of the time, in play
   const mainRv=T.getRivers().find(r=>r.type!=='tributary'), tribRv=T.getRivers().find(r=>r.type==='tributary');
@@ -2199,11 +2257,12 @@ const g=vm.runInContext('game',ctx);
   chk(b2 && b2.stageName==='glacial' && b2.yearsBP<90000 && b2.yearsBP>60000,
       `nextRegimeBoundary from an interglacial finds the next glacial (${b2?Math.round(b2.yearsBP):'null'} ${b2?b2.stageName:''})`);
   chk(CL.nextRegimeBoundary(27000, DT.yearsEnd)===null,'no regime crossing before the window end returns null');
-  // Chained the way back-to-back boosts chain them (each starts where the last stopped): every stop
-  // must already sit in its NEW regime, so no boost ends on the old side and no next boost is a no-op.
+  // Chained the way back-to-back boosts chain them (each starts where the last stopped, DeepTime.nextStop:
+  // in the prologue the turn past its next stop): every stop must already sit in its NEW regime, so no
+  // boost ends on the old side and no next boost is a no-op.
   {
     let y=DT.yearsStart, n=0, bad=[], short=[];
-    for (let b=CL.nextRegimeBoundary(y, DT.yearsEnd); b && n<80; b=CL.nextRegimeBoundary(y, DT.yearsEnd), n++) {
+    for (let b=DT.nextStop(y); b && n<80; b=DT.nextStop(y), n++) {
       if ((CL.glacialIndexAt(b.yearsBP) >= CL.regimeThreshold) !== (b.stageName==='glacial')) bad.push(b.yearsBP);
       if (y-b.yearsBP < 5000) short.push(y-b.yearsBP);
       y=b.yearsBP;

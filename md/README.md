@@ -51,7 +51,7 @@ If you are about to write code, read `BUILD_V3.md` §5 (the budgets) and `../CLA
 | Document | |
 |---|---|
 | `TEMANAWA_COAST_PLAN.md` | **The sea.** Relative sea level in metres over a baked shelf; why the popular LGM maps mislead; the measured coast positions. Built 2026-10-19 (§5, §5b) |
-| `TEMANAWA_PROLOGUE.md` | **The prologue: the run opens at 2 Ma.** Why (a 6–10 boost visit saw the land barely move), the three stops, the authored climate swing that lands a boost on each, the clock (the short-drawn bar, the fitted time-lapse, the gear), the names and captions on the wall, the conflicts and the open decisions. Built 2026-11-13 |
+| `TEMANAWA_PROLOGUE.md` | **The prologue: the run opens at 2 Ma.** Why (a 6–10 boost visit saw the land barely move), the three stops, the record's 41-kyr cycles (LR04) and how a boost lands on a real turn near each, the clock (the short-drawn bar, the fitted time-lapse, the gear), the names and captions on the wall, the conflicts and the open decisions. Built 2026-11-13 |
 | `TEMANAWA_PALAEO_ATTRACT.md` | **The land before the window.** The 4 Ma → 1 Ma attract sequence (Trewick & Bland 2012, Fig. 4A–D), its conflicts with the other systems and how each was resolved (§5), the open co-design items (§8). Built 2026-11-01 |
 | `TEMANAWA_FAUNA_IMPL.md` | **The cast in code.** What each animal is, how it behaves, breeds and draws, and where it is wired |
 | `TEMANAWA_GOALS.md` | **The plant goals.** How a goal is chosen, every goal and when it appears, the encyclopedia entries fact-checked, the sim gaps, words to explain for 8–14-year-olds |

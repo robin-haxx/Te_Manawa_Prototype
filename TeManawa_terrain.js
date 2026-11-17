@@ -1826,15 +1826,20 @@ class TerrainGenerator {
 
   // GLACIAL TERMINATIONS in the window (ages, oldest first): where the glacial index falls through
   // Climate.regimeThreshold going forward in time. Each one sets the channels on a new course
-  // (LOOK.meanderBelt*). Computed once from the climate curve.
+  // (LOOK.meanderBelt*). Computed once from the record (rawIndexAt, never the travel blur), from the
+  // window's opening (GEO_EPOCHS.upliftFrom, 1 Ma). The prologue's river keeps one course: its ~20
+  // terminations (Climate.ANCHORS, LR04) would swing the young channel every 40-odd kyr, a jump each
+  // second of a boost's time-lapse, and would renumber every course of the cycles after it.
   static terminations() {
     if (TerrainGenerator._terms) return TerrainGenerator._terms;
     const out = [];
     if (typeof Climate !== 'undefined' && Climate.glacialIndexAt) {
       const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
-      let prevCold = Climate.glacialIndexAt(1100000) >= thr;
-      for (let y = 1099500; y >= 0; y -= 500) {
-        const cold = Climate.glacialIndexAt(y) >= thr;
+      const gi = Climate.rawIndexAt ? (y) => Climate.rawIndexAt(y) : (y) => Climate.glacialIndexAt(y);
+      const y0 = TerrainGenerator.GEO_EPOCHS.upliftFrom;
+      let prevCold = gi(y0) >= thr;
+      for (let y = y0 - 500; y >= 0; y -= 500) {
+        const cold = gi(y) >= thr;
         if (prevCold && !cold) out.push(y);
         prevCold = cold;
       }
@@ -3123,7 +3128,8 @@ class TerrainGenerator {
     const t = this._geoT || {};
     const age = (t.age > 0) ? t.age : 0;
     const g = (age > 0 && typeof Climate !== 'undefined' && Climate.at) ? Climate.at(age).glacialIndex : 0;
-    const key = Math.round(age) + '|' + this.seed;
+    // the index too: a settle re-bake (the prologue's blur gone) is the same date with a different climate
+    const key = Math.round(age) + '|' + this.seed + '|' + Math.round(g * 1000);
     if (key === this._meanderKey) return false;
     this._meanderKey = key;
     const L = (typeof LOOK !== 'undefined') ? LOOK : {};

@@ -1308,9 +1308,21 @@ class Game {
     }
     const yb = DeepTime.yearsBP;
     const now = (typeof millis === 'function') ? millis() : Date.now();
-    if (TerrainGenerator.shouldMorphBake(yb, this._bakedYearsBP, now, this._lastMorphMs,
-                                         CONFIG.morphIntervalYears, CONFIG.morphMinMs)) {
+    const CL = (typeof Climate !== 'undefined') ? Climate : null, blur = (CL && CL.TRAVEL) ? CL.TRAVEL.blend : 0;
+    // At rest with the blur still easing out, the ordinary drift bake waits: the settle below bakes the
+    // exact date once the blur is gone, so a landing costs one re-bake, not two.
+    const due = TerrainGenerator.shouldMorphBake(yb, this._bakedYearsBP, now, this._lastMorphMs,
+                                                 CONFIG.morphIntervalYears, CONFIG.morphMinMs) &&
+                !(blur > 0 && !DeepTime.isMoving());
+    // THE SETTLE (md/TEMANAWA_PROLOGUE.md §3). A land baked while the prologue's cycles were blurred (the
+    // clock racing) shows their mean, not the date's own stage. Once the clock has stopped and the blur
+    // has eased out, that land is re-baked once at the exact date, on the record. Only a blurred bake that
+    // is still the land on screen (another path's rebuild clears it); never inside the cycles.
+    const settle = !due && this._blurBakedAt != null && this._blurBakedAt === this._bakedYearsBP && blur === 0 &&
+                   !DeepTime.isMoving() && (now - this._lastMorphMs) >= CONFIG.morphMinMs;
+    if (due || settle) {
       this.terrain.morphBegin(yb, CONFIG.morphBakeScale);
+      this._blurBakedAt = (blur > 0 && CL && CL._blurW && CL._blurW(yb) > 0) ? yb : null;
       this._bakedYearsBP = yb;
       this._lastMorphMs = now;
       if (this.terrain.morphStep(CONFIG.morphBudgetMs)) this._onMorphComplete();

@@ -10,6 +10,25 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A climate authored to pace the interaction
+
+- **What happened.** When the run was extended back to 2 Ma (2026-11-13), the prologue's climate was written by
+  hand: one cold spell from ~1.595 to ~1.282 Ma between two warm stretches, placed so that three boosts would
+  land on the land's chapters. The record (LR04) has ~25 glacial cycles of ~41 kyr there, and no 300-kyr ice
+  age. The wall said "The climate is GLACIAL" for one that never happened, in an arbitrary place, while
+  naming the Whanganui Basin, known precisely for recording those 41-kyr cycles. A 41-kyr "grain" painted on
+  the timeline ribbon apologised for it rather than fixing it. Caught on review (2026-11-17), rebuilt on the
+  record the same day (`md/TEMANAWA_PROLOGUE.md` §3).
+- **Root cause.** The interaction (one boost per glacial turn) was treated as fixed and the climate bent to
+  fit it. The stated reason, "real cycles would flicker", was half right: the cycles were fine, the land's
+  re-bake rate could not draw them at that speed. Both had other answers: a boost may cross several cycles
+  and land on a real turn (`DeepTime.nextStop`), and while the land races it can show their mean, then
+  settle on the record (`Climate.CYCLE_BLUR`, the settle in `Game._morphTick`).
+- **Rule.** Do not author a climate, a date or a landform to suit the pacing. Pace the interaction over the
+  record: choose where it stops, and how much of the record it shows while it moves, but never what the
+  record says. Keep the record as data (`research/lr04/`) with a tool that emits the table
+  (`tools/lr04_prologue.js`), and assert the table matches it.
+
 ## A source comparison read against stale exports
 
 - **What happened.** The palaeogeography comparison (2026-11-12, `research/palaeogeography/`) set Trewick &

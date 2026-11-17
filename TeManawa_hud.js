@@ -1057,8 +1057,6 @@ const InstallHUD = {
   RIBBON_IN_END: 20 / 3586,   // its inset from each end, as a fraction of the bar's width (3586 px art)
   RIBBON_ALPHA: 225,
   RIBBON_SOFT: 0.12,          // ± glacial index over which the colour blends at the regime cut
-  RIBBON_GRAIN: 0.3,          // the prologue's 41-kyr stripe: how far a band leans to the other colour at each crest (0 = plain bands)
-  RIBBON_GRAIN_YEARS: 41000,
   _ribbon: null,              // { buf, w, h }
   _climateRibbon(x0, w, ay, bh) {
     if (typeof Climate === 'undefined' || !Climate.glacialIndexAt || typeof createGraphics !== 'function') return false;
@@ -1071,21 +1069,15 @@ const InstallHUD = {
       const TG = (typeof TMGoals !== 'undefined') ? TMGoals : null;
       const warm = TG ? TG.climateColor(false) : [84, 210, 96], cold = TG ? TG.climateColor(true) : [150, 205, 236];
       const thr = (Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5, soft = this.RIBBON_SOFT;
-      const A = this.RIBBON_ALPHA, pe = DeepTime.prologueEnd, grain = this.RIBBON_GRAIN, period = this.RIBBON_GRAIN_YEARS;
+      const A = this.RIBBON_ALPHA, raw = Climate.rawIndexAt ? (y) => Climate.rawIndexAt(y) : (y) => Climate.glacialIndexAt(y);
       buf.clear(); buf.noStroke();
       for (let x = 0; x < wi; x++) {
         // the ribbon's columns map back onto the whole bar (DeepTime.yearAtFrac: the prologue is drawn
         // short), so a date sits under its own x on the axis
         const yr = DeepTime.yearAtFrac((inset + x + 0.5) / w);
-        const gi = Climate.glacialIndexAt(yr);
+        // the record (never the travel blur): the prologue's 41-kyr cycles are thin stripes, ~20 px each
+        const gi = raw(yr);
         let t = (gi - (thr - soft)) / (2 * soft); t = t < 0 ? 0 : t > 1 ? 1 : t; t = t * t * (3 - 2 * t);
-        // THE PROLOGUE'S GRAIN: its long bands stand in for ~24 real 41-kyr cycles (Climate.ANCHORS), so
-        // each is shot through with a faint stripe of the other colour at that period. The band still
-        // reads as one climate (the boost's), and the bar does not claim a 300 kyr ice age.
-        if (grain > 0 && yr > pe) {
-          const rip = grain * (0.5 - 0.5 * Math.cos(2 * Math.PI * yr / period));
-          t += (t < 0.5 ? rip : -rip);
-        }
         buf.fill(warm[0] + (cold[0] - warm[0]) * t, warm[1] + (cold[1] - warm[1]) * t, warm[2] + (cold[2] - warm[2]) * t, A);
         buf.rect(x, 0, 1, rh);
       }
@@ -1163,21 +1155,31 @@ const InstallHUD = {
   VIS_CLIMATE_ABOVE: 44,     // px from this line's centre down to the timeline axis
   CLIMATE_PREFIX: 'The climate is ',
   _climateLine: null,        // { glacial, word, col, prefixW, wordW }
+  // THE 41-KYR WORLD (md/TEMANAWA_PROLOGUE.md §3): while the land races through the prologue's cycles (the
+  // travel blur up, Climate.TRAVEL.blend ≥ CLIMATE_TRAVEL_AT) the line says so instead of naming a regime
+  // that turns every second. At rest it names the regime the goals and the boost read (TMGoals.climateNow).
+  CLIMATE_TRAVEL: 'Ice ages come and go, every 41,000 years',
+  CLIMATE_TRAVEL_AT: 0.25,
   _renderClimateLine(cx, cy) {
-    const glacial = (typeof TMGoals !== 'undefined') ? TMGoals.glacialNow() : false;
+    const travel = typeof Climate !== 'undefined' && Climate.TRAVEL && Climate.TRAVEL.blend >= this.CLIMATE_TRAVEL_AT &&
+                   typeof DeepTime !== 'undefined' && DeepTime.inPrologue && DeepTime.inPrologue();
+    const glacial = (typeof TMGoals !== 'undefined') ? (TMGoals.climateNow ? TMGoals.climateNow() : TMGoals.glacialNow()) : false;
+    const key = travel ? 2 : (glacial ? 1 : 0);
     let c = this._climateLine;
-    if (!c || c.glacial !== glacial) {
-      const word = glacial ? 'GLACIAL' : 'INTERGLACIAL';
+    if (!c || c.key !== key) {
+      const prefix = travel ? this.CLIMATE_TRAVEL : this.CLIMATE_PREFIX;
+      const word = travel ? '' : (glacial ? 'GLACIAL' : 'INTERGLACIAL');
       const col = (typeof TMGoals !== 'undefined') ? TMGoals.climateColor(glacial)
                 : (glacial ? [150, 205, 236] : [84, 210, 96]);
       push(); textFont(FreckleFace); textSize(this.VIS_CLIMATE_SIZE);
-      const prefixW = textWidth(this.CLIMATE_PREFIX), wordW = textWidth(word);
+      const prefixW = textWidth(prefix), wordW = word ? textWidth(word) : 0;
       pop();
-      c = this._climateLine = { glacial, word, col, prefixW, wordW };
+      c = this._climateLine = { key, glacial, prefix, word, col, prefixW, wordW };
     }
     const x0 = cx - (c.prefixW + c.wordW) / 2, s = this.VIS_CLIMATE_SIZE;
-    this._blitText(this.CLIMATE_PREFIX, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + 2, cy + 2, this._GOAL_HALO);
-    this._blitText(this.CLIMATE_PREFIX, FreckleFace, 'freckle', s, LEFT, CENTER, x0, cy, this._GOAL_COL);
+    this._blitText(c.prefix, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + 2, cy + 2, this._GOAL_HALO);
+    this._blitText(c.prefix, FreckleFace, 'freckle', s, LEFT, CENTER, x0, cy, this._GOAL_COL);
+    if (!c.word) return;
     this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW + 2, cy + 2, this._GOAL_HALO);
     this._blitText(c.word, FreckleFace, 'freckle', s, LEFT, CENTER, x0 + c.prefixW, cy, c.col);
   },
@@ -1264,10 +1266,13 @@ const InstallHUD = {
   renderVisitorGoal(g, W, H) {
     if (typeof Climate === 'undefined' || typeof DeepTime === 'undefined' || !Climate.nextRegimeBoundary) return;
     const y = DeepTime.yearsBP;
-    const cur = Climate.glacialIndexAt(y) >= (Climate.regimeThreshold != null ? Climate.regimeThreshold : 0.5);
+    // the regime the goals read (held while the land races through the prologue's cycles), and where a
+    // boost from here would land (DeepTime.nextStop: in the prologue, the turn past the next stop)
+    const cur = (typeof TMGoals !== 'undefined' && TMGoals.climateNow) ? TMGoals.climateNow()
+              : Climate.glacialIndexAt(y) >= (Climate.regimeThreshold != null ? Climate.regimeThreshold : 0.5);
     let c = this._goalCache;
     if (!c || c.regime !== cur || y > c.at + 1) {          // regime flip (incl. a boundary crossing) or a backward seek
-      const goal = Climate.nextRegimeBoundary(y, DeepTime.yearsEnd);
+      const goal = DeepTime.nextStop ? DeepTime.nextStop(y) : Climate.nextRegimeBoundary(y, DeepTime.yearsEnd);
       const label = goal ? (this.GOAL_OBJECTIVE[goal.stageName] ||
         ('Reach the next ' + goal.stageName.charAt(0).toUpperCase() + goal.stageName.slice(1) + '!')) : null;
       c = this._goalCache = { regime: cur, at: y, label };

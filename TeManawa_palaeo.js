@@ -218,6 +218,13 @@ const Palaeo = {
   _setSeaBreath(scale) {
     if (typeof Climate !== 'undefined' && Climate.PRE_WINDOW_SEA) Climate.PRE_WINDOW_SEA.scale = scale;
   },
+  // From 2.15 Ma the climate is the record's 41-kyr cycles (Climate.ANCHORS): the same rule as the sea's
+  // breath, the other way round. Crawling, the cycles are drawn; racing, their mean (Climate.CYCLE_BLUR).
+  // The sequence owns it while it runs (DeepTime.update does not), and leaves it at 0.
+  _setCycleBlur(b) {
+    if (typeof Climate !== 'undefined' && Climate.TRAVEL) Climate.TRAVEL.blend = b;
+    if (typeof DeepTime !== 'undefined') DeepTime.cycleBlur = b;
+  },
 
   // ---- per frame, from Game.update (always; cheap when idle) ---
   tick(dt) {
@@ -407,6 +414,7 @@ const Palaeo = {
   _issueBake(T, year, allPhases) {
     const breath = this._seaScale();
     this._setSeaBreath(breath); this._bakedBreath = breath;   // read by the morph through Climate.seaLevelAt
+    this._setCycleBlur(1 - breath);                             // …and the cycles' blur, the same rate rule
     T.morphBegin(year, this._bakeScale(), !!allPhases);
     this._pendingYear = year; this._pendingAll = !!allPhases;
   },
@@ -444,6 +452,7 @@ const Palaeo = {
     this._retireFade(T);
     this._clearRiverNames();                                    // the time's names never linger into the living world
     this._setSeaBreath(0); this._bakedBreath = 0;               // the window never reads it; left clean
+    this._setCycleBlur(0);
     const y = this._last()[0];
     if (g.water && g.water.build) g.water.build(T, y);          // a clean stamp for the new world (as an eruption does)
     if (typeof Kiosk !== 'undefined' && Kiosk.landAttract) Kiosk.landAttract(g, this.reason);
@@ -462,6 +471,7 @@ const Palaeo = {
   _abort(why) {
     if (typeof console !== 'undefined') console.warn('[Palaeo] aborted: ' + why);
     this._setSeaBreath(0);                                      // as the landing does: never leave the pre-window cycle on
+    this._setCycleBlur(0);
     if (this.game) this.game._tmPalaeoErAt = 0;                 // nor a landing eruption's rumble
     this._coverAt = 0;
     this.active = false; this.state = 'idle'; this._veil = 0; this.game = null;

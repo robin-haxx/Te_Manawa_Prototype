@@ -91,12 +91,13 @@ const TMBus = (function () {
   let _lastPressAt = -Infinity;  // the last boost press that took effect, for TM_BOOST.topUpGapMs
 
   // ---- regime-boundary finder ------------------------------
-  // Delegates to the pure Climate.nextRegimeBoundary (§7.1) so the goal readout and the timelapse
-  // target can never disagree. Returns { targetYearsBP, targetStage, targetStageName } or null.
+  // Delegates to DeepTime.nextStop (Climate.nextRegimeBoundary inside the cycles; in the prologue the
+  // turn past its next stop, md/TEMANAWA_PROLOGUE.md §2) so the goal readout and the timelapse target can
+  // never disagree. Returns { targetYearsBP, targetStage, targetStageName } or null.
   function nextRegimeBoundary(yearsBP) {
     if (typeof Climate !== 'undefined' && typeof Climate.nextRegimeBoundary === 'function' &&
         typeof DeepTime !== 'undefined') {
-      const b = Climate.nextRegimeBoundary(yearsBP, DeepTime.yearsEnd);
+      const b = DeepTime.nextStop ? DeepTime.nextStop(yearsBP) : Climate.nextRegimeBoundary(yearsBP, DeepTime.yearsEnd);
       return b ? { targetYearsBP: b.yearsBP, targetStage: b.stage, targetStageName: b.stageName } : null;
     }
     return null;
@@ -187,8 +188,10 @@ const TMBus = (function () {
     const key = m && m.plantKey;
     if (!key) return;
     const thr = (typeof Climate !== 'undefined' && Climate.regimeThreshold != null) ? Climate.regimeThreshold : 0.5;
-    const glacial = (typeof Climate !== 'undefined' && typeof DeepTime !== 'undefined')
-      ? Climate.glacialIndexAt(DeepTime.yearsBP) >= thr : false;
+    // the climate the goals have settled on (TMGoals.climateNow: the record's regime, held while the
+    // clock races through the prologue's cycles), so the verdict and the goal line agree
+    const glacial = (typeof TMGoals !== 'undefined' && TMGoals.climateNow) ? TMGoals.climateNow()
+      : (typeof Climate !== 'undefined' && typeof DeepTime !== 'undefined') ? Climate.glacialIndexAt(DeepTime.yearsBP) >= thr : false;
     const nowMs = (typeof millis === 'function') ? millis() : 0;
 
     // Regime fit (TMGoals.fitOf, shared with the plant goals): a warm species (low coldTolerance)
@@ -399,9 +402,9 @@ const TMBus = (function () {
     const g = Climate.glacialIndexAt(y);
     reply({ type: 'clock', yearsBP: y, glacialIndex: g,
             stage: Climate.stageOf(g), stageName: Climate.stageNameOf(g), mis: Climate.misAt(y),
-            // the land's chapter (DeepTime.CHAPTERS): its title, for the console's clock line in the
-            // prologue, where there is no MIS stage to name
-            land: (DeepTime.chapterAt ? DeepTime.chapterAt(y).title : null),
+            // the land's chapter (DeepTime.CHAPTERS), in the prologue only: the console's clock line names
+            // it there in place of the MIS stage (the prologue has ~50 of them, one every ~20 kyr)
+            land: (DeepTime.chapterAt && DeepTime.inPrologue && DeepTime.inPrologue(y)) ? DeepTime.chapterAt(y).title : null,
             // the attract sequence's own clock while it runs ({ active, yearsBP, state, label }); DeepTime
             // is parked meanwhile, so the console shows the sequence's date instead
             palaeo: (typeof Palaeo !== 'undefined' && Palaeo.telemetry) ? Palaeo.telemetry() : { active: false } });

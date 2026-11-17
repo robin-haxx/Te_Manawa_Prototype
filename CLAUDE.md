@@ -104,7 +104,7 @@ TeManawa_egg.js  _plant.js  _placeable.js   (placeable: only placeableSprites is
 TeManawa_outline.js        live fauna outline (PROTOTYPE: bush moa + kererū) — recolours the baked border, 1 quad/creature
 TeManawa_spriteatlas.js    runtime texture atlas: packs every loaded sprite at setup(), wraps image()
 TeManawa_glbatch.js        the default WebGL entity layer (DOM-stacked); falls back to 2D
-TeManawa_climate.js        Climate.at(yearsBP) — pure, p5-free, LR04-anchored; SEA_ANCHORS
+TeManawa_climate.js        Climate.at(yearsBP) — p5-free, LR04-anchored; SEA_ANCHORS; the prologue's stages emitted from research/lr04 by tools/lr04_prologue.js; rawIndexAt (the record) vs glacialIndexAt (what the land shows: blurred while the prologue races)
 TeManawa_time.js           DeepTime — yearsBP is the authoritative clock; the time dial; the prologue (2 Ma → 1 Ma: the short-drawn bar, the gear, the fitted time-lapse) and the land's CHAPTERS — see TEMANAWA_PROLOGUE.md
 TeManawa_goals.js          plant goals: the visitor line + boost verdicts (TM_GOALS book) + the cards' bold terms; chances (pips), the reveal and the late answer when a goal leaves unanswered — pure, p5-free; the console page loads it too
 TeManawa_hud.js            InstallHUD: timeline (climate ribbon, eruption pins + end labels), visitor year/goal/speed, the top band (tallies + ecosystem health), eruption captions, the five buttons (debug), storm/ash/wind FX
@@ -258,15 +258,24 @@ pixels, so `mousePressed`/`mouseReleased` divide by `SS`. See `Game._composeTerr
 
 **The run opens at 2 Ma, on the Manawatū Strait** (`DeepTime.yearsStart`; `md/TEMANAWA_PROLOGUE.md`). It
 opened at 1 Ma until 2026-11-13, where a 6–10 boost visit saw the land barely move. The first three boosts
-now carry the land's assembly: the strait closes (the boost lands ≈ 1.595 Ma, cold), a river crosses the
-low land (≈ 1.282 Ma, warm, before the uplift starts), then the boost runs into Kidnappers at 1 Ma. From
+now carry the land's assembly: the strait closes (the boost lands ≈ 1.583 Ma, glacial MIS 54), a river crosses the
+low land (≈ 1.286 Ma, interglacial, before the uplift starts), then the boost runs into Kidnappers at 1 Ma. From
 `DeepTime.prologueEnd` (1 Ma) the run is **the cycles**: the LR04 table and one boost per glacial turn,
 unchanged. Where this file or an older document says "1 Ma" for the opening, the attract's land or a
 reset's destination, read `DeepTime.yearsStart`.
 
-- **The prologue's climate is authored, not LR04**: one long cold swing in `Climate.ANCHORS`, placed so
-  each boost lands on a chapter of the land. Moving one of those anchors moves a stop: check the harness's
-  "prologue" section, which asserts where the first three boosts land and what the land is there.
+- **The prologue's climate is the record**: LR04's 41-kyr cycles, one anchor per stage (MIS 79 → 28),
+  emitted into `Climate.ANCHORS` by `tools/lr04_prologue.js --write` from `research/lr04/`. **Never edit
+  between the `<lr04:…>` markers by hand**; the harness asserts the file matches the tool. A boost there
+  crosses several cycles and lands on the first real turn past the next `DeepTime.PROLOGUE_STOPS` date,
+  into the other climate (`DeepTime.nextStop`, which every boost-target reader goes through). It was an
+  authored 300-kyr cold spell until 2026-11-17 (`MISTAKES.md`).
+- **Two climates: the record and what the land shows.** While the land races through the prologue the
+  clock raises `Climate.TRAVEL.blend` and `glacialIndexAt`/`seaLevelAt` return the cycles' running mean
+  (the seasons, the terrain's sea, the plants' palette read these); at rest it eases to 0 and
+  `Game._morphTick` settles the land on the record with one re-bake. **Decisions read the record**
+  (`rawIndexAt`/`rawSeaLevelAt`): the regime boundaries, the stops, `TMGoals.glacialNow`, the ribbon, the
+  river's terminations. The goals hold their regime while the clock races the prologue (`climateNow`).
 - **The clock is drawn and played unevenly on purpose**: the prologue takes `prologueShare` of the
   timeline bar (`timeFrac` / `yearAtFrac`, never a linear lerp of years), a boost's time-lapse is scaled to
   fit `tlMaxSeconds` (the cycles' legs all scale ×1), the dial and a deep burst are geared ×5, and life
