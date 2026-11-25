@@ -46,14 +46,14 @@ const TM_ISLAND = {
     intro: {
       // Which past map the intro shows is TM_ATTRACT.inset.intro. Each map it may name carries a caption
       // here, so switching the date is a one-word change there (the harness checks every named map has one).
-      m0000: { title: 'The lower North Island today', body: 'The box marks the land on this wall.' },
-      m2400: { title: 'The island, about two million years ago', body: 'A seaway, the Manawatū Strait, cuts the land in two. There is no Cook Strait yet: Wellington is joined to Marlborough.' },
-      m1500: { title: 'The island, one and a half million years ago', body: 'The Manawatū Strait has closed: one land, with Wellington and Marlborough. No Cook Strait yet.' },
-      m1000: { title: 'The island, a million years ago', body: 'No Cook Strait yet: the North and South Islands are one land. The strait first breaks through about 450,000 years ago.' }
+      m0000: { title: 'The lower North Island today', body: '' },
+      m2400: { title: 'The island, about two million years ago', body: 'Wellington is joined to Marlborough!' },
+      m1500: { title: 'The island, one and a half million years ago', body: 'The "Manawatū Strait" has closed.' },
+      m1000: { title: 'The island, a million years ago', body: 'The North and South Islands are one land.' }
     },
     outro: {
-      m0020: { title: '20,000 years ago', body: 'The sea stood about 120 m lower. Dry land ran from the Manawatū across to Nelson.' },
-      m0000: { title: 'Today', body: 'The sea rose again. Cook Strait reopened about 15,000 years ago.' }
+      m0020: { title: '20,000 years ago', body: 'The sea stood about 120 m lower.' },
+      m0000: { title: 'Today', body: 'Cook Strait reopened about 15,000 years ago.' }
     },
     palaeo: {
       m4000: { body: 'Wellington belongs to a southern land, joined to Marlborough.' },

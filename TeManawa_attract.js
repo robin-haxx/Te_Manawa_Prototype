@@ -66,10 +66,10 @@ const TM_ATTRACT = {
   colHalo: [8, 14, 12, 170],
   copy: {
     intro: {
-      title: 'The Manawatū, today',
+      title: 'The Manawatū',
       // The run opens on the prologue (DeepTime.yearsStart, 2 Ma): the map's ranges, gorge and river are
       // exactly what is NOT there when it crossfades to the land, and the card says so before it does.
-      body: 'You are about to see this land two million years ago. There is no river yet, and no ranges: the sea runs through where the gorge is. Watch the land take shape as ice age after ice age sweeps across it.'
+      body: 'A mighty river, older than the mountains it flows between. Watch the land take shape, as the many ice ages sweep across it, and ranges rise from the sea...'
     },
     line: 'The Manawatū, two million years ago',
     outro: {
