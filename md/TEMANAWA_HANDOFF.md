@@ -3,7 +3,9 @@
 **The assessment before release, and the plan for handing the piece to the museum to run as a
 kiosk.** Written 2026-11-05 against commit `2c5e67b` (`main`). Brought up to date on 2026-11-17, when
 the kiosk shell, the audio rebuild, the prologue and the island inset were merged onto one branch, and
-merged with the 2026-11-14 checklist of what is left (§10). For the author, who hands it over, and for
+merged with the 2026-11-14 checklist of what is left (§10). Checked again on 2026-11-26 against the two
+commits since: `3a05552` (the prologue's climate rebuilt on the LR04 record) and `7feef91` (shorter
+intro and inset copy). For the author, who hands it over, and for
 the museum's exhibitions and AV people, who receive it. How to run it day to day is
 `TEMANAWA_OPERATIONS.md`; what is built and what is not is `TEMANAWA_PLAN_V3.md` §13–§14; the one-page
 sheet that ships inside the package is `../deploy/OPERATOR_QUICKSTART.md`.
@@ -16,7 +18,8 @@ sheet that ships inside the package is `../deploy/OPERATOR_QUICKSTART.md`.
   passes (seed-dependent checks, §8); the kiosk layer has been hardened and exercised. It has
   **never run on the install hardware**, and all visitor-facing copy is draft pending co-design.
   Since 2026-11-05: **audio is on** (2026-11-10), **the run opens at 2 Ma** on the Manawatū Strait (the
-  prologue, 2026-11-13), and the intro and outro carry **an island inset**.
+  prologue, 2026-11-13), the intro and outro carry **an island inset**, and the prologue's climate is
+  **the LR04 record**, not an authored swing (2026-11-17).
 - **Start now, because they depend on other people:** the RNZ / Te Papa clearance for the recreated
   bird calls (§2.4) and the mana whenua co-design (§10.3). Both take longer than any code change left.
 - **How to hand it over: as a package, not a repository.** The museum receives one folder,
@@ -47,7 +50,9 @@ The plan's phase table (`TEMANAWA_PLAN_V3.md` §13) is all ✅:
 
 - the terrain (SVG skeleton, deep-time morph, the sea-level coast, 3/4 cel look, water, river names)
 - the glacial-cycle climate to 1 Ma, and **the prologue** before it (the run opens at 2 Ma:
-  `TEMANAWA_PROLOGUE.md`)
+  `TEMANAWA_PROLOGUE.md`). Since 2026-11-17 the prologue's climate is LR04's 41-kyr cycles, emitted from
+  `research/lr04/` by `tools/lr04_prologue.js`; a boost there crosses several cycles and lands on a real
+  turn
 - the plants and their cover dynamics, the four eruptions and their aftermath
 - the thirteen-bird cast on dedicated art
 - the touchscreen console and its bus, the plant goals, the time dial, the health milestones
@@ -66,7 +71,9 @@ incident log with rules, and a working-notes file for whoever maintains it next.
 `tools/bootcheck.js` loads every script in page order under a stubbed p5 and DOM, boots, draws 120
 frames, presses every button, cycles the overlays, times resets, and asserts about sixty behaviours
 from the climate curve to the attract's geography. It has caught real bugs that reading the code did
-not. The runs on record are in §8.
+not. Since 2026-11-17 one check reads data outside the page: the prologue's climate must match what
+`tools/lr04_prologue.js` emits from `research/lr04/`, so the harness needs that folder. The runs on
+record are in §8.
 
 What the harness cannot see: it never opens a browser. No WebGL, no GPU, no real frame timing, no 4K,
 no touch, no second window, no sound. `make_deploy.js --smoke` closes part of that gap: it serves the
@@ -112,8 +119,9 @@ wall will use. The WebGL path is proven only on the real machine (§4, gate 3).
    named support contact with a response expectation (§5.1), and the repository in its own hands.
 9. **Other rights in the assets.** The code is MIT. The sprites are artist-supplied; the display
    fonts are `OpenDyslexic` (open licence) and `NF Nadira Pro`, whose licence for a public
-   installation must be confirmed; `research/` holds copyrighted papers that must not be
-   redistributed. §2.4.
+   installation must be confirmed; the island inset's maps, shown to every visitor who presses, are
+   redrawn from figures in a published paper (Trewick & Bland 2012); `research/` holds copyrighted
+   papers that must not be redistributed. §2.4.
 10. **Two performance decisions are still open:** `CONFIG.mapGrid` at 512 against a 256 long-term
     target (`PLAN_V3.md` §16.5), and the live fauna outline prototype on for two species (§16.11). Both
     are "profile on the real machine, then decide".
@@ -187,6 +195,11 @@ tree at the tag. `VERSION.txt` in every package names its commit, so a package c
 to its source. The museum should hold the source whether or not it intends to edit it: it is the
 only way the piece outlives any one developer.
 
+The source copy must include `research/lr04/` and `research/palaeogeography/`. The harness and
+`tools/lr04_prologue.js` read the first; `tools/island2geo.js` builds the island inset's maps
+(`geo/island_maps.js`) from the second's `slices.json`. Without them the harness fails and neither the
+prologue's climate nor the inset can be rebuilt. The PDFs beside them are a separate question (§2.4).
+
 ### 2.4 Rights and licences — a checklist to clear before the handover letter
 
 - [ ] **Code:** MIT (`LICENSE`, copyright the author). Say so in the handover letter, and check it
@@ -205,8 +218,14 @@ only way the piece outlives any one developer.
   - [ ] the CC BY-SA clips (goose, harrier) stay under that licence if passed on
   - [ ] the 17 legacy `.mp3` directly under `audio/` have no licence record; `make_deploy.js` does not
         ship them
-- [ ] **`research/`** (published papers): not in the package; do not include them in any escrow copy
-      without checking their terms.
+- [ ] **The island inset's maps** (`geo/island_maps.js`, in every intro and outro): redrawn from
+      Trewick & Bland (2012) Figs 1, 3 and 4, registered to the Natural Earth coastline (public
+      domain). Check whether the journal's terms need permission for a redrawn figure in an exhibit,
+      and credit the source on a label either way. Nothing on screen credits it today
+- [ ] **`research/`**: the six PDFs (published papers) are not in the package; do not include them in
+      any escrow copy without checking their terms. `research/lr04/` (the LR04 stack, Lisiecki & Raymo
+      2005, freely published data; cite it) and `research/palaeogeography/` are build inputs and go
+      with the source (§2.3).
 - [ ] **Place names, narratives, species stories:** the co-design outcome governs; nothing on screen
       is final until Rangitāne o Manawatū have seen it (`PLAN_V3.md` §16.10).
 - [ ] **Third-party code:** p5.js 1.11.11 (LGPL), Electron (MIT) and Chromium (BSD and others;
@@ -337,6 +356,12 @@ From `TEMANAWA_PLAN_V3.md` §16, the ones that change what visitors see or hear:
 7. **The island inset's opening map**: the intro shows the 2.4 Ma map (the strait open, as on the 2 Ma
    land beside it; there is no 2 Ma map). `TM_ATTRACT.inset.intro` switches it to 1.5 or 1 Ma in one
    word.
+8. **The stage label at 1 Ma** (`TEMANAWA_PROLOGUE.md` §10). Since the prologue's climate became the
+   record, the window's own table (1 Ma on) is the part still rounded. It calls 1 Ma "MIS 25" where
+   LR04 has the end of MIS 28, so the console's clock reads MIS 28 at 1.005 Ma and MIS 25 at 1 Ma,
+   skipping three stages. Rebuilding the window's table on LR04 would move every turn a visitor boosts
+   through and every goal tuned on them; the other choices are to accept the seam or drop the label
+   from the console.
 
 ---
 
@@ -384,11 +409,13 @@ this is the work before them.
 
 ### 10.1 Freeze the build
 
-- [x] One branch: the audio and prologue work, the island inset and the kiosk shell merged (2026-11-17).
-      Left: the PR to `main`
+- [x] One branch: the audio and prologue work, the island inset and the kiosk shell merged (2026-11-17),
+      on `claude/sound-effects-bird-audio-52bb80`. Left: the PR to `main`. None is open on 2026-11-26,
+      and `main` stops at 2026-11-10: it has the attract and the milestones, but not the audio, the
+      prologue, the island inset or the kiosk shell
 - [ ] Close the open decisions that change what ships (§7, and `TEMANAWA_PLAN_V3.md` §16.11 the outline
       prototype, §16.5 `mapGrid`, §16.3 the recovery path's cost, §16.6 saturation scope, §16.1 the
-      timeline art)
+      timeline art; `TEMANAWA_PROLOGUE.md` §10 the opening date and the 1 Ma stage label)
 - [ ] Set the real key map in `secondscreen/input.js` (`SWITCH_MODE`, `KEYS`); turn off
       `B_LONG_PRESS_ERUPTS` (still `true`) once the pad has its own eruption key
 - [ ] Make the seed-dependent harness checks deterministic, or record them as known noise (§8)
@@ -406,8 +433,11 @@ this is the work before them.
   - [ ] the encyclopedia cards (`secondscreen/encyclopedia.js`); decide on `TEMANAWA_CARD_TRIMS.md`
         and the three-part layout in `TEMANAWA_ENCYCLOPEDIA_CARDS.md`
   - [ ] the intro, the line over the land and the outro (`TM_ATTRACT.copy`), and the map's place
-        names (`TM_ATTRACT.labels`)
-  - [ ] the island inset's captions (`TM_ISLAND.copy`)
+        names (`TM_ATTRACT.labels`). The intro card was rewritten shorter on 2026-11-25; still draft
+  - [ ] the island inset's captions (`TM_ISLAND.copy`), cut to a line each on 2026-11-25; the
+        present-day caption has a title and no body
+  - [ ] the climate line while the clock races the prologue (`InstallHUD.CLIMATE_TRAVEL`, "Ice ages come
+        and go, every 41,000 years", 2026-11-17)
   - [ ] the prologue's captions and era names (`TEMANAWA_PROLOGUE.md` §10)
   - [ ] the goal lines and verdicts (`TeManawa_goals.js`)
   - [ ] the river names
