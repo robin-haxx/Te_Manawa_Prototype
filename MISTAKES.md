@@ -10,6 +10,35 @@ comment) and, where general, in `CLAUDE.md`.
 
 ---
 
+## A fallback that assumed the middle of the map is land
+
+- **What happened.** `Simulation.findWalkablePosition` tried 100 random points in a species' elevation band
+  and, if none was dry and in band, returned the map centre ("always on-screen"). `Boid.avoidUnwalkable`, for
+  a bird already on the water with no land in its 60 px probe, steered for the map centre too. Both were
+  written when the run opened at 1 Ma, on land. Since the run opens at 2 Ma (2026-11-13) the centre is the
+  Manawatū Strait, and the low land barely has the kiwi's hills (0.28–0.55). On 2026-11-27 the browser
+  showed 114 spawns on water in 20 resets (kiwi 47, harrier 28, bush moa 19), and a bird out there walked
+  further out to sea and stayed.
+- **Root cause.** A fallback picked for being visible, not for passing the test the search was for. And
+  nothing re-checked the animals when the land moved under them: plants had `cullSubmergedPlants`, fauna
+  had nothing.
+- **Rule.** A spawn fallback passes the same test as the search (dry ground), never a fixed point: if no
+  in-band spot turns up, take the dry spot nearest the band, then sweep. Whatever changes the land re-checks
+  what stands on it (`Game._onMorphComplete` → `Simulation.rescueStrandedFauna`). Harness "fauna on land".
+
+## A check that read a property that does not exist
+
+- **What happened.** `make_deploy.js --smoke` and `tools/shell_check.js` (2026-11-05) reported the wall's
+  renderer as `GLBatch.active ? 'WebGL' : '2D'`. `GLBatch` has no `active`; the flag is `domStack` (what the
+  PERF panel reads). Every run printed "2D", and the handoff plan built a claim on it: "headless GL is
+  software, so the smoke exercises the 2D fallback". Found on 2026-11-27, when the shell on a real GPU also
+  said 2D: the packaged wall on a 4K monitor was in fact on WebGL, and so was the headless smoke on the same
+  machine.
+- **Root cause.** A readout that only reports, never asserts, cannot fail, so nothing showed that its input
+  was `undefined`. The expected answer (2D, in a container) matched the broken one, so it looked right.
+- **Rule.** A check reads the same flag the product does (`GLBatch.domStack`, as `TeManawa_debug.js`), and
+  is seen to change once: run it somewhere the answer should differ before trusting what it reports.
+
 ## A climate authored to pace the interaction
 
 - **What happened.** When the run was extended back to 2 Ma (2026-11-13), the prologue's climate was written by

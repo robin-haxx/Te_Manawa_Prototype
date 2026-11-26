@@ -140,6 +140,9 @@ class Simulation {
     this._ecoRun = { dir: 0, step: 0 };     // the run of boosts the next step belongs to (_healthUp / _healthDown)
     this._ecoStorm = { n: 0, at: -Infinity };   // the storms in succession (onStorm)
     this._fauna = null;   // fauna homeostasis state (_updateFaunaHomeostasis), built on its first tick
+    this._prologueLevel = 0;   // the prologue's bird level while the clock is in it, else 0 (_syncPrologue)
+    this._prologueFloor = 0;   // …and the floor every kind's is capped to there, else 0
+    this._foundedSparse = false;   // this world was founded in the prologue, at the prologue's numbers
     this.milestones = { full: true, warn: true };   // the health milestones still to play this climb (TeManawa_milestone.js); carried through a rebuild
     this._speciesStableTimes = {};
     this._speciesLastAlive = {};
@@ -214,6 +217,11 @@ class Simulation {
 
   init() {
     this._tempPos = createVector(0, 0);
+    this._rescuePt = { x: 0, y: 0 };   // rescueStrandedFauna's scratch point
+    // Every path seeks the clock to the new world's date before it is built (the attract, an eruption's
+    // rebuild, a reset), so the clock says whether this world is founded in the prologue.
+    this._syncPrologue();
+    this._foundedSparse = this._prologueLevel > 0;
     this.spawnPlants();
     this._initHomeostasis();   // per-habitat plant targets, measured off the spawn just made
     
@@ -233,7 +241,7 @@ class Simulation {
     // sexing), so the most likely first encounter can lead to a breeding pair.
     this._biasClosestPairSexes();
 
-    this.spawnEagles(this.config.eagleCount);
+    this.spawnEagles(this._foundingCount(this.config.eagleCount));
 
     // Emergent eagles start as a breeding PAIR: the spawned founder plus one egg
     // of the opposite sex, laid at a crag eyrie and hatching after ~30s.
@@ -245,7 +253,7 @@ class Simulation {
     if (level && level.initialEntityCounts) {
       for (const [type, count] of Object.entries(level.initialEntityCounts)) {
         if (type === 'moa' || type === 'eagle') continue; // Already handled
-        this._spawnOtherEntities(type, count);
+        this._spawnOtherEntities(type, this._foundingCount(count));
       }
     }
   }
@@ -268,8 +276,9 @@ class Simulation {
       // otherwise fall back to season default
       const minElev = species.preferredElevation?.min || pref.min;
       const maxElev = species.preferredElevation?.max || pref.max;
-      
-      for (let i = 0; i < count; i++) {
+      const n = this._foundingCount(count);
+
+      for (let i = 0; i < n; i++) {
         const pos = this.findWalkablePosition(minElev, maxElev);
         const moa = this._createFromRegistry('moa', speciesKey, pos.x, pos.y, Moa);
         if (moa) {
@@ -361,10 +370,13 @@ class Simulation {
     for (let p = 0; p < pairs; p++) {
       const base = this.findWalkablePosition(0.2, 0.6, true);   // huia pair → found on-screen
       const bx = base.x, by = base.y;                 // copy now — findWalkablePosition reuses _tempPos
-      const male = this._createFromRegistry('huia', 'huia',
-        bx + random(-8, 8), by + random(-8, 8), null);
-      const female = this._createFromRegistry('huia', 'huia',
-        bx + random(-8, 8), by + random(-8, 8), null);
+      // A few px apart, but never off the dry spot the pair was given (a jitter onto a river bank's water).
+      let mx = bx + random(-8, 8), my = by + random(-8, 8);
+      if (!this.terrain.isWalkable(mx, my)) { mx = bx; my = by; }
+      let fx = bx + random(-8, 8), fy = by + random(-8, 8);
+      if (!this.terrain.isWalkable(fx, fy)) { fx = bx; fy = by; }
+      const male = this._createFromRegistry('huia', 'huia', mx, my, null);
+      const female = this._createFromRegistry('huia', 'huia', fx, fy, null);
       if (!male && !female) {
         console.warn('Could not create huia. Register it in REGISTRY before the level loads.');
         return;                                       // creation failing once will fail every time
@@ -1522,7 +1534,10 @@ class Simulation {
       const aff = (typeof ClimateAffinity !== 'undefined') ? ClimateAffinity.ofSpeciesConfig(cfg) : 'neutral';
       // the forest flyers carry no seasonalModifiers (their hunger keys off fruit, not the phase): warm
       F.clim[key] = (kind === 'other' && !(cfg && cfg.seasonalModifiers)) ? 'warm' : aff;
-      F.base[key] = Math.max(this._speciesFloor(key), this._faunaCount(key));
+      // The cycles' unattended level. A world founded in the prologue started at the prologue's numbers,
+      // so its count says nothing about the cycles': take the level's founding number instead.
+      const founded = this._foundedSparse ? this._authoredFounding(key, kind) : this._faunaCount(key);
+      F.base[key] = Math.max(this._authoredFloor(key), founded);
     };
     const cfgOf = (key) => { const sp = (typeof REGISTRY !== 'undefined') ? REGISTRY.getSpecies(key) : null; return sp && sp.config; };
     for (const k of (this.activeSpecies.moa || [])) add(k, 'moa', cfgOf(k));
@@ -1568,12 +1583,52 @@ class Simulation {
   _faunaRetarget(F, M) {
     const earned = this.ecoEarned || 0, linkStep = M.faunaLinkStep ?? 0.15;
     F.shock = this._healthLevel(M.faunaShockFloor ?? 0.4);
+    const P = this._prologueLevel;
     for (let i = 0; i < F.keys.length; i++) {
-      const key = F.keys[i], base = F.base[key], full = Math.max(base, this._speciesFullTarget(key));
+      const key = F.keys[i];
+      if (P > 0) {
+        // The prologue: unattended, every kind at P. What the visitor earns lifts it toward the target,
+        // the climate leading the lift; the shock thins the lift, never P (faunaPrologueLevel).
+        const full = Math.max(P, this._speciesFullTarget(key));
+        const lift = (full - P) * earned + linkStep * full * (F.link[key] || 0);
+        F.targets[key] = Math.max(P, Math.round(P + lift * this._faunaClimate(F, M, key) * F.shock));
+        continue;
+      }
+      const base = F.base[key], full = Math.max(base, this._speciesFullTarget(key));
       let t = base + (full - base) * earned + linkStep * full * (F.link[key] || 0);
       t *= this._faunaClimate(F, M, key) * F.shock;
       F.targets[key] = Math.max(this._speciesFloor(key), Math.round(t));
     }
+  }
+
+  // THE PROLOGUE's cast (faunaPrologueLevel): whether the clock is in it, and so the level every kind is
+  // held at and the floor its own is capped to. Once a frame and at init; a flag read, so the floor stays
+  // cheap on the harrier's hunt scan.
+  _syncPrologue() {
+    const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
+    const P = (M && M.faunaPrologueLevel > 0 && typeof DeepTime !== 'undefined' && DeepTime.inPrologue && DeepTime.inPrologue())
+      ? M.faunaPrologueLevel : 0;
+    this._prologueLevel = P;
+    this._prologueFloor = P > 0 ? Math.max(1, P - 1) : 0;
+  }
+
+  // How many of a kind to found: the level's number, or no more than the prologue's level in it.
+  _foundingCount(n) {
+    return this._prologueLevel > 0 ? Math.min(n, this._prologueLevel) : n;
+  }
+
+  // The level's founding number for a kind: what a world founded in the cycles starts with.
+  _authoredFounding(key, kind) {
+    const L = this.game && this.game.currentLevel;
+    if (kind === 'moa') {
+      const d = L && L.initialSpeciesDistribution;
+      if (d && d[key] != null) return d[key];
+      return (this.config.startingSpecies === key) ? (this.config.initialMoaCount || 0) : 0;
+    }
+    if (kind === 'eagle') return this.config.eagleCount || 0;
+    const c = L && L.initialEntityCounts;
+    const n = (c && c[key] != null) ? c[key] : 0;
+    return key === 'huia' ? Math.floor(n / 2) * 2 : n;   // huia found as whole pairs
   }
 
   // Retire the surplus over target + band: the hungriest bird first (the one the land was failing).
@@ -1949,19 +2004,78 @@ class Simulation {
     const minY = Math.max(padding, insT);
     const maxY = Math.min(this.worldHeight - padding, this.worldHeight - insB);
 
+    // Random tries in the frame: the first on dry ground inside the band wins. The dry try nearest
+    // the band is kept as it goes, so a band this land barely has still lands on the ground closest
+    // to it. The fallback used to be the map centre, which is the open strait at 2 Ma: a kiwi (hills,
+    // 0.28–0.55, before the ranges rise) missed its band in most resets and spawned at sea (MISTAKES.md).
+    let bx = 0, by = 0, bErr = Infinity;
     for (let attempts = 0; attempts < 100; attempts++) {
       const x = minX + random() * Math.max(1, maxX - minX);
       const y = minY + random() * Math.max(1, maxY - minY);
       const elev = terrain.getElevationAt(x, y);
+      const inBand = elev > minElev && elev < maxElev;
+      const err = elev <= minElev ? minElev - elev : (elev >= maxElev ? elev - maxElev : 0);
+      if (!inBand && err >= bErr) continue;          // no closer than the dry try kept: skip the water test
+      if (!terrain.isWalkable(x, y)) continue;
+      if (inBand) { this._tempPos.set(x, y); return this._tempPos; }
+      bErr = err; bx = x; by = y;
+    }
+    if (bErr < Infinity) { this._tempPos.set(bx, by); return this._tempPos; }
 
-      if (elev > minElev && elev < maxElev && terrain.isWalkable(x, y)) {
-        this._tempPos.set(x, y);
-        return this._tempPos;
+    // No dry ground in 100 tries (a frame that is nearly all sea): sweep the frame, then the map.
+    if (this._sweepWalkable(minX, maxX, minY, maxY) ||
+        this._sweepWalkable(padding, this.worldWidth - padding, padding, this.worldHeight - padding)) {
+      return this._tempPos;
+    }
+    this._tempPos.set(this.worldWidth * 0.5, this.worldHeight * 0.5);   // no dry land anywhere
+    return this._tempPos;
+  }
+
+  // A uniformly random walkable point of the rect [x0, x1) × [y0, y1), on a 4 px lattice, into
+  // _tempPos. Returns false if the rect has none. Allocation-free (reservoir pick); the rare path.
+  _sweepWalkable(x0, x1, y0, y1) {
+    const t = this.terrain;
+    let n = 0;
+    for (let y = y0; y < y1; y += 4) {
+      for (let x = x0; x < x1; x += 4) {
+        if (!t.isWalkable(x, y)) continue;
+        if (random() * ++n < 1) this._tempPos.set(x, y);
       }
     }
+    return n > 0;
+  }
 
-    this._tempPos.set(this.worldWidth * 0.5, this.worldHeight * 0.5);   // centre — always on-screen
-    return this._tempPos;
+  // A deep-time morph moved the coast (the sea rose over the plain, the strait opened) and caught
+  // ground birds and eggs on what is now water. cullSubmergedPlants drops the drowned plants; this
+  // moves the animals to the nearest dry land. A bird within a wade of the shore (STRAND_WADE_PX) is
+  // left to walk out (Boid.avoidUnwalkable), so one at the waterline does not jump; one further out
+  // would cross open water to get back. Eggs cannot walk, so any on water moves. Flyers keep to land
+  // on their own (Kereru._landward). Allocation-free; returns how many moved.
+  rescueStrandedFauna() {
+    const t = this.terrain, pt = this._rescuePt;
+    const rMax = Math.hypot(t.mapWidth, t.mapHeight), wade = Simulation.STRAND_WADE_PX;
+    let moved = 0;
+    for (let i = 0, n = this.moas.length; i < n; i++) {
+      const m = this.moas[i];
+      if (!m.alive || t.isWalkable(m.pos.x, m.pos.y)) continue;
+      const d = Boid.nearestWalkable(t, m.pos.x, m.pos.y, 3, rMax, 3, pt);
+      if (d <= wade) continue;                      // -1 (no land at all) or a wade from shore
+      m.pos.set(pt.x, pt.y);
+      m.vel.set(0, 0);
+      m._shoreOk = false;
+      if (m.migrationTarget && !t.isWalkable(m.migrationTarget.x, m.migrationTarget.y)) {
+        m.isMigrating = false; m.migrationTarget = null;
+      }
+      moved++;
+    }
+    for (let i = 0, n = this.eggs.length; i < n; i++) {
+      const e = this.eggs[i];
+      if (t.isWalkable(e.pos.x, e.pos.y)) continue;
+      if (Boid.nearestWalkable(t, e.pos.x, e.pos.y, 3, rMax, 3, pt) < 0) continue;
+      e.pos.set(pt.x, pt.y);
+      moved++;
+    }
+    return moved;
   }
   
   findWalkablePositionNear(x, y, radius) {
@@ -2138,7 +2252,14 @@ class Simulation {
     return (cache[key] = t);
   }
 
+  // The live floor: the authored one, capped in the prologue (faunaPrologueLevel), so every reader agrees
+  // (the harrier's prey gate, starvation, the census, the refound net).
   _speciesFloor(key) {
+    const f = this._authoredFloor(key), pf = this._prologueFloor;
+    return (pf > 0 && pf < f) ? pf : f;
+  }
+
+  _authoredFloor(key) {
     const cache = this._floorCache || (this._floorCache = {});
     if (cache[key] !== undefined) return cache[key];
     const M = (typeof LEVEL_MECHANICS !== 'undefined') ? LEVEL_MECHANICS : null;
@@ -2319,6 +2440,7 @@ class Simulation {
     // whole grazer guild to its floor in every time-lapse (goose 5→2), so a boost's "the birds answer
     // the plant" ended with fewer birds. See MISTAKES.md.
     this.lifeScale = (rdt > 0 && dt > rdt) ? dt / rdt : 1;
+    this._syncPrologue();               // the prologue's cast holds until the clock reaches 1 Ma
     this.updateSpatialGrids();
     this.updateDisturbance(rdt);        // decay the warp clock on REAL time, before the plants read it
     this.updatePlantsBatched(dt);
@@ -2372,6 +2494,7 @@ class Simulation {
     if (this._cleanupTimer >= 512) {
       this._cleanupTimer -= 512;
       this.cleanup();
+      this.rescueStrandedFauna();   // backstop: however a ground bird got far out on the water, it does not stay
     }
   }
 
@@ -2435,7 +2558,8 @@ class Simulation {
     // slow-breeding bird pinned just above its floor (the mōho/kiwi at 2) is nudged back
     // toward a visible standing group instead of reading as absent. Extinct (count 0)
     // and same-sex deadlock are still handled by the stuck test below.
-    const below = (M && M.refoundBelow) || 0;
+    let below = (M && M.refoundBelow) || 0;
+    if (this._prologueLevel > 0 && below > this._prologueLevel) below = this._prologueLevel;   // the prologue holds kinds at 2
     const lowPop = below > 0 && count > 0 && count < below;
     // Stuck = it can't produce a pair: a lone bird, or all survivors one sex while
     // pinned at/below the floor. A healthy-but-small species is NOT stuck — unless the
@@ -2475,15 +2599,15 @@ class Simulation {
   _refound(key, isFlyer, sample, males, females) {
     // Add the missing sex so a pair can form (coin-flip only if somehow both 0).
     const addFemale = (females === 0) ? true : (males === 0 ? false : random() < 0.5);
-    let x, y;
-    if (sample) {
-      const p = this.findWalkablePositionNear(sample.pos.x, sample.pos.y, 60) || sample.pos;
-      x = p.x; y = p.y;
-    } else {
+    // Beside a surviving bird if there is dry ground there (the survivor itself may be wading),
+    // else anywhere dry in the frame (flyers refound on-screen).
+    let p = sample ? this.findWalkablePositionNear(sample.pos.x, sample.pos.y, 60) : null;
+    if (!p && sample && this.terrain.isWalkable(sample.pos.x, sample.pos.y)) p = sample.pos;
+    if (!p) {
       const pref = this.seasonManager.getPreferredElevation();
-      const p = this.findWalkablePosition(pref.min, pref.max, isFlyer);   // flyers refound on-screen
-      x = p.x; y = p.y;
+      p = this.findWalkablePosition(pref.min, pref.max, isFlyer);
     }
+    const x = p.x, y = p.y;
 
     const entity = this._createFromRegistry(isFlyer ? key : 'moa', key, x, y, isFlyer ? null : Moa);
     if (!entity) return;
@@ -3217,3 +3341,7 @@ class Simulation {
     return summary;
   }
 }
+
+// How far (world px) a ground bird a morph left on the water may be from the nearest dry land and still
+// walk out by itself; further out, rescueStrandedFauna moves it ashore. One eject probe ring and a bit.
+Simulation.STRAND_WADE_PX = 16;

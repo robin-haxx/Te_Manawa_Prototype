@@ -560,6 +560,13 @@ const LEVEL_TEMANAWA_SCAFFOLD = {
     faunaCullRate:       0.12,   // share of a species' surplus retired per census, settling (a climate turn, a lost lift)
     faunaShockCullRate:  0.4,    // …at this rate: the crash the visitor sees
     faunaCullMaxPerTick: 3,      // per species, per census
+    // THE PROLOGUE (2 Ma → 1 Ma, DeepTime.prologueEnd): a land still mostly sea carries a sparser cast. A
+    // world founded there founds each kind at this many (huia: one pair), and unattended every kind is
+    // held at it, whatever the climate: the climate leads only what the visitor earns above it, and a
+    // poor ledger never thins below it. Floors drop to one under it, so the harrier can still take one
+    // of a pair and a newcomer follows. From 1 Ma the cycles' founding numbers and floors return
+    // (Simulation._syncPrologue). 0 turns it off.
+    faunaPrologueLevel:  2,
 
     autoRefound:          true,
     refoundCheckInterval: 300,   // check cadence (sim-clock dt)

@@ -50,13 +50,24 @@ const fail = (m) => { results.push('FAIL ' + m); console.log('  FAIL ' + m); };
   const errs = [];
   for (const p of [wall, con]) { p.on('pageerror', e => errs.push(p.url() + ' pageerror ' + e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(p.url() + ' console.error ' + m.text().slice(0, 200)); }); }
   await wall.waitForFunction(() => typeof game !== 'undefined' && game && game.terrain && game.terrain.heightMap && typeof frameCount === 'number' && frameCount > 30, null, { timeout: 300000 });
-  ok(`wall booted in the shell (${((Date.now() - t0) / 1000).toFixed(0)} s from launch, software GL)`);
-  const k = await wall.evaluate(() => ({ installed: Kiosk._installed, dev: Kiosk.devMode, render: (typeof GLBatch !== 'undefined' && GLBatch.active) ? 'WebGL' : '2D', hidden: document.hidden, log: Kiosk.getErrorLog() }));
+  ok(`wall booted in the shell (${((Date.now() - t0) / 1000).toFixed(0)} s from launch)`);
+  // GLBatch.domStack is what the PERF panel reads; there is no GLBatch.active (until 2026-11-27 this always said 2D)
+  const k = await wall.evaluate(() => ({ installed: Kiosk._installed, dev: Kiosk.devMode, render: (typeof GLBatch !== 'undefined' && GLBatch.domStack) ? 'WebGL' : '2D', hidden: document.hidden, log: Kiosk.getErrorLog() }));
   if (k.installed && !k.dev && !k.hidden) ok(`kiosk layer installed, keys locked, page visible (render ${k.render})`); else fail('kiosk state ' + JSON.stringify(k));
   if (k.log.length) fail('Kiosk error log: ' + JSON.stringify(k.log).slice(0, 300));
   const heard = await con.waitForFunction(() => !/waiting/i.test(document.getElementById('clockLabel').textContent), null, { timeout: 20000 }).then(() => true).catch(() => false);
   const label = await con.$eval('#clockLabel', e => e.textContent);
   if (heard) ok(`console hears the wall over the bus ("${label}")`); else fail('console never heard the wall: ' + label);
+  // The wall boots into the attract (2026-11-08), where any console intent is PRESENCE: it plays the
+  // intro and never turns the dial (TeManawa_bus.js). Break it first and let the intro play out, as
+  // make_deploy.js --smoke does; this check predates the attract and failed on its first intent.
+  if (await wall.evaluate(() => typeof Attract !== 'undefined' && Attract.active)) {
+    await con.evaluate(() => TMBus.dial(1));
+    const broke = await wall.waitForFunction(() => Attract.mode === 'intro', null, { timeout: 10000 }).then(() => true).catch(() => false);
+    if (broke) ok('wall hears the console over the bus (an intent broke the attract into the intro)'); else fail('a console intent never broke the attract');
+    const over = await wall.waitForFunction(() => !Attract.active, null, { timeout: 90000 }).then(() => true).catch(() => false);
+    if (over) ok('the intro played out to the UI'); else fail('the intro never ended (90 s)');
+  }
   const before = await wall.evaluate(() => DeepTime.dialStep);
   await con.evaluate(() => TMBus.dial(1));
   const dialed = await wall.waitForFunction(b => DeepTime.dialStep > b, before, { timeout: 5000 }).then(() => true).catch(() => false);

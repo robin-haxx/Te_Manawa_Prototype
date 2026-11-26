@@ -1335,6 +1335,7 @@ class Game {
   // (a completed job — never per frame) and always trails a full 4-buffer season bake, so it is
   // far from the frame budget; update()/render() stay allocation-free.
   //   · cullSubmergedPlants — drop plants the morph just put underwater
+  //   · rescueStrandedFauna — move ground birds and eggs it left out on the water to dry land
   //   · water.reconcile     — ADD/REMOVE sea/river decals against the morphed water map so sea
   //                           shimmer no longer lingers on cells that have emerged as dry land
   //                           (and freshly-drowned cells from a strait pulse gain shimmer), while
@@ -1342,7 +1343,7 @@ class Game {
   //                           (which re-scatters positions) is reserved for hard scene changes —
   //                           init / look re-bake / eruption.
   _onMorphComplete() {
-    if (this.simulation) this.simulation.cullSubmergedPlants();
+    if (this.simulation) { this.simulation.cullSubmergedPlants(); this.simulation.rescueStrandedFauna(); }
     if (this.water) this.water.reconcile(this.terrain, (typeof DeepTime !== 'undefined') ? DeepTime.yearsBP : undefined);
   }
 

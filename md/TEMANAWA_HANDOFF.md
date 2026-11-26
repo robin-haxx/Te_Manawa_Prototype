@@ -5,7 +5,9 @@ kiosk.** Written 2026-11-05 against commit `2c5e67b` (`main`). Brought up to dat
 the kiosk shell, the audio rebuild, the prologue and the island inset were merged onto one branch, and
 merged with the 2026-11-14 checklist of what is left (§10). Checked again on 2026-11-26 against the two
 commits since: `3a05552` (the prologue's climate rebuilt on the LR04 record) and `7feef91` (shorter
-intro and inset copy). For the author, who hands it over, and for
+intro and inset copy). Checked on 2026-11-27 with no code change since: the harness run on the author's
+Windows machine (§8), the 2026-11-17 docs not yet on the release branch (§2.2, §10.1), and
+`TEMANAWA_PLAN_V3.md` §0, §13, §14 and §16 brought up to this plan. For the author, who hands it over, and for
 the museum's exhibitions and AV people, who receive it. How to run it day to day is
 `TEMANAWA_OPERATIONS.md`; what is built and what is not is `TEMANAWA_PLAN_V3.md` §13–§14; the one-page
 sheet that ships inside the package is `../deploy/OPERATOR_QUICKSTART.md`.
@@ -15,9 +17,12 @@ sheet that ships inside the package is `../deploy/OPERATOR_QUICKSTART.md`.
 ## 0. The short version
 
 - **State.** Feature-complete and in final testing. Every phase in the plan is built; the harness
-  passed on 2026-11-17 bar seed-dependent checks, but on the latest commit it prints three failures,
-  two of them from the 2026-11-25 copy cut (§8); the kiosk layer has been hardened and exercised. It has
-  **never run on the install hardware**, and all visitor-facing copy is draft pending co-design.
+  passed on 2026-11-17 bar seed-dependent checks, but on the latest commit it prints three failures on
+  Linux and on Windows alike: two from the 2026-11-25 copy cut, one a *prologue* check that fails on
+  every machine tried (§8); the kiosk layer has been hardened and exercised. It has
+  **never run on the install hardware**, and all visitor-facing copy is draft pending co-design. The
+  Windows package has run once on a 4K display, from the author's Intel Iris Xe laptop (2026-11-27): wall
+  and console on their own displays, WebGL, 60 fps at rest (§1.4).
   Since 2026-11-05: **audio is on** (2026-11-10), **the run opens at 2 Ma** on the Manawatū Strait (the
   prologue, 2026-11-13), the intro and outro carry **an island inset**, and the prologue's climate is
   **the LR04 record**, not an authored swing (2026-11-17).
@@ -80,8 +85,13 @@ What the harness cannot see: it never opens a browser. No WebGL, no GPU, no real
 no touch, no second window, no sound. `make_deploy.js --smoke` closes part of that gap: it serves the
 **package** and boots both pages in one headless Chromium profile, failing on a page error, a 404, an
 entry in the kiosk error log, or a bus that does not carry telemetry one way and a dial detent the
-other. Headless GL is software, so the smoke exercises the 2D fallback renderer, not the WebGL path the
-wall will use. The WebGL path is proven only on the real machine (§4, gate 3).
+other. Which renderer it exercises depends on the machine: where the browser has no GPU (a Linux
+container) the guard refuses the software GL and the wall runs the 2D fallback; with the installed
+Chrome on a machine with a GPU, the headless wall runs WebGL (the author's Windows laptop, 2026-11-27).
+Until that day the smoke and `shell_check.js` read a flag that does not exist (`GLBatch.active`; the
+engine's is `GLBatch.domStack`) and reported "2D" whatever ran, so the earlier records of a 2D smoke
+say nothing about the renderer. Either way the smoke times nothing: 4K frame rate on the install PC is
+gate 3.
 
 ### 1.3 Risks, ranked
 
@@ -90,7 +100,10 @@ wall will use. The WebGL path is proven only on the real machine (§4, gate 3).
    record are at 1920×1080 on a dev machine. The 4K wall is the unknown: the sprite layer renders at 2×
    the 1080 logical size, the terrain at 1080, through the WebGL batch renderer that is ~7× faster than
    the 2D path. If the PC's GPU is on Chromium's blocklist, or its driver loses the context, the piece
-   silently falls to 2D and will not hold 60 fps at 4K.
+   silently falls to 2D and will not hold 60 fps at 4K. One data point since: on an Intel Iris Xe laptop
+   driving a 4K monitor, the package ran WebGL at 60 fps at rest and 53 fps with the dial at the top
+   (2026-11-27, §1.4). That is the low end of §3's GPU class, so the class looks right; it is not the
+   install PC.
    *Mitigation:* the hardware spec in §3; gate 3; the shell's `ignoreGpuBlocklist` switch; the PERF
    panel reads the live render mode.
 2. **Long-run stability is inferred, not observed.** The nightly reload and the nightly process
@@ -155,8 +168,35 @@ Verified on 2026-11-05 (Linux, a virtual display, software GL, so the 2D rendere
 both ways, no page errors and no 404s; and the shell, driven by Playwright (`tools/shell_check.js`),
 started the server, opened both windows in kiosk mode, carried the bus both ways, held focus on the
 console, refused a close request on a kiosk window, reloaded a crashed wall renderer (back in 23 s),
-and wrote the log. **Not verified:** the shell on Windows, the two-display placement on real displays,
-and the PowerShell autostart scripts. Those are the first items of the acceptance test.
+and wrote the log.
+
+Verified on Windows on 2026-11-27, on the author's laptop (Windows 11 Pro, Intel Iris Xe, its own
+1920×1200 panel at 125 % as display 0 and a 4K monitor at 150 % as display 1), with the package built
+there (§10.4):
+
+- `tools/shell_check.js` passed every check: both kiosk windows full screen, WebGL, the bus both ways,
+  the console holding focus, a close refused, the crashed wall back in 11 s, the log written, no page
+  errors. It needed two fixes to the check itself: its dial step predated the attract, where a
+  console intent only starts the intro, and its render readout read a flag that does not exist (§1.2).
+- `TeManawa.exe --displays` listed both displays, and the packaged `TeManawa.exe` with its shipped
+  config (`largest` / `other`) put the wall on the 4K and the console on the laptop panel, both in
+  kiosk full screen. The wall booted in 8.4 s on WebGL (ANGLE, Direct3D 11, the sprite layer at
+  3840×2160) with an empty kiosk error log. Frame rate, counted in the page:
+
+  | Wall state | fps | worst frame |
+  |---|---|---|
+  | the attract (the 2 Ma land, no UI) | 59.8 | 53 ms |
+  | the intro (today's map, the inset) | 60.1 | 29 ms |
+  | play, at rest | 59.7 | 61 ms |
+  | the dial at the top (5,000 yr/s, the land morphing) | 53.0 | 276 ms |
+  | a storm | 58.8 | 195 ms |
+
+  Gate 3's thresholds hold on this machine. The single long frames in the dial run and the storm are
+  hitches worth watching on the install PC (§8). Not measured: a boost's time-lapse, an eruption,
+  the every-12th reseed, Windows at 100 % scaling.
+
+**Still not verified:** the install PC itself, a cold boot, the touch panel, the macro pad and the
+PowerShell autostart scripts. Those are gates 1, 2 and 5 of the acceptance test.
 
 ---
 
@@ -248,7 +288,7 @@ budgets, not a tested bill of materials. The commissioning gates (§4) are where
 | | Requirement | Why |
 |---|---|---|
 | **PC** | Windows 11 Pro (or Windows 10/11 IoT Enterprise LTSC), 16 GB RAM, SSD, two display outputs | Task Scheduler and policy control; LTSC avoids feature updates |
-| **GPU** | hardware WebGL at 3840×2160@60 with headroom: a current Intel Arc / Iris Xe-class integrated GPU or any modest discrete GPU (GTX 1650 / RX 6400 class or better); **not** a UHD-600-class Celeron NUC or a thin client | the WebGL batch renderer and the 4K fill rate are the whole frame budget; a blocklisted or software GPU drops to the 2D path |
+| **GPU** | hardware WebGL at 3840×2160@60 with headroom: a current Intel Arc / Iris Xe-class integrated GPU or any modest discrete GPU (GTX 1650 / RX 6400 class or better); **not** a UHD-600-class Celeron NUC or a thin client | the WebGL batch renderer and the 4K fill rate are the whole frame budget; a blocklisted or software GPU drops to the 2D path. An Iris Xe laptop held 60 fps at rest on a 4K monitor (2026-11-27, §1.4) |
 | **Wall display** | 4K, 16:9, over HDMI 2.0 / DisplayPort 1.2 or better (4K60) | the diorama is designed at 16:9; other ratios letterbox (`?terrain=fit` adapts the footprint) |
 | **Console display** | 1080p touchscreen, HID touch (no driver software), landscape | the console is a fixed 1920×1080 stage scaled to the panel |
 | **Controls** | the habitat switch, plant select, storm, boost, eruption and the time dial as **one USB HID keyboard** (a macro pad / keyboard encoder), sending the keys in `secondscreen/input.js` | the console owns all physical input and relays it over the bus |
@@ -259,7 +299,8 @@ budgets, not a tested bill of materials. The commissioning gates (§4) are where
 
 Display scaling: leave Windows at 100 % on the 4K wall if possible. The shell places windows by
 display bounds, so scaling works, but a 150 % wall makes Chromium composite at a fractional ratio
-for no gain.
+for no gain. (It works: the 2026-11-27 run in §1.4 was on a 4K monitor at 150 %, the wall window 2560×1440
+at a device pixel ratio of 1.5, the sprite layer still 3840×2160.)
 
 ---
 
@@ -375,7 +416,16 @@ From `TEMANAWA_PLAN_V3.md` §16, the ones that change what visitors see or hear:
 
 ## 8. Known issues and flakes
 
-- **Harness, 2026-11-26 (`7feef91`, the latest commit): not clean.** Two runs in a Linux container
+- **Harness, 2026-11-27, on the author's Windows machine** (Windows 11 Pro, Node 24.18.1; commit
+  `bbc44d4`, whose code is `7feef91`'s): one run, 9 min 23 s, exit 0, **the same three failures as the
+  Linux runs below and nothing else** (no tributary flake). The *prologue* check failed here too,
+  baked 1,597,981 BP against a stop at about 1.583 Ma, so it is not a container artefact; the machine
+  question in §10.1 is answered. The harness's timings read slower than on 2026-11-02: soft resets
+  3.3–3.6 s (3.2–4.1 s then), and a full `init()` 24.9 s against 7.6–8.5 s. No browser preview was
+  running; whether the 2 Ma opening made the bake dearer or the machine was busy is not known. The
+  harness is not the browser (Chrome measured ~6.5 s on 2026-11-04), but gate 3's reseed time is now
+  worth watching rather than assumed.
+- **Harness, 2026-11-26 (`7feef91`): not clean.** Two runs in a Linux container
   (Node 22), both printing the same three failures, and both exiting 0:
   - *attract*: "every inset date has its caption" and "the inset copy: no emoji, Cook Strait and Nelson
     named, macrons kept". **Real, and caused by the 2026-11-25 copy cut** (`7feef91`): the present-day
@@ -413,10 +463,15 @@ From `TEMANAWA_PLAN_V3.md` §16, the ones that change what visitors see or hear:
   have settled the first two; *fauna stability*'s refound count is already documented as
   seed-dependent. A harness fix (stage the anchors, as the Tararua check does) is cheap and should land
   before the release tag so the gate-0 run is boring.
-- **Headless smoke uses the 2D renderer** (software GL is refused by design). WebGL is proven only on
-  hardware (gate 3).
-- **Windows, two real displays and the PowerShell scripts are untested.** The shell was verified under
-  Linux on one virtual display (§1.4). Gates 1 and 5 cover them.
+- **The headless smoke's renderer depends on the machine**: 2D where the browser has no GPU, WebGL
+  with the installed Chrome on a GPU machine. Its render readout was wrong until 2026-11-27 and always
+  said 2D (§1.2). The frame rate at 4K on the install PC is gate 3.
+- **Two long frames on the 4K test (2026-11-27, §1.4):** 276 ms with the dial at the top (the land
+  morphing at 5,000 yr/s) and 195 ms in a storm, on an Iris Xe laptop, against a 53–60 fps average.
+  Not chased: one run, one machine, a laptop not the install PC. Watch for them at gate 3; the
+  lightning flash had a stutter of this kind once before, from a per-frame tint.
+- **The PowerShell autostart scripts are untested**, and so is a cold boot. Windows and two real
+  displays were verified on 2026-11-27 (§1.4). Gates 1 and 5 cover the rest.
 - **`input.js` is in its temporary 3-key state** until the real pad exists (§1.3, item 4).
 - **Open plan items** that are not defects: the aftermath's staged beats, the *Dinornis* dimorphism
   pair, the prologue's copy and pacing, the `mapGrid` drop, the outline prototype (§14.3–14.4, §16).
@@ -433,7 +488,7 @@ changes what a successor downloads and what the museum is asked to hold.
 
 ---
 
-## 10. The checklist of what is left (2026-11-14, updated 2026-11-17)
+## 10. The checklist of what is left (2026-11-14, updated 2026-11-27)
 
 Tick-boxes for everything above that is still open, by stage. §4's gates are the acceptance test;
 this is the work before them.
@@ -458,9 +513,10 @@ this is the work before them.
 - [ ] Fix the two *attract* checks the 2026-11-25 copy cut broke (§8): give the present-day intro
       caption a body or let the check accept an empty one, and name Nelson again or retire that
       assertion. Copy or check, it is the author's call
-- [ ] Run the *prologue* check "the land followed the clock" on the build machine. If it fails there
-      too, make it independent of machine speed or loosen it; it fails on both runs in a Linux
-      container (§8)
+- [ ] Fix the *prologue* check "the land followed the clock": it failed on both Linux runs of
+      2026-11-26 and on the author's Windows machine on 2026-11-27 (§8), so it fails everywhere it has
+      been run since `3a05552`. Make it independent of machine speed (step the morph's clock with the
+      harness's frame), or find what changed between the author's passing runs of `3a05552` and now
 - [ ] Make the seed-dependent harness checks deterministic, or record them as known noise (§8)
 - [ ] Make `bootcheck.js` exit non-zero when a section prints `FAILURES` (it exited 0 on both
       failing runs of 2026-11-26)
@@ -495,8 +551,22 @@ this is the work before them.
       to ship `geo/island_maps.js`, to read audio's switch from `TM_AUDIO.enabled` (the old check would
       have shipped the piece silent), and to leave out the legacy `.mp3`
 - [x] The kiosk shell and the autostart scripts (`electron/`, `deploy/`)
-- [ ] Build the Windows package on a Windows machine (`cd electron && npm ci`), then run
-      `tools/shell_check.js`
+- [x] Build the Windows package on a Windows machine (2026-11-27, the author's Windows 11 machine,
+      93 s): `make_deploy.js --electron --platform win32 --smoke --zip --browser` (the installed
+      Chrome) built `dist/TeManawa-win32-x64` (451.2 MB, Electron 45.2.3) and its zip (238.7 MB) from
+      `06a7cb2`, marked dirty only for this plan's uncommitted edits (`md/` does not ship). The copy
+      held 1,083 files and 94.3 MB, and every reference resolved. The smoke booted the wall in 37 s on
+      the 2 Ma strait (2D, as headless always is), carried the bus both ways, played the intro out to
+      the UI, and logged no page errors and no 404s. Not the build of record: tag first (§6). On this
+      machine `npm ci` left out Electron's own runtime (`electron/node_modules/electron/dist`), which
+      the packager does not need but `npm start` and `shell_check.js` do;
+      `node electron/node_modules/electron/install.js` fetched it
+- [x] Run `tools/shell_check.js` on Windows (2026-11-27): passed after two fixes to the check (its
+      dial step predated the attract; its render readout read `GLBatch.active`, which does not exist).
+      The same readout fixed in `make_deploy.js --smoke`. It opens both kiosk windows full screen on
+      display 0 for under a minute and holds focus on the console, so run it when nobody needs the screen
+- [x] The packaged `TeManawa.exe` on two real displays, the wall on a 4K monitor: placed by the shipped
+      config, WebGL, 60 fps at rest (2026-11-27, §1.4)
 - [ ] Try the package from a clean folder on another machine
 
 ### 10.5 Commissioning

@@ -281,6 +281,14 @@ reset's destination, read `DeepTime.yearsStart`.
   fit `tlMaxSeconds` (the cycles' legs all scale ×1), the dial and a deep burst are geared ×5, and life
   never runs past ×10 (`lifeScaleFor`). A window with no prologue is the old clock exactly.
 - **Kidnappers is a mid-run eruption** at 30 % of the bar, fired by the clock crossing it.
+- **The prologue's cast is sparse**: two of each kind (`faunaPrologueLevel`, scaffold; `Simulation._syncPrologue`).
+  A world founded there founds two, the census holds two unattended whatever the climate (the climate leads
+  only what is earned above it), floors drop to one so the harrier still eats. The cycles' founding numbers
+  and floors return at 1 Ma (harness "prologue cast", 2026-11-27).
+- **Nothing spawns or stays on the strait** (2026-11-27): the map's centre is sea at 2 Ma, so no fallback may
+  be a fixed point. Spawns take the dry ground nearest the band; a stranded bird heads for the nearest shore
+  (`Boid.nearestWalkable`); a morph or the cleanup tick moves one further out than a wade ashore
+  (`Simulation.rescueStrandedFauna`; harness "fauna on land"; `MISTAKES.md`).
 - **The harness has two lands**: `homeLand()` is the opening (what ships), `cyclesLand()` the 1 Ma land a
   section on the cycles' ecology needs (a river, a plain, hills). A section that stages one puts the
   opening back.

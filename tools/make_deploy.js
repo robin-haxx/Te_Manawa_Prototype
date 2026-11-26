@@ -249,8 +249,8 @@ async function smoke(web) {
     const tBoot = Date.now();
     const booted = await wall.waitForFunction(() => typeof game !== 'undefined' && game && game.terrain && game.terrain.heightMap && typeof frameCount === 'number' && frameCount > 30, null, { timeout: 240000 }).then(() => true).catch(() => false);
     if (booted) ok(`wall booted in ${((Date.now() - tBoot) / 1000).toFixed(0)} s (terrain baked, frames running)`); else fail('wall did not boot within 240 s');
-    const kiosk = await wall.evaluate(() => ({ installed: typeof Kiosk !== 'undefined' && !!Kiosk._installed, dev: typeof Kiosk !== 'undefined' && !!Kiosk.devMode, log: typeof Kiosk !== 'undefined' ? Kiosk.getErrorLog() : null, render: (typeof GLBatch !== 'undefined' && GLBatch.active) ? 'WebGL' : '2D' })).catch(e => ({ err: String(e) }));
-    if (kiosk.installed && !kiosk.dev) ok(`kiosk layer installed, keys locked (render path here: ${kiosk.render}; headless GL is software, so 2D is expected)`); else fail('kiosk layer not installed or in dev mode: ' + JSON.stringify(kiosk));
+    const kiosk = await wall.evaluate(() => ({ installed: typeof Kiosk !== 'undefined' && !!Kiosk._installed, dev: typeof Kiosk !== 'undefined' && !!Kiosk.devMode, log: typeof Kiosk !== 'undefined' ? Kiosk.getErrorLog() : null, render: (typeof GLBatch !== 'undefined' && GLBatch.domStack) ? 'WebGL' : '2D' })).catch(e => ({ err: String(e) }));  // domStack, as the PERF panel reads it (there is no GLBatch.active: until 2026-11-27 this always said 2D)
+    if (kiosk.installed && !kiosk.dev) ok(`kiosk layer installed, keys locked (render path here: ${kiosk.render}; 2D is expected where the browser has no GPU, as in a container)`); else fail('kiosk layer not installed or in dev mode: ' + JSON.stringify(kiosk));
     if (kiosk.log && kiosk.log.length) fail('Kiosk error log is not empty: ' + JSON.stringify(kiosk.log).slice(0, 400));
     // the console hears the wall (telemetry over the bus) …
     const heard = await con.waitForFunction(() => { const el = document.getElementById('clockLabel'); return el && !/waiting/i.test(el.textContent); }, null, { timeout: 20000 }).then(() => true).catch(() => false);

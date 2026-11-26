@@ -96,8 +96,33 @@ class Boid {
     for (let a = 0; a < 12; a++) {
       this._avoidAngles.push(a * (Math.PI / 6));
     }
+
+    // The shore a stranded animal walks to when no land is within the near probe (avoidUnwalkable,
+    // Case 1): found once by Boid.nearestWalkable, kept while it stays dry, dropped on landing.
+    this._shore = { x: 0, y: 0 };
+    this._shoreOk = false;
+    this._shoreWait = 0;        // frames before a failed search may run again (no land in reach)
   }
-  
+
+  // The nearest walkable point to (x, y): rings `step` px apart from rMin out to rMax, each sampled
+  // about every `step` px of arc so nothing wider than a step slips between probes. Writes it into
+  // `out` ({x, y}) and returns its distance, or -1 if no walkable point lies within rMax of the map.
+  // The first ring with land ends the search, so the cost grows with the distance to the shore.
+  // Allocation-free. Shared by the stranded-animal eject and Simulation.rescueStrandedFauna.
+  static nearestWalkable(terrain, x, y, rMin, rMax, step, out) {
+    const xHi = terrain.mapWidth - 5, yHi = terrain.mapHeight - 5;   // Boid.update's map clamp
+    for (let r = rMin; r <= rMax; r += step) {
+      const n = Math.max(8, Math.ceil(Math.PI * 2 * r / step));
+      const da = Math.PI * 2 / n;
+      for (let i = 0; i < n; i++) {
+        const qx = x + Math.cos(i * da) * r, qy = y + Math.sin(i * da) * r;
+        if (qx < 5 || qy < 5 || qx > xHi || qy > yHi) continue;
+        if (terrain.isWalkable(qx, qy)) { out.x = qx; out.y = qy; return r; }
+      }
+    }
+    return -1;
+  }
+
   // Optimized separation
   separate(nearbyBoids) {
     const force = this._steeringVec;
@@ -209,22 +234,38 @@ class Boid {
     if (!this.terrain.isWalkable(px, py)) {
       let bestAngle = 0, found = false;
       // Probe outward ring by ring and take the first walkable hit, so the moa
-      // heads for the CLOSEST shore rather than a distant one.
+      // heads for the CLOSEST shore rather than a distant one. Only points on the map: off it the
+      // terrain reads its fallback biome (walkable), so a bird by the edge headed off the map and sat
+      // on the water against the map clamp.
+      const xHi = this.terrain.mapWidth - 5, yHi = this.terrain.mapHeight - 5;
       for (let ring = 1; ring <= 5 && !found; ring++) {
         const r = lookAhead * ring;
         for (let i = 0; i < 12; i++) {
           const a = angles[i];
-          if (this.terrain.isWalkable(px + Math.cos(a) * r, py + Math.sin(a) * r)) {
+          const qx = px + Math.cos(a) * r, qy = py + Math.sin(a) * r;
+          if (qx < 5 || qy < 5 || qx > xHi || qy > yHi) continue;
+          if (this.terrain.isWalkable(qx, qy)) {
             bestAngle = a; found = true; break;
           }
         }
       }
-      if (!found) {   // no land within reach; head for the map interior
-        bestAngle = Math.atan2(this.terrain.mapHeight * 0.5 - py, this.terrain.mapWidth * 0.5 - px);
+      if (!found) {
+        // No land within the near probe: head for the nearest shore, found once by a wide search and
+        // kept while it stays dry. This used to steer for the map centre, which is open sea when the
+        // run opens on the 2 Ma strait, so a bird out there walked further out and stayed (MISTAKES.md).
+        if (this._shoreOk && !this.terrain.isWalkable(this._shore.x, this._shore.y)) this._shoreOk = false;
+        if (!this._shoreOk) {
+          if (this._shoreWait > 0) { this._shoreWait--; return result; }
+          const T = this.terrain;
+          this._shoreOk = Boid.nearestWalkable(T, px, py, lookAhead * 5, Math.hypot(T.mapWidth, T.mapHeight), 3, this._shore) >= 0;
+          if (!this._shoreOk) { this._shoreWait = 60; return result; }   // no dry land anywhere: hold, never swim off
+        }
+        bestAngle = Math.atan2(this._shore.y - py, this._shore.x - px);
       }
       result.set(Math.cos(bestAngle) * this.maxForce * 4, Math.sin(bestAngle) * this.maxForce * 4);
       return result;
     }
+    this._shoreOk = false;   // on land: the next stranding searches afresh
 
     // Case 2: on land but approaching unwalkable water: turn along the shore and slow
     // as it nears, instead of ramming the edge and being kicked straight back inland (the

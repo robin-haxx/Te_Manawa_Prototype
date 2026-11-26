@@ -2179,6 +2179,146 @@ try{
     : `prologue: the run opens at 2 Ma on the strait; three boosts land on the closed strait (${Math.round(b1.yearsBP/1000)} ka, cold), the river on low land (${Math.round(b2.yearsBP/1000)} ka, warm, before the uplift) and Kidnappers at 1 Ma, each in ${DT.tlMaxSeconds} s with life capped; the cycles' legs, bar and dial are untouched; names of the time and one caption per chapter`);
 }catch(e){ console.log('prologue: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,4).join('\n  ')); try{ ctx.setTimeout=()=>0; homeLand(); }catch(_){} }
 
+// ---- fauna on land: nothing spawns on the strait, nothing stays stranded ----------------------------
+// The run opens at 2 Ma on the strait, and the map's centre is that sea. findWalkablePosition fell back
+// to the centre whenever 100 random tries missed a species' elevation band, and the low 2 Ma land barely
+// has the kiwi's hills (0.28–0.55): in the browser, 114 spawns on water in 20 resets. A bird out there
+// could not get back either, because the eject's far fallback steered for the centre too. Now: the dry
+// try nearest the band, else a sweep for any dry ground; the eject heads for the nearest shore
+// (Boid.nearestWalkable); a morph or the cleanup tick moves a bird further out than a wade ashore
+// (Simulation.rescueStrandedFauna); huia pairs and refounds never jitter or fall back onto water.
+try{
+  const G=vm.runInContext('game',ctx), BD=vm.runInContext('Boid',ctx), SIM=vm.runInContext('Simulation',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  homeLand();
+  const T=G.terrain, pt={x:0,y:0}, WADE=SIM.STRAND_WADE_PX, R=Math.hypot(T.mapWidth,T.mapHeight);
+  const fauna=(S)=>{ const a=[...S.moas,...S.eagles]; for(const k in S.otherEntities) a.push(...S.otherEntities[k]); return a.filter(e=>e.alive); };
+  const shoreD=(x,y)=>BD.nearestWalkable(T,x,y,3,R,3,pt);
+  // a water cell at least `minD` from dry land (and, for the eject, beyond its 60 px near probe)
+  const farWater=(minD)=>{ for(let y=12;y<T.mapHeight-12;y+=5) for(let x=12;x<T.mapWidth-12;x+=5){
+      if(T.isWalkable(x,y)) continue; const d=shoreD(x,y); if(d>minD) return {x,y,d,sx:pt.x,sy:pt.y}; } return null; };
+  const centreWet=!T.isWalkable(G.simulation.worldWidth/2, G.simulation.worldHeight/2);
+
+  // (a) fresh worlds on the strait: no animal starts on water
+  let wet=0, n=0; const wetKeys=new Set();
+  for(let i=0;i<15;i++){ G.resetEcosystem(); for(const e of fauna(G.simulation)){ n++; if(!T.isWalkable(e.pos.x,e.pos.y)){ wet++; wetKeys.add(e.speciesKey); } } }
+  chk(wet===0, `no animal spawns on water at 2 Ma (${wet} of ${n} in 15 resets${wet?': '+[...wetKeys].join(', '):''})`);
+
+  // (b) a band this land does not have still lands on dry ground, never the centre's sea
+  const S=G.simulation; let bad=0;
+  for(let i=0;i<30;i++){ const p=S.findWalkablePosition(0.97,0.99); if(!T.isWalkable(p.x,p.y)) bad++; }
+  chk(bad===0, `a band the land lacks spawns on the dry ground nearest it (${bad}/30 on water)`);
+
+  // (c) a frame with almost no dry ground: the sweep finds the one patch
+  { const L=fauna(S).find(e=>T.isWalkable(e.pos.x,e.pos.y)), lx=L.pos.x, ly=L.pos.y;
+    const realW=T.isWalkable; T.isWalkable=(x,y)=>Math.hypot(x-lx,y-ly)<6 && realW.call(T,x,y);
+    let off=0; for(let i=0;i<5;i++){ const p=S.findWalkablePosition(0.2,0.5); if(!T.isWalkable(p.x,p.y)) off++; }
+    delete T.isWalkable;
+    chk(off===0, 'with one small dry patch in the map, the spawn sweep lands on it'); }
+
+  // The harness's land is white noise, so its water may never lie further than the eject's near probe
+  // from dry ground. Stage that sea when it does not: a disc of water round the frame's centre, laid over
+  // the real land through the terrain's own walkability test (every path here reads it), lifted after (g).
+  const realW=T.isWalkable;
+  let fw=farWater(70), staged=false;
+  if(!fw){ const qx=S.worldWidth/2, qy=S.worldHeight/2;
+    T.isWalkable=(x,y)=>Math.hypot(x-qx,y-qy)>=110 && realW.call(T,x,y); staged=true; fw=farWater(70); }
+  const moa=S.moas.find(m=>m.alive);
+  chk(!!fw && !!moa, `water further than the near probe from land to test${staged?' (staged)':''}`);
+
+  // (d) the eject from far out heads for the nearest shore (it used to steer for the map centre)
+  if(fw && moa){
+    moa.pos.set(fw.x,fw.y); moa.vel.set(0,0); moa._shoreOk=false; moa._shoreWait=0;
+    const f=moa.avoidUnwalkable(), fm=Math.hypot(f.x,f.y), sh=moa._shore;
+    const sd=Math.hypot(sh.x-fw.x,sh.y-fw.y)||1, dot=fm ? (f.x*(sh.x-fw.x)+f.y*(sh.y-fw.y))/(fm*sd) : 0;
+    chk(fm>0 && moa._shoreOk && T.isWalkable(sh.x,sh.y), `a bird ${fw.d} px out on the water finds dry land to head for`);
+    chk(dot>0.99 && sd<=fw.d+8, `…the nearest shore (${sd.toFixed(0)} px for ${fw.d} px), and is pushed straight at it (cos ${dot.toFixed(3)})`);
+  }
+
+  // (e) the rescue: far-out birds and eggs come ashore, one within a wade is left to walk out
+  { const ms=S.moas.filter(m=>m.alive).slice(0,3), keep=ms.map(m=>[m.pos.x,m.pos.y]);
+    if(fw) for(const m of ms) m.pos.set(fw.x,fw.y);
+    const egg=fw ? S.addEgg(fw.x,fw.y) : null;
+    // a water cell right at the shore
+    let nearW=null; for(let y=12;y<T.mapHeight-12 && !nearW;y+=3) for(let x=12;x<T.mapWidth-12 && !nearW;x+=3){
+      if(T.isWalkable(x,y)) continue; const d=shoreD(x,y); if(d>0 && d<=WADE) nearW={x,y}; }
+    const wader=S.moas.filter(m=>m.alive)[3];
+    if(nearW && wader) wader.pos.set(nearW.x,nearW.y);
+    S.rescueStrandedFauna();
+    chk(!!fw && ms.every(m=>T.isWalkable(m.pos.x,m.pos.y)), 'ground birds far out on the water are moved to dry land');
+    chk(!!egg && T.isWalkable(egg.pos.x,egg.pos.y), 'an egg on the water is moved to dry land');
+    chk(!!nearW && !!wader && wader.pos.x===nearW.x && wader.pos.y===nearW.y, `a bird within a wade (${WADE} px) of the shore is left to walk out`);
+    if(egg) S.eggs.splice(S.eggs.indexOf(egg),1);
+    ms.forEach((m,i)=>m.pos.set(keep[i][0],keep[i][1])); }
+
+  // (g) a refound beside a survivor standing on water does not put the newcomer on water
+  { const sample=S.moas.find(m=>m.alive);
+    if(sample && fw){ const k=[sample.pos.x,sample.pos.y]; sample.pos.set(fw.x,fw.y);
+      S.findWalkablePositionNear=()=>null;             // no dry ground beside it
+      const before=S.moas.length; S._refound(sample.speciesKey,false,sample,1,1);
+      delete S.findWalkablePositionNear;
+      const nb=S.moas[S.moas.length-1];
+      chk(S.moas.length===before+1 && T.isWalkable(nb.pos.x,nb.pos.y), 'a refound beside a bird on the water lands on dry ground');
+      sample.pos.set(k[0],k[1]); } }
+  if(staged) delete T.isWalkable;
+
+  // (f) a morph that moves the coast under the birds leaves none further out than a wade
+  { G.resetEcosystem(); T.morphTo(1000000,1); G._bakedYearsBP=1000000; G._onMorphComplete();
+    let far=0; for(const m of G.simulation.moas){ if(!m.alive || T.isWalkable(m.pos.x,m.pos.y)) continue; if(shoreD(m.pos.x,m.pos.y)>WADE) far++; }
+    chk(far===0, `after a morph 2 Ma → 1 Ma no ground bird is left further than ${WADE} px out (${far})`); }
+
+  homeLand();
+  console.log(fail? `fauna on land: ${fail} FAILURES`
+    : `fauna on land: ${n} spawns over 15 resets at 2 Ma, none on water${centreWet?' (the centre is the strait)':''}; far-out birds head for the nearest shore, morphs and the cleanup tick bring them ashore`);
+}catch(e){ console.log('fauna on land: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,4).join('\n  ')); try{ const G=vm.runInContext('game',ctx); delete G.terrain.isWalkable; if(G.simulation) delete G.simulation.findWalkablePositionNear; homeLand(); }catch(_){} }
+
+// ---- the prologue's cast: two of each kind on the 2 Ma land (faunaPrologueLevel) ------------------
+// The founding numbers (3–5 a grazer) and the climate's lead (×1.3/×1.4) made the prologue's mostly-sea
+// land too busy (2026-11-27). There a world founds each kind at faunaPrologueLevel and the census holds
+// it there unattended, whatever the climate; what the visitor earns still lifts it, the climate leading
+// the lift; a poor ledger never thins below it. Floors drop to one so the harrier still has prey (all at
+// the floor starved it once: MISTAKES.md). From 1 Ma the cycles' founding numbers and floors return.
+try{
+  const G=vm.runInContext('game',ctx), DT=vm.runInContext('DeepTime',ctx), M=vm.runInContext('LEVEL_MECHANICS',ctx);
+  let fail=0; const chk=(c,m)=>{ if(!c){ console.log('  FAIL',m); fail++; } };
+  const P=M.faunaPrologueLevel, L=G.currentLevel;
+  chk(P===2, `the prologue's level is 2 (${P})`);
+  homeLand();
+  let sim=G.simulation;
+  const step=(n)=>{ for(let i=0;i<n;i++){ ctx.__tick(1); sim.update(1,1); } };
+  const F=()=>sim._fauna;
+  chk(sim._foundedSparse && sim._prologueLevel===P && sim._prologueFloor===1, 'a world at 2 Ma is founded in the prologue, its floors capped to one');
+  const over=Object.keys(L.initialSpeciesDistribution).filter(k=>sim._faunaCount(k)>P);
+  chk(over.length===0, `each grazer founds at most ${P} (${over.join(', ')||'none over'})`);
+  chk(sim.eagles.filter(e=>e.alive).length<=P, 'the harriers found at most two');
+  step(61);
+  const T=F().targets, keys=F().keys, notP=keys.filter(k=>T[k]!==P);
+  chk(F().ready && notP.length===0, `unattended, every kind's target is ${P} (${notP.map(k=>k+' '+T[k]).join(', ')||'all'})`);
+  chk(keys.every(k=>F().base[k]===Math.max(sim._authoredFloor(k), sim._authoredFounding(k,F().kind[k]))),
+      'the cycles\' unattended levels are still the level\'s founding numbers');
+  const goose=sim.moas.find(m=>m.alive && m.speciesKey==='giant_goose');
+  chk(goose && sim._faunaCount('giant_goose')>=2 && !sim.isPreyProtected(goose), 'at two, one of a pair is fair game: the harrier is not starved');
+  // two simulated minutes unattended: the census holds two, the harrier hunts, newcomers follow
+  step(60*120);
+  const counts=keys.map(k=>sim._faunaCount(k)), most=counts.filter(n=>n===P).length;
+  chk(counts.every(n=>n>=1 && n<=P+1) && most>=keys.length*0.6, `two minutes on, most kinds at ${P} (${counts.join(' ')})`);
+  // earned health lifts it, the climate leading; a poor ledger does not thin below it
+  sim._healthSet(1); step(61);
+  chk(keys.some(k=>F().targets[k]>P), 'earned health lifts the prologue\'s birds above two');
+  sim._healthSet(M.healthPoor); step(61);
+  chk(keys.every(k=>F().targets[k]===P), 'a poor ledger holds them at two, never fewer');
+  // out of the prologue: the cycles' numbers and floors return
+  sim._healthSet(M.healthStart); DT.seekTo(990000); step(61);
+  chk(sim._prologueLevel===0 && sim._speciesFloor('giant_goose')===sim._authoredFloor('giant_goose'), 'at 990 ka the floors are the authored ones again');
+  chk(keys.every(k=>F().targets[k]>=sim._speciesFloor(k)) && keys.some(k=>F().targets[k]>P), 'and the targets the cycles\' again');
+  // off: 0 founds the level's numbers at 2 Ma
+  M.faunaPrologueLevel=0; homeLand(); sim=G.simulation;
+  chk(!sim._foundedSparse && sim._faunaCount('giant_goose')===L.initialSpeciesDistribution.giant_goose, 'faunaPrologueLevel 0 turns it off');
+  M.faunaPrologueLevel=P; homeLand();
+  console.log(fail? `prologue cast: ${fail} FAILURES`
+    : `prologue cast: two of each kind on the 2 Ma land, held unattended (${counts.join(' ')} after two minutes), lifted by earned health, never thinned below; the harrier still hunts; the cycles' numbers return at 1 Ma`);
+}catch(e){ console.log('prologue cast: FAILURES (threw)', e.message, '\n  ', (e.stack||'').split('\n').slice(1,4).join('\n  ')); try{ vm.runInContext('LEVEL_MECHANICS',ctx).faunaPrologueLevel=2; homeLand(); }catch(_){} }
+
 const g=vm.runInContext('game',ctx);
 // ---- visitor-facing render must be clean -----------------------------
 {
