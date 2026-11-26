@@ -21,13 +21,15 @@ holding its line, ~eleven glacial cycles, and four TVZ super-eruptions.
 plans behind §2–§7 (the 3/4 view, the deep-time ecology, interaction and health) are in `md/archive/`.
 
 > **Status reconciled 2026-11-02** against the code and the harness, ahead of final testing and
-> handoff. §13 is the honest state; §14 is what is left.
+> handoff. §13 is the honest state; §14 is what is left. **§0, §13, §14 and §16 brought up to the
+> handoff plan on 2026-11-27** (`TEMANAWA_HANDOFF.md`: the package, the rights, the acceptance gates and
+> the checklist of what is left before release, §10 there).
 
 ---
 
 ## 0. Design history
 
-Ten things changed materially during the build, and this section records them:
+Eleven things changed materially during the build, and this section records them:
 
 | # | Change | Now |
 |---|---|---|
@@ -40,11 +42,13 @@ Ten things changed materially during the build, and this section records them:
 | 7 | **Kererū + a real seed-dispersal loop** | the one runtime mechanic that *grows* the forest; couples Storm to forest health (§5, §7) |
 | 8 | **Four eruptions as year-bound skip-targets** | four dated events; the button navigates between them (tap = revert, hold = skip) (§8) |
 | 9 | **A touchscreen console drives the wall** | a 1080p console over `BroadcastChannel`: habitat switch → per-species boost → a ramped time-lapse to the next glacial/interglacial; geology paused until then; plus a time dial (§6, `TEMANAWA_SECOND_SCREEN.md`) |
-| 10 | **The attract is the live 1 Ma land; a press plays an intro over today's map** | *(revised 2026-11-08; was the land before the window, now the dev `P` key only)* idle shows the fresh 1 Ma world with no UI and the clock held; a press fades to black, then the present-day map (the sim's own land at 0 BP) with an orientation, back into the live land, one line, then the UI; the end of the window plays an outro over the same map (habitats, species, the river today) and returns to the attract (`TeManawa_attract.js`); an island inset beside the map shows the lower North Island at the same dates (no Cook Strait at 1 Ma, the land bridge to Nelson at the LGM; `TeManawa_island.js`, 2026-11-13) |
+| 10 | **The attract is the live opening land; a press plays an intro over today's map** | *(revised 2026-11-08; was the land before the window, now the dev `P` key only)* idle shows the fresh world at the run's opening (1 Ma until the prologue, 2 Ma since: row 11) with no UI and the clock held; a press fades to black, then the present-day map (the sim's own land at 0 BP) with an orientation, back into the live land, one line, then the UI; the end of the window plays an outro over the same map (habitats, species, the river today) and returns to the attract (`TeManawa_attract.js`); an island inset beside the map shows the lower North Island at the same dates (the Manawatū Strait open at the opening, the land bridge to Nelson at the LGM; `TeManawa_island.js`, 2026-11-13) |
+| 11 | **The run opens at 2 Ma: the prologue** | *(2026-11-13)* the run starts on the Manawatū Strait, before the river and the ranges; three boosts carry it to the closed strait, the river on low land and Kidnappers at 1 Ma, where the cycles of rows 1 and 4 begin unchanged. Its climate is the LR04 record's 41-kyr cycles (2026-11-17). `TEMANAWA_PROLOGUE.md`; §13 |
 
-Since this table began, the fauna cast, the disturbance clocks, the console, the plant goals and the
-attract sequence have all been built. What is left is **pre-handoff hardening, two visitor-facing
-changes, and the tuning and co-design passes** (§13–§14).
+Since this table began, the fauna cast, the disturbance clocks, the console, the plant goals, the
+attract, the prologue, the audio and the kiosk shell have all been built. What is left is **the tuning
+and co-design passes (§14.3), the rights and credits, and commissioning on the install hardware**: the
+release checklist is `TEMANAWA_HANDOFF.md` §10.
 
 ---
 
@@ -490,7 +494,7 @@ on-brand with the illustrated look (§2).
 *(Full detail in `TEMANAWA_BUILD_V3.md`; this is the current shape and the constraints that decide it.)*
 
 **Vanilla JS on p5.js, classic scripts, no build step, two screens, unattended kiosk, no network.**
-45 hand-ordered project scripts in `index.html` (plus p5 and p5.sound); the order is load-bearing and
+49 hand-ordered project scripts in `index.html` (plus p5; p5.sound left with the audio rebuild); the order is load-bearing and
 the harness (`tools/bootcheck.js`) enforces it. The module list is in `CLAUDE.md` (Layout). The
 console is a separate static page, `secondscreen/`, on the same local server.
 
@@ -534,7 +538,7 @@ unused art still in `sprites/` is listed in §14.4.
 ## 13. Build status — where we actually are
 
 The prototype does **not** map onto the v2.1 §8 phase ledger — it ran ahead of it. Honest state on
-2026-11-02:
+2026-11-02, with each row updated as its piece landed (last on 2026-11-27):
 
 | Phase | Intent | Status |
 |---|---|---|
@@ -544,24 +548,28 @@ The prototype does **not** map onto the v2.1 §8 phase ledger — it ran ahead o
 | **5 — Flora** | plant table + art | ✅ **Built** — table and spawning, browse-prunes / habitat-removes cover dynamics, plant homeostasis, every placed plant drawn (§4). Open: rimu, a glacial conifer shrub, raupō (`TEMANAWA_ENCYCLOPEDIA_FLORA.md` §5) |
 | **6 — Disturbance** | `disturb()` + `warp`, wire buttons | ✅ **Built** — `ashCover` with an aftermath that covers one boost/goal cycle (§8), the `warp` clock, storm windthrow, the wetland bloom, kahikatea river recruitment. Open: the aftermath plan's staged beats |
 | **7 — Fauna** | the cast, predator corrections | ✅ **Built** — 8 grazers, Eyles' harrier and 4 flyers (§5), the no-extinction feedback model, the 40 kg prey ceiling, per-species cold adaptation, the harrier's quartering flight. Open: the *Dinornis* dimorphism pair |
-| **+ Interaction** | five buttons, health, kererū | ✅ **Built** — now driven from the console on the wall (row below). Tuning (step 5) open |
+| **+ Interaction** | five buttons, health, kererū | ✅ **Built** — now driven from the console on the wall (row below); the health ledger and its two milestones, full and 25 % (2026-11-05 and 2026-11-08, §7). Tuning (step 5) open |
 | **+ Second screen** | 1080p touchscreen, three-station model, per-species boost | ✅ **Built** — the console page, the `BroadcastChannel` bus, geology paused by default, the 500→5000 yr/s ramp to the next regime boundary, `Simulation.seedSpecies`, the regime-fit gate, eruption-aware endings, live telemetry (`TEMANAWA_SECOND_SCREEN.md`). Open: the boost-feel tuning pass |
 | **+ Plant goals** | a question a plant answers | ✅ **Built** — the line above the timeline, drawn from the live goals along the moa → harrier → lowland → forest-bird sequence, judged on each boost, with a fresh goal when the dial or a deep burst carries the clock across a glacial turn (`TeManawa_goals.js`, `TEMANAWA_GOALS.md`) |
 | **+ Time dial** | a standing fast-forward on the macro pad | ✅ **Built** — 0 → 5,000 yr/s over 30 detents, eased, kept across resets, relayed over the bus (`DeepTime.dialStep`) |
 | **+ The attract, intro and outro** | the idle wall, a visitor's way in and the window's end | ✅ **Built** (2026-11-08, `TeManawa_attract.js`) — the live opening land (2 Ma since the prologue) with no UI while idle; a press: black, the present-day map (`TerrainGenerator.snapshotYear(0)`, lined up with the sim's rivers, named) and an orientation, the live land, one line, the UI; the end of the window: the outro over the same map, then the attract. **2026-11-13: the island inset** (`TeManawa_island.js`) beside the map shows what the frame cannot: today → the island at the opening in the intro (the 2.4 Ma map, the Manawatū Strait open: there is no 2 Ma map; `TM_ATTRACT.inset.intro` switches it), the LGM land bridge to Nelson → today in the outro (from `research/palaeogeography/`). Harness "attract". Open: the copy (§16), the map's look |
 | **+ The prologue** | the run opens at 2 Ma, before the river and the ranges | ✅ **Built** (2026-11-13, `TEMANAWA_PROLOGUE.md`) — the run opens on the Manawatū Strait; three boosts land on the closed strait (~1.6 Ma), the river on low land (~1.28 Ma) and Kidnappers at 1 Ma, each a 24 s time-lapse; then the cycles, unchanged. The climate before 1 Ma is LR04's 41-kyr cycles (2026-11-17; each prologue boost crosses several and lands on a real turn, the land shown on their mean while it races), the prologue drawn short on the bar, the names of the time and one caption per chapter over the living sim. Open: the copy, the opening date, the uplift curve's ease-in (§10 there) |
 | **+ The land before the window** | the attract as a palaeogeography sequence | ✅ **Built** (2026-11-01), **off the wall since 2026-11-08** (dev `P` key only) — idle and end-of-window played a land-only 4 Ma → 1 Ma sequence through the terrain's dated geology extended before the window (`GEO_EPOCHS.palaeo*`: the Whanganui Basin's shelf, the basement finger, the Manawatū Strait narrow at 3 Ma / widest at 2.4 Ma / closed from 1.63 Ma, the Ruataniwha shelf closing with Mount Bruce — Trewick & Bland 2012 Fig. 4A–D), its own clock, the names of the time, every swap crossfaded, then the fresh 1 Ma world (`TEMANAWA_PALAEO_ATTRACT.md`). Open: the co-design pass on pacing and holds |
-| **8 — Kiosk** | hardening, audio, lockdown | ✅ **Built** — watchdog, error ring buffer, nightly reload, idle attract, the key lockdown (`?dev` unlocks), `draw()` error recovery, the console page's own layer, the software-WebGL guard, audio not loaded (§14.1). Open: commissioning on the install hardware (`TEMANAWA_OPERATIONS.md` §8) |
+| **8 — Kiosk** | hardening, audio, lockdown | ✅ **Built** — watchdog, error ring buffer, nightly reload, idle attract, the key lockdown (`?dev` unlocks), `draw()` error recovery, the console page's own layer, the software-WebGL guard (§14.1). Open: commissioning on the install hardware (`TEMANAWA_OPERATIONS.md` §8, `TEMANAWA_HANDOFF.md` §4) |
+| **+ Audio** | the room's sound | ✅ **Built** (2026-11-10; off from 2026-11-02 until then) — Web Audio, not p5.sound: capped buses into one limiter, per-cue cooldowns, one bird call at a time (`TeManawa_audio.js`, `TM_AUDIO`); every clip's source and licence in `audio/CREDITS.md`, which the harness checks. Open: heard on the install speakers, the stand-in voices, the RNZ / Te Papa clearance for the recreated moa, huia and Finsch's duck calls (`TEMANAWA_HANDOFF.md` §2.4, §7) |
+| **+ The package** | what the museum receives | ✅ **Built** (2026-11-05, merged 2026-11-17) — the kiosk shell (`electron/`: server, both windows placed and focused, crash recovery, nightly restart, log), `tools/make_deploy.js` (the deploy copy, its manifest and a headless smoke test), `tools/shell_check.js`, the autostart scripts and the operator sheet (`deploy/`). Open: built and run on Windows and on two real displays (`TEMANAWA_HANDOFF.md` §1.4, §10.4) |
 
 **Harness, 2026-11-02:** the plant-goals failure (the Dracophyllum goal at 30 ka, failing on every run
 since at least 2026-11-01, `main` included) was the harness's white-noise terrain, whose ranges barely
 rise (peak ~0.65 at every date); the real build reaches ~0.88. The test now stages the subalpine belt,
 and the "ranges rise with deep time" probe compares the crests instead of a count above 0.6. Some
 checks stay seed-dependent (fauna stability's refound count once read 23 against a limit of 20, where
-other runs read 12–17): re-run before treating one of those as real.
+other runs read 12–17): re-run before treating one of those as real. The harness runs since, and the
+checks that fail on the current commit, are recorded in `TEMANAWA_HANDOFF.md` §8.
 
-What stands between here and opening is §14: the kiosk fixes, two visitor-facing changes, then the
-tuning and co-design passes.
+What stands between here and opening: the tuning and co-design passes (§14.3), and the release
+checklist in `TEMANAWA_HANDOFF.md` §10 (freeze the build, rights and credits, content sign-off, the
+Windows package, commissioning). §14.1 and §14.2 are done.
 
 ---
 
@@ -569,7 +577,9 @@ tuning and co-design passes.
 
 Reset on 2026-11-02 for final testing and handoff. The items finished since the last version of this
 list (the raptor identity, the fauna cast, the disturbance clocks, the second-screen sim overhaul) are
-in §13.
+in §13. This section is the design work; the release work around it (the package, the rights, the
+acceptance gates, the harness failures on the current commit) is `TEMANAWA_HANDOFF.md`, whose §10 is
+the one checklist of what is left.
 
 ### 14.1 Before final testing — kiosk defects
 
@@ -664,8 +674,8 @@ correction, not a cut** — no ignition source in this window, volcanic only.
 
 Resolved: window start (**2 Ma, the strait: the prologue**, 2026-11-13; the cycles still begin at 1 Ma) and end (25.5 ka, Ōruanui); huia, kererū and the *Dinornis* pair all in; five buttons, then
 the touchscreen console (7, 8 below); seasons are glacial periods; health is global and derived; the
-wetland bloom (built, §9); coastal moa (the stout-legged *Euryapteryx* is founded); **audio off for
-opening, and not loaded** (2026-11-02); **the eruption aftermath covers one boost/goal cycle**
+wetland bloom (built, §9); coastal moa (the stout-legged *Euryapteryx* is founded); **audio on**
+(2026-11-10, reversing the 2026-11-02 call to open silent); **the eruption aftermath covers one boost/goal cycle**
 (2026-11-02); **a fresh goal after a fast-forward through a glacial turn** (2026-11-02). Still open:
 
 1. **Timeline arrow-vs-wave** — the timeline now draws from `sprites/UI/` art; confirm that closes it.

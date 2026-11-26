@@ -188,6 +188,12 @@ and licence), `CLAUDE.md` and `MISTAKES.md` (whoever maintains the code), `md/RE
 The proposal (`Avian_Age_TeManawa_Proposal.docx`) is the original brief and its open questions are
 still the open questions.
 
+For the exhibitions and education team: `TEMANAWA_CONCEPT_DOC.md`, the final concept for a general
+audience (how it plays, the birds, how the Manawatū formed, the places, the habitats and goals; written
+for the 2 Ma opening, its photos and video still to add), and `TEMANAWA_HABITATS.md`, the four habitats
+with the places people know. Both were written on 2026-11-17 and are **not yet on the release branch**:
+they sit uncommitted in the author's checkout of `hud-wall-readability` (§10.1).
+
 ### 2.3 The source
 
 Tag the commit the package was built from (recommended name `v1.0.0-rc.1`, then `v1.0.0` after
@@ -345,7 +351,8 @@ From `TEMANAWA_PLAN_V3.md` §16, the ones that change what visitors see or hear:
 1. **The console between visitors** (§16.13): return to its landing card when the wall goes to the
    attract, or hold the last habitat? (A small change; the shell does not decide it.)
 2. **The title** (§16.12): *Avian Age: Te Manawa* on the page, *A River Older Than Mountains* in the
-   blog. The package uses the page's.
+   blog and in the concept document (`TEMANAWA_CONCEPT_DOC.md`, 2026-11-17). The package uses the
+   page's (`index.html`'s `<title>`).
 3. **The end-card** (§16.9): acknowledge the absences (97 % of the wetland gone) or not.
 4. **Audio** is on (2026-11-10). Whether a living relative's voice may stand in for the three extinct
    birds without a recording (takahē, goose, harrier: `TM_AUDIO.birdStandIns`), and whether the
@@ -436,7 +443,13 @@ this is the work before them.
 - [x] One branch: the audio and prologue work, the island inset and the kiosk shell merged (2026-11-17),
       on `claude/sound-effects-bird-audio-52bb80`. Left: the PR to `main`. None is open on 2026-11-26,
       and `main` stops at 2026-11-10: it has the attract and the milestones, but not the audio, the
-      prologue, the island inset or the kiosk shell
+      prologue, the island inset or the kiosk shell. The 26 Nov edits to this plan were made on
+      `claude/eloquent-franklin-gwxy01`, two commits ahead of the release branch with nothing else
+      changed; on 2026-11-27 the release branch was fast-forwarded to them locally, not yet pushed
+- [ ] Bring the author's three uncommitted docs onto the release branch: `TEMANAWA_CONCEPT_DOC.md`
+      (new), the `TEMANAWA_HABITATS.md` rewrite and their two lines in `md/README.md`, all from
+      2026-11-17, sitting in the `hud-wall-readability` checkout (§2.2). That branch has nothing else
+      the release branch lacks
 - [ ] Close the open decisions that change what ships (§7, and `TEMANAWA_PLAN_V3.md` §16.11 the outline
       prototype, §16.5 `mapGrid`, §16.3 the recovery path's cost, §16.6 saturation scope, §16.1 the
       timeline art; `TEMANAWA_PROLOGUE.md` §10 the opening date and the 1 Ma stage label)

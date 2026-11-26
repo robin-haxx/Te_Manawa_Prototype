@@ -348,14 +348,16 @@ skips a running attract). Anything that polls a key itself must ask `Kiosk.keyAl
 
 ## Current phase
 
-**Final testing and handoff.** The honest status is `md/TEMANAWA_PLAN_V3.md` §13; what is left is §14.
-Built: the terrain (SVG skeleton, uplift/incision morph, the sea-level coast, 3/4 cel look, water layer,
+**Final testing and handoff.** The honest status is `md/TEMANAWA_PLAN_V3.md` §13; what is left is §14.3
+(tuning and co-design) and the release checklist, `md/TEMANAWA_HANDOFF.md` §10, whose §8 records the
+harness failures on the current commit. Built: the terrain (SVG skeleton, uplift/incision morph, the sea-level coast, 3/4 cel look, water layer,
 river names), **the prologue** (the run opens at 2 Ma on the strait, 2026-11-13: `md/TEMANAWA_PROLOGUE.md`),
 the glacial-cycle climate to 1 Ma with cold cover, the four eruptions, habitat health, the
 disturbance clocks (`disturb()` + `warpAt`, the wetland bloom, kahikatea river recruitment), the
 **second-screen console** (`md/TEMANAWA_SECOND_SCREEN.md`), the plant goals, the time dial, the health
-milestones, and the attract (the live 1 Ma land) with its present-day-map intro and end-of-window outro
-(`TeManawa_attract.js`). The earlier attract sequence (**the land before the window**,
+milestones, the attract (the live opening land) with its present-day-map intro and end-of-window outro
+(`TeManawa_attract.js`), the audio (on since 2026-11-10), and the kiosk shell and deploy build
+(`electron/`, `tools/make_deploy.js`). The earlier attract sequence (**the land before the window**,
 `md/TEMANAWA_PALAEO_ATTRACT.md`) is kept behind the dev `P` key.
 
 **The cast** — thirteen North Island birds on dedicated multi-state art: 4 North Island moa (giant
