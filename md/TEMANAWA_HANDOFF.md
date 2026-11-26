@@ -15,7 +15,8 @@ sheet that ships inside the package is `../deploy/OPERATOR_QUICKSTART.md`.
 ## 0. The short version
 
 - **State.** Feature-complete and in final testing. Every phase in the plan is built; the harness
-  passes (seed-dependent checks, §8); the kiosk layer has been hardened and exercised. It has
+  passed on 2026-11-17 bar seed-dependent checks, but on the latest commit it prints three failures,
+  two of them from the 2026-11-25 copy cut (§8); the kiosk layer has been hardened and exercised. It has
   **never run on the install hardware**, and all visitor-facing copy is draft pending co-design.
   Since 2026-11-05: **audio is on** (2026-11-10), **the run opens at 2 Ma** on the Manawatū Strait (the
   prologue, 2026-11-13), the intro and outro carry **an island inset**, and the prologue's climate is
@@ -367,6 +368,26 @@ From `TEMANAWA_PLAN_V3.md` §16, the ones that change what visitors see or hear:
 
 ## 8. Known issues and flakes
 
+- **Harness, 2026-11-26 (`7feef91`, the latest commit): not clean.** Two runs in a Linux container
+  (Node 22), both printing the same three failures, and both exiting 0:
+  - *attract*: "every inset date has its caption" and "the inset copy: no emoji, Cook Strait and Nelson
+    named, macrons kept". **Real, and caused by the 2026-11-25 copy cut** (`7feef91`): the present-day
+    intro caption (`TM_ISLAND.copy.intro.m0000`) now has an empty body, and no caption names Nelson.
+    Either the copy or the check has to change; that is a content call (§10.1).
+  - *prologue*: "the land followed the clock: baked within a morph step of the stop" (baked 1,617,921
+    and 1,604,473 BP against a stop at 1,582,655). Not caused by `7feef91`, which changed only copy
+    strings; it passed on the author's runs of `3a05552`, which added it. The terrain's morph slices
+    against the real clock (the harness's `performance.now` is `Date.now`) while the harness steps a
+    fake 16 ms frame, so how far the land keeps up with a racing boost depends on the machine. Unresolved
+    until it is run on the build machine (§10.1).
+  - Run 2 also hit the known tributary flake (below).
+
+  `make_deploy.js --smoke` passed on the same commit (Linux, Playwright's Chromium): 1,081 files and
+  94 MB with the audio, every reference resolved, the wall booted in 12 s on the 2 Ma strait, a console
+  intent broke the attract into the intro and the intro played out to the UI, a dial detent arrived, no
+  page errors, no 404s.
+- **Harness, 2026-11-17 (`3a05552`, the LR04 rebuild):** four runs, three clean; one hit the tributary
+  flake, which also failed on the branch before the change (from the commit message).
 - **Harness, 2026-11-17 (the merged branch):** three runs, two clean. One printed a failure in
   *geography*: "the course holds through a glacial cycle and shifts at the next termination" (the river
   did not move at the termination). Another seed-dependent check on the noise terrain; the merge touched
@@ -374,10 +395,13 @@ From `TEMANAWA_PLAN_V3.md` §16, the ones that change what visitors see or hear:
   `--browser` pointing at the installed Chrome, since Playwright's own Chromium would not start on this
   Windows machine): the wall boots in ~35 s, a console intent breaks the attract into the intro, the
   intro ends on the UI, a dial detent arrives, no page errors, no 404s bar the browser's favicon.
-- **The harness exits 0 even when a section prints `FAILURES`.** Gate 0 must read the output.
+- **The harness exits 0 even when a section prints `FAILURES`.** Gate 0 must read the output. This is
+  how the 2026-11-25 copy cut landed with two failing checks.
 - **Harness, seed-dependent:** *the strait name sits on sea at 2.4 Ma* (palaeo attract) failed on 1 of
   3 runs on 2026-11-05; *the basin and Ruataniwha names sit on sea at 2.4 Ma* and *at 140 ka the main
   runs unbroken from the lowstand sea* (geography) failed once each on 2026-11-14, clean on the re-run, and *the course holds through a glacial cycle* (geography) once on 2026-11-17.
+  *At 1000 ka every tributary is joined to the main or the sea* (land/water discipline) is the
+  tributary flake: once on 2026-11-17, once on 2026-11-26.
   All run on the harness's noise terrain. The island merge's five-point surface vote for the names may
   have settled the first two; *fauna stability*'s refound count is already documented as
   seed-dependent. A harness fix (stage the anchors, as the Tararua check does) is cheap and should land
@@ -418,8 +442,15 @@ this is the work before them.
       timeline art; `TEMANAWA_PROLOGUE.md` §10 the opening date and the 1 Ma stage label)
 - [ ] Set the real key map in `secondscreen/input.js` (`SWITCH_MODE`, `KEYS`); turn off
       `B_LONG_PRESS_ERUPTS` (still `true`) once the pad has its own eruption key
+- [ ] Fix the two *attract* checks the 2026-11-25 copy cut broke (§8): give the present-day intro
+      caption a body or let the check accept an empty one, and name Nelson again or retire that
+      assertion. Copy or check, it is the author's call
+- [ ] Run the *prologue* check "the land followed the clock" on the build machine. If it fails there
+      too, make it independent of machine speed or loosen it; it fails on both runs in a Linux
+      container (§8)
 - [ ] Make the seed-dependent harness checks deterministic, or record them as known noise (§8)
-- [ ] Make `bootcheck.js` exit non-zero when a section prints `FAILURES`
+- [ ] Make `bootcheck.js` exit non-zero when a section prints `FAILURES` (it exited 0 on both
+      failing runs of 2026-11-26)
 - [ ] Harness clean three runs in a row on the release commit; tag `v1.0.0-rc.1` (§6)
 
 ### 10.2 Rights and credits
